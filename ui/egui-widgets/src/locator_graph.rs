@@ -36,6 +36,12 @@
 //! transactions reads ~719 entry shards and 129 chunks, and that ratio is the
 //! thing worth seeing; one wire per lookup would hide it.
 //!
+//! **But a host that watched the requests go out should hand those over instead**
+//! — see [`LocatorGraph::fired`]. A derived set is what the plan implied; the
+//! observed set is what the browser did, it includes the reads the index makes
+//! for itself ([`ReadTo::Index`]), and it is the only thing that can show a run
+//! that has not finished yet. A read that has not landed carries `flight: None`
+//!
 //! ## Cost
 //!
 //! `reads()` is the only part that is not one draw per mark, and it is a sort and
@@ -50,10 +56,16 @@
 //! No label, no hover, no tooltip, and drawn at full strength so a story is a
 //! fair test — fade it at the placement with `Ui::set_opacity`. Everything
 //! painted is a pure function of `now`, so a still is reproducible and there is
-//! no animation state to keep; a repaint is asked for only while a lookup is in
-//! the air, so an idle graph costs nothing. Positional travel is gated on
-//! [`ThemeExt::travel_allowed`], so reduced motion keeps the fades and drops the
-//! flight.
+//! no animation state to keep; a repaint is asked for only while a read or a
+//! lookup is in the air, so an idle graph costs nothing.
+//!
+//! **Nothing travels, so nothing here is gated on reduced motion.** A wire's
+//! animation is its opacity: out dim with its far end outlined, back at full
+//! strength with the far end filled. A packet drawn *along* a wire would be a
+//! position nobody measured — a read's flight is not known until the read is over,
+//! which is exactly the case a live feed exists to draw — so the widget does not
+//! draw one. Fades are permitted under reduced motion, and there is nothing else
+//! here to suppress.
 
 use egui::{Painter, Pos2, Rect, Response, Sense, Shape, Ui, Vec2, pos2, vec2};
 
@@ -132,9 +144,13 @@ pub struct Lookup {
     pub flight: f32,
 }
 
-/// The two objects a lookup reaches for.
+/// What a read was for — the one thing its wire has to be placed by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ReadTo {
+    /// The index itself: the fence pair bounding a bucket, and the entry index its
+    /// shard starts at. Both come off the directory, and neither crosses to the
+    /// corpus.
+    Index,
     /// An entry shard — read once however many buckets land in it.
     Run { shard: u32 },
     /// A chunk — read once however many transactions it holds.
@@ -150,8 +166,10 @@ pub struct Read {
     pub from_bucket: u32,
     /// Seconds when the object was asked for.
     pub at: f32,
-    /// Seconds the object took.
-    pub flight: f32,
+    /// Seconds it took — `None` while it is still in the air, which is **not** the
+    /// same as instantaneous, and is the difference between a wire that is still
+    /// carrying a packet and one that has landed.
+    pub flight: Option<f32>,
 }
 
 /// The reads a set of lookups implies, **one per object**, at the time the first
@@ -173,13 +191,13 @@ pub fn reads(lookups: &[Lookup]) -> Vec<Read> {
             },
             from_bucket: lookup.bucket,
             at: lookup.at,
-            flight: lookup.flight,
+            flight: Some(lookup.flight),
         });
         bodies.push(Read {
             to: ReadTo::Body { span: lookup.span },
             from_bucket: lookup.bucket,
             at: lookup.at,
-            flight: lookup.flight,
+            flight: Some(lookup.flight),
         });
     }
 
@@ -201,7 +219,7 @@ pub fn reads(lookups: &[Lookup]) -> Vec<Read> {
 fn shard_of(read: &Read) -> u32 {
     match read.to {
         ReadTo::Run { shard } => shard,
-        ReadTo::Body { .. } => 0,
+        ReadTo::Index | ReadTo::Body { .. } => 0,
     }
 }
 
@@ -210,7 +228,7 @@ fn shard_of(read: &Read) -> u32 {
 fn chunk_of(read: &Read) -> u16 {
     match read.to {
         ReadTo::Body { span } => span.chunk,
-        ReadTo::Run { .. } => 0,
+        ReadTo::Index | ReadTo::Run { .. } => 0,
     }
 }
 
@@ -221,8 +239,8 @@ fn chunk_of(read: &Read) -> u16 {
 /// How long the marks linger after a lookup's flight, fading out, in seconds.
 const LINGER: f32 = 0.55;
 
-/// The beats of a lookup, as fractions of its flight: when each mark arrives,
-/// and where the two crossing particles are.
+/// The beats of a lookup, as fractions of its flight: when each of its marks
+/// arrives.
 ///
 /// These are **drawing constants, not measurements**. What a read costs is
 /// `flight`, which the caller measured; how the flight is split across the
@@ -230,42 +248,65 @@ const LINGER: f32 = 0.55;
 const BEAT_BUCKET: f32 = 0.08;
 const BEAT_SHARD: f32 = 0.20;
 const BEAT_RUN: f32 = 0.32;
-const BEAT_RUN_READ: f32 = 0.40;
 const BEAT_BODY_READ: f32 = 0.66;
 const BEAT_SETTLE: f32 = 0.84;
 
 /// How much of a beat it takes a mark to arrive.
 const RISE: f32 = 0.06;
 
+/// How long a read that has not landed takes to reach full strength, in seconds.
+///
+/// A read in the air has no flight to scale its arrival by — that is the point of it —
+/// so it rises over a fixed, short beat instead of popping in.
+const RISE_SECS: f32 = 0.09;
+
 /// Seconds since `at`, while the mark is still on screen — `None` before it
 /// starts and once it has faded.
-fn age_of(at: f32, flight: f32, now: f32) -> Option<f32> {
+///
+/// A `flight` of `None` is a read **still in the air**: it has no end to fade
+/// towards yet, so it is on screen from the moment it goes out.
+fn age_of(at: f32, flight: Option<f32>, now: f32) -> Option<f32> {
     let age = now - at;
-    (age >= 0.0 && age <= flight + LINGER).then_some(age)
+    if age < 0.0 {
+        return None;
+    }
+    match flight {
+        Some(flight) if age > flight + LINGER => None,
+        _ => Some(age),
+    }
 }
 
 /// How far through its flight something is, `0.0`..=`1.0`.
-fn progress_of(at: f32, flight: f32, now: f32) -> Option<f32> {
+///
+/// A read that has not landed is drawn at the START of its wire: where it is is
+/// not known yet, and putting it anywhere else would be an invention.
+fn progress_of(at: f32, flight: Option<f32>, now: f32) -> Option<f32> {
     let age = age_of(at, flight, now)?;
-    Some(if flight <= 0.0 {
-        1.0
-    } else {
-        (age / flight).clamp(0.0, 1.0)
+    Some(match flight {
+        None => 0.0,
+        Some(flight) if flight <= 0.0 => 1.0,
+        Some(flight) => (age / flight).clamp(0.0, 1.0),
     })
 }
 
 /// How strongly something is inked: it arrives over the first [`RISE`] of its
-/// flight, holds, and fades over [`LINGER`].
-fn ink_of(at: f32, flight: f32, now: f32) -> f32 {
+/// flight, holds, and fades over [`LINGER`]. A read still in the air does not
+/// fade — it is not finished, it is happening.
+fn ink_of(at: f32, flight: Option<f32>, now: f32) -> f32 {
     let Some(age) = age_of(at, flight, now) else {
         return 0.0;
     };
-    let rise = if flight <= 0.0 {
-        1.0
-    } else {
-        (age / (flight * RISE)).clamp(0.0, 1.0)
+    let rise = match flight {
+        // Instantaneous: it is already over, so it is already at full strength.
+        Some(flight) if flight <= 0.0 => 1.0,
+        Some(flight) => (age / (flight * RISE)).clamp(0.0, 1.0),
+        // In the air: no flight to scale by, so a fixed short beat instead of a pop.
+        None => (age / RISE_SECS).clamp(0.0, 1.0),
     };
-    let fall = ((flight + LINGER - age) / LINGER).clamp(0.0, 1.0);
+    let fall = match flight {
+        None => 1.0,
+        Some(flight) => ((flight + LINGER - age) / LINGER).clamp(0.0, 1.0),
+    };
     rise.min(fall)
 }
 
@@ -352,6 +393,8 @@ fn curve(from: Pos2, to: Pos2, bow: f32, steps: usize) -> Vec<Pos2> {
 /// clock; there is no state to keep between frames.
 pub struct LocatorGraph<'a> {
     lookups: &'a [Lookup],
+    /// The reads the host observed, when it has them — see [`LocatorGraph::fired`].
+    fired: Option<&'a [Read]>,
     extent: Extent,
     now: f32,
     size: Option<Vec2>,
@@ -363,6 +406,7 @@ impl<'a> LocatorGraph<'a> {
     pub fn new(lookups: &'a [Lookup], now: f32) -> Self {
         Self {
             lookups,
+            fired: None,
             extent: Extent::default(),
             now,
             size: None,
@@ -384,10 +428,36 @@ impl<'a> LocatorGraph<'a> {
     }
 
     /// Whether anything is still in the air, so the host knows to keep painting.
+    ///
+    /// ⚠️ Both sources count. A run in progress has **fired reads and no lookups
+    /// yet** — the lookups are only knowable once the entry runs have come back —
+    /// so a `busy()` that only asked the lookups would let the host stop painting
+    /// exactly while the run was happening.
     pub fn busy(&self) -> bool {
-        self.lookups
+        let lookups = self
+            .lookups
             .iter()
-            .any(|lookup| age_of(lookup.at, lookup.flight, self.now).is_some())
+            .any(|lookup| age_of(lookup.at, Some(lookup.flight), self.now).is_some());
+        let fired = self
+            .fired
+            .unwrap_or_default()
+            .iter()
+            .any(|read| age_of(read.at, read.flight, self.now).is_some());
+        lookups || fired
+    }
+
+    /// The wires that actually went out, in the order they did — the reads the
+    /// host observed, rather than the ones its lookups imply.
+    ///
+    /// ⚠️ **Supply this when the host can see the run happening.** `reads()`
+    /// derives a wire set from finished lookups, which is all a caller has once a
+    /// run is over; a caller that watched the requests go out should hand those
+    /// over instead, because a derived superset is a picture of what the plan
+    /// implied rather than of what the browser did — and it cannot show a run that
+    /// has not finished yet. A read still in the air is one with `flight: None`.
+    pub fn fired(mut self, reads: &'a [Read]) -> Self {
+        self.fired = Some(reads);
+        self
     }
 
     /// Draw it. Nothing is interactive, so the response is for layout only.
@@ -401,12 +471,11 @@ impl<'a> LocatorGraph<'a> {
             ui.ctx().request_repaint();
         }
         let theme = ui.tokens();
-        let travel = ui.travel_allowed();
-        self.paint(&ui.painter_at(rect), &theme, rect, travel);
+        self.paint(&ui.painter_at(rect), &theme, rect);
         response
     }
 
-    fn paint(&self, painter: &Painter, theme: &Theme, rect: Rect, travel: bool) {
+    fn paint(&self, painter: &Painter, theme: &Theme, rect: Rect) {
         let c = &theme.color;
         let pad = theme.space(Space::Sm);
         let x0 = rect.left() + pad;
@@ -417,8 +486,18 @@ impl<'a> LocatorGraph<'a> {
 
         self.rails(painter, theme, at, band);
 
-        // The crossing: one wire per OBJECT, so a chunk read once is drawn once.
-        for read in reads(self.lookups) {
+        // The wires. Given the observed reads, those are the wires — a derived
+        // superset would be a picture of what the plan implied rather than of what
+        // the browser did.
+        let derived;
+        let wires: &[Read] = match self.fired {
+            Some(fired) => fired,
+            None => {
+                derived = reads(self.lookups);
+                &derived
+            }
+        };
+        for read in wires {
             let Some(progress) = progress_of(read.at, read.flight, self.now) else {
                 continue;
             };
@@ -428,6 +507,14 @@ impl<'a> LocatorGraph<'a> {
             }
             let y = y_of(read.from_bucket, self.extent.buckets, band);
             let (from, to, colour) = match read.to {
+                // A read inside the index: it never leaves the left-hand side, so
+                // it is drawn as a short wire to the index's own edge rather than
+                // a crossing.
+                ReadTo::Index => (
+                    pos2(at(RAIL_BUCKET), y),
+                    pos2(at(RAIL_ENTRY), y),
+                    c.accent_yellow,
+                ),
                 ReadTo::Run { shard } => (
                     pos2(at(RAIL_ENTRY), y),
                     pos2(at(RAIL_CORPUS), y_of(shard, self.extent.shards, band)),
@@ -444,23 +531,35 @@ impl<'a> LocatorGraph<'a> {
             };
             let bow = (from.y - to.y) * 0.18;
             let points = curve(from, to, bow, 8);
+            // ⚠️ **Motion here is opacity, never travel.** A read that has not landed has
+            // no flight to draw a position from — the browser does not know how long a
+            // request will take until it is back — so a dot mid-wire would be a place
+            // nobody measured. What the browser does know is out from back: the wire
+            // goes out dim with its far end outlined, and comes back at full strength
+            // with the far end filled. That is the whole of the animation, and it is the
+            // whole of the information.
+            let waiting = read.flight.is_none();
+            let weight = if waiting { 60.0 } else { 110.0 };
             painter.add(Shape::line(
                 points.clone(),
-                stroke(1.0, with_alpha(colour, (40.0 * ink) as u8)),
+                stroke(1.0, with_alpha(colour, (weight * ink) as u8)),
             ));
-            if travel && progress >= BEAT_RUN_READ {
-                let t = ((progress - BEAT_RUN_READ) / (1.0 - BEAT_RUN_READ)).clamp(0.0, 1.0);
-                if let Some(dot) = sample(&points, t) {
-                    painter.circle_filled(dot, 1.6, with_alpha(colour, (210.0 * ink) as u8));
-                }
+            if waiting {
+                painter.circle_stroke(
+                    to,
+                    2.0,
+                    stroke(1.0, with_alpha(colour, (170.0 * ink) as u8)),
+                );
+            } else if let Some(dot) = sample(&points, progress) {
+                painter.circle_filled(dot, 2.0, with_alpha(colour, (220.0 * ink) as u8));
             }
         }
 
         for lookup in self.lookups {
-            let Some(progress) = progress_of(lookup.at, lookup.flight, self.now) else {
+            let Some(progress) = progress_of(lookup.at, Some(lookup.flight), self.now) else {
                 continue;
             };
-            let ink = ink_of(lookup.at, lookup.flight, self.now);
+            let ink = ink_of(lookup.at, Some(lookup.flight), self.now);
             if ink <= 0.0 {
                 continue;
             }
@@ -727,32 +826,76 @@ mod tests {
     #[test]
     fn a_lookup_that_has_not_started_draws_nothing() {
         let l = lookup(1, 0, 1, 5.0);
-        assert_eq!(age_of(l.at, l.flight, 4.9), None);
-        assert_eq!(progress_of(l.at, l.flight, 4.9), None);
-        assert_eq!(ink_of(l.at, l.flight, 4.9), 0.0);
+        assert_eq!(age_of(l.at, Some(l.flight), 4.9), None);
+        assert_eq!(progress_of(l.at, Some(l.flight), 4.9), None);
+        assert_eq!(ink_of(l.at, Some(l.flight), 4.9), 0.0);
     }
 
     #[test]
     fn a_flight_that_is_over_lingers_then_goes() {
         let l = lookup(1, 0, 1, 0.0);
-        let during = ink_of(l.at, l.flight, 0.5);
-        let after = ink_of(l.at, l.flight, l.flight + LINGER * 0.5);
-        let gone = ink_of(l.at, l.flight, l.flight + LINGER + 0.01);
+        let during = ink_of(l.at, Some(l.flight), 0.5);
+        let after = ink_of(l.at, Some(l.flight), l.flight + LINGER * 0.5);
+        let gone = ink_of(l.at, Some(l.flight), l.flight + LINGER + 0.01);
         assert!(during > after, "it must be fading, not holding");
         assert!(
             after > 0.0,
             "a mark that vanishes mid-flight reads as a gap"
         );
         assert_eq!(gone, 0.0);
-        assert_eq!(progress_of(l.at, l.flight, l.flight + LINGER), Some(1.0));
+        assert_eq!(
+            progress_of(l.at, Some(l.flight), l.flight + LINGER),
+            Some(1.0)
+        );
     }
 
     #[test]
     fn a_zero_flight_read_is_arrived_rather_than_undefined() {
         let l = lookup(1, 0, 1, 0.0);
-        assert_eq!(progress_of(l.at, 0.0, 0.0), Some(1.0));
-        assert_eq!(ink_of(l.at, 0.0, 0.0), 1.0);
-        assert_eq!(progress_of(l.at, 0.0, LINGER + 0.01), None);
+        assert_eq!(progress_of(l.at, Some(0.0), 0.0), Some(1.0));
+        assert_eq!(ink_of(l.at, Some(0.0), 0.0), 1.0);
+        assert_eq!(progress_of(l.at, Some(0.0), LINGER + 0.01), None);
+    }
+
+    #[test]
+    fn a_read_still_in_the_air_is_not_an_instant_read() {
+        // `None` is "not landed yet", which is not the same as "took no time": a
+        // packet parked at the END of a wire would say the read is already over.
+        assert_eq!(progress_of(0.0, None, 0.4), Some(0.0));
+        assert_eq!(ink_of(0.0, None, 0.4), 1.0);
+        // And a read in the air does not fade — it is happening, not finishing.
+        assert_eq!(ink_of(0.0, None, LINGER * 4.0), 1.0);
+        // Once it lands, the flight it reports is the flight it gets.
+        assert_eq!(progress_of(0.0, Some(1.0), 0.5), Some(0.5));
+    }
+
+    #[test]
+    fn a_run_in_progress_is_busy_before_any_lookup_exists() {
+        // The reason the fired feed exists: mid-run there are wires and NO
+        // lookups — the lookups are only knowable once the entry runs come back —
+        // so a `busy()` that asked only the lookups would let the host stop
+        // painting exactly while the run was happening.
+        let fired = [Read {
+            to: ReadTo::Index,
+            from_bucket: 64,
+            at: 0.0,
+            flight: None,
+        }];
+        assert!(LocatorGraph::new(&[], 0.2).fired(&fired).busy());
+
+        // Landed and faded out is not busy.
+        let landed = [Read {
+            flight: Some(0.3),
+            ..fired[0]
+        }];
+        assert!(
+            !LocatorGraph::new(&[], 0.3 + LINGER + 0.01)
+                .fired(&landed)
+                .busy()
+        );
+
+        // With no fired feed it falls back to the lookups, as before.
+        assert!(LocatorGraph::new(&[lookup(1, 0, 1, 0.0)], 0.5).busy());
     }
 
     #[test]

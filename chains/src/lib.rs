@@ -306,6 +306,19 @@ impl ChainRef {
         matches!(self, Self::Cardano(_))
     }
 
+    /// This chain as a Cardano network, where it is one.
+    ///
+    /// `None` for an EVM chain rather than an invented network — and it keeps all
+    /// three Cardano networks, which the `shared_types::ChainNetwork` this replaces
+    /// could not: its `Testnet` collapsed preprod and preview together, so nothing
+    /// downstream could tell them apart.
+    pub const fn cardano_network(self) -> Option<CardanoNetwork> {
+        match self {
+            Self::Cardano(network) => Some(network),
+            Self::Evm(_) => None,
+        }
+    }
+
     /// Cardano mainnet.
     ///
     /// A convenience for the spelling `ChainRef::Cardano(CardanoNetwork::Mainnet)`,
@@ -405,6 +418,16 @@ impl From<ChainRef> for String {
     }
 }
 
+/// A Cardano network as the chain that carries it.
+///
+/// Total, where the reverse is not: every Cardano network is a chain, and no EVM
+/// chain is a network.
+impl From<CardanoNetwork> for ChainRef {
+    fn from(network: CardanoNetwork) -> Self {
+        Self::Cardano(network)
+    }
+}
+
 /// Why a string was not a chain.
 ///
 /// Hand-written rather than pulled from `thiserror`, so this crate's only
@@ -500,6 +523,20 @@ mod tests {
         assert_eq!(CardanoNetwork::Mainnet.network_id(), 1);
         assert_eq!(CardanoNetwork::Preprod.network_id(), 0);
         assert_eq!(CardanoNetwork::Preview.network_id(), 0);
+    }
+
+    #[test]
+    fn a_cardano_network_becomes_a_chain_and_back_without_collapsing_two_of_them() {
+        for network in [
+            CardanoNetwork::Mainnet,
+            CardanoNetwork::Preprod,
+            CardanoNetwork::Preview,
+        ] {
+            assert_eq!(ChainRef::from(network).cardano_network(), Some(network));
+        }
+
+        // An EVM chain is not a Cardano network, and saying so beats inventing one.
+        assert_eq!(ChainRef::Evm(EvmChain::Robinhood).cardano_network(), None);
     }
 
     #[test]

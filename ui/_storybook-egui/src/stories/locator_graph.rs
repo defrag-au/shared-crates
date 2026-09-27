@@ -1,35 +1,37 @@
-//! `LocatorGraph` — the ambient form, at full strength and faded behind content.
+//! `LocatorGraph` — a run as it happens, then as it is reported.
 //!
-//! The widget draws itself at full strength on purpose: fading is the
-//! *placement*'s job, so this story shows both — the graph on its own, and the
-//! same graph under a card at `set_opacity(0.18)`. A still is included because
-//! the widget claims one is reproducible: every mark is a pure function of the
-//! clock it is handed.
+//! The two halves are the two things the browser can know. **While the run is going**
+//! it knows which objects it has asked for and which have come back, and nothing else —
+//! where a transaction's body is sits in an entry it has not fetched yet — so the wires
+//! are fed live. **When the run is over** it knows the lookups, and those are replayed
+//! over the length the run took.
+//!
+//! A still is included too, because the widget claims one is reproducible: every mark is
+//! a pure function of the clock it is handed.
 
 use egui::{RichText, Sense, UiBuilder, vec2};
-use egui_widgets::locator_graph::{LocatorGraph, Lookup, Span};
+use egui_widgets::locator_graph::{LocatorGraph, Lookup, Read, ReadTo, Span, reads};
 
-/// Seconds the roster covers, and where it starts again.
+/// The wallet arm's length in the phase table, and its three waves.
 ///
-/// The roster is longer than the loop so the marks at the seam are already in
-/// the air when the clock wraps back to zero.
-const LOOP: f32 = 5.0;
-const ROSTER: f32 = 7.0;
+/// Measured 2026-09-27 against the published mirror: the index 6 reads over 270 ms,
+/// the entry runs 719 over 543 ms, the bodies 129 over 295 ms, 1,246 ms wall.
+const RUN: f32 = 1.108;
+const INDEX_UNTIL: f32 = 0.270;
+const RUNS_UNTIL: f32 = 0.813;
 
-/// Lookups in one loop — the measured wallet run: 729 transactions located.
-const BODIES: u32 = 729;
+/// A cold read, which is what most of these were.
+const COLD: f32 = 0.4;
 
-/// Seconds one lookup is in the air: a cold read is ~400 ms and a lookup makes
-/// two of them.
-const FLIGHT: f32 = 0.9;
+/// The loop the story's clock runs on. Longer than the run plus its replay, so there is
+/// a beat of quiet between one run and the next.
+const LOOP: f32 = 4.6;
 
-/// The one lookup recorded end to end — bucket 64, shard 0, a six-entry run,
-/// chunk 9150, offset 3,426,006, len 156 — and the re-hash agreed.
-///
-/// Everything else in the roster is generated, and labelled as such: the
-/// coordinates are spread over the REAL axes (24-bit buckets, 32,768 shards,
-/// 9,203 chunks) by a seeded generator, because a run's own trace is what the
-/// browser will feed it.
+/// Lookups in the run — 729 transactions located, as measured.
+const FOUND: u32 = 729;
+
+/// The one lookup recorded end to end — bucket 64, shard 0, a six-entry run, chunk 9150,
+/// offset 3,426,006, len 156 — and the re-hash agreed.
 fn recorded() -> Lookup {
     Lookup {
         bucket: 64,
@@ -42,11 +44,11 @@ fn recorded() -> Lookup {
         },
         settled: true,
         at: 0.0,
-        flight: FLIGHT,
+        flight: COLD,
     }
 }
 
-/// SplitMix64, so the roster is identical on every run and every machine.
+/// SplitMix64, so the fixture is identical on every run and every machine.
 struct Seeded(u64);
 
 impl Seeded {
@@ -59,12 +61,16 @@ impl Seeded {
     }
 }
 
+/// The transactions the run located.
+///
+/// ⚠️ One of them is real and the rest are a stand-in: the coordinates are spread over
+/// the REAL axes (24-bit buckets, 32,768 shards, 9,203 chunks) and the timings over the
+/// REAL phases, because a run's own trace is what the browser feeds it.
 fn roster() -> Vec<Lookup> {
     let mut seed = Seeded(0x10CA_7021);
-    let count = (BODIES as f32 * ROSTER / LOOP) as usize;
-    let mut out = Vec::with_capacity(count + 1);
+    let mut out = Vec::with_capacity(FOUND as usize);
     out.push(recorded());
-    for i in 0..count {
+    for i in 1..FOUND {
         let bucket = seed.next() % (1 << 24);
         out.push(Lookup {
             bucket,
@@ -78,23 +84,72 @@ fn roster() -> Vec<Lookup> {
                 len: 120 + (seed.next() % 280) as u16,
             },
             settled: seed.next() % 97 != 0,
-            at: i as f32 * (LOOP / BODIES as f32),
-            flight: FLIGHT,
+            at: i as f32 * (RUN / FOUND as f32),
+            flight: COLD,
         });
     }
     out
 }
 
+/// The reads the run made, in the three waves the phase table measured.
+///
+/// ⚠️ The COUNTS come out of the lookups and are real. The placement in time is the
+/// phase table's, because what a fixture has to stand in for is a feed: a read going out
+/// at a moment, with nothing yet known about when it comes back.
+fn fired(found: &[Lookup]) -> Vec<Read> {
+    let mut out = Vec::new();
+
+    // The index: one read per directory batch, caused by whichever bucket reached it
+    // first. Six of them, and they go out before anything else.
+    let every = (found.len() / 6).max(1);
+    for (i, lookup) in found.iter().step_by(every).take(6).enumerate() {
+        out.push(Read {
+            to: ReadTo::Index,
+            from_bucket: lookup.bucket,
+            at: i as f32 * (INDEX_UNTIL / 6.0),
+            flight: Some(COLD),
+        });
+    }
+
+    let mut runs = Vec::new();
+    let mut bodies = Vec::new();
+    for read in reads(found) {
+        match read.to {
+            ReadTo::Run { .. } => runs.push(read),
+            ReadTo::Body { .. } => bodies.push(read),
+            ReadTo::Index => {}
+        }
+    }
+    wave(&mut runs, INDEX_UNTIL, RUNS_UNTIL);
+    wave(&mut bodies, RUNS_UNTIL, RUN);
+    out.append(&mut runs);
+    out.append(&mut bodies);
+    out
+}
+
+/// Place one wave's reads evenly across the window that phase took.
+fn wave(reads: &mut [Read], from: f32, to: f32) {
+    let n = reads.len().max(1) as f32;
+    for (i, read) in reads.iter_mut().enumerate() {
+        read.at = from + (to - from) * i as f32 / n;
+        read.flight = Some(COLD);
+    }
+}
+
 pub struct LocatorGraphStory {
     started: Option<f32>,
-    roster: Vec<Lookup>,
+    found: Vec<Lookup>,
+    made: Vec<Read>,
 }
 
 impl Default for LocatorGraphStory {
     fn default() -> Self {
+        let found = roster();
+        let made = fired(&found);
         Self {
             started: None,
-            roster: roster(),
+            found,
+            made,
         }
     }
 }
@@ -106,6 +161,37 @@ impl LocatorGraphStory {
         let started = *self.started.get_or_insert(clock);
         (clock - started) % LOOP
     }
+
+    /// The feed as the browser would hold it at `now`: every read that has gone out,
+    /// with a flight on the ones that have come back and **none** on the ones still in
+    /// the air — which is the difference this story exists to show.
+    fn feed_at(&self, now: f32) -> Vec<Read> {
+        self.made
+            .iter()
+            .map(|read| Read {
+                flight: match read.flight {
+                    Some(flight) if read.at + flight <= now => Some(flight),
+                    _ => None,
+                },
+                ..*read
+            })
+            .collect()
+    }
+
+    /// And the lookups: nothing at all until the run is over, then the run replayed over
+    /// the length it took — the same shift `App::replay` makes, for the same reason.
+    fn found_at(&self, now: f32) -> Vec<Lookup> {
+        if now < RUN {
+            return Vec::new();
+        }
+        self.found
+            .iter()
+            .map(|lookup| Lookup {
+                at: RUN + lookup.at,
+                ..*lookup
+            })
+            .collect()
+    }
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut LocatorGraphStory) {
@@ -115,16 +201,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut LocatorGraphStory) {
     ui.label(
         RichText::new(
             "The index keyed by hash on the left, the corpus ordered by position on the \
-             right, and one wire per OBJECT read through the middle. No block is drawn \
-             because no block has an address; the wires end in a re-hash because eight \
-             bytes of the entry are all the index can promise.",
+             right. A wire goes out dim with its far end outlined and comes back at full \
+             strength — motion is opacity, because how long a read will take is not known \
+             until it is back. No block is drawn because no block has an address, and the \
+             marks land only once the run is over, because that is when they are knowable.",
         )
         .color(crate::muted(ui))
         .size(11.0),
     );
     ui.add_space(10.0);
 
-    LocatorGraph::new(&state.roster, now)
+    LocatorGraph::new(&state.found_at(now), now)
+        .fired(&state.feed_at(now))
         .size(vec2(width, 280.0))
         .show(ui);
 
@@ -146,7 +234,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut LocatorGraphStory) {
             .layout(egui::Layout::top_down(egui::Align::Min)),
     );
     faded.set_opacity(0.18);
-    LocatorGraph::new(&state.roster, now)
+    LocatorGraph::new(&state.found_at(now), now)
+        .fired(&state.feed_at(now))
         .size(rect.size())
         .show(&mut faded);
 
@@ -168,12 +257,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut LocatorGraphStory) {
 
     ui.add_space(18.0);
     ui.label(
-        RichText::new("A still: the same clock handed in every frame")
+        RichText::new("A still, 0.9 s into the run: what the browser knows mid-flight")
             .color(crate::muted(ui))
             .size(11.0),
     );
     ui.add_space(6.0);
-    LocatorGraph::new(&state.roster, 1.0)
-        .size(vec2(width * 0.55, 150.0))
+    // Every mark is a pure function of the clock, so a fixed clock is a fixed frame.
+    // Nothing here is "mid-animation": this is the instant, drawn again.
+    LocatorGraph::new(&state.found_at(RUN * 0.8), RUN * 0.8)
+        .fired(&state.feed_at(RUN * 0.8))
+        .size(vec2(width, 200.0))
         .show(ui);
 }

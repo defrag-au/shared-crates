@@ -62,6 +62,28 @@ fn is_region([x0, y0, x1, y1]: Region) -> bool {
         && y0 < y1
 }
 
+/// A content address on the wire: lower-case hex.
+///
+/// The hash stays a `u64` in memory — it is a name, and arithmetic on one is meaningless —
+/// but it cannot travel as a *number*: TOML integers are signed 64-bit and a real hash
+/// fills the unsigned range. A harness run produced `10033872954211784963`, which TOML
+/// answers with `OutOfRange("u64")` — so every catalogue carrying real art failed to
+/// write, while the crate's own tests passed on invented eight-bit hashes.
+///
+/// Hex is also what the house already writes for a digest: see `meme_layout::ImageRef`.
+mod hash_hex {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(hash: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(&format_args!("{hash:016x}"))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        u64::from_str_radix(&text, 16).map_err(serde::de::Error::custom)
+    }
+}
+
 /// Where a value's art lives.
 ///
 /// Two shapes because there are two producers: a studio addresses art by content
@@ -70,8 +92,8 @@ fn is_region([x0, y0, x1, y1]: Region) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ArtRef {
-    /// Content address in whichever store the producer keeps.
-    Hash(u64),
+    /// Content address in whichever store the producer keeps, as lower-case hex.
+    Hash(#[serde(with = "hash_hex")] u64),
     /// Path in the consumer's asset tree, relative to the collection root.
     Path(String),
 }
@@ -399,6 +421,61 @@ mod tests {
             !text.contains("anchor"),
             "nothing to say, so nothing said:\n{text}"
         );
+    }
+
+    /// A hash that fills the *unsigned* 64-bit range, which is the half a signed TOML
+    /// integer cannot hold. This is the value a harness run produced, and the reason every
+    /// catalogue carrying real art failed to write while the rest of these tests passed on
+    /// invented hashes of one or two digits.
+    const BIG: u64 = 10_033_872_954_211_784_963;
+
+    /// A catalogue carrying real art has to survive the compositor's own format, which is
+    /// TOML — and TOML integers are signed. The hash travels as hex, so it does not matter
+    /// which half of the range it lands in.
+    #[test]
+    fn a_hash_too_big_for_a_toml_integer_still_round_trips() {
+        let mut set = TraitSet::new("harness-fills", "", 1024);
+        set.anchor = Some(ArtRef::Hash(BIG));
+        set.traits = vec![
+            Trait {
+                name: "headwear".into(),
+                role: None,
+                rect: Some([0.24, 0.03, 0.76, 0.25]),
+                prompt: Some("A hat.".into()),
+                values: vec![
+                    TraitValue {
+                        name: "Beanie".into(),
+                        weight: 1.0,
+                        prompt: None,
+                        art: Some(ArtRef::Hash(BIG)),
+                    },
+                    TraitValue {
+                        name: "Top Hat".into(),
+                        weight: 1.0,
+                        prompt: None,
+                        art: Some(ArtRef::Hash(2)),
+                    },
+                ],
+            },
+            // A trait nothing has been riffed into yet: the empty half of a real projection,
+            // and the shape that follows values carrying an inline table.
+            Trait {
+                name: "collar".into(),
+                role: None,
+                rect: Some([0.18, 0.57, 0.82, 0.81]),
+                prompt: Some("A collar.".into()),
+                values: Vec::new(),
+            },
+        ];
+
+        let text = toml::to_string(&set).expect("a hash too big for an i64 still writes");
+        assert!(
+            text.contains(&format!("{BIG:016x}")),
+            "the address travels as hex, not as a number TOML cannot hold:\n{text}"
+        );
+
+        let back: TraitSet = toml::from_str(&text).expect("and parses back");
+        assert_eq!(back, set, "{text}");
     }
 
     /// A catalogue is a plan, and the traps are silent: the art still arrives, it
