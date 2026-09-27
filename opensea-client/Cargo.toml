@@ -13,7 +13,8 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# `time` is for the example's pacing between requests, not for the crate.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 
 [features]
 # Exercises the live API from `tests/live.rs`. Off by default: CI runs

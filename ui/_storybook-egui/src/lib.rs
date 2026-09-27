@@ -97,6 +97,7 @@ mod app {
             EffectEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::effect_editor::show(ui, &mut a.effect_editor_state);
             Knob => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::knob::show(ui, &mut a.knob_state);
             SlotTable => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::slot_table::show(ui, &mut a.slot_table_state);
+            RegionEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::region_editor::show(ui, &mut a.region_editor_state);
             IdPill => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::id_pill::show(ui);
             PropertyList => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::property_list::show(ui);
             ButtonGroup => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::button_group::show(ui, &mut a.button_group_state);
@@ -398,6 +399,7 @@ mod app {
                 Self::EffectEditor => "Effect Editor",
                 Self::Knob => "Knob (prototype)",
                 Self::SlotTable => "Slot Table",
+                Self::RegionEditor => "Region Editor",
                 Self::PropertyList => "Property List",
                 Self::IdPill => "ID Pill",
                 Self::Timestamp => "Timestamp",
@@ -830,6 +832,9 @@ mod app {
                 }
                 Self::SlotTable => {
                     "Slot list with enable / required toggles + z-order — disabled_traits, defaults.required, z_index_overrides"
+                }
+                Self::RegionEditor => {
+                    "Named slots drawn over the canvas — drag to move, pull a corner to resize, click to select"
                 }
                 Self::PropertyList => {
                     "Compact label/value grid for read-only key data — phase summaries, wallet readouts, payment audit"
@@ -1433,6 +1438,7 @@ mod app {
         effect_editor_state: stories::effect_editor::EffectEditorState,
         knob_state: stories::knob::KnobState,
         slot_table_state: stories::slot_table::SlotTableState,
+        region_editor_state: stories::region_editor::RegionEditorState,
         sparkline_state: stories::sparkline::SparklineState,
         perf_strip_state: stories::perf_strip::PerfStripStory,
         flame_chart_state: stories::flame_chart::FlameChartState,
@@ -1584,6 +1590,7 @@ mod app {
                 effect_editor_state: stories::effect_editor::EffectEditorState::default(),
                 knob_state: stories::knob::KnobState::default(),
                 slot_table_state: stories::slot_table::SlotTableState::default(),
+                region_editor_state: stories::region_editor::RegionEditorState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 perf_strip_state: stories::perf_strip::PerfStripStory::default(),
                 flame_chart_state: stories::flame_chart::FlameChartState::default(),

@@ -122,6 +122,7 @@ pub mod quantity_stepper;
 pub mod radar_chart;
 pub mod range_bar;
 pub mod rarity_target_editor;
+pub mod region_editor;
 pub mod relationship_editor;
 pub mod relative_time;
 pub mod reward_tiers;

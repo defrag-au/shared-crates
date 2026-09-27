@@ -64,6 +64,7 @@ pub mod progress_bar;
 pub mod radar_chart;
 pub mod range_bar;
 pub mod rarity_target_editor;
+pub mod region_editor;
 pub mod relationship_editor;
 pub mod reward_tiers;
 pub mod select;
