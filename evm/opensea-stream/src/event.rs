@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::event_type::EventType;
 use crate::frame::{Frame, FrameEvent, FrameHeader};
+use crate::topic::Topic;
 
 /// The outer object every stream event arrives in.
 ///
@@ -247,6 +248,48 @@ pub struct UnmodelledEvent {
     pub sent_at: String,
 }
 
+/// The envelope's own fields, without the body.
+///
+/// [`StreamEvent`] carries a modelled body and nothing else, which leaves a reader
+/// without the envelope's `sent_at`. For a movement that does not matter — the body
+/// has `event_timestamp`, which is the field the stream's docs say to order by. For
+/// an `item_metadata_updated` it does: that event family has no timestamp of its
+/// own, so the envelope's `sent_at` is the only one there is, and a checkpoint that
+/// could not see it could not record that a metadata update had been processed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventStamp {
+    /// The subscription the frame belongs to — which collection, or the wildcard.
+    /// This is what a checkpoint is keyed by.
+    pub topic: Topic,
+    /// Which event this was.
+    pub event_type: EventType,
+    /// The envelope's opaque marker.
+    pub version: u64,
+    /// When OpenSea sent it, RFC 3339.
+    pub sent_at: String,
+}
+
+impl EventStamp {
+    /// Reads the routing fields and the envelope, skipping the body.
+    ///
+    /// `Ok(None)` for a frame that is not an event, which is what a reader sees
+    /// constantly and ignores.
+    pub fn from_wire(raw: &str) -> Result<Option<Self>, serde_json::Error> {
+        let header = FrameHeader::from_wire(raw)?;
+        let FrameEvent::Event(event_type) = header.event else {
+            return Ok(None);
+        };
+
+        let frame: Frame<EventEnvelope<IgnoredAny>> = Frame::from_wire(raw)?;
+        Ok(Some(Self {
+            topic: header.topic,
+            event_type,
+            version: frame.payload.version,
+            sent_at: frame.payload.sent_at,
+        }))
+    }
+}
+
 /// What a stream frame turned out to be.
 ///
 /// The payloads are heap-heavy — each is a dozen owned strings — and a capture
@@ -307,5 +350,28 @@ impl StreamEvent {
                 })))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A real `item_metadata_updated` frame, off the live socket on 2026-09-27.
+    const METADATA: &str = include_str!("../tests/fixtures/item_metadata_updated.json");
+
+    #[test]
+    fn a_stamp_carries_the_envelope_of_an_event_the_body_leaves_out() {
+        let stamp = EventStamp::from_wire(METADATA).unwrap().unwrap();
+        assert_eq!(stamp.event_type, super::EventType::ItemMetadataUpdated);
+        assert_eq!(stamp.topic, Topic::AllCollections);
+        assert_eq!(stamp.sent_at, "2026-09-27T04:26:32.072000Z");
+        assert_eq!(stamp.version, 1790483192072);
+    }
+
+    #[test]
+    fn a_protocol_frame_has_no_stamp() {
+        let raw = r#"["1","1","collection:x","phx_reply",{"status":"ok","response":{}}]"#;
+        assert_eq!(EventStamp::from_wire(raw).unwrap(), None);
     }
 }

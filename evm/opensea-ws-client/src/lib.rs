@@ -17,11 +17,20 @@
 //! must not miss a movement has to reconcile against the chain after any gap. See
 //! `opensea-stream`'s crate docs for why that is a discontinuity problem rather
 //! than a throughput one.
+//!
+//! [`checkpoint`] is the other half of that: it records how far the consumer got,
+//! which is what tells a reconcile where to start.
+
+pub mod checkpoint;
+
+pub use checkpoint::{Checkpoint, Checkpoints};
 
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use opensea_stream::{EventFilter, Frame, Reply, ReplyStatus, StreamEvent, Topic, endpoint_url};
+use opensea_stream::{
+    EventFilter, EventStamp, Frame, Reply, ReplyStatus, StreamEvent, Topic, endpoint_url,
+};
 use tokio::net::TcpStream;
 use tokio::time::{Interval, MissedTickBehavior};
 use tokio_tungstenite::tungstenite::Message;
@@ -73,17 +82,24 @@ impl Subscription {
     }
 }
 
-/// A frame that decoded into an event, with the bytes it came from.
+/// A frame that decoded into an event, with the bytes it came from and the
+/// envelope it arrived in.
 ///
 /// The raw form is carried because it is the faithful artifact. A decoded event
 /// re-encoded loses whatever the body model omits — `item.metadata` most of all —
 /// and a corpus of real bytes is what a crate's fixtures should be built from.
+///
+/// The [`EventStamp`] is carried rather than re-derived because a metadata update
+/// has no timestamp in its body: without this, a consumer could not say when the
+/// last metadata update arrived.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Delivered {
     /// The frame exactly as it arrived.
     pub raw: String,
     /// What it decoded to.
     pub event: StreamEvent,
+    /// The envelope's own fields, minus the body.
+    pub stamp: EventStamp,
 }
 
 /// A connected stream, holding one socket and one watch set.
@@ -250,11 +266,29 @@ async fn open(api_key: &str) -> Result<Socket, Error> {
 /// own answer — so it is silently ignored. A frame that will not parse at all is
 /// logged and skipped rather than killing the follower: one malformed frame is not
 /// a reason to stop reading a live stream.
+///
+/// The stamp is read first, because it is what says whether the frame is an event at
+/// all; the body is then decoded from the same bytes. Two passes over a frame that
+/// is usually a few hundred bytes, which a named-collection subscription can afford
+/// and the wildcard cannot — the wildcard is discovery, not a steady state.
 fn delivered(raw: &str) -> Option<Delivered> {
+    let stamp = match EventStamp::from_wire(raw) {
+        Ok(Some(stamp)) => stamp,
+        Ok(None) => {
+            note_refusal(raw);
+            return None;
+        }
+        Err(error) => {
+            tracing::warn!("stream: skipped an undecodable frame: {error}");
+            return None;
+        }
+    };
+
     match StreamEvent::from_wire(raw) {
         Ok(Some(event)) => Some(Delivered {
             raw: raw.to_owned(),
             event,
+            stamp,
         }),
         Ok(None) => {
             note_refusal(raw);

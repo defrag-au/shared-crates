@@ -36,3 +36,8 @@ rustls = { version = "0.23", default-features = false, features = [
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# The follower's failure modes are silent by design — a wrong slug and a filter that
+# matches nothing both join `ok` and deliver nothing — so the warnings the client
+# emits are the only thing an operator has to look at, and they need a subscriber.
+# An example's dependency: the library does not install one.
+tracing-subscriber = { workspace = true }

@@ -84,6 +84,9 @@ mod tests {
     fn the_slug_round_trips_from_the_chain() {
         let chain = chain_ref(ROBINHOOD_SLUG).unwrap();
         assert_eq!(chain_slug(chain), Some(ROBINHOOD_SLUG));
-        assert_eq!(chain_slug(ChainRef::Cardano(chains::CardanoNetwork::Mainnet)), None);
+        assert_eq!(
+            chain_slug(ChainRef::Cardano(chains::CardanoNetwork::Mainnet)),
+            None
+        );
     }
 }

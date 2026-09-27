@@ -109,9 +109,9 @@ mod watch;
 pub use chain::{ROBINHOOD_SLUG, chain_ref, chain_slug};
 pub use endpoint::endpoint_url;
 pub use event::{
-    Account, ChainName, CollectionRef, EventEnvelope, ItemMetadata, ItemMetadataUpdated, ItemRef,
-    ItemSold, ItemTransferred, MetadataItem, PaymentToken, StreamEvent, Trait, TransactionRef,
-    UnmodelledEvent,
+    Account, ChainName, CollectionRef, EventEnvelope, EventStamp, ItemMetadata,
+    ItemMetadataUpdated, ItemRef, ItemSold, ItemTransferred, MetadataItem, PaymentToken,
+    StreamEvent, Trait, TransactionRef, UnmodelledEvent,
 };
 pub use event_type::EventType;
 pub use filter::EventFilter;

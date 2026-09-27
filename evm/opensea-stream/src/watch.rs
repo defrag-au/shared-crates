@@ -251,7 +251,10 @@ mod tests {
     #[test]
     fn a_topic_routes_back_to_its_chain() {
         let set = WatchSet::new().watch(CollectionWatch::new("madjacket-rh", robinhood()));
-        assert_eq!(set.chain_of(&Topic::collection("madjacket-rh")), Some(robinhood()));
+        assert_eq!(
+            set.chain_of(&Topic::collection("madjacket-rh")),
+            Some(robinhood())
+        );
         assert_eq!(set.chain_of(&Topic::collection("elsewhere")), None);
         assert_eq!(set.chain_of(&Topic::AllCollections), None);
     }
@@ -262,10 +265,7 @@ mod tests {
         // a watch set holding both chains has to be representable — the chain is
         // what tells them apart.
         let set = WatchSet::new()
-            .watch(CollectionWatch::new(
-                "madjacket-rh",
-                robinhood(),
-            ))
+            .watch(CollectionWatch::new("madjacket-rh", robinhood()))
             .watch(CollectionWatch::new(
                 "madjacket",
                 ChainRef::Cardano(CardanoNetwork::Mainnet),

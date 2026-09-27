@@ -93,6 +93,11 @@ fn summarise(event: &StreamEvent) -> String {
             "sale      {} {} {}",
             sale.item.nft_id, sale.sale_price, sale.payment_token.symbol
         ),
+        StreamEvent::ItemMetadataUpdated(update) => format!(
+            "metadata  {} traits={}",
+            update.item.nft_id,
+            update.item.metadata.traits.len()
+        ),
         StreamEvent::Unmodelled(unmodelled) => format!("other     {}", unmodelled.event_type),
     }
 }
