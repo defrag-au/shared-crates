@@ -92,6 +92,7 @@
 //! runtime-specific concern — a Worker's WebSocket and a native client are
 //! different bindings of the same frames.
 
+mod endpoint;
 mod event;
 mod event_type;
 mod filter;
@@ -99,6 +100,7 @@ mod frame;
 mod strings;
 mod topic;
 
+pub use endpoint::endpoint_url;
 pub use event::{
     Account, CollectionRef, EventEnvelope, ItemRef, ItemSold, ItemTransferred, PaymentToken,
     StreamEvent, TransactionRef, UnmodelledEvent,
