@@ -5,6 +5,23 @@
 //!     https://<rpc-endpoint> 0x7980aa64093853cb78c927e05b88fed96e945f81 [from-block] [to-block] [token-id]
 //! ```
 //!
+//! # Where the endpoint comes from
+//!
+//! Robinhood Chain is `eip155:4663` and has **keyless public endpoints** — no API key
+//! to obtain. Two that answered `eth_chainId` with `0x1237` on 2026-09-27:
+//!
+//! - `https://rpc.mainnet.chain.robinhood.com` — the chain's own.
+//! - `https://robinhood-rpc.publicnode.com` — PublicNode.
+//!
+//! Both come from the community registry at
+//! `ethereum-lists/chains` (`_data/chains/eip155-4663.json`), which is also where a
+//! replacement is found when one of them stops answering. A registry entry is not a
+//! promise: the check is `eth_chainId`, and the id has to be `0x1237`.
+//!
+//! A block range is worth passing. This chain produced ~830 blocks in five minutes,
+//! so a window that looks generous in blocks is minutes of chain time, and a
+//! `getLogs` range that is too wide is refused by the endpoint rather than slow.
+//!
 //! Prints, on stderr, what the endpoint is (chain id and head), whether the
 //! contract implements ERC-4906, and a count. On stdout, one JSON object per line:
 //! every `Transfer` in the range, then — when a token id is given — that token's

@@ -29,13 +29,15 @@ pub enum AbiError {
     /// Almost always a `uint256` return decoded as an address.
     NotAnAddress,
     /// A log had the wrong number of indexed words for the event.
-    WrongTopics { expected: usize, got: usize },
+    WrongTopics { expected: &'static str, got: usize },
     /// A log's first indexed word was not the event this decoder reads.
     WrongEvent { expected: &'static str, got: String },
     /// Malformed hex.
     Hex(HexError),
     /// A malformed address.
     Address(AddressError),
+    /// A token id that was not a 256-bit integer.
+    Uint(crate::uint256::U256Error),
 }
 
 impl fmt::Display for AbiError {
@@ -49,13 +51,14 @@ impl fmt::Display for AbiError {
                 .write_str("the word is not an address: bits above the low 20 bytes are set"),
             Self::WrongTopics { expected, got } => write!(
                 formatter,
-                "expected {expected} indexed words for this event, got {got}"
+                "this event should have {expected} indexed words, got {got}"
             ),
             Self::WrongEvent { expected, got } => {
                 write!(formatter, "not a {expected}: topics[0] is {got}")
             }
             Self::Hex(error) => write!(formatter, "{error}"),
             Self::Address(error) => write!(formatter, "{error}"),
+            Self::Uint(error) => write!(formatter, "{error}"),
         }
     }
 }
@@ -71,6 +74,12 @@ impl From<HexError> for AbiError {
 impl From<AddressError> for AbiError {
     fn from(error: AddressError) -> Self {
         Self::Address(error)
+    }
+}
+
+impl From<crate::uint256::U256Error> for AbiError {
+    fn from(error: crate::uint256::U256Error) -> Self {
+        Self::Uint(error)
     }
 }
 

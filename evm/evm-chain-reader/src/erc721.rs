@@ -69,30 +69,53 @@ impl Transfer {
 
 /// Decodes a `Transfer` log.
 ///
-/// Strict about what it is given: the topic count and the first topic are checked,
-/// so a log of some other event that happens to be in the same query is a loud error
-/// rather than a token id read out of a stranger's `data`.
+/// Two shapes carry `topics[0] == TRANSFER_TOPIC`, and both are in use:
+///
+/// - **Three topics, token id in `data`** — EIP-721's own, and the common one.
+/// - **Four topics, `data` empty, token id as a third indexed argument** — observed
+///   on Robinhood Chain (see `tests/fixtures/transfer_indexed_token_id.json`). Some
+///   implementations declare `Transfer(address indexed, address indexed, uint256
+///   indexed)`; the topic hash is identical, so nothing downstream can tell them
+///   apart by `topics[0]` alone and a reader keyed only on the standard shape either
+///   errors or reads a token id out of an empty blob.
+///
+/// Anything else is refused rather than guessed at: the topic count is the only
+/// thing that distinguishes the two, so a third arrangement is a contract this
+/// crate has not seen and should not be inferring a token id from.
 pub fn decode_transfer(log: &Log) -> Result<Transfer, AbiError> {
-    if log.topics.len() != 3 {
+    let Some(first) = log.topics.first() else {
         return Err(AbiError::WrongTopics {
-            expected: 3,
-            got: log.topics.len(),
+            expected: "3 or 4",
+            got: 0,
         });
-    }
+    };
 
-    if log.topics[0].as_str() != TRANSFER_TOPIC {
+    if first.as_str() != TRANSFER_TOPIC {
         return Err(AbiError::WrongEvent {
             expected: "Transfer(address,address,uint256)",
-            got: log.topics[0].as_str().to_owned(),
+            got: first.as_str().to_owned(),
         });
     }
 
-    let data = log.data.decode()?;
+    let token_id = match log.topics.len() {
+        3 => {
+            let data = log.data.decode()?;
+            U256::from_word(abi::word_at(&data, 0)?)
+        }
+        4 => U256::decode_word(log.topics[3].as_str())?,
+        other => {
+            return Err(AbiError::WrongTopics {
+                expected: "3 or 4",
+                got: other,
+            });
+        }
+    };
+
     Ok(Transfer {
         contract: log.address.clone(),
         from: Address::from_topic(log.topics[1].as_str())?,
         to: Address::from_topic(log.topics[2].as_str())?,
-        token_id: U256::from_word(abi::word_at(&data, 0)?),
+        token_id,
         transaction: log.transaction().map(str::to_owned),
         block: log.block(),
         log_index: log.log_index.map(|index| index.get()),
@@ -216,7 +239,7 @@ mod tests {
         assert_eq!(
             decode_transfer(&log).unwrap_err(),
             AbiError::WrongTopics {
-                expected: 3,
+                expected: "3 or 4",
                 got: 2
             }
         );

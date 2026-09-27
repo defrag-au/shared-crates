@@ -99,7 +99,7 @@ impl MetadataEvent {
 pub fn decode_metadata_update(log: &Log) -> Result<MetadataUpdate, AbiError> {
     let Some(topic) = log.topics.first() else {
         return Err(AbiError::WrongTopics {
-            expected: 1,
+            expected: "at least 1",
             got: 0,
         });
     };
