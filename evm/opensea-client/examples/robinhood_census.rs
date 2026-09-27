@@ -146,10 +146,8 @@ fn print_table(rows: &[Row], total: usize) {
         sorted.len()
     );
 
-    let floor_symbols: BTreeSet<&str> = sorted
-        .iter()
-        .map(|row| row.floor_symbol.as_str())
-        .collect();
+    let floor_symbols: BTreeSet<&str> =
+        sorted.iter().map(|row| row.floor_symbol.as_str()).collect();
     let volume_symbols: BTreeSet<&str> = sorted
         .iter()
         .map(|row| row.volume_symbol.as_str())

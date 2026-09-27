@@ -83,6 +83,7 @@ pub mod id_pill;
 pub mod image_loader;
 pub mod image_stack;
 pub mod interaction_tip;
+pub mod keyring;
 pub mod knob;
 pub mod labelled_progress;
 pub mod leaderboard;

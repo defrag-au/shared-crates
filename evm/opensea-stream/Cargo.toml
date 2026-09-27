@@ -1,0 +1,16 @@
+[package]
+name = "opensea-stream"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "OpenSea Stream API — the Phoenix wire protocol and topic vocabulary as pure types, with no socket"
+
+[dependencies]
+# The wire format is JSON — positional arrays whose payload shape depends on the
+# event — so the codec is `serde_json`. There is no I/O in this crate and no
+# runtime, which is what makes the protocol testable without a socket.
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# Token amounts arrive as strings of wei-scale integers, which is the number/string
+# handling this workspace keeps in one place rather than hand-rolling per crate.
+wasm_safe_serde = { workspace = true }

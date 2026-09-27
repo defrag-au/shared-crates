@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-167 widgets.
+168 widgets.
 
 | module | what it is |
 |---|---|
@@ -79,6 +79,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `image_text_editor` | Image text overlay editor — place, style, and drag text on top of an image |
 | `install_panel` | `InstallPanel` — what installing a bot asks for, and why: the link to hand over, the permissions it requests, and the settings the link cannot carry |
 | `interaction_tip` | `InteractionTip` — a hint about a gesture, shown where the gesture is not |
+| `keyring` | `Keyring` — the API keys an app holds, one per provider |
 | `knob` | `Knob` — a rotary control, as a prototype to riff on |
 | `labelled_progress` | `LabelledProgress` — a busy mark the size of the words beside it |
 | `leaderboard` | `Leaderboard` — ranked standings: podium-tinted ranks, an optional prize thumbnail, one headline metric, supporting stats, and a share bar |
