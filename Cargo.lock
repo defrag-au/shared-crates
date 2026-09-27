@@ -1814,6 +1814,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "evm-chain-reader"
+version = "0.1.0"
+dependencies = [
+ "chains",
+ "http-client",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "fal-client"
 version = "0.1.0"
 dependencies = [
@@ -4299,6 +4311,7 @@ dependencies = [
 name = "opensea-stream"
 version = "0.1.0"
 dependencies = [
+ "chains",
  "serde",
  "serde_json",
  "wasm_safe_serde",

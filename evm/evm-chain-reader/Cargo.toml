@@ -1,0 +1,19 @@
+[package]
+name = "evm-chain-reader"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "Read an EVM chain over JSON-RPC — ERC-721 ownership and transfers, and ERC-4906 metadata logs"
+
+[dependencies]
+http-client = { path = "../../http-client" }
+# Chain identity, so a reader says which chain it read rather than leaving the
+# caller to pair a URL with an id. Pure serde, no runtime.
+chains = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# The `reconcile` example needs a runtime; nothing in the crate itself does.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

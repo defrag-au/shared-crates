@@ -1,9 +1,10 @@
 //! The events a consumer acts on, and the envelope they arrive in.
 //!
-//! Two movement events are modelled, because those are the ones an ownership
-//! ledger wants: [`ItemTransferred`] and [`ItemSold`]. The other eight are
-//! carried as [`StreamEvent::Unmodelled`] rather than dropped, so a consumer can
-//! log or forward them and a new event type is never fatal.
+//! Three events are modelled, because they are the ones an ownership ledger and
+//! the trait and image caches beside it want: [`ItemTransferred`], [`ItemSold`]
+//! and [`ItemMetadataUpdated`]. The other seven are carried as
+//! [`StreamEvent::Unmodelled`] rather than dropped, so a consumer can log or
+//! forward them and a new event type is never fatal.
 
 use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
@@ -153,6 +154,88 @@ pub struct ItemSold {
     pub transaction: Option<TransactionRef>,
 }
 
+/// A token's metadata as the stream reports it.
+///
+/// The stream sends the whole current metadata, never a diff — a change is only
+/// visible by comparing against what you already held. That is also what makes a
+/// trait *removal* representable: `traits` is the complete set, so a value that
+/// has gone is simply absent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ItemMetadata {
+    /// The token's name.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Long-form description, often multi-line.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// A hex colour, when the token declares one.
+    #[serde(default)]
+    pub background_color: Option<String>,
+    /// Where the image lives.
+    ///
+    /// Content-addressed on OpenSea's CDN — the path carries a hash that changes
+    /// when the image does, which is what makes a changed image a changed URL.
+    #[serde(default)]
+    pub image_url: Option<String>,
+    /// An animated form, when there is one.
+    #[serde(default)]
+    pub animation_url: Option<String>,
+    /// The token's own metadata document, when OpenSea has one. Frequently null.
+    #[serde(default)]
+    pub metadata_url: Option<String>,
+    /// The complete trait set. Absent and empty mean the same thing.
+    #[serde(default)]
+    pub traits: Vec<Trait>,
+}
+
+/// One trait.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Trait {
+    /// The trait's category, e.g. `Member`.
+    pub trait_type: String,
+    /// The value.
+    ///
+    /// A string: 4,142 values observed across the wildcard were all strings, so a
+    /// numeric one would fail the parse loudly rather than be silently coerced.
+    pub value: String,
+}
+
+/// The chain as an item names it: `{ "name": "abstract" }`.
+///
+/// OpenSea's own slug, not CAIP-2. A movement carries its chain at the payload
+/// root instead — the two event families do not share a core.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChainName {
+    /// The chain slug.
+    pub name: String,
+}
+
+/// One token's metadata, as the stream reports it.
+///
+/// Note the shape: the payload holds only `item` and `collection`. There is no
+/// diff, no `chain` at the root, and — unlike a movement — no `event_timestamp`,
+/// so the envelope's `sent_at` is the only timestamp there is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ItemMetadataUpdated {
+    /// The token, with its full current metadata.
+    pub item: MetadataItem,
+    /// Which collection.
+    pub collection: CollectionRef,
+}
+
+/// The `item` of a metadata update.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MetadataItem {
+    /// `{chain}/{contract}/{tokenId}`.
+    pub nft_id: String,
+    /// The marketplace page.
+    pub permalink: String,
+    /// The chain, by OpenSea's slug.
+    pub chain: ChainName,
+    /// The token's current metadata.
+    pub metadata: ItemMetadata,
+}
+
 /// An event this crate does not model, kept rather than dropped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnmodelledEvent {
@@ -176,6 +259,8 @@ pub enum StreamEvent {
     ItemTransferred(Box<ItemTransferred>),
     /// The asset sold.
     ItemSold(Box<ItemSold>),
+    /// The token's metadata, reported in full rather than as a diff.
+    ItemMetadataUpdated(Box<ItemMetadataUpdated>),
     /// An event type this crate does not decode.
     Unmodelled(UnmodelledEvent),
 }
@@ -206,6 +291,12 @@ impl StreamEvent {
             EventType::ItemSold => {
                 let frame: Frame<EventEnvelope<ItemSold>> = Frame::from_wire(raw)?;
                 Ok(Some(Self::ItemSold(Box::new(frame.payload.payload))))
+            }
+            EventType::ItemMetadataUpdated => {
+                let frame: Frame<EventEnvelope<ItemMetadataUpdated>> = Frame::from_wire(raw)?;
+                Ok(Some(Self::ItemMetadataUpdated(Box::new(
+                    frame.payload.payload,
+                ))))
             }
             other => {
                 let frame: Frame<EventEnvelope<IgnoredAny>> = Frame::from_wire(raw)?;

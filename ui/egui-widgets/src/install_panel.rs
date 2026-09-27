@@ -112,15 +112,15 @@ impl<'a> InstallPanel<'a> {
             // link yet. Saying so beats a copy button that copies nothing.
             ui.colored_label(
                 ui.tokens().color.text_muted,
-                self.empty_note.unwrap_or("No install link is available yet."),
+                self.empty_note
+                    .unwrap_or("No install link is available yet."),
             );
             return response;
         }
 
         ui.horizontal_wrapped(|ui| {
-            let copy = ui.small_button(
-                PhosphorIcon::Copy.rich_text(13.0, ui.tokens().color.accent_blue),
-            );
+            let copy =
+                ui.small_button(PhosphorIcon::Copy.rich_text(13.0, ui.tokens().color.accent_blue));
             if copy.on_hover_text("Copy the install link").clicked() {
                 ui.ctx().copy_text(self.url.to_string());
                 response.copied = true;

@@ -14,3 +14,7 @@ serde_json = { workspace = true }
 # Token amounts arrive as strings of wei-scale integers, which is the number/string
 # handling this workspace keeps in one place rather than hand-rolling per crate.
 wasm_safe_serde = { workspace = true }
+# Chain identity, so a watch states its chain as CAIP-2 and a stream's chain slug
+# resolves to it. Pure serde with no runtime, which is the property this crate needs
+# from every dependency — it is consumed by a native follower and, later, a Worker.
+chains = { workspace = true }

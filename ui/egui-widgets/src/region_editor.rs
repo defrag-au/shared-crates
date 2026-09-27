@@ -22,8 +22,8 @@
 //! wasm frontend drive the same code.
 
 use egui::{
-    Align2, Color32, CursorIcon, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, TextureId, Ui, Vec2,
-    pos2, vec2,
+    Align2, Color32, CursorIcon, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, TextureId, Ui,
+    Vec2, pos2, vec2,
 };
 
 use crate::theme::{Radius, Space, TextSize, ThemeExt};
@@ -114,6 +114,10 @@ impl RegionEditor {
     }
 
     /// Select a slot by index (or clear it).
+    ///
+    /// The index is held across frames while `regions` is supplied anew each one, so a
+    /// selection the next frame's list does not have is dropped rather than kept: a caller
+    /// whose slots can shrink does not have to remember to reseat it.
     pub fn select(&mut self, index: Option<usize>) {
         self.selected = index;
     }
@@ -127,6 +131,19 @@ impl RegionEditor {
             aspect,
             width,
         } = view;
+
+        // Both halves of the state are indices into `regions`, which the CALLER supplies
+        // afresh every frame — and the caller's list can shrink under them: slopgen's agent
+        // removes slots between one frame and the next. An index that no longer names a
+        // region is not a selection and not a drag, and `paint_cursor` indexes with it
+        // without checking, which is how a stale one took the whole app down.
+        let count = regions.len();
+        if self.selected.is_some_and(|index| index >= count) {
+            self.selected = None;
+        }
+        if self.drag.is_some_and(|drag| drag_index(drag) >= count) {
+            self.drag = None;
+        }
 
         let available = ui.available_width();
         let aspect = aspect.max(f32::EPSILON);
@@ -149,24 +166,29 @@ impl RegionEditor {
             self.drag = pointer.and_then(|p| self.begin_drag(regions, canvas, p));
         }
 
-        if response.dragged() {
-            if let Some(drag) = self.drag {
-                apply_drag(&mut regions[drag_index(drag)].rect, drag, drag_delta, canvas);
-                changed = true;
-            }
+        if response.dragged()
+            && let Some(drag) = self.drag
+        {
+            apply_drag(
+                &mut regions[drag_index(drag)].rect,
+                drag,
+                drag_delta,
+                canvas,
+            );
+            changed = true;
         }
 
         if response.drag_stopped() {
             self.drag = None;
         }
 
-        if response.clicked() {
-            if let Some(p) = pointer {
-                let hit = region_at(regions, canvas, p);
-                if hit != self.selected {
-                    self.selected = hit;
-                    changed = true;
-                }
+        if response.clicked()
+            && let Some(p) = pointer
+        {
+            let hit = region_at(regions, canvas, p);
+            if hit != self.selected {
+                self.selected = hit;
+                changed = true;
             }
         }
 
@@ -177,10 +199,10 @@ impl RegionEditor {
     }
 
     fn begin_drag(&self, regions: &[Region], canvas: Rect, p: Pos2) -> Option<Drag> {
-        if let Some(index) = self.selected {
-            if let Some(corner) = corner_at(to_screen(regions[index].rect, canvas), p) {
-                return Some(Drag::Resize(index, corner));
-            }
+        if let Some(index) = self.selected
+            && let Some(corner) = corner_at(to_screen(regions[index].rect, canvas), p)
+        {
+            return Some(Drag::Resize(index, corner));
         }
         region_at(regions, canvas, p).map(Drag::Move)
     }
@@ -258,7 +280,11 @@ impl RegionEditor {
                 for corner in [Corner::Nw, Corner::Ne, Corner::Sw, Corner::Se] {
                     let center = corner_point(rect, corner);
                     let handle = Rect::from_center_size(center, Vec2::splat(HANDLE));
-                    painter.rect_filled(handle, tokens.corner(Radius::Xs), tokens.color.accent_blue);
+                    painter.rect_filled(
+                        handle,
+                        tokens.corner(Radius::Xs),
+                        tokens.color.accent_blue,
+                    );
                 }
             }
         }
@@ -349,14 +375,9 @@ fn corner_point(rect: Rect, corner: Corner) -> Pos2 {
 }
 
 fn corner_at(rect: Rect, p: Pos2) -> Option<Corner> {
-    [
-        Corner::Nw,
-        Corner::Ne,
-        Corner::Sw,
-        Corner::Se,
-    ]
-    .into_iter()
-    .find(|&corner| (corner_point(rect, corner) - p).length() <= GRAB)
+    [Corner::Nw, Corner::Ne, Corner::Sw, Corner::Se]
+        .into_iter()
+        .find(|&corner| (corner_point(rect, corner) - p).length() <= GRAB)
 }
 
 /// Topmost region under the pointer.
@@ -367,4 +388,88 @@ fn region_at(regions: &[Region], canvas: Rect, p: Pos2) -> Option<usize> {
         .rev()
         .find(|(_, region)| to_screen(region.rect, canvas).contains(p))
         .map(|(index, _)| index)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_pass::TestPass as _;
+
+    /// One pass of the editor with the pointer over the canvas — hovering is what makes
+    /// `paint_cursor` consult the selection at all, which is where the app died.
+    fn hover(editor: &mut RegionEditor, regions: &mut Vec<Region>) -> bool {
+        let ctx = egui::Context::default();
+        // A widget that lays text out needs the fonts bound, and the storybook's own
+        // stories call this for the same reason.
+        crate::icons::install_fonts(&ctx);
+
+        let mut changed = false;
+        // Two passes: the first lays the canvas out, and only then is there a rect for the
+        // pointer to be inside of.
+        for _ in 0..2 {
+            ctx.test_pass(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(600.0, 400.0))),
+                    events: vec![egui::Event::PointerMoved(pos2(50.0, 50.0))],
+                    ..Default::default()
+                },
+                |ui| {
+                    changed = editor.show(
+                        ui,
+                        RegionEditorView {
+                            regions: regions.as_mut_slice(),
+                            texture: None,
+                            aspect: 1.0,
+                            width: Some(300.0),
+                        },
+                    );
+                },
+            );
+        }
+        changed
+    }
+
+    fn one_slot() -> Vec<Region> {
+        vec![Region {
+            name: "only".into(),
+            rect: NormRect::new(0.0, 0.0, 1.0, 1.0),
+        }]
+    }
+
+    /// The selection is an index into a slice the *caller* supplies every frame, and the
+    /// caller's list can shrink under it — slopgen's agent removes slots between one frame
+    /// and the next, and the studio's startup selection is a fixed index that a restored
+    /// project need not have. An index that no longer names a region has to read as *no*
+    /// selection.
+    ///
+    /// This took the whole app down: "index out of bounds: the len is 1 but the index is
+    /// 1", from `paint_cursor`, which bounds-checks nothing.
+    #[test]
+    fn a_selection_past_the_end_of_the_regions_is_dropped() {
+        let mut editor = RegionEditor::default();
+        editor.select(Some(1));
+
+        let mut regions = one_slot();
+        hover(&mut editor, &mut regions);
+
+        assert_eq!(
+            editor.selected(),
+            None,
+            "a stale selection is not a selection"
+        );
+    }
+
+    /// A resize drag holds an index the same way, and across the same frames.
+    #[test]
+    fn a_drag_past_the_end_of_the_regions_is_dropped() {
+        let mut editor = RegionEditor {
+            drag: Some(Drag::Resize(1, Corner::Se)),
+            ..Default::default()
+        };
+
+        let mut regions = one_slot();
+        hover(&mut editor, &mut regions);
+
+        assert!(editor.drag.is_none(), "a stale drag is not a drag");
+    }
 }

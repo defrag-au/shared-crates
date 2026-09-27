@@ -32,10 +32,12 @@
 //!   frames per 20 s to 4, while the type kept was not reduced.
 //!
 //! So a watch set is a map from collection to event types, not a flat list. The
-//! second axis is what makes a busy collection affordable — in one wildcard
+//! second axis is what keeps a busy collection affordable — in one wildcard
 //! sample, 73% of Robinhood Chain's stream traffic was `item_metadata_updated`,
-//! which most consumers never act on, and a single collection (`up-position-nft`)
-//! produced ~600 frames/s on its own.
+//! and a single collection (`up-position-nft`) produced ~600 frames/s on its own.
+//! That is a volume problem rather than a relevance one: a consumer that caches
+//! traits and images wants exactly those events, so the answer is to name the
+//! types you act on rather than to take everything a collection emits.
 //!
 //! # Two ways to subscribe to nothing, both silent
 //!
@@ -77,12 +79,14 @@
 //! The pieces a capture needs are the join filter and [`StreamEvent::from_wire`]:
 //!
 //! ```text
-//! subscribe:  collection:<slug>   {"event_types":["item_transferred","item_sold"]}
+//! subscribe:  collection:<slug>
+//!             {"event_types":["item_transferred","item_sold","item_metadata_updated"]}
 //!
 //! for each frame the socket delivers:
 //!     match StreamEvent::from_wire(&raw)? {
 //!         Some(StreamEvent::ItemTransferred(movement)) => { /* ownership delta */ }
 //!         Some(StreamEvent::ItemSold(sale))            => { /* ownership delta, priced */ }
+//!         Some(StreamEvent::ItemMetadataUpdated(item)) => { /* traits and image */ }
 //!         Some(StreamEvent::Unmodelled(event))         => { /* log, do not drop */ }
 //!         None                                         => { /* not an event */ }
 //!     }
@@ -92,6 +96,7 @@
 //! runtime-specific concern — a Worker's WebSocket and a native client are
 //! different bindings of the same frames.
 
+mod chain;
 mod endpoint;
 mod event;
 mod event_type;
@@ -99,11 +104,14 @@ mod filter;
 mod frame;
 mod strings;
 mod topic;
+mod watch;
 
+pub use chain::{ROBINHOOD_SLUG, chain_ref, chain_slug};
 pub use endpoint::endpoint_url;
 pub use event::{
-    Account, CollectionRef, EventEnvelope, ItemRef, ItemSold, ItemTransferred, PaymentToken,
-    StreamEvent, TransactionRef, UnmodelledEvent,
+    Account, ChainName, CollectionRef, EventEnvelope, ItemMetadata, ItemMetadataUpdated, ItemRef,
+    ItemSold, ItemTransferred, MetadataItem, PaymentToken, StreamEvent, Trait, TransactionRef,
+    UnmodelledEvent,
 };
 pub use event_type::EventType;
 pub use filter::EventFilter;
@@ -111,3 +119,4 @@ pub use frame::{
     EmptyPayload, FRAME_LEN, Frame, FrameEvent, FrameHeader, Reply, ReplyResponse, ReplyStatus,
 };
 pub use topic::{Topic, TopicParseError};
+pub use watch::{CollectionWatch, WatchSet, ownership_events};

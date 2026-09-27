@@ -6,6 +6,10 @@
 //! `cnft.dev-workers/docs/MULTICHAIN_NETWORK_SUPPORT.md` settled the same format
 //! in 2026-05. This crate gives that vocabulary one home and one parser.
 //!
+//! It also carries CAIP-19, which answers the next question down — *which asset*
+//! on such a chain ([`AssetType`], [`TokenRef`]). Same reasoning and the same family
+//! of standard: one opaque string on the wire, a structure in code.
+//!
 //! ## Why a nested enum rather than `{ chain, network }`
 //!
 //! A `Chain` + `Network` pair describes Cardano well and EVM badly, because the
@@ -36,6 +40,10 @@ use std::fmt;
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
+
+mod asset;
+
+pub use asset::{AssetNamespace, AssetRefError, AssetType, TokenRef};
 
 // ============================================================================
 // Family
