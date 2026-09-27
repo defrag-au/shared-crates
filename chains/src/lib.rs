@@ -83,16 +83,54 @@ impl ChainFamily {
 /// `egui-widgets` could not name a chain without turning on its `cardano`
 /// feature. `wallet-core` re-exports it under the old name.
 ///
-/// ⚠️ Serialised **without** `rename_all`, so a variant is `"Mainnet"`, not
-/// `"mainnet"`. That is what `wallet_core::Network` has always written and
-/// `stake_session` persists a session as JSON in localStorage, so lowercasing
-/// it would invalidate every saved session. This is separate from the CAIP-2
-/// form [`ChainRef`] writes — do not conflate the two.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// ⚠️ **Serialised lower-case** — `"mainnet"`, `"preprod"`, `"preview"` — which is
+/// the CAIP-2 component form [`ChainRef`] writes, so there is one spelling of a
+/// network rather than two. This changed on 2026-09-27: the type used to serialise
+/// its variant names (`"Mainnet"`, …), because that is what `wallet_core::Network`
+/// had always written and `stake_session` persists a session as JSON in localStorage.
+/// The **reader** is what makes the change safe — it accepts both casings and the
+/// legacy `testnet` spelling — so a session saved before the change still loads. Only
+/// a downgrade (new lowercase value, old code) would fail, and that is the direction
+/// a reader cannot fix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CardanoNetwork {
     Mainnet,
     Preprod,
     Preview,
+}
+
+impl Serialize for CardanoNetwork {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.network_name())
+    }
+}
+
+/// Reads either case, and `testnet` as preprod.
+///
+/// Delegates to [`CardanoNetwork::from_chain_str`] rather than matching again: one
+/// parser is what stops two from disagreeing, and it takes the same tolerance the
+/// chain-qualified form takes — so a stored value's spelling does not depend on which
+/// door it came in by.
+impl<'de> Deserialize<'de> for CardanoNetwork {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct NetworkVisitor;
+
+        impl serde::de::Visitor<'_> for NetworkVisitor {
+            type Value = CardanoNetwork;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a Cardano network: mainnet, preprod or preview")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<CardanoNetwork, E> {
+                CardanoNetwork::from_chain_str(value).ok_or_else(|| {
+                    serde::de::Error::custom(format!("not a cardano network: {value:?}"))
+                })
+            }
+        }
+
+        deserializer.deserialize_str(NetworkVisitor)
+    }
 }
 
 impl CardanoNetwork {
@@ -104,6 +142,18 @@ impl CardanoNetwork {
         match self {
             Self::Mainnet => 1,
             Self::Preprod | Self::Preview => 0,
+        }
+    }
+
+    /// The bare network name — `mainnet`, `preprod`, `preview`.
+    ///
+    /// The serde form, and the half of [`CardanoNetwork::as_chain_str`] that follows
+    /// the chain — kept here so the two cannot drift.
+    pub const fn network_name(self) -> &'static str {
+        match self {
+            Self::Mainnet => "mainnet",
+            Self::Preprod => "preprod",
+            Self::Preview => "preview",
         }
     }
 
@@ -124,10 +174,12 @@ impl CardanoNetwork {
     /// Parse the `chain:network` wire form.
     ///
     /// Tolerant of a bare network name (`"preprod"`) because some callers store
-    /// it stripped, and of case because nothing guarantees it. `None` for
-    /// anything unrecognised — **deliberately not a mainnet default**: guessing
-    /// mainnet for an unknown string is how a preprod wallet gets told it is on
-    /// the wrong network, or worse, how a mainnet check silently passes.
+    /// it stripped, and of case because nothing guarantees it. Also tolerant of
+    /// `"testnet"`, a legacy spelling for preprod — see the arm below for why that
+    /// one is not a guess. `None` for anything else: **deliberately not a mainnet
+    /// default**, since guessing mainnet for an unknown string is how a preprod wallet
+    /// gets told it is on the wrong network, or worse, how a mainnet check silently
+    /// passes.
     ///
     /// Cardano-only. For a whole chain, including EVM, use [`ChainRef`], which
     /// additionally requires the namespace.
@@ -141,6 +193,15 @@ impl CardanoNetwork {
             "mainnet" => Some(Self::Mainnet),
             "preprod" => Some(Self::Preprod),
             "preview" => Some(Self::Preview),
+            // Legacy, and the only tolerated spelling that is not a real Cardano
+            // environment. Cardano has mainnet, preprod and preview — a network id of
+            // 0 covers both testnets and cannot tell them apart — but this workspace's
+            // older `ChainNetwork` accepted `cardano:testnet`, so a persisted value may
+            // still say it. It reads as **preprod**, which is the network the sites
+            // that wrote it meant. Normalising rather than echoing: a value that comes
+            // in as `cardano:testnet` leaves as `cardano:preprod`, so the alias cannot
+            // spread by round trip.
+            "testnet" => Some(Self::Preprod),
             _ => None,
         }
     }
@@ -245,6 +306,27 @@ impl ChainRef {
         matches!(self, Self::Cardano(_))
     }
 
+    /// Cardano mainnet.
+    ///
+    /// A convenience for the spelling `ChainRef::Cardano(CardanoNetwork::Mainnet)`,
+    /// which is what almost every call site means. There is deliberately **no
+    /// `cardano_testnet()`**: Cardano has mainnet, preprod and preview, and "testnet"
+    /// is not one of them — a network id of `0` covers both testnets and cannot tell
+    /// them apart, so a constructor named after it could only pick one silently.
+    pub const fn cardano_mainnet() -> Self {
+        Self::Cardano(CardanoNetwork::Mainnet)
+    }
+
+    /// Cardano preprod.
+    pub const fn cardano_preprod() -> Self {
+        Self::Cardano(CardanoNetwork::Preprod)
+    }
+
+    /// Cardano preview.
+    pub const fn cardano_preview() -> Self {
+        Self::Cardano(CardanoNetwork::Preview)
+    }
+
     /// The short label for the chain mark — drawn in a chip by the UI.
     ///
     /// Derived here for the same reason [`CardanoNetwork::as_chain_str`] is: a
@@ -256,6 +338,18 @@ impl ChainRef {
             Self::Evm(EvmChain::Robinhood) => "RH",
             Self::Evm(EvmChain::Id(_)) => "EVM",
         }
+    }
+}
+
+impl fmt::Display for ChainRef {
+    /// The CAIP-2 form — the same text [`ChainRef::as_caip2`] writes, and the same
+    /// shape this crate's other types render (`AssetType`, `TokenRef`).
+    ///
+    /// It was missing, which meant every caller that wanted to print a chain either
+    /// reached for `as_caip2` explicitly or formatted the nested enum — the second of
+    /// which writes `Evm(Robinhood)` rather than a chain anyone can read.
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.as_caip2())
     }
 }
 
@@ -409,13 +503,22 @@ mod tests {
     }
 
     #[test]
-    fn a_cardano_network_keeps_its_pascal_case_wire_spelling() {
-        // `stake_session` persists a session as JSON in localStorage, and
-        // `"Preprod"` is what it has always written. Lowercasing it here would
-        // invalidate every saved session.
+    fn a_cardano_network_is_written_lower_case_and_the_old_spelling_still_reads() {
+        // ⚠️ This test asserted the OPPOSITE until 2026-09-27: `"Preprod"`, because
+        // `stake_session` persists a session as JSON in localStorage and that is what
+        // it had always written. Settled since: one spelling, the CAIP-2 component
+        // form, matching `cardano:preprod`.
+        //
+        // What makes the change safe is the READER, not the writer — a session saved
+        // before it still loads, so only a downgrade would break, and that is the
+        // direction a reader cannot fix.
         assert_eq!(
             serde_json::to_string(&CardanoNetwork::Preprod).unwrap(),
-            "\"Preprod\""
+            "\"preprod\""
+        );
+        assert_eq!(
+            serde_json::from_str::<CardanoNetwork>("\"Preprod\"").unwrap(),
+            CardanoNetwork::Preprod
         );
     }
 
@@ -437,6 +540,73 @@ mod tests {
                 "round trip failed for {s}"
             );
         }
+    }
+
+    #[test]
+    fn the_convenience_constructors_name_the_chain_they_say() {
+        assert_eq!(ChainRef::cardano_mainnet().as_caip2(), "cardano:mainnet");
+        assert_eq!(ChainRef::cardano_preprod().as_caip2(), "cardano:preprod");
+        assert_eq!(ChainRef::cardano_preview().as_caip2(), "cardano:preview");
+    }
+
+    #[test]
+    fn display_writes_the_caip2_form_and_not_the_nested_enum() {
+        // The gap this closes: `{}` on the derived `Debug` shape writes
+        // `Evm(Robinhood)`, which is not a chain anyone can read or parse back.
+        assert_eq!(ChainRef::cardano_preprod().to_string(), "cardano:preprod");
+        assert_eq!(
+            ChainRef::Evm(EvmChain::Robinhood).to_string(),
+            "eip155:4663"
+        );
+    }
+
+    #[test]
+    fn a_network_is_written_lower_case_and_read_in_either_case() {
+        // One spelling on the way out — the CAIP-2 component form — so a network name
+        // does not depend on which type carries it.
+        assert_eq!(
+            serde_json::to_string(&CardanoNetwork::Preprod).unwrap(),
+            "\"preprod\""
+        );
+
+        // The tolerance on the way in is what makes that change safe: the PascalCase
+        // this type used to write is still accepted, so a session saved before the
+        // change still loads.
+        assert_eq!(
+            serde_json::from_str::<CardanoNetwork>("\"Preprod\"").unwrap(),
+            CardanoNetwork::Preprod
+        );
+        assert_eq!(
+            serde_json::from_str::<CardanoNetwork>("\"mainnet\"").unwrap(),
+            CardanoNetwork::Mainnet
+        );
+        // And the legacy spelling, as preprod.
+        assert_eq!(
+            serde_json::from_str::<CardanoNetwork>("\"testnet\"").unwrap(),
+            CardanoNetwork::Preprod
+        );
+    }
+
+    #[test]
+    fn a_network_that_is_not_one_is_refused_rather_than_defaulted() {
+        assert!(serde_json::from_str::<CardanoNetwork>("\"stagenet\"").is_err());
+    }
+
+    #[test]
+    fn the_legacy_testnet_spelling_reads_as_preprod_and_does_not_survive_a_round_trip() {
+        // Back-compat for values this workspace's old `ChainNetwork` could write.
+        // It normalises: what comes back out is the real environment, so the legacy
+        // word cannot propagate by being echoed.
+        assert_eq!(
+            CardanoNetwork::from_chain_str("cardano:testnet"),
+            Some(CardanoNetwork::Preprod)
+        );
+
+        let parsed: ChainRef = "cardano:testnet"
+            .parse()
+            .expect("the legacy spelling reads");
+        assert_eq!(parsed, ChainRef::cardano_preprod());
+        assert_eq!(parsed.as_caip2(), "cardano:preprod");
     }
 
     #[test]
