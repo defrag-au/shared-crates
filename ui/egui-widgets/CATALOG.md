@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-169 widgets.
+170 widgets.
 
 | module | what it is |
 |---|---|
@@ -87,6 +87,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `listing_composer` | ListingComposer — price a batch of assets for sale by what the BUYER pays |
 | `listing_grid` | `ListingGrid` — a responsive grid of marketplace listing cards, each with a lazily-loaded image, price and trailing badges |
 | `locator_graph` | `LocatorGraph` — a lookup drawn as wires: a hash narrowing to a byte span, and the corpus settling it |
+| `locator_strips` | `LocatorStrips` — a run as heat on the two address spaces it touched, and as sparks of the reads themselves going out |
 | `machine` | `Machine` — plain-enum UI state, hierarchical, with entry framing, frame-TTL auto-revert and eased transition progress |
 | `managed_wallet_utxos` | Managed-wallet UTxO breakdown — a structured, role-aware view of a custodial wallet's on-chain UTxOs |
 | `marquee` | Scrolling marquee ticker widget |

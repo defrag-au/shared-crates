@@ -42,7 +42,7 @@ pub struct BundleEntry {
     /// Human-readable asset name (e.g. "Skeleton King").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    pub owner_stake: String,
+    pub owner_account: String,
     /// Trait data — bitmap (default) or decoded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trait_data: Option<TraitData>,
@@ -103,7 +103,7 @@ impl BundleEntry {
 /// Response for `GET /api/owner/{policy_id}?asset=...`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OwnerResponse {
-    pub owner_stake: Option<String>,
+    pub owner_account: Option<String>,
 }
 
 /// Response for `GET /api/check/{policy_id}?asset=...&stake=...`.
@@ -141,8 +141,8 @@ pub struct ChangesFeedResponse {
 pub struct ChangeEntry {
     pub seq: u64,
     pub asset_name_hex: String,
-    pub from_stake: Option<String>,
-    pub to_stake: Option<String>,
+    pub from_account: Option<String>,
+    pub to_account: Option<String>,
     pub tx_hash: Option<String>,
     pub timestamp: u64,
 }

@@ -29,9 +29,10 @@ const COLD: f32 = 0.4;
 /// carry it rather than putting every read in the air at the same moment.
 const FANOUT: usize = 256;
 
-/// The loop the story's clock runs on. Longer than the run plus its replay, so there is
-/// a beat of quiet between one run and the next.
-const LOOP: f32 = 4.6;
+/// The loop the story's clock runs on. Long enough for the run, its replay, and the pile
+/// of evidence it leaves (which holds for `EVIDENCE`), so there is a beat of quiet before
+/// the next run starts.
+const LOOP: f32 = 5.6;
 
 /// Lookups in the run — 729 transactions located, as measured.
 const FOUND: u32 = 729;

@@ -236,9 +236,6 @@ fn chunk_of(read: &Read) -> u16 {
 // Time — every mark is a pure function of it
 // ============================================================================
 
-/// How long the marks linger after a lookup's flight, fading out, in seconds.
-const LINGER: f32 = 0.55;
-
 /// The beats of a lookup, as fractions of its flight: when each of its marks
 /// arrives.
 ///
@@ -251,6 +248,35 @@ const BEAT_RUN: f32 = 0.32;
 const BEAT_BODY_READ: f32 = 0.66;
 const BEAT_SETTLE: f32 = 0.84;
 
+/// How long a WIRE outlives its request, in seconds.
+///
+/// ⚠️ Short on purpose. A wire is a request in progress and should go when the request
+/// does; the pile of wires that outlived their requests is what turned a run into a
+/// hatch. What stays is the mark below.
+const LINGER: f32 = 0.55;
+
+/// How long the MARKS a run leaves stay: the pip where a read landed, and a lookup's own
+/// marks once the run has reported.
+///
+/// Long on purpose — a mark is *evidence*, and the pile a run builds is the picture. A
+/// run whose evidence faded as fast as its wires left nothing to look at, and nothing
+/// that grew.
+const EVIDENCE: f32 = 2.6;
+
+/// How long an ant takes to cross to the far end, in seconds.
+///
+/// ⚠️ **A drawing constant, and the one thing in this file that is not a measurement.**
+/// The browser does not know how long a read will take until it is back, so an ant's
+/// position cannot be a position: it is *how long that ant has been out*, at a fixed
+/// speed. What is measured is the **flash** — the instant the read lands — and the ant
+/// is gone by then. An ant that has reached the far end and is waiting there is a read
+/// that is taking a while, which is true.
+const OUT: f32 = 0.15;
+
+/// The resolve flash: how long it lasts, and how far it spreads, in seconds and points.
+const FLASH: f32 = 0.22;
+const FLASH_TO: f32 = 9.0;
+
 /// How much of a beat it takes a mark to arrive.
 const RISE: f32 = 0.06;
 
@@ -260,28 +286,28 @@ const RISE: f32 = 0.06;
 /// so it rises over a fixed, short beat instead of popping in.
 const RISE_SECS: f32 = 0.09;
 
-/// Seconds since `at`, while the mark is still on screen — `None` before it
-/// starts and once it has faded.
+/// Seconds since `at`, while the mark is still on screen — `None` before it starts and
+/// once `hold` seconds have passed since it landed.
 ///
-/// A `flight` of `None` is a read **still in the air**: it has no end to fade
-/// towards yet, so it is on screen from the moment it goes out.
-fn age_of(at: f32, flight: Option<f32>, now: f32) -> Option<f32> {
+/// `hold` is the whole difference between a wire and the evidence it leaves: both are
+/// pure functions of age and disagree only about how long the mark is worth showing.
+fn age_of(at: f32, flight: Option<f32>, now: f32, hold: f32) -> Option<f32> {
     let age = now - at;
     if age < 0.0 {
         return None;
     }
     match flight {
-        Some(flight) if age > flight + LINGER => None,
+        Some(flight) if age > flight + hold => None,
         _ => Some(age),
     }
 }
 
 /// How far through its flight something is, `0.0`..=`1.0`.
 ///
-/// A read that has not landed is drawn at the START of its wire: where it is is
-/// not known yet, and putting it anywhere else would be an invention.
-fn progress_of(at: f32, flight: Option<f32>, now: f32) -> Option<f32> {
-    let age = age_of(at, flight, now)?;
+/// A read that has not landed is drawn at the START of its wire: where the *data* is is
+/// not known yet. The **ant** is a different question — see [`OUT`].
+fn progress_of(at: f32, flight: Option<f32>, now: f32, hold: f32) -> Option<f32> {
+    let age = age_of(at, flight, now, hold)?;
     Some(match flight {
         None => 0.0,
         Some(flight) if flight <= 0.0 => 1.0,
@@ -289,11 +315,11 @@ fn progress_of(at: f32, flight: Option<f32>, now: f32) -> Option<f32> {
     })
 }
 
-/// How strongly something is inked: it arrives over the first [`RISE`] of its
-/// flight, holds, and fades over [`LINGER`]. A read still in the air does not
+/// How strongly something is inked: it arrives over the first [`RISE`] of its flight,
+/// holds, and fades over `hold` seconds after landing. A read still in the air does not
 /// fade — it is not finished, it is happening.
-fn ink_of(at: f32, flight: Option<f32>, now: f32) -> f32 {
-    let Some(age) = age_of(at, flight, now) else {
+fn ink_of(at: f32, flight: Option<f32>, now: f32, hold: f32) -> f32 {
+    let Some(age) = age_of(at, flight, now, hold) else {
         return 0.0;
     };
     let rise = match flight {
@@ -305,7 +331,7 @@ fn ink_of(at: f32, flight: Option<f32>, now: f32) -> f32 {
     };
     let fall = match flight {
         None => 1.0,
-        Some(flight) => ((flight + LINGER - age) / LINGER).clamp(0.0, 1.0),
+        Some(flight) => ((flight + hold - age) / hold).clamp(0.0, 1.0),
     };
     rise.min(fall)
 }
@@ -486,12 +512,12 @@ impl<'a> LocatorGraph<'a> {
         let lookups = self
             .lookups
             .iter()
-            .any(|lookup| age_of(lookup.at, Some(lookup.flight), self.now).is_some());
+            .any(|lookup| age_of(lookup.at, Some(lookup.flight), self.now, EVIDENCE).is_some());
         let fired = self
             .fired
             .unwrap_or_default()
             .iter()
-            .any(|read| age_of(read.at, read.flight, self.now).is_some());
+            .any(|read| age_of(read.at, read.flight, self.now, EVIDENCE).is_some());
         lookups || fired
     }
 
@@ -553,13 +579,9 @@ impl<'a> LocatorGraph<'a> {
             corpus: at(RAIL_CORPUS),
         };
         for read in wires {
-            let Some(progress) = progress_of(read.at, read.flight, self.now) else {
+            let Some(age) = age_of(read.at, read.flight, self.now, EVIDENCE) else {
                 continue;
             };
-            let ink = ink_of(read.at, read.flight, self.now);
-            if ink <= 0.0 {
-                continue;
-            }
             let (from, to) = wire_ends(read.to, read.from_bucket, self.extent, &rails, band);
             let colour = match read.to {
                 ReadTo::Index => c.accent_yellow,
@@ -577,35 +599,64 @@ impl<'a> LocatorGraph<'a> {
                 drop * 0.18
             };
             let points = curve(from, to, bow, 8);
-            // ⚠️ **Motion here is opacity, never travel.** A read that has not landed has
-            // no flight to draw a position from — the browser does not know how long a
-            // request will take until it is back — so a dot mid-wire would be a place
-            // nobody measured. What the browser does know is out from back: the wire
-            // goes out dim with its far end outlined, and comes back at full strength
-            // with the far end filled. That is the whole of the animation, and it is the
-            // whole of the information.
-            let waiting = read.flight.is_none();
-            let weight = if waiting { 60.0 } else { 110.0 };
-            painter.add(Shape::line(
-                points.clone(),
-                stroke(1.0, with_alpha(colour, (weight * ink) as u8)),
-            ));
-            if waiting {
-                painter.circle_stroke(
-                    to,
-                    2.0,
-                    stroke(1.0, with_alpha(colour, (170.0 * ink) as u8)),
-                );
-            } else if let Some(dot) = sample(&points, progress) {
-                painter.circle_filled(dot, 2.0, with_alpha(colour, (220.0 * ink) as u8));
+
+            match read.flight {
+                // Out. The wire goes dim with its far end outlined, and an ant is on it.
+                //
+                // ⚠️ **The ant's position is the one thing here that is a drawing rather
+                // than a measurement** — see [`OUT`]. Its speed is fixed, so an ant that
+                // has reached the hive and is waiting there is a read that is taking a
+                // while. The instant it lands is the flash below, and that is measured.
+                None => {
+                    let ink = (age / RISE_SECS).clamp(0.0, 1.0);
+                    painter.add(Shape::line(
+                        points.clone(),
+                        stroke(1.0, with_alpha(colour, (55.0 * ink) as u8)),
+                    ));
+                    painter.circle_stroke(
+                        to,
+                        2.0,
+                        stroke(1.0, with_alpha(colour, (170.0 * ink) as u8)),
+                    );
+                    if let Some(ant) = sample(&points, (age / OUT).clamp(0.0, 1.0)) {
+                        painter.circle_filled(ant, 1.5, with_alpha(colour, (235.0 * ink) as u8));
+                    }
+                }
+                // Back. The wire holds its strength for [`LINGER`] and then goes — a
+                // wire that outlived its request is a wire after the fact, and 850 of
+                // those is the hatch this replaced. What stays is the pip, for
+                // [`EVIDENCE`], which is the pile the run is building.
+                Some(flight) => {
+                    let wire = ink_of(read.at, read.flight, self.now, LINGER);
+                    if wire > 0.0 {
+                        painter.add(Shape::line(
+                            points.clone(),
+                            stroke(1.0, with_alpha(colour, (150.0 * wire) as u8)),
+                        ));
+                    }
+                    let since = age - flight;
+                    if since < FLASH {
+                        let t = (since / FLASH).clamp(0.0, 1.0);
+                        painter.circle_stroke(
+                            to,
+                            2.0 + FLASH_TO * t,
+                            stroke(1.0, with_alpha(colour, (240.0 * (1.0 - t)) as u8)),
+                        );
+                    }
+                    let pip = ink_of(read.at, read.flight, self.now, EVIDENCE);
+                    if pip > 0.0 {
+                        painter.circle_filled(to, 1.6, with_alpha(colour, (210.0 * pip) as u8));
+                    }
+                }
             }
         }
 
         for lookup in self.lookups {
-            let Some(progress) = progress_of(lookup.at, Some(lookup.flight), self.now) else {
+            let Some(progress) = progress_of(lookup.at, Some(lookup.flight), self.now, EVIDENCE)
+            else {
                 continue;
             };
-            let ink = ink_of(lookup.at, Some(lookup.flight), self.now);
+            let ink = ink_of(lookup.at, Some(lookup.flight), self.now, EVIDENCE);
             if ink <= 0.0 {
                 continue;
             }
@@ -928,17 +979,17 @@ mod tests {
     #[test]
     fn a_lookup_that_has_not_started_draws_nothing() {
         let l = lookup(1, 0, 1, 5.0);
-        assert_eq!(age_of(l.at, Some(l.flight), 4.9), None);
-        assert_eq!(progress_of(l.at, Some(l.flight), 4.9), None);
-        assert_eq!(ink_of(l.at, Some(l.flight), 4.9), 0.0);
+        assert_eq!(age_of(l.at, Some(l.flight), 4.9, LINGER), None);
+        assert_eq!(progress_of(l.at, Some(l.flight), 4.9, LINGER), None);
+        assert_eq!(ink_of(l.at, Some(l.flight), 4.9, LINGER), 0.0);
     }
 
     #[test]
     fn a_flight_that_is_over_lingers_then_goes() {
         let l = lookup(1, 0, 1, 0.0);
-        let during = ink_of(l.at, Some(l.flight), 0.5);
-        let after = ink_of(l.at, Some(l.flight), l.flight + LINGER * 0.5);
-        let gone = ink_of(l.at, Some(l.flight), l.flight + LINGER + 0.01);
+        let during = ink_of(l.at, Some(l.flight), 0.5, LINGER);
+        let after = ink_of(l.at, Some(l.flight), l.flight + LINGER * 0.5, LINGER);
+        let gone = ink_of(l.at, Some(l.flight), l.flight + LINGER + 0.01, LINGER);
         assert!(during > after, "it must be fading, not holding");
         assert!(
             after > 0.0,
@@ -946,7 +997,7 @@ mod tests {
         );
         assert_eq!(gone, 0.0);
         assert_eq!(
-            progress_of(l.at, Some(l.flight), l.flight + LINGER),
+            progress_of(l.at, Some(l.flight), l.flight + LINGER, LINGER),
             Some(1.0)
         );
     }
@@ -954,21 +1005,62 @@ mod tests {
     #[test]
     fn a_zero_flight_read_is_arrived_rather_than_undefined() {
         let l = lookup(1, 0, 1, 0.0);
-        assert_eq!(progress_of(l.at, Some(0.0), 0.0), Some(1.0));
-        assert_eq!(ink_of(l.at, Some(0.0), 0.0), 1.0);
-        assert_eq!(progress_of(l.at, Some(0.0), LINGER + 0.01), None);
+        assert_eq!(progress_of(l.at, Some(0.0), 0.0, LINGER), Some(1.0));
+        assert_eq!(ink_of(l.at, Some(0.0), 0.0, LINGER), 1.0);
+        assert_eq!(progress_of(l.at, Some(0.0), LINGER + 0.01, LINGER), None);
+    }
+
+    #[test]
+    fn the_pile_outlives_the_wire_it_came_from() {
+        // A wire is a request in progress and goes when the request does. What stays is
+        // the mark where it landed — and it stays long enough that a run's evidence
+        // accumulates instead of fading as fast as the traffic did.
+        let read = Read {
+            to: ReadTo::Index,
+            from_bucket: 64,
+            at: 0.0,
+            flight: Some(0.4),
+        };
+        let after_the_wire = read.at + 0.4 + LINGER + 0.05;
+        assert_eq!(ink_of(read.at, read.flight, after_the_wire, LINGER), 0.0);
+        assert!(ink_of(read.at, read.flight, after_the_wire, EVIDENCE) > 0.0);
+        assert_eq!(
+            ink_of(
+                read.at,
+                read.flight,
+                read.at + 0.4 + EVIDENCE + 0.01,
+                EVIDENCE
+            ),
+            0.0
+        );
     }
 
     #[test]
     fn a_read_still_in_the_air_is_not_an_instant_read() {
         // `None` is "not landed yet", which is not the same as "took no time": a
         // packet parked at the END of a wire would say the read is already over.
-        assert_eq!(progress_of(0.0, None, 0.4), Some(0.0));
-        assert_eq!(ink_of(0.0, None, 0.4), 1.0);
+        assert_eq!(progress_of(0.0, None, 0.4, LINGER), Some(0.0));
+        assert_eq!(ink_of(0.0, None, 0.4, LINGER), 1.0);
         // And a read in the air does not fade — it is happening, not finishing.
-        assert_eq!(ink_of(0.0, None, LINGER * 4.0), 1.0);
+        assert_eq!(ink_of(0.0, None, LINGER * 4.0, LINGER), 1.0);
         // Once it lands, the flight it reports is the flight it gets.
-        assert_eq!(progress_of(0.0, Some(1.0), 0.5), Some(0.5));
+        assert_eq!(progress_of(0.0, Some(1.0), 0.5, LINGER), Some(0.5));
+    }
+
+    #[test]
+    fn an_ant_crosses_at_a_drawing_speed_and_never_past_the_hive() {
+        // The ant's position is the ONE thing here that is animation rather than
+        // measurement, so it is worth pinning what it can and cannot say: it is out
+        // after one `OUT`, it is still exactly at the hive after ten, and it never
+        // overshoots into an address it has no business claiming.
+        let at = |age: f32| (age / OUT).clamp(0.0, 1.0);
+        assert_eq!(
+            at(0.0),
+            0.0,
+            "an ant is at the dispatch the instant it goes"
+        );
+        assert_eq!(at(OUT), 1.0);
+        assert_eq!(at(OUT * 10.0), 1.0, "a slow read is an ant waiting");
     }
 
     #[test]
@@ -985,13 +1077,23 @@ mod tests {
         }];
         assert!(LocatorGraph::new(&[], 0.2).fired(&fired).busy());
 
-        // Landed and faded out is not busy.
+        // ⚠️ A landed read keeps the host painting long after its wire has gone. The
+        // wire holds for `LINGER` and the pip it left holds for `EVIDENCE`, and it is the
+        // PIP that is on screen — stopping the paint here would freeze a mark mid-fade.
         let landed = [Read {
             flight: Some(0.3),
             ..fired[0]
         }];
         assert!(
-            !LocatorGraph::new(&[], 0.3 + LINGER + 0.01)
+            LocatorGraph::new(&[], 0.3 + LINGER + 0.01)
+                .fired(&landed)
+                .busy(),
+            "the pile is still up"
+        );
+
+        // Landed and faded out is not busy.
+        assert!(
+            !LocatorGraph::new(&[], 0.3 + EVIDENCE + 0.01)
                 .fired(&landed)
                 .busy()
         );

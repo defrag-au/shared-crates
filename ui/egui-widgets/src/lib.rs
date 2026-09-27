@@ -91,6 +91,7 @@ pub mod leaderboard;
 pub mod listing_composer;
 pub mod listing_grid;
 pub mod locator_graph;
+pub mod locator_strips;
 pub mod machine;
 pub mod marquee;
 pub mod metric_card;

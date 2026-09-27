@@ -81,6 +81,7 @@ mod app {
             FlowRing => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_ring::show(ui, &mut a.flow_ring_state);
             FlowStave => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_stave::show(ui, &mut a.flow_stave_state);
             LocatorGraph => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::locator_graph::show(ui, &mut a.locator_graph_state);
+            LocatorStrips => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::locator_strips::show(ui, &mut a.locator_strips_state);
             PartyAnnotator => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::party_annotator::show(ui, &mut a.party_annotator_state);
             TagList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tag_list::show(ui, &mut a.tag_list_state);
             TokenMultiselect => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_multiselect::show(ui, &mut a.token_multiselect_state);
@@ -385,6 +386,7 @@ mod app {
                 Self::FlowRing => "Flow Ring",
                 Self::FlowStave => "Flow Stave",
                 Self::LocatorGraph => "Locator Graph",
+                Self::LocatorStrips => "Locator Strips",
                 Self::PartyAnnotator => "Party Annotator",
                 Self::TagList => "Tag List",
                 Self::TokenMultiselect => "Token Multiselect",
@@ -773,6 +775,9 @@ mod app {
                 }
                 Self::FlowRing => {
                     "Value moving between parties, LIVE, on the shared spine. Parties keep fixed seats on concentric rings (inner = the project's own wallets, outer = who they dealt with) and value crosses the middle as particles — ONE DOT PER QUANTUM, so a large payment is a longer train rather than a thicker line. Particle position is a pure function of the playhead, so scrubbing shows value genuinely mid-flight and a still frame is reproducible. Hover for a wallet's inventory at that exact moment; switch nodes off to cut density without moving anything that stays"
+                }
+                Self::LocatorStrips => {
+                    "A run as heat on the two address spaces it touched: the hash band on top, the chunk band below, drawn with the same mapping so they can be compared. The hash band fills in evenly — a transaction hash is uniform by construction — while the chain band clusters, because a wallet's transactions happen in bursts of time and time is chunk order (729 transactions touched 129 chunks, where uniform would have been ~729). Every read lights its cell where it landed and decays, so a run draws itself as two histograms that fade, and the contrast between flat and clustered IS the finding: the hash side says nothing about where the data is, and position says everything. Nothing crosses between the bands because nothing crosses between the structures."
                 }
                 Self::LocatorGraph => {
                     "Where a transaction is found, drawn as the wires a run fires: the index keyed by hash on the left (a 24-bit bucket, the shard holding it, the run inside it, an entry eight bytes of which are the hash) and the corpus ordered by position on the right, meeting at exactly one chunk, offset and length. One wire is one OBJECT read, not one lookup — a shard holds 512 buckets and a chunk holds many transactions, which is where the 719 entry reads and 129 body reads behind 729 transactions come from. No block is drawn because no block has an address of its own, and every wire ends in a re-hash because eight bytes of a hash is a hint rather than an identity: the corpus settles it. Ambient by design — no label, no hover, no numbers — so it draws at full strength and the fading belongs to wherever it is placed"
@@ -1539,6 +1544,7 @@ mod app {
         flow_ring_state: stories::flow_ring::FlowRingState,
         flow_stave_state: stories::flow_stave::FlowStaveState,
         locator_graph_state: stories::locator_graph::LocatorGraphStory,
+        locator_strips_state: stories::locator_strips::LocatorStripsStory,
         party_annotator_state: stories::party_annotator::PartyAnnotatorState,
     }
 
@@ -1709,6 +1715,7 @@ mod app {
                 flow_ring_state: stories::flow_ring::FlowRingState::default(),
                 flow_stave_state: stories::flow_stave::FlowStaveState::default(),
                 locator_graph_state: stories::locator_graph::LocatorGraphStory::default(),
+                locator_strips_state: stories::locator_strips::LocatorStripsStory::default(),
                 party_annotator_state: stories::party_annotator::PartyAnnotatorState::default(),
             }
         }
