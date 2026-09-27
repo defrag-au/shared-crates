@@ -58,16 +58,18 @@ pub use asset::{AssetNamespace, AssetRefError, AssetType, TokenRef};
 pub enum ChainFamily {
     Cardano,
     Evm,
+    Midnight,
 }
 
 impl ChainFamily {
-    pub const ALL: [Self; 2] = [Self::Cardano, Self::Evm];
+    pub const ALL: [Self; 3] = [Self::Cardano, Self::Evm, Self::Midnight];
 
     /// The CAIP-2 namespace this family's chains are written under.
     pub const fn namespace(self) -> &'static str {
         match self {
             Self::Cardano => "cardano",
             Self::Evm => "eip155",
+            Self::Midnight => "midnight",
         }
     }
 }
@@ -130,6 +132,14 @@ impl<'de> Deserialize<'de> for CardanoNetwork {
         }
 
         deserializer.deserialize_str(NetworkVisitor)
+    }
+}
+
+impl fmt::Display for CardanoNetwork {
+    /// The bare network name — `mainnet`, `preprod`, `preview`. The same string
+    /// [`Self::network_name`] returns and the serde form writes.
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.network_name())
     }
 }
 
@@ -254,6 +264,55 @@ impl EvmChain {
     }
 }
 
+/// The Midnight networks this workspace names.
+///
+/// ⚠️ **Unverified vocabulary, preserved on request (2026-09-27).** Nothing in this
+/// workspace constructs one, and no Midnight chain has been checked against anything
+/// the way `EvmChain::Robinhood`'s id was — `testnet` is here only because it is the
+/// spelling this repository's own docs already used (`midnight:testnet`). It exists so
+/// the name is not lost when `shared_types::Chain` goes away, and it is marked so a
+/// later session does not read it as a constant somebody verified.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MidnightNetwork {
+    Mainnet,
+    Testnet,
+}
+
+impl MidnightNetwork {
+    /// The bare network name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Mainnet => "mainnet",
+            Self::Testnet => "testnet",
+        }
+    }
+
+    /// The `chain:network` form.
+    pub const fn as_chain_str(self) -> &'static str {
+        match self {
+            Self::Mainnet => "midnight:mainnet",
+            Self::Testnet => "midnight:testnet",
+        }
+    }
+
+    /// Parses a bare or `midnight:`-prefixed network name, case-insensitively.
+    pub fn from_chain_str(s: &str) -> Option<Self> {
+        let lower = s.to_ascii_lowercase();
+        let bare = lower.strip_prefix("midnight:").unwrap_or(&lower);
+        match bare {
+            "mainnet" => Some(Self::Mainnet),
+            "testnet" => Some(Self::Testnet),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for MidnightNetwork {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 // ============================================================================
 // ChainRef
 // ============================================================================
@@ -270,6 +329,7 @@ impl EvmChain {
 pub enum ChainRef {
     Cardano(CardanoNetwork),
     Evm(EvmChain),
+    Midnight(MidnightNetwork),
 }
 
 impl ChainRef {
@@ -278,6 +338,7 @@ impl ChainRef {
         match self {
             Self::Cardano(_) => ChainFamily::Cardano,
             Self::Evm(_) => ChainFamily::Evm,
+            Self::Midnight(_) => ChainFamily::Midnight,
         }
     }
 
@@ -294,6 +355,7 @@ impl ChainRef {
         match self {
             Self::Cardano(n) => n.as_chain_str().trim_start_matches("cardano:").to_string(),
             Self::Evm(c) => c.chain_id().to_string(),
+            Self::Midnight(n) => n.as_str().to_string(),
         }
     }
 
@@ -302,8 +364,30 @@ impl ChainRef {
         format!("{}:{}", self.namespace(), self.reference())
     }
 
+    /// The same string as [`ChainRef::as_caip2`], under the name the estate calls it.
+    ///
+    /// Nearly every call site in `cnft.dev-workers` asked its old `ChainNetwork` for
+    /// `as_str()`, and they all want exactly this value — the rendered CAIP-2 form — so
+    /// the name is kept rather than reconciled at a hundred sites. It allocates just as
+    /// `as_caip2` does; new code in `chains` should prefer `as_caip2`, which says which
+    /// form it renders.
+    pub fn as_str(&self) -> String {
+        self.as_caip2()
+    }
+
     pub const fn is_cardano(self) -> bool {
         matches!(self, Self::Cardano(_))
+    }
+
+    /// Whether this is Cardano **mainnet**.
+    ///
+    /// The question the estate actually asks — "mainnet or testnet" to pick an
+    /// address registry or a queue binding — is a Cardano one, so an EVM or
+    /// Midnight chain answers `false` rather than being given a network notion it
+    /// does not have. Cost of being wrong: a non-Cardano chain would be handed the
+    /// mainnet registry.
+    pub const fn is_mainnet(self) -> bool {
+        matches!(self, Self::Cardano(CardanoNetwork::Mainnet))
     }
 
     /// This chain as a Cardano network, where it is one.
@@ -316,6 +400,7 @@ impl ChainRef {
         match self {
             Self::Cardano(network) => Some(network),
             Self::Evm(_) => None,
+            Self::Midnight(_) => None,
         }
     }
 
@@ -350,6 +435,9 @@ impl ChainRef {
             Self::Cardano(_) => "ADA",
             Self::Evm(EvmChain::Robinhood) => "RH",
             Self::Evm(EvmChain::Id(_)) => "EVM",
+            // A placeholder label for a chain nothing here has verified; see
+            // `MidnightNetwork`.
+            Self::Midnight(_) => "MNT",
         }
     }
 }
@@ -393,6 +481,12 @@ impl FromStr for ChainRef {
                 .map(|id| Self::Evm(EvmChain::from_chain_id(id)))
                 .map_err(|_| ChainRefError::UnknownReference {
                     namespace: "eip155",
+                    reference: reference.to_string(),
+                }),
+            "midnight" => MidnightNetwork::from_chain_str(reference)
+                .map(Self::Midnight)
+                .ok_or_else(|| ChainRefError::UnknownReference {
+                    namespace: "midnight",
                     reference: reference.to_string(),
                 }),
             other => Err(ChainRefError::UnknownNamespace(other.to_string())),
@@ -519,6 +613,13 @@ mod tests {
     }
 
     #[test]
+    fn a_cardano_network_renders_its_bare_name() {
+        assert_eq!(CardanoNetwork::Mainnet.to_string(), "mainnet");
+        assert_eq!(CardanoNetwork::Preprod.to_string(), "preprod");
+        assert_eq!(CardanoNetwork::Preview.to_string(), "preview");
+    }
+
+    #[test]
     fn only_mainnet_has_network_id_one() {
         assert_eq!(CardanoNetwork::Mainnet.network_id(), 1);
         assert_eq!(CardanoNetwork::Preprod.network_id(), 0);
@@ -569,6 +670,8 @@ mod tests {
             ChainRef::Cardano(CardanoNetwork::Preview),
             ChainRef::Evm(EvmChain::Robinhood),
             ChainRef::Evm(EvmChain::Id(8453)),
+            ChainRef::Midnight(MidnightNetwork::Mainnet),
+            ChainRef::Midnight(MidnightNetwork::Testnet),
         ] {
             let s = chain.as_caip2();
             assert_eq!(
@@ -584,6 +687,17 @@ mod tests {
         assert_eq!(ChainRef::cardano_mainnet().as_caip2(), "cardano:mainnet");
         assert_eq!(ChainRef::cardano_preprod().as_caip2(), "cardano:preprod");
         assert_eq!(ChainRef::cardano_preview().as_caip2(), "cardano:preview");
+    }
+
+    #[test]
+    fn only_cardano_mainnet_is_mainnet() {
+        // The question is a Cardano one; a chain with no mainnet/testnet split must
+        // not answer `true` and be handed the mainnet registry.
+        assert!(ChainRef::cardano_mainnet().is_mainnet());
+        assert!(!ChainRef::cardano_preprod().is_mainnet());
+        assert!(!ChainRef::cardano_preview().is_mainnet());
+        assert!(!ChainRef::Evm(EvmChain::Robinhood).is_mainnet());
+        assert!(!ChainRef::Midnight(MidnightNetwork::Mainnet).is_mainnet());
     }
 
     #[test]
@@ -680,14 +794,48 @@ mod tests {
     }
 
     #[test]
+    fn midnight_is_a_known_namespace_and_round_trips() {
+        // Added 2026-09-27 with `MidnightNetwork`: this workspace keeps a `Midnight`
+        // chain even though nothing constructs one, so the name is not lost when
+        // `shared_types::Chain` goes away. The vocabulary is unverified — see
+        // `MidnightNetwork`.
+        for network in [MidnightNetwork::Mainnet, MidnightNetwork::Testnet] {
+            let chain = ChainRef::Midnight(network);
+            assert_eq!(chain.family(), ChainFamily::Midnight);
+            assert_eq!(chain.namespace(), "midnight");
+            assert_eq!(chain.monogram(), "MNT");
+            assert_eq!(chain.as_caip2(), network.as_chain_str());
+            assert_eq!(ChainRef::from_str(&chain.as_caip2()), Ok(chain));
+        }
+
+        assert_eq!(
+            serde_json::to_string(&ChainRef::Midnight(MidnightNetwork::Mainnet)).unwrap(),
+            "\"midnight:mainnet\""
+        );
+
+        // A known namespace did not loosen the other two rules: a reference it does
+        // not recognise is still refused, and a bare network name is still not a chain.
+        assert!(matches!(
+            ChainRef::from_str("midnight:stagenet"),
+            Err(ChainRefError::UnknownReference {
+                namespace: "midnight",
+                ..
+            })
+        ));
+        assert!(matches!(
+            ChainRef::from_str("testnet"),
+            Err(ChainRefError::NotCaip2(_))
+        ));
+    }
+
+    #[test]
     fn an_unknown_namespace_is_an_error_and_never_cardano() {
         // The dangerous default, in its other form: an unrecognised namespace
         // must not fall back to the one chain this workspace knows best.
-        for (input, namespace) in [
-            ("solana:mainnet", "solana"),
-            ("midnight:mainnet", "midnight"),
-            ("sui:mainnet", "sui"),
-        ] {
+        // `midnight` was in this list until 2026-09-27, when the namespace was
+        // deliberately added alongside `MidnightNetwork` — see
+        // `midnight_is_a_known_namespace_and_round_trips` for its own coverage.
+        for (input, namespace) in [("solana:mainnet", "solana"), ("sui:mainnet", "sui")] {
             assert!(
                 matches!(
                     ChainRef::from_str(input),
@@ -752,7 +900,7 @@ mod tests {
     }
 
     #[test]
-    fn family_is_the_mechanical_axis_and_distinguishes_the_two() {
+    fn family_is_the_mechanical_axis_and_distinguishes_the_families() {
         assert_eq!(
             ChainRef::Cardano(CardanoNetwork::Mainnet).family(),
             ChainFamily::Cardano

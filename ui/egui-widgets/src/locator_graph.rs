@@ -354,11 +354,60 @@ fn len_at(len: u16, band: (f32, f32)) -> f32 {
 const MIN_MARK: f32 = 2.0;
 
 /// Rails and bands, as fractions of the usable width.
-const RAIL_BUCKET: f32 = 0.07;
-const RAIL_SHARD: f32 = 0.18;
-const RAIL_ENTRY: f32 = 0.31;
-const RAIL_CORPUS: f32 = 0.64;
+///
+/// The first three are ONE address space drawn three ways: a bucket, its shard, and the
+/// bucket's slot in the index. `512 × 32768` is `1 << 24`, so a bucket and its shard sit
+/// at the **same height** — which is why every wire among them is short and horizontal,
+/// and why the address space reads as one column rather than three.
+const RAIL_BUCKET: f32 = 0.06;
+const RAIL_SHARD: f32 = 0.20;
+const RAIL_ENTRY: f32 = 0.36;
+/// Position, not hash: the only axis a read can cross to.
+const RAIL_CORPUS: f32 = 0.66;
 const BAND_SPAN: (f32, f32) = (0.80, 0.99);
+
+/// Where the rails are this frame, resolved once.
+struct Rails {
+    bucket: f32,
+    shard: f32,
+    entry: f32,
+    corpus: f32,
+}
+
+/// Where a read's wire starts and ends.
+///
+/// ⚠️ **Each kind advances the pipeline by ONE gap.** The index is read to learn which
+/// shard holds a bucket, the shard is read to get the bucket's entries, and only the
+/// **body** read crosses to the corpus. The first shape drew all three as full-width
+/// chords, and a random permutation drawn that way is a hatched rectangle: 850 wires
+/// each spanning the canvas at an unrelated angle, saying nothing the two ends were not
+/// already saying. A wire one gap wide is legible at four times the count.
+fn wire_ends(
+    to: ReadTo,
+    from_bucket: u32,
+    extent: Extent,
+    rails: &Rails,
+    band: (f32, f32),
+) -> (Pos2, Pos2) {
+    let bucket = y_of(from_bucket, extent.buckets, band);
+    match to {
+        // Find the shard. It is the same address at the same height, so this wire is a
+        // horizontal one: a lookup that narrowed the hash has not moved.
+        ReadTo::Index => (pos2(rails.bucket, bucket), pos2(rails.shard, bucket)),
+        // Fetch the bucket's entries out of that shard, and deliver them to the index's
+        // own edge.
+        ReadTo::Run { shard } => (
+            pos2(rails.shard, y_of(shard, extent.shards, band)),
+            pos2(rails.entry, bucket),
+        ),
+        // The crossing: a chunk, a byte offset and a length, on an axis that is not the
+        // hash's and never will be.
+        ReadTo::Body { span } => (
+            pos2(rails.entry, bucket),
+            pos2(rails.corpus, y_of(span.chunk as u32, extent.chunks, band)),
+        ),
+    }
+}
 
 /// Cells a twenty-four-byte entry is drawn as, and how many of them are hash.
 const ENTRY_CELLS: u32 = 24;
@@ -497,6 +546,12 @@ impl<'a> LocatorGraph<'a> {
                 &derived
             }
         };
+        let rails = Rails {
+            bucket: at(RAIL_BUCKET),
+            shard: at(RAIL_SHARD),
+            entry: at(RAIL_ENTRY),
+            corpus: at(RAIL_CORPUS),
+        };
         for read in wires {
             let Some(progress) = progress_of(read.at, read.flight, self.now) else {
                 continue;
@@ -505,31 +560,22 @@ impl<'a> LocatorGraph<'a> {
             if ink <= 0.0 {
                 continue;
             }
-            let y = y_of(read.from_bucket, self.extent.buckets, band);
-            let (from, to, colour) = match read.to {
-                // A read inside the index: it never leaves the left-hand side, so
-                // it is drawn as a short wire to the index's own edge rather than
-                // a crossing.
-                ReadTo::Index => (
-                    pos2(at(RAIL_BUCKET), y),
-                    pos2(at(RAIL_ENTRY), y),
-                    c.accent_yellow,
-                ),
-                ReadTo::Run { shard } => (
-                    pos2(at(RAIL_ENTRY), y),
-                    pos2(at(RAIL_CORPUS), y_of(shard, self.extent.shards, band)),
-                    c.accent_cyan,
-                ),
-                ReadTo::Body { span } => (
-                    pos2(at(RAIL_ENTRY), y),
-                    pos2(
-                        at(RAIL_CORPUS),
-                        y_of(span.chunk as u32, self.extent.chunks, band),
-                    ),
-                    c.accent_blue,
-                ),
+            let (from, to) = wire_ends(read.to, read.from_bucket, self.extent, &rails, band);
+            let colour = match read.to {
+                ReadTo::Index => c.accent_yellow,
+                ReadTo::Run { .. } => c.accent_cyan,
+                ReadTo::Body { .. } => c.accent_blue,
             };
-            let bow = (from.y - to.y) * 0.18;
+            // A wire whose two ends are at the SAME height is bowed instead of drawn flat:
+            // the index's three rails are one address space, so most wires are like that,
+            // and a band of flat rules reads as a hatch where a band of shallow arcs reads
+            // as a band.
+            let drop = to.y - from.y;
+            let bow = if drop.abs() < 1.0 {
+                (to.x - from.x) * 0.18
+            } else {
+                drop * 0.18
+            };
             let points = curve(from, to, bow, 8);
             // ⚠️ **Motion here is opacity, never travel.** A read that has not landed has
             // no flight to draw a position from — the browser does not know how long a
@@ -821,6 +867,62 @@ mod tests {
             "a shared object is read once, when it was first asked for"
         );
         assert_eq!(reads[0].from_bucket, 11);
+    }
+
+    #[test]
+    fn a_bucket_and_its_shard_are_drawn_at_the_same_height() {
+        // `512 × 32768 == 1 << 24`, so the bucket axis and the shard axis are the same
+        // space at two resolutions. That is what makes the index's three rails one
+        // column, and every wire among them a short horizontal one.
+        let extent = Extent::default();
+        assert_eq!(
+            u64::from(Extent::BUCKETS_PER_SHARD) * u64::from(extent.shards),
+            u64::from(extent.buckets),
+            "the axes have drifted apart"
+        );
+        let band = (0.0, 1000.0);
+        for bucket in [0u32, 7, 999, 1 << 20, (1 << 24) - 1] {
+            let at_bucket = y_of(bucket, extent.buckets, band);
+            let at_shard = y_of(bucket / Extent::BUCKETS_PER_SHARD, extent.shards, band);
+            assert!(
+                (at_bucket - at_shard).abs() < 0.2,
+                "bucket {bucket} is at {at_bucket} but its shard is at {at_shard}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_wire_advances_the_pipeline_by_one_gap() {
+        let extent = Extent::default();
+        let rails = Rails {
+            bucket: 10.0,
+            shard: 40.0,
+            entry: 70.0,
+            corpus: 130.0,
+        };
+        let band = (0.0, 100.0);
+        let bucket = 64;
+        let ends = |to| wire_ends(to, bucket, extent, &rails, band);
+
+        // Find the shard, fetch the entries, then cross — one gap each, in order.
+        let (from, to) = ends(ReadTo::Index);
+        assert_eq!((from.x, to.x), (10.0, 40.0));
+        assert_eq!(from.y, to.y, "narrowing the hash does not move it");
+
+        let (from, to) = ends(ReadTo::Run { shard: 0 });
+        assert_eq!((from.x, to.x), (40.0, 70.0));
+
+        let (from, to) = ends(ReadTo::Body {
+            span: Span {
+                chunk: 9_150,
+                offset: 0,
+                len: 156,
+            },
+        });
+        assert_eq!((from.x, to.x), (70.0, 130.0));
+        // The body is the read that leaves the index: its two ends are the only pair
+        // that are not the same address space.
+        assert_ne!(from.y, to.y, "the corpus is not ordered by hash");
     }
 
     #[test]

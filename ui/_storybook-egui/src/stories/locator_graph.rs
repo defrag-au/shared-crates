@@ -23,6 +23,12 @@ const RUNS_UNTIL: f32 = 0.813;
 /// A cold read, which is what most of these were.
 const COLD: f32 = 0.4;
 
+/// How many objects the reader has in the air at once — `chunks::DEFAULT_FANOUT`.
+///
+/// This is the number that decides how much ink is on screen, so the fixture has to
+/// carry it rather than putting every read in the air at the same moment.
+const FANOUT: usize = 256;
+
 /// The loop the story's clock runs on. Longer than the run plus its replay, so there is
 /// a beat of quiet between one run and the next.
 const LOOP: f32 = 4.6;
@@ -127,12 +133,24 @@ fn fired(found: &[Lookup]) -> Vec<Read> {
     out
 }
 
-/// Place one wave's reads evenly across the window that phase took.
+/// Place a phase's reads as the reader actually issues them: **one after another at the
+/// rate the fan-out allows**, rather than all at once.
+///
+/// ⚠️ This is the difference between a run and a hatched rectangle. `locate_wallet` reads
+/// with `buffered(DEFAULT_FANOUT)`, so at most that many objects are ever in the air at
+/// once; the first version of this fixture gave every read the same flight and no bound,
+/// which put twice the browser's concurrency on screen and is what made it a block.
+///
+/// Issuing evenly and giving each read the window divided by the number of waves gives
+/// exactly the fan-out in the air — `step / issue == n / waves == FANOUT` — and it
+/// streams instead of pulsing, because nothing completes in lockstep.
 fn wave(reads: &mut [Read], from: f32, to: f32) {
     let n = reads.len().max(1) as f32;
+    let waves = reads.len().div_ceil(FANOUT).max(1) as f32;
+    let step = (to - from) / waves;
     for (i, read) in reads.iter_mut().enumerate() {
         read.at = from + (to - from) * i as f32 / n;
-        read.flight = Some(COLD);
+        read.flight = Some(step);
     }
 }
 
@@ -200,11 +218,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut LocatorGraphStory) {
 
     ui.label(
         RichText::new(
-            "The index keyed by hash on the left, the corpus ordered by position on the \
-             right. A wire goes out dim with its far end outlined and comes back at full \
-             strength — motion is opacity, because how long a read will take is not known \
-             until it is back. No block is drawn because no block has an address, and the \
-             marks land only once the run is over, because that is when they are knowable.",
+            "Each read advances the pipeline by ONE gap: the index is read to learn which \
+             shard holds a bucket, the shard to get the bucket's entries, and only the \
+             body read crosses to the corpus — because only the corpus is ordered by \
+             position rather than by hash. A wire goes out dim with its far end outlined \
+             and comes back at full strength; motion is opacity, because how long a read \
+             will take is not known until it is back.",
         )
         .color(crate::muted(ui))
         .size(11.0),
@@ -264,8 +283,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut LocatorGraphStory) {
     ui.add_space(6.0);
     // Every mark is a pure function of the clock, so a fixed clock is a fixed frame.
     // Nothing here is "mid-animation": this is the instant, drawn again.
+    //
+    // Tall on purpose: the app draws this across a page, and a 200pt strip puts four
+    // times the ink per point of height on screen than the placement ever will.
     LocatorGraph::new(&state.found_at(RUN * 0.8), RUN * 0.8)
         .fired(&state.feed_at(RUN * 0.8))
-        .size(vec2(width, 200.0))
+        .size(vec2(width, 440.0))
         .show(ui);
 }

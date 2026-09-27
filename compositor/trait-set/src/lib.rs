@@ -72,7 +72,7 @@ fn is_region([x0, y0, x1, y1]: Region) -> bool {
 ///
 /// Hex is also what the house already writes for a digest: see `meme_layout::ImageRef`.
 mod hash_hex {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S: Serializer>(hash: &u64, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.collect_str(&format_args!("{hash:016x}"))
