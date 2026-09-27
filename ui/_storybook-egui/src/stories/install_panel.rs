@@ -39,7 +39,10 @@ fn permissions() -> Vec<InstallFact<'static>> {
             "Embed Links",
             "Rollups, battle reports and epoch recaps arrive as embeds.",
         ),
-        InstallFact::new("Attach Files", "Rendered graphics are posted as attachments."),
+        InstallFact::new(
+            "Attach Files",
+            "Rendered graphics are posted as attachments.",
+        ),
         InstallFact::new(
             "Read Message History",
             "Reading back the message a board edits in place.",

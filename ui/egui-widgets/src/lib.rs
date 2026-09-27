@@ -90,6 +90,7 @@ pub mod leaderboard;
 #[cfg(feature = "cardano")]
 pub mod listing_composer;
 pub mod listing_grid;
+pub mod locator_graph;
 pub mod machine;
 pub mod marquee;
 pub mod metric_card;

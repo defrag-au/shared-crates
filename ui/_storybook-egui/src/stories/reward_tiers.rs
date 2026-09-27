@@ -82,7 +82,11 @@ fn upkeep(label: &str, amount: f64) -> TierUpkeep {
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Reward Tiers").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Reward Tiers")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "What each role is paid, as a list: the role, how many hold it, and what a \
@@ -95,16 +99,22 @@ pub fn show(ui: &mut egui::Ui) {
     );
     ui.add_space(12.0);
 
-    ui.label(egui::RichText::new("A configured world").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("A configured world")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.add_space(6.0);
-    RewardTiers::new()
-        .tiers(black_flag_tiers())
-        .show(ui);
+    RewardTiers::new().tiers(black_flag_tiers()).show(ui);
     ui.add_space(16.0);
 
     // Upkeep is optional: a config with no upkeep concept should not grow an
     // empty column for it.
-    ui.label(egui::RichText::new("Upkeep hidden").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Upkeep hidden")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new("The same tiers with `show_upkeep(false)`.")
             .color(muted(ui))
@@ -119,7 +129,11 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // Nothing to list is a state with a reason, not an empty region.
-    ui.label(egui::RichText::new("Nothing configured").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Nothing configured")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.add_space(6.0);
     RewardTiers::new()
         .empty_note("No tiers in this server's baked config.")

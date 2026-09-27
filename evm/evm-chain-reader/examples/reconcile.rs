@@ -18,9 +18,18 @@
 //! replacement is found when one of them stops answering. A registry entry is not a
 //! promise: the check is `eth_chainId`, and the id has to be `0x1237`.
 //!
-//! A block range is worth passing. This chain produced ~830 blocks in five minutes,
-//! so a window that looks generous in blocks is minutes of chain time, and a
-//! `getLogs` range that is too wide is refused by the endpoint rather than slow.
+//! A block range is worth passing, and worth sizing honestly. Measured over 100,000 blocks:
+//! 10,135 seconds, so about **100 ms a block** — ten a second. A 100,000-block window is under
+//! three hours of chain time, so a range that looks generous in blocks is not, and a range that
+//! is too wide is refused by the endpoint rather than slow.
+//!
+//! # State reads are on a short leash
+//!
+//! These endpoints **prune state**: `eth_call` and `eth_getCode` answered at ~1,000 blocks back
+//! and refused at ~10,800 with `historical state … is not available`. Logs are not pruned — a
+//! `Transfer` scan reaches back to genesis. So this example reads state at `latest` deliberately,
+//! and anything that needs "who owned this at block N" needs an archive endpoint or a log replay:
+//! see the ownership design's decision 5.
 //!
 //! Prints, on stderr, what the endpoint is (chain id and head), whether the
 //! contract implements ERC-4906, and a count. On stdout, one JSON object per line:

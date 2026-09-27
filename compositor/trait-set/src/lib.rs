@@ -2,9 +2,13 @@
 //! each may take, and the art that fills them.
 //!
 //! A [`TraitSet`] is what a studio hands a compositor, and what a compositor
-//! needs before it can render: for every trait, which values exist, what each is
-//! worth, and where its art lives. The unit is **components, not tokens** —
-//! nothing here describes a finished piece.
+//! needs before it can render: the base everything is worn on, and for every trait,
+//! which values exist, what each is worth, and where its art lives. The unit is
+//! **components, not tokens** — nothing here describes a finished piece.
+//!
+//! A full-canvas backdrop is an ordinary trait. The one thing that is *not* a trait is
+//! the [`TraitSet::anchor`] — the subject the traits are worn on — because a trait is
+//! what the collection varies and the subject is what it does not.
 //!
 //! ## What is deliberately absent
 //!
@@ -149,6 +153,18 @@ pub struct TraitSet {
     /// The square canvas edge every region is a fraction of. A resolution rather
     /// than a shape, because regions are normalized.
     pub canvas: u32,
+    /// The base every trait is worn on, where the collection has a fixed one.
+    ///
+    /// Not a trait, and deliberately not expressed as one: a trait is something the
+    /// collection *varies*, and the subject is the thing that does not vary — every
+    /// token is the same character with different traits on it. Reading it as a slot
+    /// would make it a value the solver could pick, which is how a collection ends up
+    /// with two subjects in one token.
+    ///
+    /// Absent while a collection is being worked on and the frame has not been made
+    /// yet, which is why it is optional rather than required.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<ArtRef>,
     /// `[[trait]]` in TOML, as the compositor's own project config spells it.
     #[serde(default, rename = "trait")]
     pub traits: Vec<Trait>,
@@ -161,6 +177,7 @@ impl TraitSet {
             name: name.into(),
             title: title.into(),
             canvas,
+            anchor: None,
             traits: Vec::new(),
         }
     }
@@ -269,6 +286,7 @@ mod tests {
 
     fn catalogue() -> TraitSet {
         let mut set = TraitSet::new("degen-dragon", "Degen Dragons", 1024);
+        set.anchor = Some(ArtRef::Hash(9));
         set.traits.push(headwear());
         set
     }
@@ -330,7 +348,8 @@ mod tests {
 
         assert!(at("schema") < at("name"));
         assert!(at("name") < at("canvas"));
-        assert!(at("canvas") < at("[[trait]]"), "{text}");
+        assert!(at("canvas") < at("anchor"), "{text}");
+        assert!(at("anchor") < at("[[trait]]"), "{text}");
         assert!(at("[[trait]]") < at("[[trait.value]]"), "{text}");
         assert!(
             at("title =") < at("canvas"),
@@ -347,6 +366,38 @@ mod tests {
         assert!(
             !text.contains("title ="),
             "an empty title is not written:\n{text}"
+        );
+    }
+
+    /// The base is what makes the traits placeable at all, so it travels with them —
+    /// and it is not a trait, because a trait is what the collection varies.
+    #[test]
+    fn the_base_travels_with_the_traits_and_is_not_one_of_them() {
+        let set = catalogue();
+
+        assert_eq!(set.anchor, Some(ArtRef::Hash(9)));
+        assert!(
+            set.traits.iter().all(|t| t.name != "anchor"),
+            "the base is a field, not a trait"
+        );
+
+        let json = serde_json::to_string(&set).expect("a catalogue serialises");
+        let back = serde_json::from_str::<TraitSet>(&json).expect("and deserialises");
+        assert_eq!(back.anchor, Some(ArtRef::Hash(9)), "{json}");
+    }
+
+    /// A collection whose frame has not been made yet is still a catalogue — the traits
+    /// and their regions are declared first, and the base arrives when it does.
+    #[test]
+    fn a_catalogue_without_a_base_writes_no_anchor() {
+        let mut set = catalogue();
+        set.anchor = None;
+
+        let text = toml::to_string(&set).expect("a catalogue serialises");
+        assert_eq!(set.validate(), Ok(()), "an absent base is a normal state");
+        assert!(
+            !text.contains("anchor"),
+            "nothing to say, so nothing said:\n{text}"
         );
     }
 
