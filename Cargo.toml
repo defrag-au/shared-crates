@@ -21,6 +21,7 @@ members = [
     "local-cache",
     "http-client",
     "openai-client",
+    "opensea-client",
     "perf-probe",
     "pinata",
     "test-utils",

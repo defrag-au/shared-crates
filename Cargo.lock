@@ -4234,6 +4234,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "opensea-client"
+version = "0.1.0"
+dependencies = [
+ "http-client",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "wasm_safe_serde",
+]
+
+[[package]]
 name = "openssl"
 version = "0.10.81"
 source = "registry+https://github.com/rust-lang/crates.io-index"

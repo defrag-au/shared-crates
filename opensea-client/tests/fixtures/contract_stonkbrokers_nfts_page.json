@@ -1,0 +1,164 @@
+{
+  "nfts" : [ {
+    "identifier" : "1672",
+    "collection" : "stonkbrokers-434284142",
+    "contract" : "0x539cdd042c2f3d93ebc5be7dfff0c79f3b4fabf0",
+    "token_standard" : "erc721",
+    "name" : "Stonk Broker #1672",
+    "description" : "4444 pixel stock-broker NFTs with dedicated onchain wallets funded at mint. ERC-721C with enforceable royalties.",
+    "image_url" : "https://raw2.seadn.io/robinhood/0x539cdd042c2f3d93ebc5be7dfff0c79f3b4fabf0/66ecf69424b4c917e473630d09f2d2/1166ecf69424b4c917e473630d09f2d2.svg",
+    "display_image_url" : "https://raw2.seadn.io/robinhood/0x539cdd042c2f3d93ebc5be7dfff0c79f3b4fabf0/66ecf69424b4c917e473630d09f2d2/1166ecf69424b4c917e473630d09f2d2.svg",
+    "display_animation_url" : null,
+    "metadata_url" : null,
+    "opensea_url" : "https://opensea.io/assets/robinhood/0x539cdd042c2f3d93ebc5be7dfff0c79f3b4fabf0/1672",
+    "updated_at" : "2026-09-26T23:54:57.810195",
+    "is_disabled" : false,
+    "is_nsfw" : false,
+    "original_image_url" : null,
+    "original_animation_url" : null,
+    "traits" : [ {
+      "trait_type" : "Tie",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Green"
+    }, {
+      "trait_type" : "Eyes",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Slate Gray"
+    }, {
+      "trait_type" : "Nose",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Pink - Flat"
+    }, {
+      "trait_type" : "Skin",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Human"
+    }, {
+      "trait_type" : "Suit",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Charcoal"
+    }, {
+      "trait_type" : "Mouth",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Beard"
+    }, {
+      "trait_type" : "Neckwear",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Tie"
+    }, {
+      "trait_type" : "Background",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Tan"
+    }, {
+      "trait_type" : "Hair Style",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Bald"
+    }, {
+      "trait_type" : "Broker Badge",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Diamond Hands"
+    }, {
+      "trait_type" : "Face Accessory",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Rimless Glasses"
+    }, {
+      "trait_type" : "Wallet Address",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "0xf9facb7bbbe1232dd8013d3e67fbc4e993f8ae9d"
+    } ],
+    "estimated_value_usd" : null,
+    "decimals" : null
+  }, {
+    "identifier" : "3438",
+    "collection" : "stonkbrokers-434284142",
+    "contract" : "0x539cdd042c2f3d93ebc5be7dfff0c79f3b4fabf0",
+    "token_standard" : "erc721",
+    "name" : "Stonk Broker #3438",
+    "description" : "4444 pixel stock-broker NFTs with dedicated onchain wallets funded at mint. ERC-721C with enforceable royalties.",
+    "image_url" : "https://raw2.seadn.io/robinhood/0x539cdd042c2f3d93ebc5be7dfff0c79f3b4fabf0/94d34f3f60c5cc4cc00a5676c32eab/5394d34f3f60c5cc4cc00a5676c32eab.svg",
+    "display_image_url" : "https://raw2.seadn.io/robinhood/0x539cdd042c2f3d93ebc5be7dfff0c79f3b4fabf0/94d34f3f60c5cc4cc00a5676c32eab/5394d34f3f60c5cc4cc00a5676c32eab.svg",
+    "display_animation_url" : null,
+    "metadata_url" : null,
+    "opensea_url" : "https://opensea.io/assets/robinhood/0x539cdd042c2f3d93ebc5be7dfff0c79f3b4fabf0/3438",
+    "updated_at" : "2026-09-26T23:54:57.810215",
+    "is_disabled" : false,
+    "is_nsfw" : false,
+    "original_image_url" : null,
+    "original_animation_url" : null,
+    "traits" : [ {
+      "trait_type" : "Tie",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Teal"
+    }, {
+      "trait_type" : "Eyes",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Green"
+    }, {
+      "trait_type" : "Skin",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Human"
+    }, {
+      "trait_type" : "Suit",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Charcoal"
+    }, {
+      "trait_type" : "Mouth",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Mustache"
+    }, {
+      "trait_type" : "Neckwear",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Tie"
+    }, {
+      "trait_type" : "Background",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Light Blue"
+    }, {
+      "trait_type" : "Hair Color",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Gray Brown"
+    }, {
+      "trait_type" : "Hair Style",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Long Side"
+    }, {
+      "trait_type" : "Broker Badge",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Diamond Hands"
+    }, {
+      "trait_type" : "Face Accessory",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Bluetooth Headset"
+    }, {
+      "trait_type" : "Wallet Address",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "0x15c09117aa17243b884336c771505c2af7a8e9b0"
+    } ],
+    "estimated_value_usd" : null,
+    "decimals" : null
+  } ],
+  "next" : "WyIwMDEzNzg1ZC1kNzQxLTNjMmMtYWJiYy1kOTEyNDExMzk3Y2EiXQ"
+}
