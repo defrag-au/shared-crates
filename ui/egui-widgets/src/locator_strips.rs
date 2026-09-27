@@ -31,19 +31,19 @@
 //! read is in the air**, at the instant it went out. The moment an answer lands its tick is
 //! gone — no trail, no fade — so what is on the strip is exactly the set of requests
 //! outstanding now. A block against the right edge is a burst being answered; a spark
-//! alone out in the empty part of the strip is a request that has been out *that* long,
-//! which is what makes a hung read visible without a word; and a quiet reader has no strip
-//! at all rather than an empty one.
+//! alone and **pinned to the left edge** is a request that has been out for longer than
+//! the whole window, which is what makes a slow or hung read visible without a word; and a
+//! quiet reader has no strip at all rather than an empty one.
 //!
 //! ## Cost and discipline
 //!
 //! Everything painted is a pure function of `now` — a read's heat is `f(now - at)`, with
 //! no accumulation state between frames — so a still is reproducible and a scrub is
-//! honest. **Nothing outlives [`WINDOW`]**: a request that never lands still leaves the
-//! screen four seconds after it went out, because after that the widget can say nothing
-//! about it, and a mark that stayed would be a mark nothing else on screen agrees with.
-//! A repaint is asked for only while some read still has heat, and the widget is drawn at
-//! full strength: fade it at the placement with `Ui::set_opacity`.
+//! honest. A repaint is asked for only while something on screen is still **moving**: a
+//! request that has been out longer than [`WINDOW`] keeps its mark — it is still
+//! outstanding, which is worth knowing — but the mark does not change, so the paint can
+//! stop. The widget is drawn at full strength: fade it at the placement with
+//! `Ui::set_opacity`.
 
 use egui::{Color32, CornerRadius, Painter, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
@@ -128,15 +128,17 @@ impl<'a> LocatorStrips<'a> {
         self
     }
 
-    /// Whether anything is still on screen, so the host knows to keep painting.
+    /// Whether anything on screen is still **moving**, so the host knows to keep painting.
     ///
-    /// Exactly the test the drawing uses — every band and the strip are drawn from
-    /// [`weight_of`] — so a run stops asking for repaints when its last read goes dark
-    /// and not a frame before, and a widget with ink can never report itself idle.
+    /// ⚠️ **Not the same question as "is there ink"**, and the one state where they differ
+    /// is why: a request that has been out longer than [`WINDOW`] keeps its mark (see
+    /// [`weight_of`]) but the mark does not move, so a frame showing it is finished and a
+    /// host that kept painting would paint the same pixels forever. Everything else is
+    /// bounded by the window, which is also this widget's whole reach.
     pub fn busy(&self) -> bool {
         self.reads
             .iter()
-            .any(|read| weight_of(read, self.now) > 0.0)
+            .any(|read| self.now - read.at < WINDOW && weight_of(read, self.now) > 0.0)
     }
 
     /// Draw it. Nothing is interactive, so the response is for layout only.
@@ -257,15 +259,17 @@ impl<'a> LocatorStrips<'a> {
 ///
 /// A read is an event on this axis and an answered one is not: the tick goes the moment
 /// the answer lands, which is what makes the strip the set of requests outstanding now
-/// rather than a history of the last few seconds. Nothing at or past `window` is drawn —
-/// the same edge [`weight_of`] uses, so the strip and the bands agree on what is on screen
-/// and a request that never lands cannot park a tick there for the session.
+/// rather than a history of the last few seconds. **A request out for longer than the
+/// window pins to the left edge** rather than leaving it: the axis cannot say how much
+/// longer, and one request taking twelve seconds — the cold fence read of a build, measured
+/// 2026-09-27 — is the most interesting thing the widget has to show, not something to
+/// drop.
 fn sparks(reads: &[Read], now: f32, window: f32) -> Vec<f32> {
     let start = now - window;
     reads
         .iter()
-        .filter(|read| read.flight.is_none() && read.at > start && read.at <= now)
-        .map(|read| (read.at - start) / window)
+        .filter(|read| read.flight.is_none() && read.at <= now)
+        .map(|read| ((read.at - start) / window).clamp(0.0, 1.0))
         .collect()
 }
 
@@ -301,13 +305,14 @@ fn chunk_of(read: &Read) -> Option<u32> {
 
 /// How much of a read is still showing, `0.0`..=`1.0`.
 ///
-/// A read still in the air is at full heat — it is happening *now* — and a landed one
-/// fades over [`HOLD`] from the moment it went out. A read the clock has not reached is
-/// not showing at all, and neither is one older than [`WINDOW`], however long it has been
-/// out: see the module note on the window as the widget's whole reach.
+/// A read still in the air is at full heat — it is happening *now* — and stays there for as
+/// long as it is out, however long that is: an unanswered request is not something to age
+/// off the screen, and a run waiting on one read is a run worth seeing. A landed one fades
+/// over [`HOLD`] from the moment it went out, and a read the clock has not reached is not
+/// showing at all.
 fn weight_of(read: &Read, now: f32) -> f32 {
     let age = now - read.at;
-    if age < 0.0 || age >= WINDOW {
+    if age < 0.0 {
         return 0.0;
     }
     match read.flight {
@@ -453,8 +458,8 @@ mod tests {
     fn a_read_still_in_the_air_is_heat_now() {
         // It has not landed, so there is no flight to fade against — and it is happening,
         // which is the strongest thing a read can be doing. That holds for as long as it
-        // is out, but only inside the window: past that it is off the screen whatever it
-        // is doing, like everything else here.
+        // is out, however long that is: a request that has taken twelve seconds is a run
+        // waiting, and the one thing on screen worth looking at.
         let flying = Read {
             flight: None,
             ..body(10, 0.0)
@@ -462,7 +467,13 @@ mod tests {
         assert_eq!(weight_of(&flying, 0.0), 1.0);
         assert_eq!(weight_of(&flying, HOLD * 0.9), 1.0);
         assert_eq!(weight_of(&flying, WINDOW - 0.01), 1.0);
-        assert_eq!(weight_of(&flying, WINDOW), 0.0);
+        assert_eq!(weight_of(&flying, WINDOW), 1.0, "still out is still hot");
+        assert_eq!(
+            weight_of(&flying, 600.0),
+            1.0,
+            "ten minutes later, still out"
+        );
+        // What lapses at the window is the *repaint*, not the mark: see `busy`.
         assert!(LocatorStrips::new(&[flying], WINDOW - 0.01).busy());
         assert!(!LocatorStrips::new(&[flying], WINDOW).busy());
     }
@@ -488,11 +499,12 @@ mod tests {
     }
 
     #[test]
-    fn the_paint_stops_when_the_last_read_goes_dark_and_not_before() {
-        // ⚠️ The one thing that decides a repaint is whether anything would be drawn, and
-        // everything drawn is drawn from `weight_of`. This is that agreement, sampled — a
-        // widget that reported itself idle while it still had ink would freeze mid-fade,
-        // and one that painted a dark screen would spin a laptop fan.
+    fn the_paint_stops_when_the_ink_stops_moving() {
+        // ⚠️ The direction that matters: a widget that reported itself idle while
+        // something on screen was still changing would freeze mid-fade. The converse is
+        // false on purpose — a request that has been out longer than the window keeps its
+        // mark and stops needing repaints, because its mark is not moving — so this pins
+        // the implication rather than an equality.
         let runs = [
             vec![body(10, 0.0)],
             vec![run(64, 0.0)],
@@ -506,13 +518,15 @@ mod tests {
             for step in 0..90 {
                 let now = step as f32 * 0.1;
                 let ink = reads.iter().any(|read| weight_of(read, now) > 0.0);
-                assert_eq!(
-                    LocatorStrips::new(reads, now).busy(),
-                    ink,
-                    "at {now} with {count} reads"
-                );
+                if LocatorStrips::new(reads, now).busy() {
+                    assert!(ink, "busy with nothing drawn at {now} with {count} reads");
+                }
             }
         }
+        // And a landed read stops at the hold, not a frame later or a frame early.
+        let landed = vec![body(10, 0.0)];
+        assert!(LocatorStrips::new(&landed, HOLD - 0.01).busy());
+        assert!(!LocatorStrips::new(&landed, HOLD).busy());
     }
 
     #[test]
@@ -558,20 +572,22 @@ mod tests {
     }
 
     #[test]
-    fn a_read_still_out_is_a_spark_however_long_it_has_been_out() {
-        // Longer out than a landed read's heat lasts, and still on the strip: it is still
-        // being waited on. A spark alone away from the right edge is exactly a request
-        // that has been out that long.
+    fn a_read_still_out_keeps_its_spark_however_long_it_has_been_out() {
+        // Longer out than a landed read's heat lasts, and still a spark: it is still
+        // being waited on.
         let hung = [Read {
             flight: None,
             ..body(1, 0.0)
         }];
         assert_eq!(sparks(&hung, HOLD + 0.9, WINDOW).len(), 1);
-        // But only inside the window: a request that never lands must not park a tick on
-        // the strip for the rest of the session, nor keep the host painting for it.
-        assert!(sparks(&hung, WINDOW, WINDOW).is_empty());
-        assert!(sparks(&hung, WINDOW + 2.0, WINDOW).is_empty());
+        // Out past the window it does not leave the strip, it **pins to the left edge** —
+        // which is what the axis can say past that point: out for longer than the window
+        // shows. The repaint stops (that mark does not move); the mark does not.
+        assert_eq!(sparks(&hung, WINDOW + 2.0, WINDOW), vec![0.0]);
         assert!(!LocatorStrips::new(&hung, WINDOW + 2.0).busy());
+        // A landed read, by contrast, is gone the moment its heat is.
+        let landed = [body(1, 0.0)];
+        assert!(sparks(&landed, WINDOW + 2.0, WINDOW).is_empty());
     }
 
     #[test]
