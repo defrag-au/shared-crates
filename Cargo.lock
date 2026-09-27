@@ -6997,6 +6997,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "trait-set"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "transactions"
 version = "0.1.0"
 dependencies = [
