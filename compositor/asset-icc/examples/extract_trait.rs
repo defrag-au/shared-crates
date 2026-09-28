@@ -51,7 +51,9 @@ fn fnv1a(bytes: &[u8]) -> u64 {
 
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
-    let src = args.next().expect("usage: <in.png> <slot_x> <slot_y> <slot_w> <slot_h> <out.png>");
+    let src = args
+        .next()
+        .expect("usage: <in.png> <slot_x> <slot_y> <slot_w> <slot_h> <out.png>");
     let sx: i64 = args.next().expect("missing slot_x").parse()?;
     let sy: i64 = args.next().expect("missing slot_y").parse()?;
     let sw: u32 = args.next().expect("missing slot_w").parse()?;

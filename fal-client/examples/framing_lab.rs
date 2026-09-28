@@ -25,7 +25,7 @@
 //!                  a prompt can bind colour to the right region, which is what a
 //!                  fixed trait set needs.
 
-use fal_client::{decode_data_uri, png_data_uri, FalClient, FluxCannyGenRequest, ImageOutput};
+use fal_client::{FalClient, FluxCannyGenRequest, ImageOutput, decode_data_uri, png_data_uri};
 use std::path::Path;
 
 const DIR: &str = ".tmp/framing-lab";
@@ -127,8 +127,13 @@ async fn hero(client: &FalClient) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Condition on the hero: same frame, different subject.
-async fn variations(client: &FalClient, hero: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-    let hero_uri = png_data_uri(&std::fs::read(Path::new(DIR).join(hero.unwrap_or("01-hero-a.png")))?);
+async fn variations(
+    client: &FalClient,
+    hero: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let hero_uri = png_data_uri(&std::fs::read(
+        Path::new(DIR).join(hero.unwrap_or("01-hero-a.png")),
+    )?);
 
     for (slug, subject) in VARIATIONS {
         let prompt = format!(
@@ -146,7 +151,9 @@ the same place. Do not reframe."
 
 /// Flatten the hero to linework — the pose, with nothing else on it.
 async fn lineart(client: &FalClient, hero: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-    let hero_uri = png_data_uri(&std::fs::read(Path::new(DIR).join(hero.unwrap_or("01-hero-a.png")))?);
+    let hero_uri = png_data_uri(&std::fs::read(
+        Path::new(DIR).join(hero.unwrap_or("01-hero-a.png")),
+    )?);
 
     let out = client
         .nano_banana_edit(&[&hero_uri], LINEART_PROMPT, 1, "auto", "1K")
@@ -190,7 +197,10 @@ fn save_all(out: &ImageOutput, stem: &str) -> Result<(), Box<dyn std::error::Err
         } else {
             String::new()
         };
-        write(&format!("{stem}{suffix}.png"), &decode_data_uri(&image.url)?)?;
+        write(
+            &format!("{stem}{suffix}.png"),
+            &decode_data_uri(&image.url)?,
+        )?;
     }
     println!("seed={:?}", out.seed);
     Ok(())
@@ -206,7 +216,9 @@ fn write(name: &str, bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
 /// Swap one trait slot on the hero, then flatten the result. If the body
 /// outline survives the swap, variants stay registered to the base frame.
 async fn variant(client: &FalClient, hero: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-    let hero_uri = png_data_uri(&std::fs::read(Path::new(DIR).join(hero.unwrap_or("01-hero-a.png")))?);
+    let hero_uri = png_data_uri(&std::fs::read(
+        Path::new(DIR).join(hero.unwrap_or("01-hero-a.png")),
+    )?);
 
     let swapped = client
         .nano_banana_edit(&[&hero_uri], SLOT_SWAP, 1, "auto", "1K")

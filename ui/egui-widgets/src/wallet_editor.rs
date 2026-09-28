@@ -170,13 +170,19 @@ pub enum Submission {
     /// a stake address and cannot be used as one — a host that cannot convert it
     /// should say so rather than look it up and get nothing.
     PaymentAddress(String),
+    /// An EVM account (`0x` + 20 bytes), **lower-cased**. The chain treats an
+    /// account case-insensitively and the ownership data stores the lower-case
+    /// form, so every lookup that follows is a string comparison — the EIP-55
+    /// checksum case is not information this pipeline keeps.
+    Account(String),
 }
 
 impl Submission {
     /// Classify raw input. `None` for anything blank.
     ///
-    /// Anything without a recognised address prefix is taken as a handle, which
-    /// is how a reader typing a bare `boef` gets what they meant.
+    /// Anything matching none of the recognised forms — a handle, a stake or
+    /// payment address, an EVM account — is taken as a handle, which is how a
+    /// reader typing a bare `boef` gets what they meant.
     pub fn classify(raw: &str) -> Option<Self> {
         let t = raw.trim();
         if t.is_empty() {
@@ -195,13 +201,24 @@ impl Submission {
         if t.starts_with("addr1") || t.starts_with("addr_test1") {
             return Some(Self::PaymentAddress(t.to_string()));
         }
+        // An EVM account. Length and hex checked rather than trusted: a reader may
+        // well paste a transaction hash or an abbreviated address, and calling
+        // either an account would send it to a lookup that cannot match.
+        if let Some(digits) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+            if digits.len() == 40 && digits.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Some(Self::Account(format!("0x{}", digits.to_ascii_lowercase())));
+            }
+        }
         Some(Self::Handle(t.to_string()))
     }
 
     /// The text a host would store or display for this submission.
     pub fn as_str(&self) -> &str {
         match self {
-            Self::Handle(s) | Self::StakeAddress(s) | Self::PaymentAddress(s) => s,
+            Self::Handle(s)
+            | Self::StakeAddress(s)
+            | Self::PaymentAddress(s)
+            | Self::Account(s) => s,
         }
     }
 }
@@ -232,7 +249,7 @@ impl Default for WalletEditorConfig<'_> {
             // Address first, matching the holder-lookup field elsewhere in the
             // same sidebar — two inputs that take the same things should not
             // describe them in two different orders.
-            placeholder: "stake1... or $handle",
+            placeholder: "stake1..., 0x... or $handle",
             empty_text: "No wallets yet",
             add_title: "Add wallet",
             command_id: "wallet.add",
@@ -683,6 +700,36 @@ mod tests {
             Submission::classify("stake1u9xyz"),
             Some(Submission::StakeAddress("stake1u9xyz".into()))
         );
+    }
+
+    #[test]
+    fn an_evm_account_is_its_own_thing_and_lower_cases() {
+        let lower = "0x7980aa64093853cb78c927e05b88fed96e945f81";
+        assert_eq!(
+            Submission::classify(lower),
+            Some(Submission::Account(lower.into()))
+        );
+        // Case is not kept — see the variant's own note. The host stores and
+        // compares these, so an all-caps paste would otherwise be the same wallet
+        // twice in the roster and a lookup that matches nothing.
+        assert_eq!(
+            Submission::classify("0x7980AA64093853CB78C927E05B88FED96E945F81"),
+            Some(Submission::Account(lower.into()))
+        );
+    }
+
+    #[test]
+    fn an_evm_shaped_string_that_is_not_an_account_falls_through_to_a_handle() {
+        // A truncated address or a transaction hash shares the prefix. Calling
+        // either an account would send it to a lookup that cannot match; the
+        // handle fallback at least answers with a failure the reader can see.
+        for not_an_account in ["0x7980aa", &format!("0x{}", "a".repeat(64))] {
+            assert_eq!(
+                Submission::classify(not_an_account),
+                Some(Submission::Handle(not_an_account.to_string())),
+                "input {not_an_account:?}"
+            );
+        }
     }
 
     #[test]

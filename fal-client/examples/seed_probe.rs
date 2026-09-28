@@ -23,7 +23,8 @@ struct ProbeInput<'a> {
     seed: u64,
 }
 
-const PROMPT: &str = "A simple flat emblem: one bold centred diamond on a dark teal field, minimal, no text.";
+const PROMPT: &str =
+    "A simple flat emblem: one bold centred diamond on a dark teal field, minimal, no text.";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

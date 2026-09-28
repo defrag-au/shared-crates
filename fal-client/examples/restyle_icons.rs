@@ -24,7 +24,9 @@ background to match the second image.";
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let reference = args.next().expect("usage: <reference.png> <subject.png>...");
+    let reference = args
+        .next()
+        .expect("usage: <reference.png> <subject.png>...");
     let key = std::env::var("FAL_API_KEY").expect("FAL_API_KEY not set");
 
     let client = FalClient::new(&key);

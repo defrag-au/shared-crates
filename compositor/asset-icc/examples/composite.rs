@@ -14,7 +14,9 @@ use std::path::Path;
 
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
-    let base_path = args.next().expect("usage: <base.png> <overlay.png> [out.png]");
+    let base_path = args
+        .next()
+        .expect("usage: <base.png> <overlay.png> [out.png]");
     let over_path = args.next().expect("missing overlay.png");
     let out_path = args
         .next()
@@ -26,7 +28,9 @@ fn main() -> anyhow::Result<()> {
     let (bw, bh) = base.dimensions();
     let (ow, oh) = over.dimensions();
     if (bw, bh) != (ow, oh) {
-        println!("note: sizes differ ({bw}x{bh} base, {ow}x{oh} overlay); compositing top-left aligned");
+        println!(
+            "note: sizes differ ({bw}x{bh} base, {ow}x{oh} overlay); compositing top-left aligned"
+        );
     }
 
     imageops::overlay(&mut base, &over, 0, 0);
