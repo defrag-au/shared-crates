@@ -166,6 +166,23 @@ or write it ourselves" is not a set of options.
   gather information, before editing with the editor tools.
 
 
+## Kill only the processes you started — never by name pattern
+<!-- rule: rules/core/kill-only-what-you-started -->
+
+- Never clean up with `pkill -f "<app>"`, `killall <app>`, or any pattern that matches a
+  binary by name — it also matches the copy the user is running interactively. Kill only the
+  instances you started, by an identifier unique to them: a PID you captured, a flag you
+  passed, or a port only your process bound.
+- A long-running helper you spawn — a headless browser, a dev server, a watcher — gets a
+  unique handle on its own command line: `--user-data-dir=.tmp/<task>-profile`, a `--port` you
+  chose, an output path under `.tmp/`. Clean up with *that string*, not the app's name.
+- The handle must be one only your process carries. `pkill -f "Brave Browser"` is the failure;
+  `pkill -f "brave-profile-<task>"` is the fix, because the user's own Brave has no such flag.
+- Cannot give it a unique handle → kill nothing. Say what you left running instead.
+- Put scratch profiles and artefacts under `.tmp/` in the repo, so the handle and the cleanup
+  target are unambiguous.
+
+
 ## Typed structs only — no serde_json::Value, no json! macro
 <!-- rule: rules/core/typed-json-only -->
 
@@ -237,6 +254,30 @@ KOIOS_API_KEY=<real value>
   rotated, and that is my decision rather than a cleanup you perform silently.
 - A secret in a code comment or a `// TODO: replace before merge` is the same leak with an
   expiry date that nobody enforces.
+
+
+## Prefer ownership over shared mutable state
+<!-- rule: rules/core/ownership-over-shared-state -->
+
+Prefer an ownership design to shared mutable state. Do not reach for `Rc<RefCell<T>>`,
+`Arc<Mutex<T>>` or a `static` lock to get around a borrow, lifetime or callback problem —
+restructure the value instead, and say what the restructure is.
+
+Three shapes that usually replace it:
+
+- **Split the value.** The thing being mutated and the things reading it become separate
+  objects, wired together by the caller that owns both.
+- **Move the state to the caller.** The count, the cache, the cursor is owned by whoever
+  drives the loop and passed in, so there is one writer by construction.
+- **Replace the check, not the state.** If the shared state existed only to catch a misuse, a
+  type parameter, a consumed token, or a `Result` from the one place that can see the misuse
+  costs less and cannot be reached around.
+
+If shared mutable state is genuinely the answer, name what breaks without it and ask before
+building on it. Do not offer it as the low-effort option in a list of designs either.
+
+Narrow existing uses are not this rule: a counter or a memo already behind `&self` inside one
+type is an implementation detail, not a design, and it does not need a decision from me.
 
 
 ## Rust tooling lives behind the Nix devshell
@@ -507,6 +548,26 @@ be rendered and looked at before it is reported as done.
 - Not evidence: it compiles · its tests pass · the storybook entry renders without a panic · it
   looks right in the code.
 - A *deployed* app is checked the same way — the helper points at a real URL.
+
+
+## Bulk uploads to R2 run on the arm box, not the workstation
+<!-- rule: rules/org/defrag/bulk-uploads-run-on-the-arm-box -->
+
+**Build and verify on the workstation; run the transfer on the arm box.** The workstation's
+uplink sets the ceiling for a GB-scale write to R2, so a large upload from here is a validation
+step and never the production one.
+
+| step | where |
+| --- | --- |
+| build the artifact · dry-run the publish · check the bytes | workstation |
+| the `rclone`/`publish` run that moves GB to R2 | arm box |
+
+- `--run`-gated publishers (`mithril-snapshot publish`, `tx-index publish`) print their exact
+  `rclone` invocation without `--run` · copy that line to the box rather than re-running it here.
+- The box already holds the chunk store, so an artifact derived from chunks is **rebuilt** there,
+  never copied to it — copying it spends the same uplink twice.
+- Native build on the box, not `aarch64-unknown-linux-musl`: the musl build measured 2.2× slower
+  on one thread and *slower with eight than with one*.
 
 
 ## egui layout traps that cost an afternoon

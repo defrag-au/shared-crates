@@ -24,7 +24,9 @@
 //! - **A silent feed is not a quiet chain.** [`FeedHealth`] separates the two:
 //!   a connection that has not even answered keep-alive for
 //!   [`SILENT_AFTER_SECS`] is `Silent`, and only a `Following` feed at the tip
-//!   reports [`HeartbeatSnapshot::block_due_probability`].
+//!   reports [`HeartbeatSnapshot::block_due_probability`]. A peer that answers
+//!   keep-alive but stops sending blocks is ended by the follower's
+//!   `stall_after` watchdog, so the host can move to another relay.
 //! - **Catch-up is not activity.** Blocks replayed after a reconnect arrive as
 //!   [`SyncState::CatchingUp`]; a UI should not pulse for them.
 //! - **Block production is memoryless.** The due-probability rises with elapsed
