@@ -7,6 +7,8 @@ members = [
     "asset-intents",
     "authorizations",
     "image-hash",
+    "magic-link",
+    "email-service",
     "discord-auth",
     "cardano-tx",
     "cardano-assets",
@@ -191,6 +193,12 @@ cardano-assets = { path = "cardano-assets" }
 # can all name a chain without any of them dragging the others in.
 chains = { path = "chains" }
 image-hash = { path = "image-hash" }
+# Sign a waiting device in by approving it elsewhere (emailed link or pairing
+# code). Pure; the caller stores grants and supplies randomness.
+magic-link = { path = "magic-link" }
+# Sending email from a Worker (Resend). Moved from cnft.dev-workers'
+# services/email, which had no consumers left.
+email-service = { path = "email-service" }
 discord-auth = { path = "discord-auth" }
 # The serde-only Discord message model, and the client that sends it. Split
 # because the model is consumed by things that never send (the plugin protocol)

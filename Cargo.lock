@@ -1687,6 +1687,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "email-service"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "worker_stack",
+ "worker_utils",
+]
+
+[[package]]
 name = "emath"
 version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3525,6 +3536,16 @@ dependencies = [
  "wasm_safe_serde",
  "worker_stack",
  "worker_utils",
+]
+
+[[package]]
+name = "magic-link"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

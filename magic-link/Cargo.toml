@@ -1,0 +1,17 @@
+[package]
+name = "magic-link"
+description = "Sign a waiting device in by approving it from somewhere else: an emailed magic link, or a short pairing code. Pure — no I/O, no runtime; the caller stores grants and supplies randomness."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+# Secrets are stored and compared as SHA-256 hashes, never as themselves.
+sha2 = "0.10"
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

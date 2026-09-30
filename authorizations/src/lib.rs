@@ -241,6 +241,10 @@ pub struct SessionClaims {
     /// `stake_test1…`). Absent for Discord-authed sessions.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stake: Option<String>,
+    /// The email address this session authenticated as, by an emailed magic
+    /// link (`magic-link`), normalised to lower case. Absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
     /// Guild the session was granted through (provenance, not authority —
     /// the entitlements are the authority).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -284,6 +288,16 @@ impl SessionClaims {
         }
     }
 
+    /// An email-authed session (a `magic-link` approval). The email is the
+    /// identity that was proven: the person opened a link sent to it.
+    pub fn for_email(email: impl Into<String>, ent: impl Into<String>) -> Self {
+        Self {
+            email: Some(email.into()),
+            ent: ent.into(),
+            ..Self::default()
+        }
+    }
+
     #[must_use]
     pub fn with_client(mut self, client_id: impl Into<String>) -> Self {
         self.client = Some(client_id.into());
@@ -307,28 +321,33 @@ impl SessionClaims {
     /// The invariant: a token naming nobody authenticates nobody. Verifiers
     /// reject a token that fails this — see [`verify_token`].
     pub fn has_identity(&self) -> bool {
-        self.sub.is_some() || self.client.is_some() || self.stake.is_some()
+        self.sub.is_some() || self.client.is_some() || self.stake.is_some() || self.email.is_some()
     }
 
     /// Who to write into an audit trail, best available.
     ///
     /// Degrades through the identities rather than inventing a name: display
     /// name + Discord id, then the bare Discord id, then the client id, then
-    /// the stake address. The last case is the honest one for a wallet-authed
-    /// operator who has never linked Discord — "who did this" is answerable,
-    /// just not by a name.
+    /// the stake address, then the email. The wallet case is the honest one
+    /// for an operator who has never linked Discord — "who did this" is
+    /// answerable, just not by a name.
     pub fn actor(&self) -> String {
         match (self.name.as_deref(), self.sub.as_deref()) {
             (Some(name), Some(id)) => format!("{name} ({id})"),
             (Some(name), None) => name.to_string(),
             (None, Some(id)) => id.to_string(),
-            (None, None) => match (self.client.as_deref(), self.stake.as_deref()) {
-                (Some(client), _) => format!("client {client}"),
-                (None, Some(stake)) => stake.to_string(),
+            (None, None) => match (
+                self.client.as_deref(),
+                self.stake.as_deref(),
+                self.email.as_deref(),
+            ) {
+                (Some(client), _, _) => format!("client {client}"),
+                (None, Some(stake), _) => stake.to_string(),
+                (None, None, Some(email)) => email.to_string(),
                 // Unreachable for a verified token — `verify_token` rejects
                 // an identity-less one — but this is an audit field, and a
                 // panic here would be a worse answer than a legible marker.
-                (None, None) => "unidentified".to_string(),
+                (None, None, None) => "unidentified".to_string(),
             },
         }
     }
@@ -555,6 +574,24 @@ mod tests {
         assert_eq!(parsed.sub, None);
         assert_eq!(parsed.stake.as_deref(), Some("stake_test1abc"));
         assert_eq!(parsed.client.as_deref(), Some("client_42"));
+    }
+
+    /// An email-authed session (a magic link) names only its email, and is a
+    /// valid, round-trippable token on that alone.
+    #[test]
+    fn an_email_session_is_an_identity_on_its_own() {
+        let secret = b"super-secret-key-for-tests";
+        let claims = SessionClaims::for_email("jen@example.com", "montager.owner");
+        assert!(claims.has_identity());
+        assert_eq!(claims.actor(), "jen@example.com");
+        let token = mint_token(claims, secret, chrono::Duration::hours(1)).unwrap();
+
+        let parsed = verify_token(&token, secret).unwrap();
+        assert_eq!(parsed.email.as_deref(), Some("jen@example.com"));
+        assert_eq!(
+            (parsed.sub, parsed.stake, parsed.client),
+            (None, None, None)
+        );
     }
 
     /// The invariant is enforced at BOTH ends. A correctly-signed token that
