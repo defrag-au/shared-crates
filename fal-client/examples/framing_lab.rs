@@ -18,12 +18,12 @@
 //! * `variations` — Nano Banana 2 edit, hero as the sole reference, `auto` ratio.
 //! * `lineart`    — Nano Banana 2 edit, hero flattened to black-on-white linework.
 //! * `lock`       — FLUX canny text-to-image into those edges: identical geometry,
-//!                  colour driven by the prompt.
+//!   colour driven by the prompt.
 //! * `variant`    — swap ONE trait slot on the hero, then flatten again: the test
-//!                  for whether a generated variant stays registered to the base.
+//!   for whether a generated variant stays registered to the base.
 //! * `palettes`   — one control, several colour assignments: the test for whether
-//!                  a prompt can bind colour to the right region, which is what a
-//!                  fixed trait set needs.
+//!   a prompt can bind colour to the right region, which is what a fixed trait
+//!   set needs.
 
 use fal_client::{FalClient, FluxCannyGenRequest, ImageOutput, decode_data_uri, png_data_uri};
 use std::path::Path;

@@ -204,11 +204,10 @@ impl Submission {
         // An EVM account. Length and hex checked rather than trusted: a reader may
         // well paste a transaction hash or an abbreviated address, and calling
         // either an account would send it to a lookup that cannot match.
-        if let Some(digits) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
-            if digits.len() == 40 && digits.bytes().all(|b| b.is_ascii_hexdigit()) {
+        if let Some(digits) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X"))
+            && digits.len() == 40 && digits.bytes().all(|b| b.is_ascii_hexdigit()) {
                 return Some(Self::Account(format!("0x{}", digits.to_ascii_lowercase())));
             }
-        }
         Some(Self::Handle(t.to_string()))
     }
 
