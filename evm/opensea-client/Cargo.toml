@@ -1,0 +1,24 @@
+[package]
+name = "opensea-client"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "Typed OpenSea API v2 client — collections, stats, contracts and NFTs, over http-client"
+
+[dependencies]
+http-client = { path = "../../http-client" }
+wasm_safe_serde = { path = "../../wasm-safe-serde" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# `time` is for the example's pacing between requests, not for the crate.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+
+[features]
+# Exercises the live API from `tests/live.rs`. Off by default: CI runs
+# `cargo test --workspace --all-targets` with default features, so nothing in
+# this crate reaches the network there. Run it deliberately:
+#   OPENSEA_API_KEY=… cargo test -p opensea-client --features live
+live = []

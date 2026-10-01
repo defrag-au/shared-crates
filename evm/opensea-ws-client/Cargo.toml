@@ -1,0 +1,43 @@
+[package]
+name = "opensea-ws-client"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "OpenSea Stream API — the native WebSocket transport, over opensea-stream's frames"
+
+[dependencies]
+opensea-stream = { path = "../opensea-stream" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+futures-util = { workspace = true }
+tokio = { workspace = true, features = ["rt", "time", "macros"] }
+# rustls rather than native-tls, per the workspace's rustls-over-openssl rule. The
+# `url` feature is what lets `connect_async` take an endpoint string; it is not in
+# the default feature set.
+tokio-tungstenite = { version = "0.30", default-features = false, features = [
+    "connect",
+    "rustls-tls-webpki-roots",
+    "url",
+] }
+# `tokio-tungstenite`'s rustls feature deliberately enables no crypto provider, and
+# rustls 0.23 panics on the first connection when it cannot pick one from the
+# enabled features — a panic, not a compile error, so the symptom is a dead
+# follower rather than a failed build. Naming `ring` here is what selects it.
+# `ring` rather than rustls's own default `aws-lc-rs` because `ring` is already in
+# this workspace's tree. Nothing new enters the lock: this only turns a feature on
+# for a crate already in the graph.
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# The follower's failure modes are silent by design — a wrong slug and a filter that
+# matches nothing both join `ok` and deliver nothing — so the warnings the client
+# emits are the only thing an operator has to look at, and they need a subscriber.
+# An example's dependency: the library does not install one.
+tracing-subscriber = { workspace = true }

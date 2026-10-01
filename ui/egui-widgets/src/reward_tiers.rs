@@ -133,13 +133,7 @@ impl RewardTiers {
     }
 }
 
-fn tier_row(
-    ui: &mut Ui,
-    tier: &RewardTier,
-    show_upkeep: bool,
-    id_salt: &str,
-    index: usize,
-) {
+fn tier_row(ui: &mut Ui, tier: &RewardTier, show_upkeep: bool, id_salt: &str, index: usize) {
     ui.push_id((id_salt, index), |ui| {
         ui.horizontal_wrapped(|ui| {
             swatch(ui, tier.color);
@@ -192,9 +186,13 @@ fn tier_row(
             }
             if show_upkeep {
                 for upkeep in &tier.upkeep {
-                    Chip::new(&format!("upkeep {} {}", trim_amount(upkeep.amount), upkeep.label))
-                        .variant(ChipVariant::Warning)
-                        .show(ui);
+                    Chip::new(&format!(
+                        "upkeep {} {}",
+                        trim_amount(upkeep.amount),
+                        upkeep.label
+                    ))
+                    .variant(ChipVariant::Warning)
+                    .show(ui);
                 }
             }
         });

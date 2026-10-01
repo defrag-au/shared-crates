@@ -1,0 +1,76 @@
+{
+  "collections" : [ {
+    "collection" : "the-duck-hoood",
+    "name" : "The Duck Hoood",
+    "description" : "",
+    "image_url" : "https://i2c.seadn.io/collection/the-duck-hoood/image_type_logo/8fb64d4bc93973207547c6b30e4b23/d88fb64d4bc93973207547c6b30e4b23.jpeg",
+    "banner_image_url" : null,
+    "owner" : "0x8b2e90b8ee764cc3e726b1cb99c515861d11ce0a",
+    "safelist_status" : "not_requested",
+    "category" : "",
+    "is_disabled" : false,
+    "is_nsfw" : false,
+    "trait_offers_enabled" : false,
+    "collection_offers_enabled" : false,
+    "opensea_url" : "https://opensea.io/collection/the-duck-hoood",
+    "project_url" : "",
+    "wiki_url" : "",
+    "discord_url" : "",
+    "telegram_url" : "",
+    "twitter_username" : "KenzoA283019",
+    "instagram_username" : "",
+    "contracts" : [ {
+      "address" : "0x38c8a8ff8a9d3fabbb5728a4db0df120f0ce69f5",
+      "chain" : "robinhood"
+    } ]
+  }, {
+    "collection" : "chapri-hood",
+    "name" : "CHAPRI HOOD",
+    "description" : "",
+    "image_url" : "https://i2c.seadn.io/collection/chapri-hood/image_type_logo/00902809cb31785ae42178aac7988b/6a00902809cb31785ae42178aac7988b.jpeg",
+    "banner_image_url" : null,
+    "owner" : "0x8b2e90b8ee764cc3e726b1cb99c515861d11ce0a",
+    "safelist_status" : "not_requested",
+    "category" : "",
+    "is_disabled" : false,
+    "is_nsfw" : false,
+    "trait_offers_enabled" : false,
+    "collection_offers_enabled" : true,
+    "opensea_url" : "https://opensea.io/collection/chapri-hood",
+    "project_url" : "",
+    "wiki_url" : "",
+    "discord_url" : "",
+    "telegram_url" : "",
+    "twitter_username" : "KenzoA283019",
+    "instagram_username" : "",
+    "contracts" : [ {
+      "address" : "0x1fe4f2d6b66c1f61f601dde64b0234587766f74e",
+      "chain" : "robinhood"
+    } ]
+  }, {
+    "collection" : "heritage-hood",
+    "name" : "Heritage Hood",
+    "description" : "",
+    "image_url" : "https://i2c.seadn.io/collection/heritage-hood/image_type_logo/a9c1a58e2cb466118a34f4ec6e54d7/f1a9c1a58e2cb466118a34f4ec6e54d7.jpeg",
+    "banner_image_url" : null,
+    "owner" : "0x8b2e90b8ee764cc3e726b1cb99c515861d11ce0a",
+    "safelist_status" : "not_requested",
+    "category" : "",
+    "is_disabled" : false,
+    "is_nsfw" : false,
+    "trait_offers_enabled" : false,
+    "collection_offers_enabled" : true,
+    "opensea_url" : "https://opensea.io/collection/heritage-hood",
+    "project_url" : "",
+    "wiki_url" : "",
+    "discord_url" : "",
+    "telegram_url" : "",
+    "twitter_username" : null,
+    "instagram_username" : "",
+    "contracts" : [ {
+      "address" : "0xbe269fd5a147ca1601bb91ecf86967bee4a02c36",
+      "chain" : "robinhood"
+    } ]
+  } ],
+  "next" : "WyIyMDI2LTA5LTI2VDIzOjM4OjMyWiIsIjJmZGZkOGE0LTIyMTctMzkzMi04NWJkLTNjZjkyMjRlYTg4OCJd"
+}

@@ -54,6 +54,10 @@ fn mock_entries() -> Vec<WalletEditorEntry> {
         // the remove button out of its column.
         WalletEditorEntry::resolving("stake1qy2ffk39dj2mmz8tt5lq0wgc3xn7v4hp9k9fp")
             .status(WalletEntryStatus::Failed("no such handle".into())),
+        // An EVM account: the same roster, an owner string from another chain. No
+        // handle to resolve, so the row elides the account instead.
+        WalletEditorEntry::resolving("0x7980aa64093853cb78c927e05b88fed96e945f81")
+            .status(WalletEntryStatus::Ready),
     ]
 }
 
@@ -61,9 +65,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
     crate::heading(ui, "WalletEditor");
     crate::caption(
         ui,
-        "A reader's own roster: add by handle or address, watch it resolve, drop \
-         it again. Sibling to `wallet_list`, which is the OPERATOR's view of a \
-         client's wallets — same noun, different owner.",
+        "A reader's own roster: add by handle, address or EVM account, watch it \
+         resolve, drop it again. Sibling to `wallet_list`, which is the OPERATOR's \
+         view of a client's wallets — same noun, different owner.",
     );
     crate::caption(
         ui,
@@ -95,7 +99,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
                 true => WalletEntryStatus::Failed("no such handle".into()),
                 false => WalletEntryStatus::Ready,
             };
-            if e.handle.is_none() && !e.key.starts_with("stake1") {
+            if e.handle.is_none() && !e.key.starts_with("stake1") && !e.key.starts_with("0x") {
                 let key = e.key.clone();
                 e.handle = Some(key);
             }
@@ -147,6 +151,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
                                     "Add PAYMENT address {a} — a real host would \
                                      refuse this or convert it, not look it up"
                                 ),
+                                Submission::Account(a) => format!("Add EVM account {a}"),
                             };
                             let entry = match &sub {
                                 Submission::Handle(h) => WalletEditorEntry::resolving(h.clone()),
@@ -154,6 +159,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
                                     WalletEditorEntry::resolving(a.clone())
                                         .status(WalletEntryStatus::Loading)
                                 }
+                                Submission::Account(a) => WalletEditorEntry::resolving(a.clone())
+                                    .status(WalletEntryStatus::Loading),
                             };
                             state.entries.push(entry);
                             state.pending.push((state.entries.len() - 1, 90));

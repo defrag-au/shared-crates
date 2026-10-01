@@ -1,0 +1,56 @@
+{
+  "collection" : "heritage-hood",
+  "name" : "Heritage Hood",
+  "description" : "",
+  "image_url" : "https://i2c.seadn.io/collection/heritage-hood/image_type_logo/a9c1a58e2cb466118a34f4ec6e54d7/f1a9c1a58e2cb466118a34f4ec6e54d7.jpeg",
+  "banner_image_url" : "https://i2c.seadn.io/collection/heritage-hood/image_type_hero_desktop/b115b595c7c4fbe934614620d2fb26/cfb115b595c7c4fbe934614620d2fb26.png",
+  "owner" : "0x8b2e90b8ee764cc3e726b1cb99c515861d11ce0a",
+  "safelist_status" : "not_requested",
+  "category" : "",
+  "is_disabled" : false,
+  "is_nsfw" : false,
+  "trait_offers_enabled" : false,
+  "collection_offers_enabled" : true,
+  "opensea_url" : "https://opensea.io/collection/heritage-hood",
+  "project_url" : "",
+  "wiki_url" : "",
+  "discord_url" : "",
+  "telegram_url" : "",
+  "twitter_username" : null,
+  "instagram_username" : "",
+  "contracts" : [ {
+    "address" : "0xbe269fd5a147ca1601bb91ecf86967bee4a02c36",
+    "chain" : "robinhood"
+  } ],
+  "editors" : [ "0x8b2e90b8ee764cc3e726b1cb99c515861d11ce0a" ],
+  "fees" : [ {
+    "fee" : 1.0,
+    "recipient" : "0x0000a26b00c1f0df003000390027140000faa719",
+    "required" : true
+  } ],
+  "total_supply" : 3306,
+  "unique_item_count" : 3306,
+  "created_date" : "2026-09-26",
+  "pricing_currencies" : {
+    "listing_currency" : {
+      "symbol" : "USDG",
+      "address" : "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "chain" : "robinhood",
+      "image" : "https://raw2.seadn.io/currency_logos/USDG.svg",
+      "name" : "Global Dollar",
+      "decimals" : 6,
+      "eth_price" : "0.000371069887225997",
+      "usd_price" : "0.999948"
+    },
+    "offer_currency" : {
+      "symbol" : "USDG",
+      "address" : "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "chain" : "robinhood",
+      "image" : "https://raw2.seadn.io/currency_logos/USDG.svg",
+      "name" : "Global Dollar",
+      "decimals" : 6,
+      "eth_price" : "0.000371069887225997",
+      "usd_price" : "0.999948"
+    }
+  }
+}

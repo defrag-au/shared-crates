@@ -78,17 +78,20 @@ pub mod holder_formation;
 #[cfg(target_arch = "wasm32")]
 pub mod html_stage;
 pub mod icons;
-pub mod install_panel;
 pub mod id_pill;
 pub mod image_loader;
 pub mod image_stack;
+pub mod install_panel;
 pub mod interaction_tip;
+pub mod keyring;
 pub mod knob;
 pub mod labelled_progress;
 pub mod leaderboard;
 #[cfg(feature = "cardano")]
 pub mod listing_composer;
 pub mod listing_grid;
+pub mod locator_graph;
+pub mod locator_strips;
 pub mod machine;
 pub mod marquee;
 pub mod metric_card;
@@ -122,6 +125,7 @@ pub mod quantity_stepper;
 pub mod radar_chart;
 pub mod range_bar;
 pub mod rarity_target_editor;
+pub mod region_editor;
 pub mod relationship_editor;
 pub mod relative_time;
 pub mod reward_tiers;
@@ -320,7 +324,6 @@ pub use icons::{PhosphorIcon, install_phosphor_font};
 pub use id_pill::{
     IdPill, IdPillLayout, IdPillResponse, stacked_width_for as id_pill_stacked_width_for,
 };
-pub use install_panel::{InstallFact, InstallPanel, InstallPanelResponse};
 pub use image_loader::{
     AssetImageSize, iiif_asset_url, iiif_asset_url_on, iiif_base_for_network, iiif_hosts,
 };
@@ -329,6 +332,7 @@ pub use image_stack::{ImageStack, ImageStackStyle, StackImage};
 pub use image_text_editor::{
     FontChoice, ImageTextEditor, TextEffect, TextOverlay, TextOverlayAnchor,
 };
+pub use install_panel::{InstallFact, InstallPanel, InstallPanelResponse};
 #[cfg(feature = "cardano")]
 pub use listing_composer::{
     ComposerRow, ComposerTotals, ListingComposerAction, ListingComposerConfig,

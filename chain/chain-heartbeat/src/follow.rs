@@ -10,6 +10,12 @@
 //! sleep. When the sleep wins it sends a keep-alive; if the previous one is
 //! still unanswered, the connection is judged dead and `follow` returns. A dead
 //! socket is therefore noticed within two keep-alive intervals.
+//!
+//! A peer can also fail with the mux still healthy: every keep-alive answered,
+//! no chain-sync data arriving, because the relay's own upstream is gone or it
+//! lost sync. That looks exactly like a quiet chain, and an unanswered ping
+//! never fires — so the follower ends the connection itself once no roll
+//! forward or roll backward has arrived for [`FollowConfig::stall_after`].
 
 use std::convert::Infallible;
 use std::future::Future;
@@ -46,6 +52,12 @@ pub struct FollowConfig {
     pub network: Network,
     pub body: BodyDetail,
     pub keep_alive_every: Duration,
+    /// End the connection when no chain-sync data — no roll forward, no roll
+    /// backward — has arrived for this long, even while keep-alives are being
+    /// answered. The failure it catches is a relay whose own upstream is down:
+    /// the mux stays healthy and its chain view freezes, so a dead socket is
+    /// never declared. The host treats the end like any other (rotate, retry).
+    pub stall_after: Duration,
     /// Points to resume from, newest first. Empty, or none still on the chain,
     /// starts from the peer's tip.
     pub resume_from: Vec<ChainPoint>,
@@ -57,6 +69,10 @@ impl FollowConfig {
             network,
             body: BodyDetail::CountTransactions,
             keep_alive_every: Duration::from_secs(30),
+            // Mainnet's mean block interval is 20 s, so five minutes is a
+            // fifteen-fold margin: the odds of a healthy chain being this
+            // quiet are about 2 in 10 million.
+            stall_after: Duration::from_secs(5 * 60),
             resume_from: Vec::new(),
         }
     }
@@ -80,6 +96,8 @@ pub enum FollowError {
     Block(#[from] BlockError),
     #[error("keep-alive {cookie} went unanswered for a full interval")]
     KeepAliveUnanswered { cookie: u16 },
+    #[error("no chain-sync data for {silent:?} while the peer kept answering")]
+    Stalled { silent: Duration },
     #[error("the peer's tip was not on its own chain when intersecting")]
     TipVanished,
     #[error("fetched block {fetched} is not the announced block {announced}")]
@@ -119,6 +137,10 @@ where
 
     let mut cookie: u16 = 0;
     let mut unanswered: Option<u16> = None;
+    // Chain silence, measured in keep-alive intervals. Reset only by actual
+    // chain data: a keep-alive answer or an `Await` reply proves the mux is up,
+    // not that the peer is following the chain.
+    let mut silent = Duration::ZERO;
 
     loop {
         mux.send(protocol::CHAIN_SYNC, &chainsync::encode_request_next())
@@ -138,6 +160,10 @@ where
                     reply => break reply,
                 },
                 Wake::Tick => {
+                    silent = silent.saturating_add(config.keep_alive_every);
+                    if silent >= config.stall_after {
+                        return Err(FollowError::Stalled { silent });
+                    }
                     if let Some(cookie) = unanswered {
                         return Err(FollowError::KeepAliveUnanswered { cookie });
                     }
@@ -148,6 +174,9 @@ where
                 }
             }
         };
+
+        // The peer is following the chain again; the stall clock restarts.
+        silent = Duration::ZERO;
 
         match next {
             Next::RollForward(content, tip) => {
@@ -271,8 +300,8 @@ mod tests {
     use std::task::{Context, Poll};
 
     use futures::executor::block_on;
-    use minicbor::Encoder;
     use minicbor::data::Tag;
+    use minicbor::{Decoder, Encoder};
     use ouroboros_mux::Tip;
 
     use super::*;
@@ -289,6 +318,10 @@ mod tests {
     struct Peer {
         script: VecDeque<Step>,
         written: Vec<u8>,
+        /// Answer keep-alive pings from what the follower wrote, so a test can
+        /// script a peer whose mux stays healthy while its chain does not.
+        answer_keep_alives: bool,
+        answered: u16,
     }
 
     impl AsyncRead for Peer {
@@ -297,6 +330,14 @@ mod tests {
             _cx: &mut Context<'_>,
             buf: &mut [u8],
         ) -> Poll<std::io::Result<usize>> {
+            if let Some(response) = self.pending_keep_alive_response() {
+                let n = response.len().min(buf.len());
+                buf[..n].copy_from_slice(&response[..n]);
+                if n < response.len() {
+                    self.script.push_front(Step::Bytes(response[n..].to_vec()));
+                }
+                return Poll::Ready(Ok(n));
+            }
             match self.script.pop_front() {
                 None => Poll::Ready(Ok(0)),
                 Some(Step::Hang) => {
@@ -333,12 +374,61 @@ mod tests {
         }
     }
 
+    impl Peer {
+        /// The response segment for the newest keep-alive ping the follower has
+        /// written and not yet had answered, if it has moved on since the last
+        /// one answered. Echoing pings is what lets a test script the
+        /// production failure: a peer whose mux is healthy while its chain view
+        /// is frozen.
+        fn pending_keep_alive_response(&mut self) -> Option<Vec<u8>> {
+            if !self.answer_keep_alives {
+                return None;
+            }
+            let mut newest = self.answered;
+            let mut i = 0;
+            while i + 8 <= self.written.len() {
+                let proto = u16::from_be_bytes([self.written[i + 4], self.written[i + 5]]) & 0x7fff;
+                let len = u16::from_be_bytes([self.written[i + 6], self.written[i + 7]]) as usize;
+                let start = i + 8;
+                if start + len > self.written.len() {
+                    break;
+                }
+                if proto == protocol::KEEP_ALIVE {
+                    newest = keep_alive_cookie(&self.written[start..start + len]).unwrap_or(newest);
+                }
+                i = start + len;
+            }
+            if newest == self.answered {
+                return None;
+            }
+            self.answered = newest;
+            let payload = cbor(|e| {
+                e.array(2)
+                    .and_then(|e| e.u8(1))
+                    .and_then(|e| e.u16(newest))
+                    .map(|_| ())
+                    .unwrap()
+            });
+            Some(segment(protocol::KEEP_ALIVE, &payload))
+        }
+    }
+
     fn segment(protocol: u16, payload: &[u8]) -> Vec<u8> {
         let mut out = vec![0, 0, 0, 0];
         out.extend_from_slice(&(protocol | 0x8000).to_be_bytes());
         out.extend_from_slice(&(payload.len() as u16).to_be_bytes());
         out.extend_from_slice(payload);
         out
+    }
+
+    /// The cookie of a keep-alive request payload (`[0, cookie]`), when the
+    /// payload is one.
+    fn keep_alive_cookie(payload: &[u8]) -> Option<u16> {
+        let mut decoder = Decoder::new(payload);
+        if !matches!(decoder.array(), Ok(Some(2))) || decoder.u8().ok() != Some(0) {
+            return None;
+        }
+        decoder.u16().ok()
     }
 
     fn cbor(build: impl FnOnce(&mut Encoder<&mut Vec<u8>>)) -> Vec<u8> {
@@ -440,7 +530,7 @@ mod tests {
 
         let peer = Peer {
             script: [Step::Bytes(stream)].into(),
-            written: Vec::new(),
+            ..Peer::default()
         };
         let mut config = FollowConfig::new(Network::Mainnet);
         config.body = BodyDetail::HeaderOnly;
@@ -481,7 +571,7 @@ mod tests {
         stream.extend(segment(protocol::CHAIN_SYNC, &[0x81, 0x01]));
         let peer = Peer {
             script: [Step::Bytes(stream), Step::Hang].into(),
-            written: Vec::new(),
+            ..Peer::default()
         };
         let config = FollowConfig::new(Network::Mainnet);
         let mut events = Vec::new();
@@ -498,5 +588,42 @@ mod tests {
             Err(FollowError::KeepAliveUnanswered { cookie: 1 })
         ));
         assert_eq!(events, vec![ChainEvent::Connected { version: 14 }]);
+    }
+
+    #[test]
+    fn a_peer_that_answers_but_sends_no_data_is_stalled() {
+        // The production failure: a relay whose mux is healthy — every
+        // keep-alive answered — while its chain view is frozen. Nothing the
+        // connection itself does ends it, so the stall watchdog has to.
+        let mut stream = opening();
+        stream.extend(segment(protocol::CHAIN_SYNC, &[0x81, 0x01]));
+        let peer = Peer {
+            script: [Step::Bytes(stream), Step::Hang].into(),
+            answer_keep_alives: true,
+            ..Peer::default()
+        };
+        let mut config = FollowConfig::new(Network::Mainnet);
+        config.stall_after = Duration::from_secs(90);
+        let mut events = Vec::new();
+        // Every tick is due immediately: three 30 s intervals pass with the
+        // peer answering each keep-alive and no chain data arriving.
+        let result = block_on(follow(
+            peer,
+            &config,
+            |_| futures::future::ready(()),
+            |event| events.push(event),
+        ));
+        assert!(matches!(
+            result,
+            Err(FollowError::Stalled { silent }) if silent == Duration::from_secs(90)
+        ));
+        assert_eq!(events[0], ChainEvent::Connected { version: 14 });
+        assert!(
+            !events[1..].is_empty()
+                && events[1..]
+                    .iter()
+                    .all(|event| matches!(event, ChainEvent::KeepAliveAcknowledged)),
+            "expected the peer to have answered keep-alives, got {events:?}"
+        );
     }
 }

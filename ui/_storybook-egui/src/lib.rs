@@ -80,6 +80,8 @@ mod app {
             FlowMatrix => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_matrix::show(ui, &mut a.flow_matrix_state);
             FlowRing => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_ring::show(ui, &mut a.flow_ring_state);
             FlowStave => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_stave::show(ui, &mut a.flow_stave_state);
+            LocatorGraph => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::locator_graph::show(ui, &mut a.locator_graph_state);
+            LocatorStrips => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::locator_strips::show(ui, &mut a.locator_strips_state);
             PartyAnnotator => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::party_annotator::show(ui, &mut a.party_annotator_state);
             TagList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tag_list::show(ui, &mut a.tag_list_state);
             TokenMultiselect => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_multiselect::show(ui, &mut a.token_multiselect_state);
@@ -97,6 +99,8 @@ mod app {
             EffectEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::effect_editor::show(ui, &mut a.effect_editor_state);
             Knob => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::knob::show(ui, &mut a.knob_state);
             SlotTable => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::slot_table::show(ui, &mut a.slot_table_state);
+            RegionEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::region_editor::show(ui, &mut a.region_editor_state);
+            Keyring => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::keyring::show(ui, &mut a.keyring_state);
             IdPill => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::id_pill::show(ui);
             PropertyList => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::property_list::show(ui);
             ButtonGroup => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::button_group::show(ui, &mut a.button_group_state);
@@ -381,6 +385,8 @@ mod app {
                 Self::FlowMatrix => "Flow Matrix",
                 Self::FlowRing => "Flow Ring",
                 Self::FlowStave => "Flow Stave",
+                Self::LocatorGraph => "Locator Graph",
+                Self::LocatorStrips => "Locator Strips",
                 Self::PartyAnnotator => "Party Annotator",
                 Self::TagList => "Tag List",
                 Self::TokenMultiselect => "Token Multiselect",
@@ -398,6 +404,8 @@ mod app {
                 Self::EffectEditor => "Effect Editor",
                 Self::Knob => "Knob (prototype)",
                 Self::SlotTable => "Slot Table",
+                Self::RegionEditor => "Region Editor",
+                Self::Keyring => "Keyring",
                 Self::PropertyList => "Property List",
                 Self::IdPill => "ID Pill",
                 Self::Timestamp => "Timestamp",
@@ -768,6 +776,12 @@ mod app {
                 Self::FlowRing => {
                     "Value moving between parties, LIVE, on the shared spine. Parties keep fixed seats on concentric rings (inner = the project's own wallets, outer = who they dealt with) and value crosses the middle as particles — ONE DOT PER QUANTUM, so a large payment is a longer train rather than a thicker line. Particle position is a pure function of the playhead, so scrubbing shows value genuinely mid-flight and a still frame is reproducible. Hover for a wallet's inventory at that exact moment; switch nodes off to cut density without moving anything that stays"
                 }
+                Self::LocatorStrips => {
+                    "A run as heat on the two address spaces it touched: the hash band on top, the chunk band below, drawn with the same mapping so they can be compared. The hash band fills in evenly — a transaction hash is uniform by construction — while the chain band clusters, because a wallet's transactions happen in bursts of time and time is chunk order (729 transactions touched 129 chunks, where uniform would have been ~729). Every read lights its cell where it landed and decays, so a run draws itself as two histograms that fade, and the contrast between flat and clustered IS the finding: the hash side says nothing about where the data is, and position says everything. Nothing crosses between the bands because nothing crosses between the structures."
+                }
+                Self::LocatorGraph => {
+                    "Where a transaction is found, drawn as the wires a run fires: the index keyed by hash on the left (a 24-bit bucket, the shard holding it, the run inside it, an entry eight bytes of which are the hash) and the corpus ordered by position on the right, meeting at exactly one chunk, offset and length. One wire is one OBJECT read, not one lookup — a shard holds 512 buckets and a chunk holds many transactions, which is where the 719 entry reads and 129 body reads behind 729 transactions come from. No block is drawn because no block has an address of its own, and every wire ends in a re-hash because eight bytes of a hash is a hint rather than an identity: the corpus settles it. Ambient by design — no label, no hover, no numbers — so it draws at full strength and the fading belongs to wherever it is placed"
+                }
                 Self::FlowStave => {
                     "One wallet's money story as a SEQUENCE CHART — the narrative face the transfers table cannot be. The focal wallet holds the centre lane, counterparties fan out by ring class, and time runs downward with LOG-COMPRESSED gaps: a five-minute fund→mint→forward cascade stays a visible cluster while an idle week stays a bounded gap, with the true clock in the gutter. Direction is an arrow (blue toward the focal lane, orange away), a mint is a diamond — created, not received — an unresolved payer arrives from the chart's edge, and every arrow carries its own unit label so ADA, tokens and asset counts keep their identity on one chart"
                 }
@@ -830,6 +844,12 @@ mod app {
                 }
                 Self::SlotTable => {
                     "Slot list with enable / required toggles + z-order — disabled_traits, defaults.required, z_index_overrides"
+                }
+                Self::RegionEditor => {
+                    "Named slots drawn over the canvas — drag to move, pull a corner to resize, click to select"
+                }
+                Self::Keyring => {
+                    "The API keys an app holds, one per provider — masked by default, revealable, clearable"
                 }
                 Self::PropertyList => {
                     "Compact label/value grid for read-only key data — phase summaries, wallet readouts, payment audit"
@@ -1433,6 +1453,8 @@ mod app {
         effect_editor_state: stories::effect_editor::EffectEditorState,
         knob_state: stories::knob::KnobState,
         slot_table_state: stories::slot_table::SlotTableState,
+        region_editor_state: stories::region_editor::RegionEditorState,
+        keyring_state: stories::keyring::KeyringState,
         sparkline_state: stories::sparkline::SparklineState,
         perf_strip_state: stories::perf_strip::PerfStripStory,
         flame_chart_state: stories::flame_chart::FlameChartState,
@@ -1521,6 +1543,8 @@ mod app {
         flow_matrix_state: stories::flow_matrix::FlowMatrixState,
         flow_ring_state: stories::flow_ring::FlowRingState,
         flow_stave_state: stories::flow_stave::FlowStaveState,
+        locator_graph_state: stories::locator_graph::LocatorGraphStory,
+        locator_strips_state: stories::locator_strips::LocatorStripsStory,
         party_annotator_state: stories::party_annotator::PartyAnnotatorState,
     }
 
@@ -1584,6 +1608,8 @@ mod app {
                 effect_editor_state: stories::effect_editor::EffectEditorState::default(),
                 knob_state: stories::knob::KnobState::default(),
                 slot_table_state: stories::slot_table::SlotTableState::default(),
+                region_editor_state: stories::region_editor::RegionEditorState::default(),
+                keyring_state: stories::keyring::KeyringState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 perf_strip_state: stories::perf_strip::PerfStripStory::default(),
                 flame_chart_state: stories::flame_chart::FlameChartState::default(),
@@ -1688,6 +1714,8 @@ mod app {
                 flow_matrix_state: stories::flow_matrix::FlowMatrixState::default(),
                 flow_ring_state: stories::flow_ring::FlowRingState::default(),
                 flow_stave_state: stories::flow_stave::FlowStaveState::default(),
+                locator_graph_state: stories::locator_graph::LocatorGraphStory::default(),
+                locator_strips_state: stories::locator_strips::LocatorStripsStory::default(),
                 party_annotator_state: stories::party_annotator::PartyAnnotatorState::default(),
             }
         }

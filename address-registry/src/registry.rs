@@ -1137,6 +1137,23 @@ pub fn lookup_payment_credential(credential_hex: &str) -> Option<&'static Creden
         .map(|(_, entry)| entry)
 }
 
+/// **Every** credential this table knows, so a consumer can ask "which of these
+/// are offer contracts" without carrying a copy of their hexes.
+///
+/// Why an enumeration and not just the lookup beside it: a consumer that needs
+/// the whole set — a view listing what a holder has offered, say — has no
+/// credential to look up yet, and the only way to get one from a lookup-only
+/// API is to paste the hex back into that consumer. That is precisely how five
+/// credentials came to exist in three copies with nothing keeping them honest
+/// (see [`CredentialEntry`]), so the set is public rather than the gap being
+/// filled per consumer.
+///
+/// Order is the table's own, and not meaningful: filter by
+/// [`AddressCategory`], never by position.
+pub fn all_known_credentials() -> &'static [(&'static str, CredentialEntry)] {
+    PAYMENT_CREDENTIAL_REGISTRY
+}
+
 // ── Testnet / Preprod registries ─────────────────────────────────────────────
 
 /// Registry of known testnet/preprod addresses.
@@ -2071,6 +2088,37 @@ mod tests {
         assert!(
             lookup_payment_credential("5f08a64f580e581735070e1b1d2ce29ae6942ab45ccff5a1747d2283")
                 .is_none()
+        );
+    }
+
+    /// The offer contracts are reachable **as a set**, not only one hex at a
+    /// time.
+    ///
+    /// A consumer listing what a holder has offered has no credential to look
+    /// up — it needs the whole set up front — and a lookup-only API leaves it
+    /// two options: paste the hex, or show nothing. Both are failures this
+    /// table exists to prevent, so the enumeration is pinned here and the
+    /// purpose it filters on is asserted rather than assumed.
+    #[test]
+    fn the_offer_contracts_are_discoverable_without_pasting_them() {
+        let offers: Vec<&str> = all_known_credentials()
+            .iter()
+            .filter(|(_, e)| {
+                matches!(
+                    e.category,
+                    AddressCategory::Script(ScriptCategory::Marketplace {
+                        purpose: MarketplacePurpose::Offer,
+                        ..
+                    })
+                )
+            })
+            .map(|(cred, _)| *cred)
+            .collect();
+        // Wayup's offer contract, the entry with no address anywhere in this
+        // crate — the one a consumer can only ever name by credential.
+        assert!(
+            offers.contains(&"27d46ecbec94b052d8f875cf3beafd0e8ca40e8ad069f677e0a128ea"),
+            "the Wayup offer credential is not discoverable: {offers:?}"
         );
     }
 

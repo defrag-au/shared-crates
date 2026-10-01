@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-166 widgets.
+170 widgets.
 
 | module | what it is |
 |---|---|
@@ -79,12 +79,15 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `image_text_editor` | Image text overlay editor — place, style, and drag text on top of an image |
 | `install_panel` | `InstallPanel` — what installing a bot asks for, and why: the link to hand over, the permissions it requests, and the settings the link cannot carry |
 | `interaction_tip` | `InteractionTip` — a hint about a gesture, shown where the gesture is not |
+| `keyring` | `Keyring` — the API keys an app holds, one per provider |
 | `knob` | `Knob` — a rotary control, as a prototype to riff on |
 | `labelled_progress` | `LabelledProgress` — a busy mark the size of the words beside it |
 | `leaderboard` | `Leaderboard` — ranked standings: podium-tinted ranks, an optional prize thumbnail, one headline metric, supporting stats, and a share bar |
 | `leaderboard_table` | `LeaderboardTable` — a dense, virtual-scrolled ranked table |
 | `listing_composer` | ListingComposer — price a batch of assets for sale by what the BUYER pays |
 | `listing_grid` | `ListingGrid` — a responsive grid of marketplace listing cards, each with a lazily-loaded image, price and trailing badges |
+| `locator_graph` | `LocatorGraph` — a lookup drawn as wires: a hash narrowing to a byte span, and the corpus settling it |
+| `locator_strips` | `LocatorStrips` — a run as heat on the two address spaces it touched, and as sparks of the reads themselves going out |
 | `machine` | `Machine` — plain-enum UI state, hierarchical, with entry framing, frame-TTL auto-revert and eased transition progress |
 | `managed_wallet_utxos` | Managed-wallet UTxO breakdown — a structured, role-aware view of a custodial wallet's on-chain UTxOs |
 | `marquee` | Scrolling marquee ticker widget |
@@ -119,6 +122,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `radar_chart` | Radar / spider chart widget for N-dimensional normalized data |
 | `range_bar` | Horizontal range bar widget for visualizing a set of labeled price/value points along a gradient |
 | `rarity_target_editor` | rarity_target_editor — per-trait / per-value 0–100% rarity targets |
+| `region_editor` | `RegionEditor` — draw, move and resize named rectangular slots over a base image |
 | `relationship_editor` | relationship_editor — edit a list of directed `source → target` edges over a known option set |
 | `relative_time` | `RelativeTime` — a tiny auto-scaling "time ago" label |
 | `reward_tiers` | `RewardTiers` — what each role is paid, as a list: the role, how many hold it, and the rewards its holders receive |

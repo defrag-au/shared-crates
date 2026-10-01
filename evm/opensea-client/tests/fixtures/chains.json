@@ -1,0 +1,213 @@
+{
+  "chains" : [ {
+    "chain" : "ethereum",
+    "name" : "Ethereum",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "Etherscan",
+    "block_explorer_url" : "https://etherscan.io"
+  }, {
+    "chain" : "solana",
+    "name" : "Solana",
+    "symbol" : "SOL",
+    "supports_swaps" : true,
+    "block_explorer" : "Solscan",
+    "block_explorer_url" : "https://solscan.io/"
+  }, {
+    "chain" : "optimism",
+    "name" : "Optimism",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "Etherscan",
+    "block_explorer_url" : "https://optimistic.etherscan.io/"
+  }, {
+    "chain" : "unichain",
+    "name" : "Unichain",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "Uniscan",
+    "block_explorer_url" : "https://uniscan.xyz/"
+  }, {
+    "chain" : "polygon",
+    "name" : "Polygon",
+    "symbol" : "POL",
+    "supports_swaps" : true,
+    "block_explorer" : "Polygonscan",
+    "block_explorer_url" : "https://polygonscan.com/"
+  }, {
+    "chain" : "monad",
+    "name" : "Monad",
+    "symbol" : "MON",
+    "supports_swaps" : true,
+    "block_explorer" : "MonadScan",
+    "block_explorer_url" : "https://monadscan.com/"
+  }, {
+    "chain" : "shape",
+    "name" : "Shape",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "Shapescan",
+    "block_explorer_url" : "https://shapescan.xyz"
+  }, {
+    "chain" : "flow",
+    "name" : "Flow",
+    "symbol" : "FLOW",
+    "supports_swaps" : true,
+    "block_explorer" : "Flowscan",
+    "block_explorer_url" : "https://evm.flowscan.io"
+  }, {
+    "chain" : "stablechain",
+    "name" : "Stable Chain",
+    "symbol" : "USDT0",
+    "supports_swaps" : true,
+    "block_explorer" : "StableScan",
+    "block_explorer_url" : "https://stablescan.xyz"
+  }, {
+    "chain" : "hyperevm",
+    "name" : "HyperEVM",
+    "symbol" : "HYPE",
+    "supports_swaps" : true,
+    "block_explorer" : "HyperEVM Explorer",
+    "block_explorer_url" : "https://hyperevmscan.io/"
+  }, {
+    "chain" : "sei",
+    "name" : "Sei",
+    "symbol" : "SEI",
+    "supports_swaps" : false,
+    "block_explorer" : "Seiscan",
+    "block_explorer_url" : "https://seiscan.io/"
+  }, {
+    "chain" : "hyperliquid",
+    "name" : "Hyperliquid",
+    "symbol" : "USDC",
+    "supports_swaps" : true,
+    "block_explorer" : "Hyperliquid Explorer",
+    "block_explorer_url" : "https://app.hyperliquid.xyz/explorer"
+  }, {
+    "chain" : "soneium",
+    "name" : "Soneium",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "Blockscout",
+    "block_explorer_url" : "https://soneium.blockscout.com/"
+  }, {
+    "chain" : "ronin",
+    "name" : "Ronin",
+    "symbol" : "RON",
+    "supports_swaps" : true,
+    "block_explorer" : "Ronin Explorer",
+    "block_explorer_url" : "https://explorer.roninchain.com/"
+  }, {
+    "chain" : "abstract",
+    "name" : "Abstract",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "Abscan",
+    "block_explorer_url" : "https://abscan.org/"
+  }, {
+    "chain" : "megaeth",
+    "name" : "MegaETH",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "MegaETH Explorer",
+    "block_explorer_url" : "https://mega.etherscan.io"
+  }, {
+    "chain" : "robinhood",
+    "name" : "Robinhood Chain",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "Etherscan",
+    "block_explorer_url" : "https://robin.etherscan.io"
+  }, {
+    "chain" : "somnia",
+    "name" : "Somnia",
+    "symbol" : "SOMI",
+    "supports_swaps" : true,
+    "block_explorer" : "Somnia Explorer",
+    "block_explorer_url" : "https://explorer.somnia.network/"
+  }, {
+    "chain" : "arc",
+    "name" : "Arc Chain",
+    "symbol" : "USDC",
+    "supports_swaps" : true,
+    "block_explorer" : "Arc Explorer",
+    "block_explorer_url" : "https://explorer.arc.io"
+  }, {
+    "chain" : "b3",
+    "name" : "B3",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "Blockscout",
+    "block_explorer_url" : "https://explorer.b3.fun/"
+  }, {
+    "chain" : "base",
+    "name" : "Base",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "BaseScan",
+    "block_explorer_url" : "https://basescan.org"
+  }, {
+    "chain" : "ape_chain",
+    "name" : "ApeChain",
+    "symbol" : "APE",
+    "supports_swaps" : true,
+    "block_explorer" : "Apescan",
+    "block_explorer_url" : "https://apescan.io/"
+  }, {
+    "chain" : "arbitrum",
+    "name" : "Arbitrum",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "Arbiscan",
+    "block_explorer_url" : "https://arbiscan.io"
+  }, {
+    "chain" : "avalanche",
+    "name" : "Avalanche",
+    "symbol" : "AVAX",
+    "supports_swaps" : true,
+    "block_explorer" : "Snowtrace",
+    "block_explorer_url" : "https://snowtrace.io/"
+  }, {
+    "chain" : "gunzilla",
+    "name" : "GUNZ",
+    "symbol" : "GUN",
+    "supports_swaps" : false,
+    "block_explorer" : "Gunzscan",
+    "block_explorer_url" : "https://gunzscan.io/"
+  }, {
+    "chain" : "ink",
+    "name" : "Ink",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "Ink Explorer",
+    "block_explorer_url" : "https://explorer.inkonchain.com"
+  }, {
+    "chain" : "animechain",
+    "name" : "AnimeChain",
+    "symbol" : "ANIME",
+    "supports_swaps" : true,
+    "block_explorer" : "AnimeChain Explorer",
+    "block_explorer_url" : "https://explorer.anime.xyz/"
+  }, {
+    "chain" : "bera_chain",
+    "name" : "Berachain",
+    "symbol" : "BERA",
+    "supports_swaps" : true,
+    "block_explorer" : "Berascan",
+    "block_explorer_url" : "https://berascan.com/"
+  }, {
+    "chain" : "blast",
+    "name" : "Blast",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "BlastScan",
+    "block_explorer_url" : "https://blastscan.io/"
+  }, {
+    "chain" : "zora",
+    "name" : "Zora",
+    "symbol" : "ETH",
+    "supports_swaps" : true,
+    "block_explorer" : "Blockscout",
+    "block_explorer_url" : "https://explorer.zora.energy/"
+  } ]
+}

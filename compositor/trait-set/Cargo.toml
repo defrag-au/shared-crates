@@ -1,0 +1,19 @@
+[package]
+name = "trait-set"
+description = "The trait catalogue — named traits, named values, one piece of art each — shared by the studio that riffs them and the compositor that fills them."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Data only. An `ArtRef` is a pointer, so no image crate and no codec: a browser,
+# a worker and a native tool can all hold a catalogue without one between them.
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+# The catalogue has to sit inside a `project.toml`-shaped world, which is a
+# property of the encoding, not a hope. Pinned by a round trip.
+toml = "0.8"
+serde_json = { workspace = true }

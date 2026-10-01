@@ -241,6 +241,156 @@ pub mod u64_vec {
     }
 }
 
+/// WASM-safe serialization for non-optional u128 values
+///
+/// Token amounts. They are wei-scale and therefore 19+ digits, which is past
+/// JavaScript's safe integer range, and past `u64` for anything above ~18.4
+/// ether — so a price cannot live in a `u64` and does not need a 256-bit type
+/// either, since `u128` reaches 3.4e38 wei.
+///
+/// Use with `#[serde(with = "wasm_safe_serde::u128_required")]`
+pub mod u128_required {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    const MAX_SAFE_JS_INTEGER: u128 = 9007199254740991;
+
+    pub fn serialize<S>(value: &u128, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if *value > MAX_SAFE_JS_INTEGER {
+            serializer.serialize_str(&value.to_string())
+        } else {
+            serializer.serialize_u128(*value)
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<u128, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde_json::Value;
+        let value = Value::deserialize(deserializer)?;
+
+        match value {
+            Value::Number(n) => {
+                if let Some(u) = n.as_u64() {
+                    Ok(u128::from(u))
+                } else {
+                    // Past u64 the value still arrives as a literal, so fall back
+                    // to its textual form rather than refusing it.
+                    n.to_string()
+                        .parse::<u128>()
+                        .map_err(|_| serde::de::Error::custom("Invalid number for u128"))
+                }
+            }
+            Value::String(s) => s
+                .parse::<u128>()
+                .map_err(|_| serde::de::Error::custom("Invalid string for u128")),
+            _ => Err(serde::de::Error::custom("Expected number or string")),
+        }
+    }
+}
+
+/// WASM-safe serialization for optional u128 values
+///
+/// Use with `#[serde(with = "wasm_safe_serde::u128_option")]`
+pub mod u128_option {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    const MAX_SAFE_JS_INTEGER: u128 = 9007199254740991;
+
+    pub fn serialize<S>(value: &Option<u128>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(val) if *val > MAX_SAFE_JS_INTEGER => serializer.serialize_str(&val.to_string()),
+            Some(val) => serializer.serialize_u128(*val),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<u128>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde_json::Value;
+        let value = Value::deserialize(deserializer)?;
+
+        match value {
+            Value::Number(n) => {
+                if let Some(u) = n.as_u64() {
+                    Ok(Some(u128::from(u)))
+                } else {
+                    n.to_string()
+                        .parse::<u128>()
+                        .map(Some)
+                        .map_err(|_| serde::de::Error::custom("Invalid number for u128"))
+                }
+            }
+            Value::String(s) => s
+                .parse::<u128>()
+                .map(Some)
+                .map_err(|_| serde::de::Error::custom("Invalid string for u128")),
+            Value::Null => Ok(None),
+            _ => Err(serde::de::Error::custom("Expected number, string, or null")),
+        }
+    }
+}
+
+#[cfg(test)]
+mod u128_tests {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    struct Amounts {
+        #[serde(with = "super::u128_required")]
+        price: u128,
+        #[serde(with = "super::u128_option")]
+        fee: Option<u128>,
+    }
+
+    #[test]
+    fn a_wei_scale_amount_survives_a_round_trip_from_a_string() {
+        let json = r#"{"price":"227000000000000","fee":null}"#;
+        let amounts: Amounts = serde_json::from_str(json).expect("Should deserialize");
+        assert_eq!(amounts.price, 227_000_000_000_000);
+        assert_eq!(amounts.fee, None);
+    }
+
+    #[test]
+    fn a_price_above_u64_still_reads_and_writes_as_a_string() {
+        // 1_000_000 ether in wei: past u64::MAX, so only u128 holds it.
+        let price = 1_000_000_000_000_000_000_000_000_u128;
+        assert!(price > u128::from(u64::MAX));
+
+        let json = format!(r#"{{"price":"{}","fee":null}}"#, price);
+        let amounts: Amounts = serde_json::from_str(&json).expect("Should deserialize");
+        assert_eq!(amounts.price, price);
+
+        let encoded = serde_json::to_string(&amounts).expect("Should serialize");
+        assert!(
+            encoded.contains(&format!("\"{}\"", price)),
+            "a value past the safe integer range must be written as a string, got {encoded}"
+        );
+    }
+
+    #[test]
+    fn a_numeric_amount_is_accepted_too() {
+        let json = r#"{"price":1000000,"fee":5}"#;
+        let amounts: Amounts = serde_json::from_str(json).expect("Should deserialize");
+        assert_eq!(amounts.price, 1_000_000);
+        assert_eq!(amounts.fee, Some(5));
+    }
+
+    #[test]
+    fn a_negative_amount_is_refused() {
+        let json = r#"{"price":-1,"fee":null}"#;
+        assert!(serde_json::from_str::<Amounts>(json).is_err());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
