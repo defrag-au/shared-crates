@@ -50,6 +50,15 @@ pub fn is_display_p3(profile: &[u8]) -> bool {
 /// Convert Display P3 pixel values to sRGB in place: linearize (P3 shares sRGB's
 /// transfer curve), 3×3 primary matrix, re-encode, clamp (relative-colorimetric
 /// style per-channel gamut clip). Alpha is untouched (straight-alpha art).
+///
+/// Both transfer curves are tabulated per call. The old per-pixel loop spent six
+/// `powf` on every pixel — 25 M transcendentals for a 2048² layer, and the
+/// hottest loop in the compositor — while both ends of the conversion are 8-bit
+/// here anyway. The re-encode table is exact rather than approximate, because
+/// downstream keys (the chatterbox screen key) match on exact bytes: a cell
+/// carries the byte at its left edge plus the true boundary where that byte
+/// changes, and the curve is shallow enough (< 0.41 bytes per cell) for one
+/// compare to settle it.
 pub fn display_p3_to_srgb(mut img: RgbaImage) -> RgbaImage {
     // Linear Display-P3 → linear sRGB (both D65; CSS Color 4 / color.js values).
     const M: [[f32; 3]; 3] = [
@@ -57,34 +66,81 @@ pub fn display_p3_to_srgb(mut img: RgbaImage) -> RgbaImage {
         [-0.042_056_955, 1.042_057, 0.0],
         [-0.019_637_555, -0.078_636_04, 1.098_273_6],
     ];
-    fn eotf(u: f32) -> f32 {
-        if u <= 0.04045 {
-            u / 12.92
-        } else {
-            ((u + 0.055) / 1.055).powf(2.4)
-        }
-    }
-    fn oetf(l: f32) -> f32 {
-        if l <= 0.003_130_8 {
-            12.92 * l
-        } else {
-            1.055 * l.powf(1.0 / 2.4) - 0.055
-        }
-    }
+    let lut = TransferLut::new();
     for px in img.pixels_mut() {
         let [r, g, b, a] = px.0;
-        let lin = [
-            eotf(r as f32 / 255.0),
-            eotf(g as f32 / 255.0),
-            eotf(b as f32 / 255.0),
-        ];
+        let lin = [lut.linear(r), lut.linear(g), lut.linear(b)];
         let out = std::array::from_fn::<_, 3, _>(|i| {
             let v = M[i][0] * lin[0] + M[i][1] * lin[1] + M[i][2] * lin[2];
-            (oetf(v.clamp(0.0, 1.0)) * 255.0 + 0.5) as u8
+            lut.byte(v)
         });
         px.0 = [out[0], out[1], out[2], a];
     }
     img
+}
+
+/// sRGB EOTF: encoded value → linear light.
+fn eotf(u: f32) -> f32 {
+    if u <= 0.04045 {
+        u / 12.92
+    } else {
+        ((u + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// sRGB OETF: linear light → encoded value.
+fn oetf(l: f32) -> f32 {
+    if l <= 0.003_130_8 {
+        12.92 * l
+    } else {
+        1.055 * l.powf(1.0 / 2.4) - 0.055
+    }
+}
+
+/// Linear values per unit in the re-encode table. 8 K cells, and at the curve's
+/// steepest point (the toe, 12.92 × 255 ≈ 3 295 bytes per unit) a cell is still
+/// only 0.41 bytes wide — so a cell spans at most one byte boundary and
+/// [`TransferLut::byte`]'s single compare settles it exactly.
+const STEPS: usize = 8_192;
+
+/// Both sRGB transfer curves, sampled once per call so the pixel loop does no
+/// transcendental work.
+struct TransferLut {
+    /// Encoded → linear. Exact: the 8-bit domain is the whole table.
+    linear: [f32; 256],
+    /// Linear → encoded: the byte at each cell's left edge.
+    byte_at: [u8; STEPS],
+    /// Linear value where byte `k` begins — where the curve reaches
+    /// `(k - 0.5) / 255`, which is `eotf((k - 0.5) / 255)` because `eotf` and
+    /// `oetf` are inverses. `edge[0]` sits below 0 and `edge[256]` above 1.
+    edge: [f32; 257],
+}
+
+impl TransferLut {
+    fn new() -> Self {
+        Self {
+            linear: std::array::from_fn(|u| eotf(u as f32 / 255.0)),
+            byte_at: std::array::from_fn(|i| (oetf(i as f32 / STEPS as f32) * 255.0 + 0.5) as u8),
+            edge: std::array::from_fn(|k| eotf((k as f32 - 0.5) / 255.0)),
+        }
+    }
+
+    fn linear(&self, u: u8) -> f32 {
+        self.linear[u as usize]
+    }
+
+    /// The byte the old per-pixel formula emitted for this linear value — via the
+    /// table instead of a `powf`.
+    fn byte(&self, l: f32) -> u8 {
+        let l = l.clamp(0.0, 1.0);
+        let cell = ((l * STEPS as f32) as usize).min(STEPS - 1);
+        let k = self.byte_at[cell];
+        if self.edge[k as usize + 1] <= l {
+            k + 1
+        } else {
+            k
+        }
+    }
 }
 
 #[cfg(test)]
@@ -122,6 +178,48 @@ mod tests {
                     (got[c] as i32 - want[c] as i32).abs() <= 2,
                     "{why}: px {x} channel {c}: got {got:?}, want {want:?}"
                 );
+            }
+        }
+    }
+
+    /// The tabulated transfer curves are exact, not approximate — downstream keys
+    /// (the chatterbox screen key) match on exact bytes. Sweep the table against
+    /// the direct formula at every cell edge and inside the cells, and pin the
+    /// invariant the one-compare lookup rests on.
+    #[test]
+    fn tabulated_transfer_curves_are_exact() {
+        fn direct_byte(l: f32) -> u8 {
+            (oetf(l.clamp(0.0, 1.0)) * 255.0 + 0.5) as u8
+        }
+        let lut = TransferLut::new();
+
+        for u in 0..=u8::MAX {
+            assert_eq!(lut.linear(u), eotf(u as f32 / 255.0), "linearise {u}");
+        }
+
+        // At most one byte boundary per cell — the property `byte` relies on.
+        let mut boundaries = 0;
+        for i in 0..STEPS {
+            let (a, b) = (
+                lut.byte(i as f32 / STEPS as f32),
+                lut.byte((i + 1) as f32 / STEPS as f32),
+            );
+            assert!(b as i32 - a as i32 <= 1, "cell {i}: {a} → {b}");
+            boundaries += (b - a) as usize;
+        }
+        assert_eq!(
+            boundaries, 255,
+            "byte 0 climbs to byte 255 across the table"
+        );
+
+        for i in 0..=STEPS {
+            let l = i as f32 / STEPS as f32;
+            assert_eq!(lut.byte(l), direct_byte(l), "cell edge {i} ({l})");
+        }
+        for i in 0..STEPS {
+            for f in [0.25, 0.5, 0.75] {
+                let l = (i as f32 + f) / STEPS as f32;
+                assert_eq!(lut.byte(l), direct_byte(l), "cell {i} at {f}");
             }
         }
     }

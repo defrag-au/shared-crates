@@ -7,11 +7,12 @@
 // real one. CDP's Emulation.setDeviceMetricsOverride sets the real layout
 // viewport instead.
 //
-//   node cdp-shot.mjs <url> <width> <height> <out.png> [settleMs] [[hover:]X,Y]
+//   node cdp-shot.mjs <url> <width> <height> <out.png> [settleMs] [[hover:]X,Y ...]
 //
-// The optional click reaches state that only exists after input — a modal, a
-// popup, a menu. `--screenshot` mode delivers no events at all, so without this
-// a modal widget screenshots as the button that opens it.
+// The optional clicks reach state that only exists after input — a modal, a
+// popup, a menu, or a control that must be dragged after a preset is chosen.
+// They happen in the order written. `--screenshot` mode delivers no events at
+// all, so without this a modal widget screenshots as the button that opens it.
 //
 // Prefix the coordinates with `hover:` to move the pointer there and NOT click.
 // This is not a nicety: egui suppresses a tooltip on the widget you just clicked,
@@ -34,9 +35,9 @@
 // Node has a global WebSocket, so there are no dependencies to install.
 import { writeFileSync } from 'node:fs';
 
-const [url, w, h, out, wait, click] = process.argv.slice(2);
+const [url, w, h, out, wait, ...clicks] = process.argv.slice(2);
 if (!url || !w || !h || !out) {
-    console.error('usage: cdp-shot.mjs <url> <width> <height> <out.png> [settleMs]');
+    console.error('usage: cdp-shot.mjs <url> <width> <height> <out.png> [settleMs] [[hover:]X,Y ...]');
     process.exit(2);
 }
 const width = Number(w);
@@ -79,7 +80,7 @@ await send('Emulation.setDeviceMetricsOverride', {
 await send('Page.navigate', { url });
 await new Promise((r) => setTimeout(r, settleMs));
 
-if (click) {
+for (const click of clicks) {
     const hoverOnly = click.startsWith('hover:');
     const [x, y] = click.replace(/^hover:/, '').split(',').map(Number);
     // MOVE FIRST. egui tracks the pointer itself, so a press with no prior

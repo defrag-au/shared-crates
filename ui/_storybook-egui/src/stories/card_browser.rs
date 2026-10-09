@@ -2,12 +2,13 @@
 
 use egui::{Color32, Pos2, Rect, Vec2};
 use egui_widgets::asset_card::{
-    AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES, RARITY_NAMES,
-    rarity_colors_of,
+    rarity_colors_of, AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES,
+    RARITY_NAMES,
 };
 use egui_widgets::card_browser::{self, CardBrowserConfig, CardBrowserState, CardSection};
 use egui_widgets::slider_group::SliderGroup;
-use egui_widgets::theme::Space;
+use egui_widgets::smart_image::Fit;
+use egui_widgets::theme::{Ink, Space, Token};
 use image_core::ImageSize;
 
 use crate::{accent, muted};
@@ -24,6 +25,12 @@ pub struct CardBrowserStoryState {
     pub card_width: f32,
     pub text_lines: u8,
     pub detail_width: f32,
+    /// Thumb height/width. The wide preset wants the art's own ratio; a
+    /// square collection wants 1.0, which is the default a caller gets.
+    pub thumb_aspect_ratio: f32,
+    pub thumb_fit: Fit,
+    /// Paint a matte behind a contained thumbnail's bands.
+    pub thumb_matte: bool,
     /// `None` = whatever the active theme's ramp says, which is the default a
     /// caller gets. The other entries step the ramp so a reader can see that the
     /// gutter is a scale step and not a free pixel count.
@@ -44,6 +51,9 @@ impl Default for CardBrowserStoryState {
             card_width: 140.0,
             text_lines: 3,
             detail_width: 360.0,
+            thumb_aspect_ratio: 1.0,
+            thumb_fit: Fit::Contain,
+            thumb_matte: false,
             spacing: None,
             holo_strength: 0.7,
             items: build_preset_items(0),
@@ -169,7 +179,31 @@ fn decode_hex_name(hex: &str) -> String {
     String::from_utf8(bytes).unwrap_or_else(|_| hex.to_string())
 }
 
-const PRESET_NAMES: [&str; 4] = ["NFT Portfolio", "Marketplace", "Minimal", "AssetCard 3D"];
+const PRESET_NAMES: [&str; 5] = [
+    "NFT Portfolio",
+    "Marketplace",
+    "Minimal",
+    "AssetCard 3D",
+    "Wide (bill)",
+];
+
+/// The shape the wide preset demonstrates, and the ratio its tiles want: a
+/// centred 2.4:1 letterbox of a square Pirate piece — the shape an Old Money
+/// bill presents in a grid. The identifier and the bytes are real; only the
+/// region is a crop, because the demo collection's own art is square.
+const WIDE_RATIO: f32 = 0.415;
+const WIDE_REGION: &str = "0,599,2048,850";
+
+/// A centred region crop of a real asset, for the wide preset. Hand-built
+/// because `IiifUrl` has no region parameter — the size still goes through
+/// `ImageSize`, which is the part that must not drift.
+fn wide_iiif_url(asset_hex: &str) -> String {
+    format!(
+        "{}/{POLICY_ID}:{asset_hex}/{WIDE_REGION}/{},/0/default.jpg",
+        image_core::DEFAULT_IIIF_BASE,
+        ImageSize::Thumb.px()
+    )
+}
 
 fn build_preset_items(preset: usize) -> Vec<DemoItem> {
     // A fixture has no `Ui`, so it names a theme instead of writing literals.
@@ -259,6 +293,20 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                     effect_index: 0,
                     card_state: AssetCardState::default(),
                 }
+            })
+            .collect(),
+        // Wide art: the same real assets, region-cropped to a bill's shape.
+        // This is the motivating case — a collection whose art is not 1:1
+        // (Old Money's bills are ~2.4:1) reads squashed in a square tile.
+        // Pair it with the thumb-ratio control to see tiles that match the
+        // art, and drag the ratio away from it to watch `Contain` matte the
+        // overflow instead.
+        4 => build_preset_items(0)
+            .into_iter()
+            .zip(PIRATE_HEX)
+            .map(|(mut item, hex)| {
+                item.image_url = Some(wide_iiif_url(hex));
+                item
             })
             .collect(),
         // AssetCard 3D preset
@@ -456,9 +504,24 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
             .slider("Card width", &mut state.card_width, 100.0..=200.0)
             .slider("Text lines", &mut state.text_lines, 1..=5)
             .slider("Detail width", &mut state.detail_width, 200.0..=600.0)
+            .slider("Thumb ratio", &mut state.thumb_aspect_ratio, 0.4..=1.6)
             .show(ui);
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Thumb fit:");
+        for (fit, name) in [
+            (Fit::Contain, "contain"),
+            (Fit::Cover, "cover"),
+            (Fit::Stretch, "stretch"),
+        ] {
+            if ui.selectable_label(state.thumb_fit == fit, name).clicked() {
+                state.thumb_fit = fit;
+            }
+        }
+        ui.checkbox(&mut state.thumb_matte, "matte")
+            .on_hover_text("Fill behind a contained thumbnail's letterbox bands");
+    });
+    ui.horizontal_wrapped(|ui| {
         ui.label("Gutter:");
         // "Theme" first, because it is the default and the point: a surface that
         // says nothing inherits the ramp.
@@ -478,7 +541,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
         }
     });
 
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label("Preset:");
         for (i, name) in PRESET_NAMES.iter().enumerate() {
             let text = if state.preset == i {
@@ -488,6 +551,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
             };
             if ui.selectable_label(state.preset == i, text).clicked() {
                 state.preset = i;
+                // The wide preset is the one worth seeing right on arrival:
+                // set the tile ratio to the crop's, so choosing it lands on
+                // the intended look. Dragging the ratio away from it is how
+                // you watch `Contain` matte the same art.
+                if i == 4 {
+                    state.thumb_aspect_ratio = WIDE_RATIO;
+                }
                 rebuild(state);
             }
         }
@@ -542,6 +612,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
         text_lines: state.text_lines,
         detail_width: state.detail_width,
         spacing: state.spacing,
+        thumb_aspect_ratio: state.thumb_aspect_ratio,
+        thumb_fit: state.thumb_fit,
+        thumb_backdrop: state.thumb_matte.then_some(Ink::Token(Token::BgHighlight)),
         ..Default::default()
     };
 
@@ -661,6 +734,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
         "Selection: click to open detail panel, click again to close",
         "Layout: responsive grid + side-by-side detail panel",
         "draw_thumbnail() helper for async image loading with spinner",
+        "Fit: contain by default — non-1:1 art is letterboxed, never stretched",
+        "Cover and stretch opt-in; thumb ratio sizes the tile to the art",
     ];
     for f in features {
         ui.label(
