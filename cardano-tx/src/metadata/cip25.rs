@@ -28,7 +28,12 @@ use super::MetadataError;
 /// }
 /// ```
 ///
-/// Returns CBOR bytes (Alonzo PostAlonzo format with Tag 259, text keys) ready
+/// A `"version": 2` marker selects CIP-25 v2 output: the policy and asset
+/// keys are decoded from hex (with or without `0x`) and emitted as CBOR byte
+/// strings, as the v2 CDDL specifies, and the marker is carried through.
+/// Without the marker the keys stay text, which is v1.
+///
+/// Returns CBOR bytes (Alonzo PostAlonzo format with Tag 259) ready
 /// for `StagingTransaction::add_auxiliary_data()`.
 pub fn build_cip25_auxiliary_data(
     metadata_json: &serde_json::Value,
@@ -40,21 +45,48 @@ pub fn build_cip25_auxiliary_data(
         .get("721")
         .ok_or(MetadataError::MissingCip25Key)?;
 
+    // CIP-25 v2 declares itself with `"version": 2` and keys both maps by
+    // the raw policy/name bytes — hex in JSON, conventionally `0x`-prefixed.
+    // v1 keys by plain text. The marker is the switch: without it a
+    // hex-looking key is still a v1 text name.
+    let v2 = metadata_721
+        .as_object()
+        .and_then(|m| m.get("version"))
+        .is_some_and(|v| v.as_u64() == Some(2) || v.as_str() == Some("2"));
+
     tracing::debug!("Building CIP-25 auxiliary data using pallas-primitives");
 
     let mut policy_map: Vec<(Metadatum, Metadatum)> = Vec::new();
 
     if let Some(policy_obj) = metadata_721.as_object() {
+        if v2 {
+            policy_map.push((
+                Metadatum::Text("version".to_string()),
+                Metadatum::Int(Int::from(2)),
+            ));
+        }
+
         for (policy_id_hex, assets_obj) in policy_obj {
-            // Use text format for policy ID (matches working mainnet transactions)
-            let policy_id_metadatum = Metadatum::Text(policy_id_hex.clone());
+            if policy_id_hex == "version" {
+                continue;
+            }
+            // Text in v1 (matches working mainnet transactions); the raw bytes
+            // in v2, which is what the CDDL's byte-string keys are.
+            let policy_id_metadatum = if v2 {
+                Metadatum::Bytes(hex_key_bytes(policy_id_hex)?.into())
+            } else {
+                Metadatum::Text(policy_id_hex.clone())
+            };
 
             let mut asset_map_entries: Vec<(Metadatum, Metadatum)> = Vec::new();
 
             if let Some(assets) = assets_obj.as_object() {
                 for (asset_name, metadata) in assets {
-                    // Use text format for asset name (matches working mainnet transactions)
-                    let asset_name_metadatum = Metadatum::Text(asset_name.clone());
+                    let asset_name_metadatum = if v2 {
+                        Metadatum::Bytes(hex_key_bytes(asset_name)?.into())
+                    } else {
+                        Metadatum::Text(asset_name.clone())
+                    };
                     let metadata_metadatum = json_to_metadatum(metadata)?;
                     asset_map_entries.push((asset_name_metadatum, metadata_metadatum));
                 }
@@ -94,11 +126,23 @@ pub fn build_cip25_auxiliary_data(
         .map_err(|e| MetadataError::EncodeError(format!("Failed to encode auxiliary data: {e}")))?;
 
     tracing::debug!(
-        "Encoded auxiliary data: {} bytes (Alonzo PostAlonzo with Tag 259, text keys)",
-        auxiliary_bytes.len()
+        "Encoded auxiliary data: {} bytes (Alonzo PostAlonzo with Tag 259, {} keys)",
+        auxiliary_bytes.len(),
+        if v2 { "byte" } else { "text" }
     );
 
     Ok(auxiliary_bytes)
+}
+
+/// The raw bytes behind a CIP-25 v2 map key: hex, `0x` prefix optional.
+fn hex_key_bytes(key: &str) -> Result<Vec<u8>, MetadataError> {
+    let hex_key = key
+        .strip_prefix("0x")
+        .or_else(|| key.strip_prefix("0X"))
+        .unwrap_or(key);
+    hex::decode(hex_key).map_err(|e| {
+        MetadataError::UnsupportedValue(format!("CIP-25 v2 key '{key}' is not hex: {e}"))
+    })
 }
 
 /// Build auxiliary data from an arbitrary transaction-metadata JSON
@@ -341,5 +385,101 @@ mod tests {
     fn test_json_to_metadatum_null_rejected() {
         let val = serde_json::Value::Null;
         assert!(json_to_metadatum(&val).is_err());
+    }
+
+    /// Decode auxiliary data back to its `721` map for shape assertions.
+    fn cip25_map(bytes: &[u8]) -> KeyValuePairs<Metadatum, Metadatum> {
+        use pallas_primitives::Fragment;
+        use pallas_primitives::alonzo::AuxiliaryData;
+
+        let aux = AuxiliaryData::decode_fragment(bytes).expect("decodes");
+        let AuxiliaryData::PostAlonzo(pa) = aux else {
+            panic!("PostAlonzo expected");
+        };
+        let metadata = pa.metadata.expect("metadata present");
+        let Metadatum::Map(policies) = metadata.get(&721).expect("721 label") else {
+            panic!("721 is a map");
+        };
+        policies.clone()
+    }
+
+    /// v2 input must reach the chain as the v2 CDDL shapes: byte-string
+    /// policy/asset keys and the `version: 2` marker. Text keys here would put
+    /// a valid-but-wrong-version payload on chain.
+    #[test]
+    fn test_v2_input_emits_byte_keys_and_the_version_marker() {
+        let json = serde_json::json!({
+            "721": {
+                "version": 2,
+                "0xAABBCC": {
+                    "0x00ff": { "name": "camel", "image": "ipfs://QmTest" }
+                }
+            }
+        });
+
+        let bytes = build_cip25_auxiliary_data(&json).unwrap();
+        let policies = cip25_map(&bytes);
+
+        let (policy_key, assets) = policies
+            .iter()
+            .find(|(key, _)| matches!(key, Metadatum::Bytes(_)))
+            .expect("byte-string policy key");
+        let Metadatum::Bytes(policy_bytes) = policy_key else {
+            unreachable!("find matched a byte key");
+        };
+        assert_eq!(policy_bytes.as_slice(), &[0xaa, 0xbb, 0xcc]);
+
+        let Metadatum::Map(asset_entries) = assets else {
+            panic!("policy maps to an asset map");
+        };
+        let (asset_key, _) = asset_entries.iter().next().expect("one asset");
+        let Metadatum::Bytes(asset_bytes) = asset_key else {
+            panic!("byte-string asset key");
+        };
+        assert_eq!(asset_bytes.as_slice(), &[0x00, 0xff]);
+
+        let (_, version) = policies
+            .iter()
+            .find(|(key, _)| matches!(key, Metadatum::Text(t) if t == "version"))
+            .expect("version marker carried through");
+        assert!(matches!(version, Metadatum::Int(i) if *i == Int::from(2)));
+    }
+
+    /// Without the marker, keys stay text — even a name that looks like hex is
+    /// a v1 name, and the existing mainnet shape must not change.
+    #[test]
+    fn test_v1_input_keeps_text_keys() {
+        let json = serde_json::json!({
+            "721": {
+                "abc123": { "0xdeadbeef": { "name": "literal" } }
+            }
+        });
+
+        let bytes = build_cip25_auxiliary_data(&json).unwrap();
+        let policies = cip25_map(&bytes);
+        let (policy_key, assets) = policies.iter().next().expect("one policy");
+        assert!(matches!(policy_key, Metadatum::Text(t) if t == "abc123"));
+
+        let Metadatum::Map(asset_entries) = assets else {
+            panic!("policy maps to an asset map");
+        };
+        let (asset_key, _) = asset_entries.iter().next().expect("one asset");
+        assert!(matches!(asset_key, Metadatum::Text(t) if t == "0xdeadbeef"));
+    }
+
+    /// A v2 key that isn't hex is refused rather than silently encoded as
+    /// something else.
+    #[test]
+    fn test_v2_non_hex_key_is_rejected() {
+        let json = serde_json::json!({
+            "721": {
+                "version": 2,
+                "not-hex": { "00ff": { "name": "camel" } }
+            }
+        });
+        assert!(matches!(
+            build_cip25_auxiliary_data(&json),
+            Err(MetadataError::UnsupportedValue(_))
+        ));
     }
 }
