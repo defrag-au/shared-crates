@@ -20,10 +20,8 @@
 use std::fmt;
 
 use crate::error::DecodeError;
-use crate::record::{Record, ResolvedAsset, records, resolve};
-use crate::segment::{
-    INDEX_ENTRY_LEN, IndexEntry, SEGMENT_HEADER_LEN, SegmentHeader, find_index_entry,
-};
+use crate::record::{Record, ResolvedAsset, resolve};
+use crate::segment::SegmentView;
 use crate::{DirectoryView, POLICY_ID_LEN, Pointer};
 
 /// One read's outcome, keeping its object key for error context.
@@ -151,6 +149,11 @@ impl<E: fmt::Debug + fmt::Display> std::error::Error for WalkError<E> {}
 
 /// Resolve `(policy_id, name)` against the build at `prefix`.
 ///
+/// Each candidate segment is fetched as **one whole object** — the shape gate
+/// 3 settled (2026-10-10): an R2 read costs the round trip, not the bytes, so
+/// one whole-segment read beats the header → index → slice chain it replaced
+/// (warm p50 274-296 ms against 806-814 ms on the probe's fixture).
+///
 /// `Ok(None)` is the caller's fall-through signal: the build holds no record
 /// for the pair — a fresh mint ahead of the build, or an asset no covered
 /// chunk states metadata for. `Ok(Some(asset))` is the answer;
@@ -217,104 +220,45 @@ pub async fn resolve_asset<S: RangeSource>(
         return Ok(None);
     }
 
-    // Round 2 — one header per candidate chunk.
     let keys: Vec<String> = candidates
         .iter()
         .map(|chunk| segment_key(prefix, *chunk))
         .collect();
-    let header_reads: Vec<Read> = keys
-        .iter()
-        .map(|key| Read::range(key.clone(), 0, SEGMENT_HEADER_LEN as u64))
-        .collect();
-    let header_results = fetch_checked(source, &header_reads).await?;
-    let mut headers = Vec::with_capacity(candidates.len());
-    for (key, result) in keys.iter().zip(header_results) {
+    let found = read_segments(source, &keys, policy_id, name).await?;
+
+    Ok(resolve(found.iter(), pointer.built_through_chunk))
+}
+
+/// Fetch each candidate segment whole (round 2) and collect the records the
+/// policy holds in it.
+async fn read_segments<S: RangeSource>(
+    source: &S,
+    keys: &[String],
+    policy_id: &[u8; POLICY_ID_LEN],
+    name: &[u8],
+) -> Result<Vec<Record>, WalkError<S::Error>> {
+    let reads: Vec<Read> = keys.iter().map(|key| Read::whole(key.clone())).collect();
+    let results = fetch_checked(source, &reads).await?;
+    let mut found: Vec<Record> = Vec::new();
+    for (key, result) in keys.iter().zip(results) {
         let bytes = result.map_err(|cause| WalkError::Read {
             key: key.clone(),
             cause,
         })?;
-        headers.push(
-            SegmentHeader::parse(&bytes).map_err(|cause| WalkError::Decode {
+        let view = SegmentView::parse(&bytes).map_err(|cause| WalkError::Decode {
+            key: key.clone(),
+            cause,
+        })?;
+        let Some(region) = view
+            .records_for(policy_id)
+            .map_err(|cause| WalkError::Decode {
                 key: key.clone(),
                 cause,
-            })?,
-        );
-    }
-
-    // Round 3 — the index region each header names; which candidates hold the
-    // policy is answered here.
-    let index_reads: Vec<Read> = keys
-        .iter()
-        .zip(&headers)
-        .map(|(key, header)| {
-            Read::range(
-                key.clone(),
-                u64::from(header.index_off),
-                header.index_count as u64 * INDEX_ENTRY_LEN as u64,
-            )
-        })
-        .collect();
-    let index_results = fetch_checked(source, &index_reads).await?;
-    let mut present: Vec<(String, IndexEntry)> = Vec::new();
-    for ((key, header), result) in keys.iter().zip(&headers).zip(index_results) {
-        let bytes = result.map_err(|cause| WalkError::Read {
-            key: key.clone(),
-            cause,
-        })?;
-        let want = header.index_count as usize * INDEX_ENTRY_LEN;
-        if bytes.len() < want {
-            return Err(WalkError::Decode {
-                key: key.clone(),
-                cause: DecodeError::Truncated {
-                    at: bytes.len(),
-                    want,
-                },
-            });
-        }
-        if let Some(entry) =
-            find_index_entry(&bytes, header.index_count, policy_id).map_err(|cause| {
-                WalkError::Decode {
-                    key: key.clone(),
-                    cause,
-                }
             })?
-        {
-            present.push((key.clone(), entry));
-        }
-    }
-    if present.is_empty() {
-        return Ok(None);
-    }
-
-    // Round 4 — the record slices.
-    let slice_reads: Vec<Read> = present
-        .iter()
-        .map(|(key, entry)| {
-            Read::range(
-                key.clone(),
-                u64::from(entry.records_off),
-                u64::from(entry.records_len),
-            )
-        })
-        .collect();
-    let slice_results = fetch_checked(source, &slice_reads).await?;
-    let mut found: Vec<Record> = Vec::new();
-    for ((key, entry), result) in present.iter().zip(slice_results) {
-        let bytes = result.map_err(|cause| WalkError::Read {
-            key: key.clone(),
-            cause,
-        })?;
-        let want = entry.records_len as usize;
-        if bytes.len() < want {
-            return Err(WalkError::Decode {
-                key: key.clone(),
-                cause: DecodeError::Truncated {
-                    at: bytes.len(),
-                    want,
-                },
-            });
-        }
-        for record in records(&bytes[..want]) {
+        else {
+            continue;
+        };
+        for record in region {
             let record = record.map_err(|cause| WalkError::Decode {
                 key: key.clone(),
                 cause,
@@ -324,8 +268,7 @@ pub async fn resolve_asset<S: RangeSource>(
             }
         }
     }
-
-    Ok(resolve(found.iter(), pointer.built_through_chunk))
+    Ok(found)
 }
 
 async fn fetch_checked<S: RangeSource>(
@@ -346,7 +289,7 @@ async fn fetch_checked<S: RangeSource>(
 mod tests {
     use super::*;
     use crate::record::{Event, Family, Provenance};
-    use crate::segment::SegmentBuilder;
+    use crate::segment::{SEGMENT_HEADER_LEN, SegmentBuilder};
     use crate::{DirectoryEntry, DirectoryShard, NETWORK_MAINNET};
     use std::cell::RefCell;
     use std::collections::HashMap;
@@ -611,11 +554,7 @@ mod tests {
         let source = one_mint_build();
         let outcome = block_on(resolve_asset(&source, PREFIX, &policy(0x02), b"Z")).expect("walks");
         assert!(outcome.is_none());
-        assert_eq!(
-            source.reads().len(),
-            5,
-            "pointer, shard, header, index, slice"
-        );
+        assert_eq!(source.reads().len(), 3, "pointer, shard, whole segment");
     }
 
     #[test]
@@ -696,15 +635,9 @@ mod tests {
         let _ = block_on(resolve_asset(&source, PREFIX, &policy(0x02), b"A")).expect("walks");
 
         let reads = source.reads();
-        assert_eq!(reads.len(), 5);
+        assert_eq!(reads.len(), 3, "pointer, shard, one whole segment");
         assert_eq!(reads[0], Read::whole(pointer_key(PREFIX)));
         assert_eq!(reads[1], Read::whole(directory_key(PREFIX, 0x02)));
-        assert_eq!(
-            reads[2],
-            Read::range(segment_key(PREFIX, 100), 0, SEGMENT_HEADER_LEN as u64)
-        );
-        assert_eq!(reads[3].key, segment_key(PREFIX, 100));
-        assert_eq!(reads[3].offset, SEGMENT_HEADER_LEN as u64);
-        assert_eq!(reads[4].key, segment_key(PREFIX, 100));
+        assert_eq!(reads[2], Read::whole(segment_key(PREFIX, 100)));
     }
 }

@@ -213,11 +213,10 @@ impl<'a> SegmentView<'a> {
     }
 }
 
-/// Binary-search a *fetched* index region alone — the walk's middle read,
-/// where the header is known but the rest of the object was never fetched.
-/// A region shorter than `index_count` claims refuses rather than reporting
-/// an absent policy.
-pub(crate) fn find_index_entry(
+/// Binary-search an index region — the shared search behind
+/// [`SegmentView::entry`]. A region shorter than `index_count` claims refuses
+/// rather than reporting an absent policy.
+fn find_index_entry(
     index: &[u8],
     index_count: u32,
     policy_id: &[u8; POLICY_ID_LEN],
@@ -456,9 +455,9 @@ mod tests {
         ));
     }
 
-    /// The walk fetches the index region alone: the search must work without
-    /// the header, and a region shorter than the header's count must surface
-    /// as truncation — never as an absent policy.
+    /// The search must work on the index region alone, without the header,
+    /// and a region shorter than the header's count must surface as
+    /// truncation — never as an absent policy.
     #[test]
     fn a_fetched_index_region_searches_alone() {
         let bytes = build();
