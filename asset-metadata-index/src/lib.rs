@@ -27,6 +27,14 @@
 //! asset's records is current. Latest wins by `(chunk, body_offset)` — chain
 //! order — and a burn as the latest event clears the asset. The same rule for
 //! both families.
+//!
+//! # The read walk
+//!
+//! [`resolve_asset`] is the reader: four rounds of batched reads through a
+//! [`RangeSource`] — pointer and shard, segment headers, index regions, record
+//! slices — ending in the same `latest` rule. The source owns the transport
+//! (files natively, KV and R2 at the edge); the crate owns the order of the
+//! reads and the bytes they must return.
 
 #![warn(missing_docs)]
 
@@ -36,6 +44,7 @@ mod error;
 mod pointer;
 mod record;
 mod segment;
+mod walk;
 
 pub use directory::{
     DIRECTORY_HEADER_LEN, DirectoryEntry, DirectoryHeader, DirectoryShard, DirectoryView,
@@ -48,6 +57,10 @@ pub use record::{
 };
 pub use segment::{
     INDEX_ENTRY_LEN, IndexEntry, SEGMENT_HEADER_LEN, SegmentBuilder, SegmentHeader, SegmentView,
+};
+pub use walk::{
+    DEFAULT_PREFIX, RangeSource, Read, WalkError, directory_key, pointer_key, resolve_asset,
+    segment_key,
 };
 
 /// The format version every object in v1 carries.

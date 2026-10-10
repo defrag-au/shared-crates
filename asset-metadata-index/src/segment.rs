@@ -166,18 +166,21 @@ impl<'a> SegmentView<'a> {
         &self,
         policy_id: &[u8; POLICY_ID_LEN],
     ) -> Result<Option<IndexEntry>, DecodeError> {
-        let mut lo = 0usize;
-        let mut hi = self.header.index_count as usize;
-        while lo < hi {
-            let mid = lo + (hi - lo) / 2;
-            let entry = self.entry_at(mid)?;
-            match entry.policy_id.cmp(policy_id) {
-                std::cmp::Ordering::Less => lo = mid + 1,
-                std::cmp::Ordering::Greater => hi = mid,
-                std::cmp::Ordering::Equal => return Ok(Some(entry)),
-            }
+        find_index_entry(
+            &self.bytes[self.header.index_off as usize..],
+            self.header.index_count,
+            policy_id,
+        )
+    }
+
+    /// Every index entry, in stored order — the inspect and verify tooling
+    /// reads this; the read path binary-searches [`Self::entry`] instead.
+    pub fn entries(&self) -> Result<Vec<IndexEntry>, DecodeError> {
+        let mut out = Vec::with_capacity(self.header.index_count as usize);
+        for i in 0..self.header.index_count as usize {
+            out.push(self.entry_at(i)?);
         }
-        Ok(None)
+        Ok(out)
     }
 
     fn entry_at(&self, i: usize) -> Result<IndexEntry, DecodeError> {
@@ -208,6 +211,29 @@ impl<'a> SegmentView<'a> {
     ) -> Result<Option<Records<'a>>, DecodeError> {
         Ok(self.slice(policy_id)?.map(records))
     }
+}
+
+/// Binary-search a *fetched* index region alone — the walk's middle read,
+/// where the header is known but the rest of the object was never fetched.
+/// A region shorter than `index_count` claims refuses rather than reporting
+/// an absent policy.
+pub(crate) fn find_index_entry(
+    index: &[u8],
+    index_count: u32,
+    policy_id: &[u8; POLICY_ID_LEN],
+) -> Result<Option<IndexEntry>, DecodeError> {
+    let mut lo = 0usize;
+    let mut hi = index_count as usize;
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        let entry = IndexEntry::parse_at(index, mid * INDEX_ENTRY_LEN)?;
+        match entry.policy_id.cmp(policy_id) {
+            std::cmp::Ordering::Less => lo = mid + 1,
+            std::cmp::Ordering::Greater => hi = mid,
+            std::cmp::Ordering::Equal => return Ok(Some(entry)),
+        }
+    }
+    Ok(None)
 }
 
 /// Assemble a segment's bytes. Builder-side; the reader only ever parses.
@@ -427,6 +453,35 @@ mod tests {
         assert!(matches!(
             SegmentView::parse(&bad_index),
             Err(DecodeError::BadLength)
+        ));
+    }
+
+    /// The walk fetches the index region alone: the search must work without
+    /// the header, and a region shorter than the header's count must surface
+    /// as truncation — never as an absent policy.
+    #[test]
+    fn a_fetched_index_region_searches_alone() {
+        let bytes = build();
+        let view = SegmentView::parse(&bytes).expect("parses");
+        assert_eq!(view.entries().expect("entries").len(), 2);
+
+        let at = view.header.index_off as usize;
+        let len = view.header.index_count as usize * INDEX_ENTRY_LEN;
+        let region = &bytes[at..at + len];
+        assert_eq!(
+            find_index_entry(region, 2, &policy(0x02)).expect("searches"),
+            Some(IndexEntry::parse_at(region, INDEX_ENTRY_LEN).expect("parses"))
+        );
+        assert!(
+            find_index_entry(region, 2, &policy(0x09))
+                .expect("searches")
+                .is_none()
+        );
+
+        let short = &region[..INDEX_ENTRY_LEN];
+        assert!(matches!(
+            find_index_entry(short, 3, &policy(0x09)),
+            Err(DecodeError::Truncated { .. })
         ));
     }
 }
