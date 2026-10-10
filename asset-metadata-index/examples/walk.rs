@@ -186,7 +186,11 @@ fn read_one(root: &Path, read: &Read) -> std::io::Result<Vec<u8>> {
             Ok(out)
         }
         Some(len) => {
-            let mut out = vec![0u8; len as usize];
+            // A real object store answers an over-long range with what it
+            // has; the walk relies on the short read to mean "the object
+            // ended".
+            let remaining = file.metadata()?.len().saturating_sub(read.offset);
+            let mut out = vec![0u8; remaining.min(len) as usize];
             file.read_exact(&mut out)?;
             Ok(out)
         }

@@ -59,8 +59,8 @@ pub use segment::{
     INDEX_ENTRY_LEN, IndexEntry, SEGMENT_HEADER_LEN, SegmentBuilder, SegmentHeader, SegmentView,
 };
 pub use walk::{
-    DEFAULT_PREFIX, RangeSource, Read, WalkError, directory_key, pointer_key, resolve_asset,
-    segment_key,
+    DEFAULT_PREFIX, RangeSource, Read, WHOLE_SEGMENT_CAP, WalkError, directory_key, pointer_key,
+    resolve_asset, segment_key,
 };
 
 /// The format version every object in v1 carries.

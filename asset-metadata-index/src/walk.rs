@@ -20,8 +20,10 @@
 use std::fmt;
 
 use crate::error::DecodeError;
-use crate::record::{Record, ResolvedAsset, resolve};
-use crate::segment::SegmentView;
+use crate::record::{Record, ResolvedAsset, records, resolve};
+use crate::segment::{
+    INDEX_ENTRY_LEN, SEGMENT_HEADER_LEN, SegmentHeader, SegmentView, find_index_entry,
+};
 use crate::{DirectoryView, POLICY_ID_LEN, Pointer};
 
 /// One read's outcome, keeping its object key for error context.
@@ -229,15 +231,27 @@ pub async fn resolve_asset<S: RangeSource>(
     Ok(resolve(found.iter(), pointer.built_through_chunk))
 }
 
-/// Fetch each candidate segment whole (round 2) and collect the records the
-/// policy holds in it.
+/// The largest segment fetched whole. MEASURED: the full build's segments
+/// reach 59.4 MiB (mean 1.2 MiB) against a Worker's 128 MiB of Wasm memory
+/// — a fat segment fetched whole has OOMed the hosted probe's isolate.
+/// Segments above this use the header → index → slice chain instead.
+pub const WHOLE_SEGMENT_CAP: u64 = 8 << 20;
+
+/// Fetch each candidate segment (round 2) and collect the records the policy
+/// holds in it: whole when it fits [`WHOLE_SEGMENT_CAP`], as ranges when it
+/// does not.
 async fn read_segments<S: RangeSource>(
     source: &S,
     keys: &[String],
     policy_id: &[u8; POLICY_ID_LEN],
     name: &[u8],
 ) -> Result<Vec<Record>, WalkError<S::Error>> {
-    let reads: Vec<Read> = keys.iter().map(|key| Read::whole(key.clone())).collect();
+    // One byte past the cap distinguishes "the whole object" from "needs
+    // ranges" without a second round trip: a short read means it ended.
+    let reads: Vec<Read> = keys
+        .iter()
+        .map(|key| Read::range(key.clone(), 0, WHOLE_SEGMENT_CAP + 1))
+        .collect();
     let results = fetch_checked(source, &reads).await?;
     let mut found: Vec<Record> = Vec::new();
     for (key, result) in keys.iter().zip(results) {
@@ -245,6 +259,10 @@ async fn read_segments<S: RangeSource>(
             key: key.clone(),
             cause,
         })?;
+        if bytes.len() as u64 > WHOLE_SEGMENT_CAP {
+            read_ranges(source, key, policy_id, name, &mut found).await?;
+            continue;
+        }
         let view = SegmentView::parse(&bytes).map_err(|cause| WalkError::Decode {
             key: key.clone(),
             cause,
@@ -269,6 +287,99 @@ async fn read_segments<S: RangeSource>(
         }
     }
     Ok(found)
+}
+
+/// One candidate over [`WHOLE_SEGMENT_CAP`] — the header → index → slice
+/// chain, three dependent reads, the shape gate 3 measured before the whole
+/// read replaced it.
+async fn read_ranges<S: RangeSource>(
+    source: &S,
+    key: &str,
+    policy_id: &[u8; POLICY_ID_LEN],
+    name: &[u8],
+    found: &mut Vec<Record>,
+) -> Result<(), WalkError<S::Error>> {
+    let header_bytes = oneshot(source, key, 0, SEGMENT_HEADER_LEN as u64).await?;
+    let header = SegmentHeader::parse(&header_bytes).map_err(|cause| WalkError::Decode {
+        key: key.to_string(),
+        cause,
+    })?;
+
+    let index = oneshot(
+        source,
+        key,
+        u64::from(header.index_off),
+        header.index_count as u64 * INDEX_ENTRY_LEN as u64,
+    )
+    .await?;
+    let want = header.index_count as usize * INDEX_ENTRY_LEN;
+    if index.len() < want {
+        return Err(WalkError::Decode {
+            key: key.to_string(),
+            cause: DecodeError::Truncated {
+                at: index.len(),
+                want,
+            },
+        });
+    }
+    let Some(entry) = find_index_entry(&index, header.index_count, policy_id).map_err(|cause| {
+        WalkError::Decode {
+            key: key.to_string(),
+            cause,
+        }
+    })?
+    else {
+        return Ok(());
+    };
+
+    let slice = oneshot(
+        source,
+        key,
+        u64::from(entry.records_off),
+        u64::from(entry.records_len),
+    )
+    .await?;
+    let want = entry.records_len as usize;
+    if slice.len() < want {
+        return Err(WalkError::Decode {
+            key: key.to_string(),
+            cause: DecodeError::Truncated {
+                at: slice.len(),
+                want,
+            },
+        });
+    }
+    for record in records(&slice[..want]) {
+        let record = record.map_err(|cause| WalkError::Decode {
+            key: key.to_string(),
+            cause,
+        })?;
+        if record.name.as_slice() == name {
+            found.push(record);
+        }
+    }
+    Ok(())
+}
+
+/// One range read, checked.
+async fn oneshot<S: RangeSource>(
+    source: &S,
+    key: &str,
+    offset: u64,
+    len: u64,
+) -> Result<Vec<u8>, WalkError<S::Error>> {
+    let reads = vec![Read::range(key.to_string(), offset, len)];
+    let mut results = fetch_checked(source, &reads).await?;
+    results
+        .pop()
+        .ok_or(WalkError::ResultCount {
+            expected: 1,
+            got: 0,
+        })?
+        .map_err(|cause| WalkError::Read {
+            key: key.to_string(),
+            cause,
+        })
 }
 
 async fn fetch_checked<S: RangeSource>(
@@ -403,7 +514,10 @@ mod tests {
                             let start = read.offset as usize;
                             let end = match read.len {
                                 None => bytes.len(),
-                                Some(len) => start + len as usize,
+                                // A real object store answers an over-long
+                                // range with what it has; the walk relies on
+                                // the short read to mean "the object ended".
+                                Some(len) => start.saturating_add(len as usize).min(bytes.len()),
                             };
                             bytes
                                 .get(start..end)
@@ -638,6 +752,37 @@ mod tests {
         assert_eq!(reads.len(), 3, "pointer, shard, one whole segment");
         assert_eq!(reads[0], Read::whole(pointer_key(PREFIX)));
         assert_eq!(reads[1], Read::whole(directory_key(PREFIX, 0x02)));
-        assert_eq!(reads[2], Read::whole(segment_key(PREFIX, 100)));
+        assert_eq!(
+            reads[2],
+            Read::range(segment_key(PREFIX, 100), 0, WHOLE_SEGMENT_CAP + 1)
+        );
+    }
+
+    #[test]
+    fn a_fat_segment_falls_back_to_ranges() {
+        let mut source = one_mint_build();
+        // Pad the segment past the whole-read cap: the walk must switch to
+        // the header → index → slice chain for it.
+        let key = segment_key(PREFIX, 100);
+        let mut bytes = source.objects.get(&key).expect("built").clone();
+        bytes.resize(WHOLE_SEGMENT_CAP as usize + 2, 0);
+        source.objects.insert(key.clone(), bytes);
+
+        let asset = block_on(resolve_asset(&source, PREFIX, &policy(0x02), b"A"))
+            .expect("walks")
+            .expect("found");
+
+        let reads = source.reads();
+        assert_eq!(reads[0], Read::whole(pointer_key(PREFIX)));
+        assert_eq!(reads[1], Read::whole(directory_key(PREFIX, 0x02)));
+        assert_eq!(reads[2], Read::range(key.clone(), 0, WHOLE_SEGMENT_CAP + 1));
+        assert_eq!(
+            reads[3],
+            Read::range(key.clone(), 0, SEGMENT_HEADER_LEN as u64)
+        );
+        assert_eq!(reads[4].len, Some(INDEX_ENTRY_LEN as u64));
+        assert_eq!(reads[5].key, key);
+        assert_eq!(asset.image, b"ipfs://img");
+        assert_eq!(asset.event, Event::Mint);
     }
 }
