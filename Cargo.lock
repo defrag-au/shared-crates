@@ -301,6 +301,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "asset-metadata-index"
+version = "0.1.0"
+
+[[package]]
 name = "asset-rarity"
 version = "0.1.0"
 dependencies = [

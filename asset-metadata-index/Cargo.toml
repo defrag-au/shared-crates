@@ -1,0 +1,8 @@
+[package]
+name = "asset-metadata-index"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Wire format of the R2-hosted resolved asset metadata index — segments, directory, pointer"
+
+[dependencies]

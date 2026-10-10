@@ -5,6 +5,7 @@ members = [
     "address-registry",
     "anvil-api",
     "asset-intents",
+    "asset-metadata-index",
     "authorizations",
     "image-hash",
     "magic-link",
