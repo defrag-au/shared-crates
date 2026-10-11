@@ -23,8 +23,9 @@
 //! - [`SegmentView`] — one object per sealed chunk, immutable forever, holding
 //!   the resolved [`Record`]s and a per-policy index into them.
 //! - [`ListingView`] — one object per policy: its standing assets,
-//!   name-sorted. The enumeration read ("everything in this collection")
-//!   where the walk answers one asset at a time.
+//!   name-sorted, walked a window at a time by [`entry_at`] when a page is
+//!   wanted. The enumeration read ("everything in this collection") where
+//!   the walk answers one asset at a time.
 //!
 //! # Standing
 //!
@@ -67,7 +68,10 @@ pub use directory::{
 };
 pub use error::{DecodeError, EncodeError};
 pub use filter::{FilterBuilder, might_contain};
-pub use listing::{LISTING_HEADER_LEN, ListingBuilder, ListingEntry, ListingHeader, ListingView};
+pub use listing::{
+    LISTING_HEADER_LEN, LISTING_MAX_ENTRY_LEN, ListingBuilder, ListingEntry, ListingHeader,
+    ListingView, entry_at,
+};
 pub use pointer::{Pointer, VERSION_KEY};
 pub use record::{
     Event, Family, MediaLink, Provenance, RECORD_HEAD_LEN, Record, Records, ResolvedAsset,

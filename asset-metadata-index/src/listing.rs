@@ -42,6 +42,13 @@
 //! emitter's call; this module stores what it was handed. An asset with no
 //! image still has an entry: `image` is empty, not absent.
 //!
+//! # Walking
+//!
+//! [`entry_at`] parses one entry from any boundary of the entry region — the
+//! paged read (`ASSET_METADATA_INDEX.md` §Collection listing reads) cuts
+//! windows into pages with it, and a client parsing a `format=bin` window
+//! walks the same call.
+//!
 //! # Churn
 //!
 //! Mutable, like the directory: the emitter rewrites a policy's listing when
@@ -55,6 +62,12 @@ use crate::{FORMAT_VERSION, LISTING_MAGIC, POLICY_ID_LEN};
 
 /// Fixed header length.
 pub const LISTING_HEADER_LEN: usize = 64;
+
+/// The largest entry the format can state: `name_len` is a `u8` (≤ 255),
+/// `image_len` and `media_type_len` are `u16`s (≤ 65,535), plus the three
+/// length prefixes. A paged reader sizes its window from this so one ranged
+/// read always reaches the end of the page's last entry.
+pub const LISTING_MAX_ENTRY_LEN: usize = 255 + 65_535 + 65_535 + 5;
 
 /// A listing's header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,18 +182,43 @@ impl<'a> ListingView<'a> {
         let mut at = LISTING_HEADER_LEN;
         let mut out = Vec::with_capacity(self.header.asset_count as usize);
         for _ in 0..self.header.asset_count {
-            let name_len = u8_at(self.bytes, &mut at)? as usize;
-            let name = take(self.bytes, &mut at, name_len)?.to_vec();
-            let image = take_u16_prefixed(self.bytes, &mut at)?.to_vec();
-            let media_type = take_u16_prefixed(self.bytes, &mut at)?.to_vec();
-            out.push(ListingEntry {
-                name,
-                image,
-                media_type,
-            });
+            let (entry, next) = entry_from(self.bytes, at)?;
+            out.push(entry);
+            at = next;
         }
         Ok(out)
     }
+}
+
+/// Parse the entry at `at` — the paged walk's step.
+///
+/// `at` must be an entry boundary: [`LISTING_HEADER_LEN`] at the front of the
+/// object, or a previous call's returned offset. `Ok(None)` means `at` is
+/// exactly the end of `bytes`; a shortfall mid-entry is
+/// [`DecodeError::Truncated`] — how a reader walking a window learns the
+/// entry runs past it.
+pub fn entry_at(bytes: &[u8], at: usize) -> Result<Option<(ListingEntry, usize)>, DecodeError> {
+    if at == bytes.len() {
+        return Ok(None);
+    }
+    entry_from(bytes, at).map(Some)
+}
+
+/// The entry parse `entries` and `entry_at` share.
+fn entry_from(bytes: &[u8], at: usize) -> Result<(ListingEntry, usize), DecodeError> {
+    let mut cursor = at;
+    let name_len = u8_at(bytes, &mut cursor)? as usize;
+    let name = take(bytes, &mut cursor, name_len)?.to_vec();
+    let image = take_u16_prefixed(bytes, &mut cursor)?.to_vec();
+    let media_type = take_u16_prefixed(bytes, &mut cursor)?.to_vec();
+    Ok((
+        ListingEntry {
+            name,
+            image,
+            media_type,
+        },
+        cursor,
+    ))
 }
 
 /// Assemble one policy's listing bytes. Builder-side.
@@ -411,6 +449,70 @@ mod tests {
             ListingHeader::parse(&tail),
             Err(DecodeError::ReservedNotZero { .. })
         ));
+    }
+
+    #[test]
+    fn entry_at_walks_from_any_boundary_to_the_end() {
+        let bytes = builder(vec![
+            entry(b"A", b"ipfs://x", b"image/png"),
+            entry(b"B", b"", b""),
+            entry(b"Cc", b"ipfs://z", b""),
+        ])
+        .encode()
+        .expect("encodes");
+        let view = ListingView::parse(&bytes).expect("parses");
+
+        let mut at = LISTING_HEADER_LEN;
+        let mut walked = Vec::new();
+        while let Some((entry, next)) = entry_at(&bytes, at).expect("walks") {
+            walked.push(entry);
+            at = next;
+        }
+        assert_eq!(walked, view.entries().expect("entries"));
+        assert_eq!(at, bytes.len());
+
+        // From the second entry's own boundary the walk starts there.
+        let (_, second) = entry_at(&bytes, LISTING_HEADER_LEN)
+            .expect("walks")
+            .expect("an entry");
+        let (entry, _) = entry_at(&bytes, second).expect("walks").expect("an entry");
+        assert_eq!(entry.name, b"B");
+    }
+
+    #[test]
+    fn a_window_cut_mid_entry_is_truncated_not_a_shorter_entry() {
+        let bytes = builder(vec![
+            entry(b"A", b"ipfs://x", b"image/png"),
+            entry(b"B", b"", b""),
+        ])
+        .encode()
+        .expect("encodes");
+        let (_, second) = entry_at(&bytes, LISTING_HEADER_LEN)
+            .expect("walks")
+            .expect("an entry");
+        let cut = &bytes[..bytes.len() - 1];
+        assert!(matches!(
+            entry_at(cut, second),
+            Err(DecodeError::Truncated { .. })
+        ));
+        // Exactly at the end there is nothing left to parse.
+        assert_eq!(entry_at(&bytes, bytes.len()).expect("walks"), None);
+    }
+
+    #[test]
+    fn the_max_entry_len_is_reachable() {
+        let max = ListingEntry {
+            name: vec![b'a'; 255],
+            image: vec![b'i'; 65_535],
+            media_type: vec![b'm'; 65_535],
+        };
+        let bytes = builder(vec![max]).encode().expect("encodes");
+        let (entry, next) = entry_at(&bytes, LISTING_HEADER_LEN)
+            .expect("walks")
+            .expect("an entry");
+        assert_eq!(next - LISTING_HEADER_LEN, LISTING_MAX_ENTRY_LEN);
+        assert_eq!(entry.name.len(), 255);
+        assert_eq!(entry.image.len(), 65_535);
     }
 
     #[test]
