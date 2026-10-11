@@ -1,17 +1,20 @@
 //! The read walk: `(policy, name)` → the current record, over one build.
 //!
-//! Four rounds of reads, each batch issued through a [`RangeSource`]:
+//! Two rounds of reads, each batch issued through a [`RangeSource`]:
 //!
 //! 1. the pointer and the policy's directory shard (whole objects — the two
 //!    keys the worker mirrors into KV);
-//! 2. segment headers, 64 bytes each, for every candidate chunk;
-//! 3. the index region each header names;
-//! 4. the record slice of each chunk whose index holds the policy.
+//! 2. every candidate chunk's segment, as one cap-probe read each — a short
+//!    read is the whole object; a read still at the cap falls back to the
+//!    header → index → slice chain.
 //!
-//! Candidates are the chunks the shard lists for the policy **plus** the
+//! Candidates are the chunks the shard admits for `name` **plus** the
 //! frontier — chunks newer than the shard's own coverage, bounded by the
-//! pointer's. A stale shard can cost reads; it can never produce a wrong
-//! answer.
+//! pointer's. A v1 shard admits every listed chunk; a v2 shard prunes to the
+//! ones whose name filter could hold the asset
+//! ([`DirectoryView::candidates_for`] — Bloom filters have no false
+//! negatives, so pruning never hides an answer). A stale shard can cost
+//! reads; it can never produce a wrong answer.
 //!
 //! The walk owns no transport: a native harness implements [`RangeSource`]
 //! over files, the edge worker over KV and R2. The bytes asked for, and the
@@ -204,7 +207,7 @@ pub async fn resolve_asset<S: RangeSource>(
     // a read; skipping one that a stale shard failed to list would cost the
     // answer.
     let mut candidates = directory
-        .chunks_for(policy_id)
+        .candidates_for(policy_id, name)
         .map_err(|cause| WalkError::Decode {
             key: shard_key,
             cause,
@@ -232,9 +235,9 @@ pub async fn resolve_asset<S: RangeSource>(
 }
 
 /// The largest segment fetched whole. MEASURED: the full build's segments
-/// reach 59.4 MiB (mean 1.2 MiB) against a Worker's 128 MiB of Wasm memory
-/// — a fat segment fetched whole has OOMed the hosted probe's isolate.
-/// Segments above this use the header → index → slice chain instead.
+/// reach 59.4 MiB (mean 1.2 MiB) — fetched whole, one fat segment is a large
+/// fraction of a Worker's 128 MiB of Wasm memory. Segments above this use
+/// the header → index → slice chain instead.
 pub const WHOLE_SEGMENT_CAP: u64 = 8 << 20;
 
 /// Fetch each candidate segment (round 2) and collect the records the policy
@@ -401,7 +404,10 @@ mod tests {
     use super::*;
     use crate::record::{Event, Family, Provenance};
     use crate::segment::{SEGMENT_HEADER_LEN, SegmentBuilder};
-    use crate::{DirectoryEntry, DirectoryShard, NETWORK_MAINNET};
+    use crate::{
+        DIRECTORY_V1, DIRECTORY_V2, DirectoryCandidate, DirectoryEntry, DirectoryShard,
+        FilterBuilder, NETWORK_MAINNET,
+    };
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::future::Future;
@@ -446,6 +452,24 @@ mod tests {
         }
     }
 
+    fn candidate(chunk: u16) -> DirectoryCandidate {
+        DirectoryCandidate {
+            chunk,
+            filter: Vec::new(),
+        }
+    }
+
+    fn filtered(chunk: u16, names: &[&[u8]]) -> DirectoryCandidate {
+        let mut builder = FilterBuilder::new(names.len());
+        for name in names {
+            builder.insert(name);
+        }
+        DirectoryCandidate {
+            chunk,
+            filter: builder.finish(),
+        }
+    }
+
     /// An in-memory build, recording every read it serves.
     struct MapSource {
         objects: HashMap<String, Vec<u8>>,
@@ -472,7 +496,22 @@ mod tests {
         }
 
         fn put_shard(&mut self, shard: u8, through: u16, entries: Vec<DirectoryEntry>) {
+            self.put_shard_at(DIRECTORY_V1, shard, through, entries);
+        }
+
+        fn put_shard_v2(&mut self, shard: u8, through: u16, entries: Vec<DirectoryEntry>) {
+            self.put_shard_at(DIRECTORY_V2, shard, through, entries);
+        }
+
+        fn put_shard_at(
+            &mut self,
+            version: u8,
+            shard: u8,
+            through: u16,
+            entries: Vec<DirectoryEntry>,
+        ) {
             let bytes = DirectoryShard {
+                version,
                 network: NETWORK_MAINNET,
                 shard,
                 directory_through_chunk: through,
@@ -541,7 +580,7 @@ mod tests {
             100,
             vec![DirectoryEntry {
                 policy_id: policy(0x02),
-                chunks: vec![100],
+                candidates: vec![candidate(100)],
             }],
         );
         source.put_pointer(100, 100);
@@ -592,7 +631,7 @@ mod tests {
             105,
             vec![DirectoryEntry {
                 policy_id: policy(0x02),
-                chunks: vec![100, 105],
+                candidates: vec![candidate(100), candidate(105)],
             }],
         );
         source.put_pointer(105, 105);
@@ -621,7 +660,7 @@ mod tests {
             110,
             vec![DirectoryEntry {
                 policy_id: policy(0x02),
-                chunks: vec![105, 110],
+                candidates: vec![candidate(105), candidate(110)],
             }],
         );
         source.put_pointer(110, 110);
@@ -652,7 +691,7 @@ mod tests {
             100,
             vec![DirectoryEntry {
                 policy_id: policy(0x02),
-                chunks: vec![100],
+                candidates: vec![candidate(100)],
             }],
         );
         source.put_pointer(100, 100);
@@ -697,7 +736,7 @@ mod tests {
             104,
             vec![DirectoryEntry {
                 policy_id: policy(0x02),
-                chunks: vec![90],
+                candidates: vec![candidate(90)],
             }],
         );
         source.put_pointer(105, 104);
@@ -717,7 +756,7 @@ mod tests {
             100,
             vec![DirectoryEntry {
                 policy_id: policy(0x02),
-                chunks: vec![100],
+                candidates: vec![candidate(100)],
             }],
         );
         source.put_pointer(100, 100);
@@ -784,5 +823,70 @@ mod tests {
         assert_eq!(reads[5].key, key);
         assert_eq!(asset.image, b"ipfs://img");
         assert_eq!(asset.event, Event::Mint);
+    }
+
+    #[test]
+    fn a_v2_filter_prunes_the_candidates_that_cannot_hold_the_name() {
+        let mut source = MapSource::new();
+        source.put_segment(
+            100,
+            vec![(policy(0x02), vec![record(0x02, b"A", Event::Mint, 100, 10)])],
+        );
+        source.put_shard_v2(
+            0x02,
+            100,
+            vec![DirectoryEntry {
+                policy_id: policy(0x02),
+                candidates: vec![filtered(100, &[b"A"]), filtered(101, &[b"B", b"C"])],
+            }],
+        );
+        source.put_pointer(100, 100);
+        // No segment 101 exists: if the filter failed to prune it, the walk
+        // would fail on the missing object instead of resolving.
+
+        let asset = block_on(resolve_asset(&source, PREFIX, &policy(0x02), b"A"))
+            .expect("walks")
+            .expect("found");
+        assert_eq!(asset.provenance.chunk, 100);
+
+        let reads = source.reads();
+        assert_eq!(
+            reads.len(),
+            3,
+            "pointer, shard, and only the passing candidate"
+        );
+        assert_eq!(reads[2].key, segment_key(PREFIX, 100));
+    }
+
+    #[test]
+    fn a_burn_candidate_a_filter_admits_still_clears() {
+        // The burn-inclusion rule, from the walk's side: both chunks carry the
+        // name, so both pass the filter (the builder's job) and the merge
+        // behaves exactly as v1's.
+        let mut source = MapSource::new();
+        source.put_segment(
+            100,
+            vec![(policy(0x02), vec![record(0x02, b"A", Event::Mint, 100, 10)])],
+        );
+        source.put_segment(
+            105,
+            vec![(policy(0x02), vec![record(0x02, b"A", Event::Burn, 105, 5)])],
+        );
+        source.put_shard_v2(
+            0x02,
+            105,
+            vec![DirectoryEntry {
+                policy_id: policy(0x02),
+                candidates: vec![filtered(100, &[b"A"]), filtered(105, &[b"A"])],
+            }],
+        );
+        source.put_pointer(105, 105);
+
+        let asset = block_on(resolve_asset(&source, PREFIX, &policy(0x02), b"A"))
+            .expect("walks")
+            .expect("found");
+        assert!(asset.burned);
+        assert_eq!(asset.event, Event::Burn);
+        assert_eq!(asset.provenance.chunk, 105);
     }
 }

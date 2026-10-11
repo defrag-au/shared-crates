@@ -17,7 +17,9 @@
 //! - [`Pointer`] — a small text manifest, the one mutable object; names the
 //!   built coverage.
 //! - [`DirectoryView`] — per-policy-id-first-byte shards mapping a policy to
-//!   the chunks that hold its records.
+//!   the chunks that hold its records; v2 shards carry a name filter per
+//!   candidate, which is what keeps a resolve's read count off the policy's
+//!   size ([`candidates_for`](DirectoryView::candidates_for)).
 //! - [`SegmentView`] — one object per sealed chunk, immutable forever, holding
 //!   the resolved [`Record`]s and a per-policy index into them.
 //!
@@ -30,26 +32,29 @@
 //!
 //! # The read walk
 //!
-//! [`resolve_asset`] is the reader: four rounds of batched reads through a
-//! [`RangeSource`] — pointer and shard, segment headers, index regions, record
-//! slices — ending in the same `latest` rule. The source owns the transport
-//! (files natively, KV and R2 at the edge); the crate owns the order of the
-//! reads and the bytes they must return.
+//! [`resolve_asset`] is the reader: the pointer and shard, then one batched
+//! round over the candidate segments — whole objects, with a ranges fallback
+//! for the ones past [`WHOLE_SEGMENT_CAP`] — ending in the same `latest` rule.
+//! The source owns the transport (files natively, KV and CDN at the edge); the
+//! crate owns the order of the reads and the bytes they must return.
 
 #![warn(missing_docs)]
 
 mod bytes;
 mod directory;
 mod error;
+mod filter;
 mod pointer;
 mod record;
 mod segment;
 mod walk;
 
 pub use directory::{
-    DIRECTORY_HEADER_LEN, DirectoryEntry, DirectoryHeader, DirectoryShard, DirectoryView,
+    DIRECTORY_HEADER_LEN, DirectoryCandidate, DirectoryEntry, DirectoryHeader, DirectoryShard,
+    DirectoryView,
 };
 pub use error::{DecodeError, EncodeError};
+pub use filter::{FilterBuilder, might_contain};
 pub use pointer::{Pointer, VERSION_KEY};
 pub use record::{
     Event, Family, MediaLink, Provenance, RECORD_HEAD_LEN, Record, Records, ResolvedAsset,
@@ -63,8 +68,17 @@ pub use walk::{
     resolve_asset, segment_key,
 };
 
-/// The format version every object in v1 carries.
+/// The format version every v1-layout object carries.
 pub const FORMAT_VERSION: u8 = 1;
+
+/// Directory entry-layout version 1 — chunk lists only. What the live full
+/// build published.
+pub const DIRECTORY_V1: u8 = 1;
+
+/// Directory entry-layout version 2 — each candidate also carries a Bloom
+/// filter over the names of that `(policy, chunk)`'s records, so a resolve
+/// reads only the candidates that can hold the name it was asked for.
+pub const DIRECTORY_V2: u8 = 2;
 
 /// Policy ids are 28 bytes on Cardano, everywhere in this format.
 pub const POLICY_ID_LEN: usize = 28;

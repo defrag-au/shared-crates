@@ -94,6 +94,11 @@ pub enum EncodeError {
         /// Its actual byte length.
         len: usize,
     },
+    /// A version this build cannot encode.
+    UnsupportedVersion(u8),
+    /// A candidate carried a name filter but the shard would be encoded as
+    /// v1, whose entry layout cannot state one.
+    FilterInV1,
 }
 
 impl fmt::Display for EncodeError {
@@ -102,6 +107,13 @@ impl fmt::Display for EncodeError {
             Self::FieldTooLong { field, len } => {
                 write!(f, "{field} is {len} bytes; the format cannot state it")
             }
+            Self::UnsupportedVersion(version) => {
+                write!(f, "cannot encode directory version {version}")
+            }
+            Self::FilterInV1 => write!(
+                f,
+                "a v1 directory cannot carry a candidate name filter — encode it as v2"
+            ),
         }
     }
 }
