@@ -12,7 +12,7 @@
 //! a byte-stability test; the contract is
 //! `cnft.dev-workers/docs/design/ASSET_METADATA_INDEX.md`.
 //!
-//! # The three objects
+//! # The four objects
 //!
 //! - [`Pointer`] — a small text manifest, the one mutable object; names the
 //!   built coverage.
@@ -22,6 +22,9 @@
 //!   size ([`candidates_for`](DirectoryView::candidates_for)).
 //! - [`SegmentView`] — one object per sealed chunk, immutable forever, holding
 //!   the resolved [`Record`]s and a per-policy index into them.
+//! - [`ListingView`] — one object per policy: its standing assets,
+//!   name-sorted. The enumeration read ("everything in this collection")
+//!   where the walk answers one asset at a time.
 //!
 //! # Standing
 //!
@@ -51,6 +54,7 @@ mod delta;
 mod directory;
 mod error;
 mod filter;
+mod listing;
 mod pointer;
 mod record;
 mod segment;
@@ -63,6 +67,7 @@ pub use directory::{
 };
 pub use error::{DecodeError, EncodeError};
 pub use filter::{FilterBuilder, might_contain};
+pub use listing::{LISTING_HEADER_LEN, ListingBuilder, ListingEntry, ListingHeader, ListingView};
 pub use pointer::{Pointer, VERSION_KEY};
 pub use record::{
     Event, Family, MediaLink, Provenance, RECORD_HEAD_LEN, Record, Records, ResolvedAsset,
@@ -72,8 +77,8 @@ pub use segment::{
     INDEX_ENTRY_LEN, IndexEntry, SEGMENT_HEADER_LEN, SegmentBuilder, SegmentHeader, SegmentView,
 };
 pub use walk::{
-    DEFAULT_PREFIX, RangeSource, Read, WHOLE_SEGMENT_CAP, WalkError, directory_key, pointer_key,
-    resolve_asset, segment_key,
+    DEFAULT_PREFIX, RangeSource, Read, WHOLE_SEGMENT_CAP, WalkError, directory_key, listing_key,
+    pointer_key, resolve_asset, segment_key,
 };
 
 /// The format version every v1-layout object carries.
@@ -99,3 +104,4 @@ pub const NETWORK_PREPROD: u8 = 1;
 
 pub(crate) const SEGMENT_MAGIC: [u8; 4] = *b"AMXS";
 pub(crate) const DIRECTORY_MAGIC: [u8; 4] = *b"AMXD";
+pub(crate) const LISTING_MAGIC: [u8; 4] = *b"AMXL";

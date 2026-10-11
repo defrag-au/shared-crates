@@ -53,6 +53,25 @@ pub fn segment_key(prefix: &str, chunk: u16) -> String {
     under(prefix, &format!("segments/{chunk:05}.bin"))
 }
 
+/// The key of a policy's collection listing — every standing asset of the
+/// policy, name-sorted, for enumeration.
+#[must_use]
+pub fn listing_key(prefix: &str, policy_id: &[u8; POLICY_ID_LEN]) -> String {
+    under(prefix, &format!("collections/{}.bin", hex_lower(policy_id)))
+}
+
+/// Lowercase hex, for the listing's key. The crate takes no dependencies;
+/// five lines of it beat a crate that exists to do this.
+fn hex_lower(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(DIGITS[(byte >> 4) as usize] as char);
+        out.push(DIGITS[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
 fn under(prefix: &str, path: &str) -> String {
     if prefix.is_empty() {
         path.to_string()
@@ -598,6 +617,20 @@ mod tests {
         assert_eq!(
             segment_key(DEFAULT_PREFIX, 5242),
             "index/asset-meta/v1/segments/05242.bin"
+        );
+        assert_eq!(
+            listing_key(DEFAULT_PREFIX, &[0x93; POLICY_ID_LEN]),
+            concat!(
+                "index/asset-meta/v1/collections/",
+                "93939393",
+                "93939393",
+                "93939393",
+                "93939393",
+                "93939393",
+                "93939393",
+                "93939393",
+                ".bin"
+            )
         );
     }
 

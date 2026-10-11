@@ -99,6 +99,10 @@ pub enum EncodeError {
     /// A candidate carried a name filter but the shard would be encoded as
     /// v1, whose entry layout cannot state one.
     FilterInV1,
+    /// A listing carried two entries with the same name. One entry per name
+    /// is the listing's contract — a duplicate is a builder bug, not
+    /// something to silently collapse.
+    DuplicateName,
 }
 
 impl fmt::Display for EncodeError {
@@ -113,6 +117,10 @@ impl fmt::Display for EncodeError {
             Self::FilterInV1 => write!(
                 f,
                 "a v1 directory cannot carry a candidate name filter — encode it as v2"
+            ),
+            Self::DuplicateName => write!(
+                f,
+                "a listing carries one entry per name; a duplicate was handed to the builder"
             ),
         }
     }
