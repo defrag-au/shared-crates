@@ -111,6 +111,7 @@ fn default_one() -> usize {
 }
 
 /// The `0011` projection.
+#[derive(Clone)]
 pub struct DirectClean {
     encode_utf: bool,
     max_path_segment_len: usize,

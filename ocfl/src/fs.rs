@@ -18,7 +18,10 @@ use crate::inventory::{
     INVENTORY_FILENAME, Inventory, OBJECT_DECL_CONTENTS, OBJECT_DECL_FILENAME, ROOT_DECL_CONTENTS,
     ROOT_DECL_FILENAME, User, parse_sidecar, sidecar_name, version_number,
 };
-use crate::plan::{LogicalState, PlanError, VersionPlan, plan_version};
+use crate::pathmap::DirectClean;
+use crate::plan::{
+    LogicalState, PlanError, VersionPlan, plan_version, plan_version_with, record_fixity,
+};
 
 mod mutable_head;
 mod schema_registry;
@@ -51,6 +54,19 @@ fn io(path: &Path, source: std::io::Error) -> FsError {
         path: path.to_path_buf(),
         source,
     }
+}
+
+/// Shared by `ObjectWriter` and `MutableHead`: only algorithms this client can
+/// compute may be requested for fixity emission.
+fn check_fixity_algorithms(algorithms: &[DigestAlgorithm]) -> Result<(), FsError> {
+    for algorithm in algorithms {
+        if !algorithm.is_known() {
+            return Err(FsError::Other(format!(
+                "fixity algorithm {algorithm} is not one this client can compute"
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// The current time as the RFC 3339 UTC string OCFL versions carry. A native
@@ -112,6 +128,8 @@ fn write_inventory_pair(
 pub struct ObjectWriter {
     root: PathBuf,
     inventory: Inventory,
+    fixity_algorithms: Vec<DigestAlgorithm>,
+    content_map: Option<DirectClean>,
 }
 
 impl ObjectWriter {
@@ -136,7 +154,30 @@ impl ObjectWriter {
         Ok(Self {
             root,
             inventory: Inventory::new(id, algorithm),
+            fixity_algorithms: Vec::new(),
+            content_map: None,
         })
+    }
+
+    /// Compute fixity values for every file a commit writes, under each of
+    /// these algorithms — the optional `fixity` block (§3.5.4). Replaces any
+    /// previous set; a reopened writer starts with none.
+    pub fn set_fixity_algorithms(
+        &mut self,
+        algorithms: impl IntoIterator<Item = DigestAlgorithm>,
+    ) -> Result<(), FsError> {
+        let algorithms: Vec<DigestAlgorithm> = algorithms.into_iter().collect();
+        check_fixity_algorithms(&algorithms)?;
+        self.fixity_algorithms = algorithms;
+        Ok(())
+    }
+
+    /// Map logical paths to content paths on write —
+    /// `0011-direct-clean-path-layout`, as embodied by [`DirectClean`]. Applies
+    /// to every later commit and to a mutable HEAD created from this writer; a
+    /// reopened writer starts without a map.
+    pub fn set_content_path_map(&mut self, map: DirectClean) {
+        self.content_map = Some(map);
     }
 
     /// Open an existing object to add versions; validates it structurally.
@@ -147,7 +188,12 @@ impl ObjectWriter {
         if !problems.is_ok() {
             return Err(FsError::Invalid(problems.errors.join("\n  ")));
         }
-        Ok(Self { root, inventory })
+        Ok(Self {
+            root,
+            inventory,
+            fixity_algorithms: Vec::new(),
+            content_map: None,
+        })
     }
 
     pub fn root(&self) -> &Path {
@@ -196,7 +242,18 @@ impl ObjectWriter {
                     .into(),
             ));
         }
-        let plan = plan_version(&self.inventory, state, created, message, user)?;
+        let mut plan = match &self.content_map {
+            Some(map) => plan_version_with(
+                &self.inventory,
+                state,
+                &|logical| map.clean(logical),
+                created,
+                message,
+                user,
+            )?,
+            None => plan_version(&self.inventory, state, created, message, user)?,
+        };
+        record_fixity(&mut plan.inventory, &plan.writes, &self.fixity_algorithms)?;
         self.commit_plan(&plan)?;
         Ok(plan.version_dir)
     }
@@ -428,6 +485,15 @@ fn walk_into(dir: &Path, prefix: &str, walk: &mut ContentWalk) {
     }
 }
 
+/// The OCFL spec version `(major, minor)` named by an inventory `type` URI —
+/// `https://ocfl.io/1.1/spec/#inventory` maps to `(1, 1)`.
+fn spec_version(inventory_type: &str) -> Option<(u32, u32)> {
+    let rest = inventory_type.strip_prefix("https://ocfl.io/")?;
+    let version = rest.split('/').next()?;
+    let (major, minor) = version.split_once('.')?;
+    Some((major.parse().ok()?, minor.parse().ok()?))
+}
+
 fn verify_object(root: &Path, inventory: &Inventory) -> VerifyReport {
     let mut report = VerifyReport {
         root: root.to_path_buf(),
@@ -465,16 +531,48 @@ fn verify_object(root: &Path, inventory: &Inventory) -> VerifyReport {
             let mut declarations = Vec::new();
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
+                let is_dir = entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false);
                 if name.starts_with("0=") {
                     declarations.push(name);
                     continue;
                 }
-                let allowed = name == INVENTORY_FILENAME
-                    || name == sidecar_name(algorithm)
-                    || name == "logs"
-                    || name == "extensions"
-                    || version_number(&name).is_some();
-                if !allowed {
+                if name == "extensions" {
+                    if !is_dir {
+                        report.error("extensions must be a directory");
+                        continue;
+                    }
+                    // §3.9: only extension sub-directories may live here (E067).
+                    if let Ok(children) = std::fs::read_dir(entry.path()) {
+                        for child in children.flatten() {
+                            if !child.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+                                report.error(format!(
+                                    "unexpected file {:?} in the extensions directory",
+                                    child.file_name().to_string_lossy()
+                                ));
+                            }
+                        }
+                    }
+                    continue;
+                }
+                if name == "logs" {
+                    if !is_dir {
+                        report.error("logs must be a directory");
+                    }
+                    continue;
+                }
+                if version_number(&name).is_some() {
+                    if !is_dir {
+                        report.error(format!(
+                            "{name:?} is a version directory name but not a directory"
+                        ));
+                    } else if !inventory.versions.contains_key(&name) {
+                        report.error(format!(
+                            "{name:?} is a version directory the inventory does not describe"
+                        ));
+                    }
+                    continue;
+                }
+                if name != INVENTORY_FILENAME && name != sidecar_name(algorithm) {
                     report.error(format!("unexpected entry at the object root: {name:?}"));
                 }
             }
@@ -504,20 +602,42 @@ fn verify_object(root: &Path, inventory: &Inventory) -> VerifyReport {
         Err(error) => report.error(format!("object root unreadable: {error}")),
     }
 
-    // Version directories: allowed children, their inventories, and agreement
-    // with the root inventory.
+    // Version directories: their inventories, agreement with the root
+    // inventory, and the object-root rules around them.
     let dirs = inventory.version_dirs();
+    let mut previous_spec: Option<(u32, u32)> = None;
     for dir in &dirs {
         let path = root.join(dir);
         if !path.is_dir() {
             report.error(format!("{dir}: version directory missing"));
             continue;
         }
+        let version_loaded = if path.join(INVENTORY_FILENAME).is_file() {
+            match read_inventory_at(&path) {
+                Ok(loaded) => Some(loaded),
+                Err(error) => {
+                    report.error(format!("{dir}: {error}"));
+                    None
+                }
+            }
+        } else {
+            report.warning(format!(
+                "{dir}: no version inventory (SHOULD, for redundancy) — the object validates only against the root copy"
+            ));
+            None
+        };
         if let Ok(entries) = std::fs::read_dir(&path) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
+                // An older version directory may legitimately carry its own
+                // sidecar under a different digest algorithm than the root's
+                // (the inventory is self-describing).
+                let own_sidecar = version_loaded
+                    .as_ref()
+                    .map(|(version_inventory, _)| sidecar_name(version_inventory.digest_algorithm));
                 if name == INVENTORY_FILENAME
                     || name == sidecar_name(algorithm)
+                    || Some(&name) == own_sidecar.as_ref()
                     || name == content_dir
                 {
                     continue;
@@ -534,18 +654,86 @@ fn verify_object(root: &Path, inventory: &Inventory) -> VerifyReport {
                 }
             }
         }
-        if path.join(INVENTORY_FILENAME).is_file() {
-            match read_inventory_at(&path) {
-                Ok((version_inventory, bytes)) => {
-                    if version_inventory.head != *dir {
+        if let Some((version_inventory, bytes)) = version_loaded {
+            let problems = version_inventory.validate();
+            for message in problems.errors {
+                report.error(format!("{dir}: inventory: {message}"));
+            }
+            for message in problems.warnings {
+                report.warning(format!("{dir}: inventory: {message}"));
+            }
+            if version_inventory.head != *dir {
+                report.error(format!(
+                    "{dir}: its inventory has head {:?} (expected {dir:?})",
+                    version_inventory.head
+                ));
+            }
+            if version_inventory.id != inventory.id {
+                report.error(format!(
+                    "{dir}: its inventory has id {:?} (expected {:?})",
+                    version_inventory.id, inventory.id
+                ));
+            }
+            if version_inventory.digest_algorithm != inventory.digest_algorithm {
+                report.warning(format!(
+                    "{dir}: its inventory uses {} while the root inventory uses {}",
+                    version_inventory.digest_algorithm, inventory.digest_algorithm
+                ));
+            }
+            // §3.7.1: each version directory conforms to the same or a later
+            // spec version than the preceding one (E103).
+            match spec_version(&version_inventory.r#type) {
+                Some(current) => {
+                    if let Some(previous) = previous_spec
+                        && current < previous
+                    {
                         report.error(format!(
-                            "{dir}: its inventory has head {:?} (expected {dir:?})",
-                            version_inventory.head
+                            "{dir}: spec version {}.{} is older than the preceding version's",
+                            current.0, current.1
                         ));
                     }
-                    for (other, block) in &version_inventory.versions {
-                        match inventory.versions.get(other) {
-                            Some(root_block) if root_block.state == block.state => {
+                    previous_spec = Some(current);
+                }
+                None => report.error(format!(
+                    "{dir}: inventory type {:?} does not name an OCFL spec version",
+                    version_inventory.r#type
+                )),
+            }
+            // §3.5.2/E092: that inventory's manifest values must match the
+            // files they name, under that inventory's own algorithm (an old
+            // version's manifest may have been written with another one).
+            for (digest, paths) in &version_inventory.manifest {
+                for content_path in paths {
+                    let file = root.join(content_path);
+                    match std::fs::read(&file) {
+                        Ok(file_bytes) => {
+                            let got = version_inventory.digest_algorithm.digest(&file_bytes);
+                            if !digest_eq(digest, &got) {
+                                report.error(format!(
+                                    "{dir}: {content_path}: digest {got} ≠ its manifest's {digest}"
+                                ));
+                            }
+                        }
+                        Err(error) => report.error(format!(
+                            "{dir}: {content_path}: missing or unreadable ({error})"
+                        )),
+                    }
+                }
+            }
+            for (other, block) in &version_inventory.versions {
+                match inventory.versions.get(other) {
+                    Some(root_block) => {
+                        // §3.7/E066: a prior inventory must resolve its version
+                        // to the same content as the root inventory. Comparing
+                        // resolved states rather than digest keys also covers
+                        // inventories written under another digest algorithm.
+                        match (
+                            inventory.resolve_state(other),
+                            version_inventory.resolve_state(other),
+                        ) {
+                            (Some(root_state), Some(version_state))
+                                if root_state == version_state =>
+                            {
                                 if root_block.created != block.created
                                     || root_block.message != block.message
                                     || root_block.user != block.user
@@ -555,30 +743,28 @@ fn verify_object(root: &Path, inventory: &Inventory) -> VerifyReport {
                                     ));
                                 }
                             }
-                            Some(_) => report.error(format!(
-                                "{dir}: version {other:?}'s state differs from the root inventory"
+                            (Some(_), Some(_)) => report.error(format!(
+                                "{dir}: version {other:?} resolves to different content than the root inventory"
                             )),
-                            None => report.error(format!(
-                                "{dir}: describes version {other:?}, absent from the root inventory"
+                            _ => report.error(format!(
+                                "{dir}: version {other:?}'s state does not resolve within this inventory"
                             )),
                         }
                     }
-                    if inventory.head == *dir
-                        && root_inventory_bytes
-                            .as_ref()
-                            .is_some_and(|root_bytes| root_bytes != &bytes)
-                    {
-                        report.error(format!(
-                            "{dir}: the newest version's inventory differs from the root inventory (they must be identical)"
-                        ));
-                    }
+                    None => report.error(format!(
+                        "{dir}: describes version {other:?}, absent from the root inventory"
+                    )),
                 }
-                Err(error) => report.error(format!("{dir}: {error}")),
             }
-        } else {
-            report.warning(format!(
-                "{dir}: no version inventory (SHOULD, for redundancy) — the object validates only against the root copy"
-            ));
+            if inventory.head == *dir
+                && root_inventory_bytes
+                    .as_ref()
+                    .is_some_and(|root_bytes| root_bytes != &bytes)
+            {
+                report.error(format!(
+                    "{dir}: the newest version's inventory differs from the root inventory (they must be identical)"
+                ));
+            }
         }
     }
 

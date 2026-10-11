@@ -40,10 +40,16 @@
 //!   ([`DirectClean`]): logical paths projected to safe content paths, with the
 //!   UTF-encoded injective mode, the plain replacement mode, and digest-derived
 //!   fallback names for over-long paths.
-//! - Full-object verification against the spec's structural rules: declaration
-//!   files, sidecar integrity, `head` / numbering, path rules, manifest and
-//!   fixity values against the files themselves, version-inventory agreement,
-//!   and the mutable HEAD against §0005.
+//! - Full-object verification against the spec's structural rules and the
+//!   community validation codes: declaration files, sidecar integrity,
+//!   `head` / numbering, path rules, `created` as real RFC 3339, manifest and
+//!   fixity values against the files (root and per-version inventories),
+//!   state digests exactly matching manifest keys, each version inventory
+//!   resolving to the root's content even across a digest-algorithm change,
+//!   id and spec-version consistency, and the mutable HEAD against §0005.
+//!   The `OCFL/ocfl-fixtures` suite runs when `OCFL_FIXTURES` points at a
+//!   checkout (`tests/fixtures.rs`) — currently 12 good / 13 warn / 55 bad
+//!   objects with no mismatches.
 //!
 //! # What is not (yet)
 //!
@@ -96,4 +102,4 @@ pub use inventory::{
 };
 pub use pathmap::{DirectClean, DirectCleanConfig, PathMapError};
 pub use plan::{LogicalState, PlanError, VersionPlan, plan_version};
-pub use time::{has_rfc3339_shape, rfc3339_utc};
+pub use time::{is_rfc3339_datetime, rfc3339_utc};

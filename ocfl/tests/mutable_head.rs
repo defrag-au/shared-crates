@@ -4,7 +4,10 @@
 use std::path::Path;
 
 use ocfl::fs::{MutableHead, Object, ObjectWriter};
-use ocfl::{ContentAlgorithm, Inventory, LogicalState, sidecar_contents, sidecar_name};
+use ocfl::{
+    ContentAlgorithm, DigestAlgorithm, DirectClean, DirectCleanConfig, Inventory, LogicalState,
+    sidecar_contents, sidecar_name,
+};
 
 fn state(files: &[(&str, &[u8])]) -> LogicalState {
     files
@@ -244,4 +247,72 @@ fn verify_catches_an_unreferenced_file_in_the_mutable_head() {
         "{:#?}",
         report.issues
     );
+}
+
+#[test]
+fn writer_options_flow_through_a_mutable_head_to_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    mint(dir.path());
+    let mut writer = ObjectWriter::open(dir.path()).unwrap();
+    writer
+        .set_fixity_algorithms([DigestAlgorithm::Md5])
+        .unwrap();
+    writer.set_content_path_map(DirectClean::new(DirectCleanConfig::default()).unwrap());
+    let mut head = writer
+        .create_mutable_head(
+            &state(&[("0001.webp", b"still"), ("a:b.txt", b"wrap-v1")]),
+            "2026-10-12T00:00:00Z",
+            None,
+            None,
+        )
+        .unwrap();
+    // The map cleaned the content path; the logical path is untouched.
+    assert!(
+        head_dir(dir.path())
+            .join("head/content/r1/a_b.txt")
+            .is_file()
+    );
+    assert_eq!(
+        Object::open(dir.path())
+            .unwrap()
+            .read_file("a:b.txt")
+            .unwrap(),
+        b"wrap-v1"
+    );
+
+    // Options carry into later revisions: r2 writes under its own cleaned path.
+    head.revise(
+        &state(&[("0001.webp", b"still"), ("a:b.txt", b"wrap-v2")]),
+        "2026-10-13T00:00:00Z",
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(
+        head_dir(dir.path())
+            .join("head/content/r2/a_b.txt")
+            .is_file()
+    );
+    assert_eq!(
+        Object::open(dir.path())
+            .unwrap()
+            .read_file("a:b.txt")
+            .unwrap(),
+        b"wrap-v2"
+    );
+
+    // Commit rewrites both the content path and the fixity path to vN.
+    assert_eq!(head.commit().unwrap(), "v2");
+    let object = Object::open(dir.path()).unwrap();
+    assert_eq!(
+        object.state(Some("v2")).unwrap()["a:b.txt"],
+        "v2/content/r2/a_b.txt"
+    );
+    let md5 = DigestAlgorithm::Md5.digest(b"wrap-v2").unwrap();
+    assert_eq!(
+        object.inventory().fixity[&DigestAlgorithm::Md5][&md5],
+        ["v2/content/r2/a_b.txt"]
+    );
+    let report = object.verify();
+    assert!(report.is_ok(), "{:#?}", report.issues);
 }

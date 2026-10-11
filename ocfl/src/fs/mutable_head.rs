@@ -20,12 +20,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
-use crate::digest::digest_eq;
+use crate::digest::{DigestAlgorithm, digest_eq};
 use crate::inventory::{
     INVENTORY_FILENAME, Inventory, InventoryContext, MUTABLE_HEAD_EXTENSION, User, Version,
     check_path, parse_sidecar, path_conflict, sidecar_name, version_dir, version_number,
 };
-use crate::plan::{LogicalState, PlanError};
+use crate::pathmap::DirectClean;
+use crate::plan::{LogicalState, PlanError, record_fixity};
 
 use super::{
     FsError, ObjectWriter, VerifyReport, io, read_inventory_at, walk_content, write_inventory_pair,
@@ -93,12 +94,13 @@ fn claim_marker(revisions: &Path, revision: u32) -> Result<(), FsError> {
 type PreparedState = (Vec<(String, Vec<u8>)>, BTreeMap<String, Vec<String>>);
 
 /// Add `state` to `inventory`: return the files that need writing under
-/// `content_prefix`, and the version `state` block. Digests already in the
-/// manifest are referenced, never rewritten.
+/// `content_prefix` (via `map` where given), and the version `state` block.
+/// Digests already in the manifest are referenced, never rewritten.
 fn apply_state(
     inventory: &mut Inventory,
     state: &LogicalState,
     content_prefix: &str,
+    map: Option<&DirectClean>,
 ) -> Result<PreparedState, PlanError> {
     if let Some((a, b)) = path_conflict(state.keys().map(String::as_str)) {
         return Err(PlanError::ConflictingLogicalPaths(a, b));
@@ -111,13 +113,34 @@ fn apply_state(
         .collect();
     let mut writes = Vec::new();
     let mut state_map: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut targets: BTreeMap<String, (String, String)> = BTreeMap::new();
     for (logical, bytes) in state {
         if let Err(why) = check_path(logical) {
             return Err(PlanError::BadLogicalPath(logical.clone(), why));
         }
         let digest = algorithm.digest(bytes);
         if stored.insert(digest.to_ascii_lowercase()) {
-            let content_path = format!("{content_prefix}/{logical}");
+            let mapped = match map {
+                Some(map) => map.clean(logical)?,
+                None => logical.clone(),
+            };
+            if let Err(why) = check_path(&mapped) {
+                return Err(PlanError::BadContentPath(mapped, why));
+            }
+            if let Some((other_digest, other_logical)) = targets.get(&mapped)
+                && *other_digest != digest.to_ascii_lowercase()
+            {
+                return Err(PlanError::ContentPathCollision(
+                    mapped,
+                    other_logical.clone(),
+                    logical.clone(),
+                ));
+            }
+            targets.insert(
+                mapped.clone(),
+                (digest.to_ascii_lowercase(), logical.clone()),
+            );
+            let content_path = format!("{content_prefix}/{mapped}");
             inventory
                 .manifest
                 .insert(digest.clone(), vec![content_path.clone()]);
@@ -125,29 +148,42 @@ fn apply_state(
         }
         state_map.entry(digest).or_default().push(logical.clone());
     }
+    if let Some((a, b)) = path_conflict(targets.keys().map(String::as_str)) {
+        return Err(PlanError::ConflictingContentPaths(a, b));
+    }
     for paths in state_map.values_mut() {
         paths.sort();
     }
     Ok((writes, state_map))
 }
 
-/// Drop manifest and fixity paths under the extension directory whose digest
-/// the new state no longer references — a mutable HEAD inventory MUST NOT
-/// keep them (§0005), while paths into committed versions always stay.
+/// Drop manifest and fixity paths under the extension directory that the new
+/// state no longer references — a mutable HEAD inventory MUST NOT keep them
+/// (§0005), while paths into committed versions always stay.
+///
+/// Referenced means the content path is still in the manifest for one of the
+/// state's digests. Fixity entries are judged by their *path*, not their
+/// digest: fixity digests are under other algorithms, so comparing them with
+/// the state's content digests would be meaningless.
 fn prune_stale_paths(inventory: &mut Inventory, state: &BTreeMap<String, Vec<String>>) {
-    let referenced: BTreeSet<String> = state
+    let state_lower: BTreeSet<String> = state
         .keys()
         .map(|digest| digest.to_ascii_lowercase())
         .collect();
-    for (digest, paths) in inventory.manifest.iter_mut() {
-        let used = referenced.contains(&digest.to_ascii_lowercase());
-        paths.retain(|path| !is_mutable_head_path(path) || used);
+    let mut referenced: BTreeSet<String> = BTreeSet::new();
+    for (digest, paths) in &inventory.manifest {
+        if state_lower.contains(&digest.to_ascii_lowercase()) {
+            referenced.extend(paths.iter().cloned());
+        }
+    }
+    let live = |path: &str| !is_mutable_head_path(path) || referenced.contains(path);
+    for paths in inventory.manifest.values_mut() {
+        paths.retain(|path| live(path));
     }
     inventory.manifest.retain(|_, paths| !paths.is_empty());
     for digests in inventory.fixity.values_mut() {
-        for (digest, paths) in digests.iter_mut() {
-            let used = referenced.contains(&digest.to_ascii_lowercase());
-            paths.retain(|path| !is_mutable_head_path(path) || used);
+        for paths in digests.values_mut() {
+            paths.retain(|path| live(path));
         }
         digests.retain(|_, paths| !paths.is_empty());
     }
@@ -232,11 +268,14 @@ fn rewrite_mutable_paths(inventory: &mut Inventory, version: &str) {
 
 /// Build and write a claimed mutable HEAD: version `root head + 1`, revision
 /// `r1` holding `state`.
+#[allow(clippy::too_many_arguments)]
 fn create_claimed(
     root: &Path,
     extension: &Path,
     inventory: Inventory,
     state: &LogicalState,
+    map: Option<&DirectClean>,
+    fixity: &[DigestAlgorithm],
     created: String,
     message: Option<String>,
     user: Option<User>,
@@ -251,7 +290,8 @@ fn create_claimed(
         + 1;
     let version = version_dir(number);
     let content_prefix = format!("extensions/{MUTABLE_HEAD_EXTENSION}/{HEAD_DIR}/content/r1");
-    let (writes, state_map) = apply_state(&mut inventory, state, &content_prefix)?;
+    let (writes, state_map) = apply_state(&mut inventory, state, &content_prefix, map)?;
+    record_fixity(&mut inventory, &writes, fixity)?;
     inventory.versions.insert(
         version.clone(),
         Version {
@@ -286,6 +326,8 @@ fn create_claimed(
         inventory,
         version,
         latest_revision: 1,
+        fixity_algorithms: fixity.to_vec(),
+        content_map: map.cloned(),
     })
 }
 
@@ -329,6 +371,8 @@ impl ObjectWriter {
             &extension,
             self.inventory.clone(),
             state,
+            self.content_map.as_ref(),
+            &self.fixity_algorithms,
             created.into(),
             message,
             user,
@@ -350,6 +394,8 @@ pub struct MutableHead {
     inventory: Inventory,
     version: String,
     latest_revision: u32,
+    fixity_algorithms: Vec<DigestAlgorithm>,
+    content_map: Option<DirectClean>,
 }
 
 impl MutableHead {
@@ -382,7 +428,28 @@ impl MutableHead {
             inventory,
             version,
             latest_revision,
+            fixity_algorithms: Vec::new(),
+            content_map: None,
         })
+    }
+
+    /// Compute fixity values for content each revision writes — the writer's
+    /// option, re-set here because it is a client choice, not part of the
+    /// object.
+    pub fn set_fixity_algorithms(
+        &mut self,
+        algorithms: impl IntoIterator<Item = DigestAlgorithm>,
+    ) -> Result<(), FsError> {
+        let algorithms: Vec<DigestAlgorithm> = algorithms.into_iter().collect();
+        super::check_fixity_algorithms(&algorithms)?;
+        self.fixity_algorithms = algorithms;
+        Ok(())
+    }
+
+    /// Map logical paths to content paths on revision — the writer's
+    /// `0011-direct-clean-path-layout` option, re-set here for the same reason.
+    pub fn set_content_path_map(&mut self, map: DirectClean) {
+        self.content_map = Some(map);
     }
 
     pub fn inventory(&self) -> &Inventory {
@@ -463,7 +530,13 @@ impl MutableHead {
     ) -> Result<(), FsError> {
         let content_prefix =
             format!("extensions/{MUTABLE_HEAD_EXTENSION}/{HEAD_DIR}/content/r{revision}");
-        let (writes, state_map) = apply_state(&mut self.inventory, state, &content_prefix)?;
+        let (writes, state_map) = apply_state(
+            &mut self.inventory,
+            state,
+            &content_prefix,
+            self.content_map.as_ref(),
+        )?;
+        record_fixity(&mut self.inventory, &writes, &self.fixity_algorithms)?;
         prune_stale_paths(&mut self.inventory, &state_map);
         self.inventory.versions.insert(
             self.version.clone(),

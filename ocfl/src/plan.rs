@@ -11,9 +11,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use thiserror::Error;
 
+use crate::digest::DigestAlgorithm;
 use crate::inventory::{
     Inventory, User, Version, check_path, path_conflict, version_dir, version_number,
 };
+use crate::pathmap::PathMapError;
 
 /// The desired logical state for a version: logical path → file bytes.
 pub type LogicalState = BTreeMap<String, Vec<u8>>;
@@ -24,6 +26,16 @@ pub enum PlanError {
     BadLogicalPath(String, String),
     #[error("logical paths conflict: {0:?} and {1:?}")]
     ConflictingLogicalPaths(String, String),
+    #[error("content path mapping: {0}")]
+    PathMap(#[from] PathMapError),
+    #[error("mapped content path {0:?} is not a valid OCFL path: {1}")]
+    BadContentPath(String, String),
+    #[error("mapped content paths {0:?} and {1:?} conflict")]
+    ConflictingContentPaths(String, String),
+    #[error("mapped content path {0:?} would hold both {1:?} and {2:?}")]
+    ContentPathCollision(String, String, String),
+    #[error("fixity algorithm {0} is not one this client can compute")]
+    UnsupportedFixityAlgorithm(String),
 }
 
 /// A version ready to write: its new content files and the inventory as it
@@ -40,7 +52,8 @@ pub struct VersionPlan {
     pub inventory: Inventory,
 }
 
-/// Plan the next version of `current` for `state`.
+/// Plan the next version of `current` for `state` — the identity path mapping
+/// (each logical path is its own content path).
 ///
 /// Forward deltas: a file whose digest is already in the manifest keeps its
 /// stored content path (per-file dedup, stored once, referenced by every
@@ -50,6 +63,33 @@ pub struct VersionPlan {
 pub fn plan_version(
     current: &Inventory,
     state: &LogicalState,
+    created: impl Into<String>,
+    message: Option<String>,
+    user: Option<User>,
+) -> Result<VersionPlan, PlanError> {
+    plan_version_with(
+        current,
+        state,
+        &|logical| Ok(logical.to_string()),
+        created,
+        message,
+        user,
+    )
+}
+
+/// Plan the next version of `current` for `state`, mapping each logical path to
+/// its content path with `map` — the identity above, or
+/// `0011-direct-clean-path-layout`'s [`crate::DirectClean::clean`].
+///
+/// The mapping is consulted only for content that is actually written: a digest
+/// already in the manifest keeps its stored path and is never re-mapped. A
+/// mapping that would place two differently-digested files at one content path
+/// (which `0011` permits when `encodeUTF` is off) is rejected — the spec
+/// requires the generating software to raise in that case.
+pub fn plan_version_with(
+    current: &Inventory,
+    state: &LogicalState,
+    map: &dyn Fn(&str) -> Result<String, PathMapError>,
     created: impl Into<String>,
     message: Option<String>,
     user: Option<User>,
@@ -76,19 +116,42 @@ pub fn plan_version(
         .collect();
     let mut writes = Vec::new();
     let mut state_map: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    // Mapped path → the (digest, logical path) that claimed it: collisions
+    // between different content are an error, not an overwrite.
+    let mut targets: BTreeMap<String, (String, String)> = BTreeMap::new();
     for (logical, bytes) in state {
         if let Err(why) = check_path(logical) {
             return Err(PlanError::BadLogicalPath(logical.clone(), why));
         }
         let digest = algorithm.digest(bytes);
         if stored.insert(digest.to_ascii_lowercase()) {
-            let content_path = format!("{dir}/{content_dir}/{logical}");
+            let mapped = map(logical)?;
+            if let Err(why) = check_path(&mapped) {
+                return Err(PlanError::BadContentPath(mapped, why));
+            }
+            if let Some((other_digest, other_logical)) = targets.get(&mapped)
+                && *other_digest != digest.to_ascii_lowercase()
+            {
+                return Err(PlanError::ContentPathCollision(
+                    mapped,
+                    other_logical.clone(),
+                    logical.clone(),
+                ));
+            }
+            targets.insert(
+                mapped.clone(),
+                (digest.to_ascii_lowercase(), logical.clone()),
+            );
+            let content_path = format!("{dir}/{content_dir}/{mapped}");
             inventory
                 .manifest
                 .insert(digest.clone(), vec![content_path.clone()]);
             writes.push((content_path, bytes.clone()));
         }
         state_map.entry(digest).or_default().push(logical.clone());
+    }
+    if let Some((a, b)) = path_conflict(targets.keys().map(String::as_str)) {
+        return Err(PlanError::ConflictingContentPaths(a, b));
     }
     for paths in state_map.values_mut() {
         paths.sort();
@@ -109,10 +172,39 @@ pub fn plan_version(
     })
 }
 
+/// Record fixity values for the files a version writes — the `fixity` block
+/// (§3.5.4): algorithm → digest → content paths. Existing entries stay; the
+/// spec neither requires nor forbids carrying fixity forward, and extending in
+/// place is deterministic. `size` is a valid fixity "algorithm" (0009).
+pub fn record_fixity(
+    inventory: &mut Inventory,
+    writes: &[(String, Vec<u8>)],
+    algorithms: &[DigestAlgorithm],
+) -> Result<(), PlanError> {
+    for algorithm in algorithms {
+        for (content_path, bytes) in writes {
+            let digest = algorithm
+                .digest(bytes)
+                .ok_or_else(|| PlanError::UnsupportedFixityAlgorithm(algorithm.to_string()))?;
+            let block = inventory.fixity.entry(algorithm.clone()).or_default();
+            let paths = block.entry(digest).or_default();
+            if !paths.contains(content_path) {
+                paths.push(content_path.clone());
+            }
+        }
+    }
+    for block in inventory.fixity.values_mut() {
+        for paths in block.values_mut() {
+            paths.sort();
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::digest::ContentAlgorithm;
+    use crate::digest::{ContentAlgorithm, DigestAlgorithm};
 
     fn state(files: &[(&str, &[u8])]) -> LogicalState {
         files
@@ -224,6 +316,96 @@ mod tests {
         assert_eq!(
             serde_json::to_string_pretty(&one.inventory).unwrap(),
             serde_json::to_string_pretty(&two.inventory).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_path_map_derives_content_paths_from_logical_ones() {
+        let mapper = crate::DirectClean::new(crate::DirectCleanConfig::default()).unwrap();
+        let inventory = Inventory::new("urn:test:0001", algorithm());
+        let plan = plan_version_with(
+            &inventory,
+            &state(&[("a:b.txt", b"1"), ("plain.txt", b"2")]),
+            &|logical| mapper.clean(logical),
+            "2026-10-11T00:00:00Z",
+            None,
+            None,
+        )
+        .unwrap();
+        let writes: Vec<&str> = plan.writes.iter().map(|(path, _)| path.as_str()).collect();
+        assert!(writes.contains(&"v1/content/a_b.txt"), "{writes:?}");
+        assert!(writes.contains(&"v1/content/plain.txt"), "{writes:?}");
+        let resolved = plan.inventory.resolve_state("v1").unwrap();
+        assert_eq!(resolved["a:b.txt"], "v1/content/a_b.txt");
+        assert!(plan.inventory.validate().is_ok());
+    }
+
+    #[test]
+    fn a_non_injective_map_that_collides_is_rejected() {
+        let mapper = crate::DirectClean::new(crate::DirectCleanConfig::default()).unwrap();
+        let inventory = Inventory::new("urn:test:0001", algorithm());
+        let error = plan_version_with(
+            &inventory,
+            &state(&[("a:b", b"one"), ("a_b", b"two")]),
+            &|logical| mapper.clean(logical),
+            "2026-10-11T00:00:00Z",
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(error, PlanError::ContentPathCollision(_, _, _)),
+            "{error:?}"
+        );
+        // The same map with identical content is fine: one write, two logicals.
+        let plan = plan_version_with(
+            &inventory,
+            &state(&[("a:b", b"same"), ("a_b", b"same")]),
+            &|logical| mapper.clean(logical),
+            "2026-10-11T00:00:00Z",
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(plan.writes.len(), 1);
+        let resolved = plan.inventory.resolve_state("v1").unwrap();
+        assert_eq!(resolved["a:b"], resolved["a_b"]);
+    }
+
+    #[test]
+    fn fixity_values_are_recorded_for_written_content() {
+        let inventory = Inventory::new("urn:test:0001", algorithm());
+        let mut plan = plan_version(
+            &inventory,
+            &state(&[("a.txt", b"alpha")]),
+            "2026-10-11T00:00:00Z",
+            None,
+            None,
+        )
+        .unwrap();
+        record_fixity(
+            &mut plan.inventory,
+            &plan.writes,
+            &[DigestAlgorithm::Md5, DigestAlgorithm::Sha1],
+        )
+        .unwrap();
+        let digest = DigestAlgorithm::Md5.digest(b"alpha").unwrap();
+        assert_eq!(
+            plan.inventory.fixity[&DigestAlgorithm::Md5][&digest],
+            ["v1/content/a.txt"]
+        );
+        assert_eq!(plan.inventory.fixity.len(), 2);
+        assert!(plan.inventory.validate().is_ok());
+
+        let error = record_fixity(
+            &mut plan.inventory,
+            &plan.writes,
+            &[DigestAlgorithm::Other("xxh3-128".into())],
+        )
+        .unwrap_err();
+        assert!(
+            matches!(error, PlanError::UnsupportedFixityAlgorithm(_)),
+            "{error:?}"
         );
     }
 }

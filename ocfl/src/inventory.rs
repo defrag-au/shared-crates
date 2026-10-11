@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::digest::{ContentAlgorithm, DigestAlgorithm, digest_eq};
-use crate::time::has_rfc3339_shape;
+use crate::time::is_rfc3339_datetime;
 
 /// The inventory `type` URI for OCFL 1.1 — the spec requires the exact string.
 pub const INVENTORY_TYPE_1_1: &str = "https://ocfl.io/1.1/spec/#inventory";
@@ -205,17 +205,16 @@ pub struct Inventory {
     )]
     pub content_directory: Option<String>,
     /// Content-addressed file index: digest → content paths (object-root
-    /// relative). Cumulative — entries from every version stay.
-    #[serde(default)]
+    /// relative). Cumulative — entries from every version stay. The key is
+    /// required in the JSON (§3.5.1: `manifest` and `versions` MUST be
+    /// present), so an inventory without one fails to parse.
     pub manifest: BTreeMap<String, Vec<String>>,
     /// Additional fixity values (§3.5.4), each algorithm block structured like
     /// the manifest: algorithm → digest → content paths. Optional, and any
     /// algorithm this client does not know MUST be ignored (§3.4).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub fixity: BTreeMap<DigestAlgorithm, BTreeMap<String, Vec<String>>>,
-    /// Version directory name → version block. Serialized in map order; the
-    /// spec gives entry order no significance.
-    #[serde(default)]
+    /// Version directory name → version block. Required in the JSON.
     pub versions: BTreeMap<String, Version>,
 }
 
@@ -470,27 +469,23 @@ impl Inventory {
             }
         }
 
-        // Versions: state digests are in the manifest, logical paths obey the
-        // path rules, and every manifest digest is used by some state.
-        let manifest_lower: BTreeSet<String> = self
-            .manifest
-            .keys()
-            .map(|k| k.to_ascii_lowercase())
-            .collect();
+        // Versions: state digests must exactly match manifest keys (§3.5.3.1
+        // — case differences are E050, not a convenience), logical paths obey
+        // the path rules, and every manifest digest is used by some state.
         let mut used_lower: BTreeSet<String> = BTreeSet::new();
         for dir in &dirs {
             let version = &self.versions[dir];
-            if !has_rfc3339_shape(&version.created) {
-                p.warning(format!(
-                    "{dir}: created {:?} is not RFC 3339-shaped",
+            if !is_rfc3339_datetime(&version.created) {
+                p.error(format!(
+                    "{dir}: created {:?} is not an RFC 3339 date-time with a timezone, granular to the second",
                     version.created
                 ));
             }
             let mut logical_paths: Vec<&str> = Vec::new();
             for (digest, paths) in &version.state {
-                if !manifest_lower.contains(&digest.to_ascii_lowercase()) {
+                if !self.manifest.contains_key(digest) {
                     p.error(format!(
-                        "{dir}: state digest {digest:?} has no manifest entry"
+                        "{dir}: state digest {digest:?} does not exactly match a manifest key"
                     ));
                 } else {
                     used_lower.insert(digest.to_ascii_lowercase());
@@ -639,7 +634,7 @@ mod tests {
             problems
                 .errors
                 .iter()
-                .any(|e| e.contains("no manifest entry")),
+                .any(|e| e.contains("exactly match a manifest key")),
             "{problems:#?}"
         );
     }

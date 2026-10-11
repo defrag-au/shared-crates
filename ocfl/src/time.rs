@@ -15,35 +15,69 @@ pub fn rfc3339_utc(secs: i64) -> String {
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
 }
 
-/// Does `value` have the shape of an RFC 3339 timestamp — `YYYY-MM-DDTHH:MM:SS`
-/// followed by `Z` or a numeric offset, fractional seconds allowed? Shape only,
-/// no calendar validation.
-pub fn has_rfc3339_shape(value: &str) -> bool {
+/// Is `value` a valid RFC 3339 date-time, to the strictness OCFL §3.5.3.1
+/// needs: full date, `T`, full time to the second, optional fractional
+/// seconds, and a timezone — `Z` or a numeric `±HH:MM` offset. Field ranges
+/// are checked (month 1–12, day 1–31, …), not calendar exactness: `02-30`
+/// passes.
+pub fn is_rfc3339_datetime(value: &str) -> bool {
     let bytes = value.as_bytes();
     if bytes.len() < 20 {
         return false;
     }
-    for (at, want) in [(4, b'-'), (7, b'-'), (10, b'T'), (13, b':'), (16, b':')] {
-        if bytes.get(at) != Some(&want) {
-            return false;
-        }
-    }
-    let digits = |range: std::ops::Range<usize>| bytes[range].iter().all(|b| b.is_ascii_digit());
-    if !(digits(0..4)
-        && digits(5..7)
-        && digits(8..10)
-        && digits(11..13)
-        && digits(14..16)
-        && digits(17..19))
-    {
+    if bytes.get(4) != Some(&b'-') || bytes.get(7) != Some(&b'-') {
         return false;
     }
-    // The tail after the seconds: `Z`, or an offset like `+10:00`.
-    let tail = &bytes[19..];
-    match tail.last() {
-        Some(b'Z' | b'z') => true,
-        Some(_) => tail.contains(&b'+') || tail.contains(&b'-'),
-        None => false,
+    if bytes.get(10) != Some(&b'T') && bytes.get(10) != Some(&b't') {
+        return false;
+    }
+    if bytes.get(13) != Some(&b':') || bytes.get(16) != Some(&b':') {
+        return false;
+    }
+    let number = |range: std::ops::Range<usize>| -> Option<u32> {
+        let slice = bytes.get(range)?;
+        if !slice.iter().all(u8::is_ascii_digit) {
+            return None;
+        }
+        std::str::from_utf8(slice).ok()?.parse().ok()
+    };
+    let (Some(month), Some(day)) = (number(5..7), number(8..10)) else {
+        return false;
+    };
+    let (Some(hour), Some(minute), Some(second)) = (number(11..13), number(14..16), number(17..19))
+    else {
+        return false;
+    };
+    number(0..4).is_some()
+        && (1..=12).contains(&month)
+        && (1..=31).contains(&day)
+        && hour <= 23
+        && minute <= 59
+        && second <= 60 // leap second
+        && timezone_is_valid(&bytes[19..])
+}
+
+/// The tail after `HH:MM:SS`: optional `.fraction`, then `Z`/`z` or `±HH:MM`.
+fn timezone_is_valid(tail: &[u8]) -> bool {
+    let mut rest = tail;
+    if rest.first() == Some(&b'.') {
+        let digits = rest[1..].iter().take_while(|b| b.is_ascii_digit()).count();
+        if digits == 0 {
+            return false;
+        }
+        rest = &rest[1 + digits..];
+    }
+    match rest {
+        [b'Z' | b'z'] => true,
+        [sign, h1, h2, b':', m1, m2]
+            if (*sign == b'+' || *sign == b'-')
+                && [h1, h2, m1, m2].iter().all(|b| b.is_ascii_digit()) =>
+        {
+            let hours = u32::from(h1 - b'0') * 10 + u32::from(h2 - b'0');
+            let minutes = u32::from(m1 - b'0') * 10 + u32::from(m2 - b'0');
+            hours <= 23 && minutes <= 59
+        }
+        _ => false,
     }
 }
 
@@ -79,12 +113,22 @@ mod tests {
     }
 
     #[test]
-    fn shape_check_accepts_and_rejects() {
-        assert!(has_rfc3339_shape("2026-10-11T00:00:00Z"));
-        assert!(has_rfc3339_shape("2026-10-11T00:00:00.5Z"));
-        assert!(has_rfc3339_shape("2026-10-11T00:00:00+10:00"));
-        assert!(!has_rfc3339_shape("2026-10-11"));
-        assert!(!has_rfc3339_shape("2026-10-11 00:00:00Z"));
-        assert!(!has_rfc3339_shape("2026-10-11T00:00:00"));
+    fn datetime_check_accepts_and_rejects() {
+        assert!(is_rfc3339_datetime("2026-10-11T00:00:00Z"));
+        assert!(is_rfc3339_datetime("2026-10-11T00:00:00.5Z"));
+        assert!(is_rfc3339_datetime("2021-03-31T10:21:21.740101149-05:00"));
+        assert!(is_rfc3339_datetime("2026-10-11T00:00:00+10:00"));
+        assert!(is_rfc3339_datetime("2026-10-11t00:00:00z"));
+        assert!(!is_rfc3339_datetime("2026-10-11"));
+        assert!(!is_rfc3339_datetime("2026-10-11 00:00:00Z"));
+        // No timezone, and not granular to the second (E049's fixtures).
+        assert!(!is_rfc3339_datetime("2026-10-11T00:00:00"));
+        assert!(!is_rfc3339_datetime("2019-01-01T01:01Z"));
+        assert!(!is_rfc3339_datetime("2026-10-11T00:00:00.Z"));
+        assert!(!is_rfc3339_datetime("2026-13-11T00:00:00Z"));
+        assert!(!is_rfc3339_datetime("2026-10-11T24:00:00Z"));
+        assert!(!is_rfc3339_datetime("2026-10-11T00:00:00+24:00"));
+        // What the crate's own formatter emits always validates.
+        assert!(is_rfc3339_datetime(&rfc3339_utc(1_704_067_200)));
     }
 }
