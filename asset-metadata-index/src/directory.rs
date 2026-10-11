@@ -1,11 +1,12 @@
 //! The directory: which chunks hold a policy's records — and, in v2, which of
 //! those could hold a given asset name.
 //!
-//! One object per policy-id first byte (256 shards), so a shard only changes
-//! when a policy inside it mints or updates — a stable collection's shard is
-//! untouched for as long as the collection is. Entries are additive: a reader
-//! that sees a stale shard scans the frontier segments named by the pointer,
-//! so staleness can cost work but never produce a wrong answer.
+//! One object per policy-id first byte (256 shards). Entry *content* changes
+//! only when a policy inside the shard mints or updates; the daily sweep
+//! advances every shard's coverage claim in place ([`crate::patch_shard`]),
+//! so a stable collection's entries never move. Entries are additive: a
+//! reader that sees a stale shard scans the frontier segments named by the
+//! pointer, so staleness can cost work but never produce a wrong answer.
 //!
 //! Shards are read whole (hundreds of entries) and scanned; no intra-shard
 //! index. Two entry-layout versions are read here: v1 carries chunk lists,

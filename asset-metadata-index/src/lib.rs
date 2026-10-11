@@ -37,10 +37,17 @@
 //! for the ones past [`WHOLE_SEGMENT_CAP`] — ending in the same `latest` rule.
 //! The source owns the transport (files natively, KV and CDN at the edge); the
 //! crate owns the order of the reads and the bytes they must return.
+//!
+//! # The daily sweep
+//!
+//! [`patch_shard`] is the delta derivation the refresh chain runs between
+//! full rebuilds: it folds the chunks that sealed since a cutoff into a
+//! published v2 directory, rebuilding only the entries those chunks touched.
 
 #![warn(missing_docs)]
 
 mod bytes;
+mod delta;
 mod directory;
 mod error;
 mod filter;
@@ -49,6 +56,7 @@ mod record;
 mod segment;
 mod walk;
 
+pub use delta::{DeltaError, PatchedShard, patch_shard};
 pub use directory::{
     DIRECTORY_HEADER_LEN, DirectoryCandidate, DirectoryEntry, DirectoryHeader, DirectoryShard,
     DirectoryView,

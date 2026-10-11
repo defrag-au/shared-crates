@@ -1,0 +1,23 @@
+[package]
+name = "ocfl"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "OCFL 1.1 objects: typed inventory model, validation, forward-delta versions, filesystem emit and verify"
+
+[features]
+default = ["fs"]
+# Filesystem-backed emit/verify (object writer, reader, storage roots). The
+# model, digests, validation and delta planning are pure and always compiled,
+# so a Worker or a wasm host can speak the same bytes through its own backend.
+fs = []
+
+[dependencies]
+hex = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = "0.10"
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
