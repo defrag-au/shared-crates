@@ -112,7 +112,7 @@ pub fn plan_version(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::digest::DigestAlgorithm;
+    use crate::digest::ContentAlgorithm;
 
     fn state(files: &[(&str, &[u8])]) -> LogicalState {
         files
@@ -121,8 +121,8 @@ mod tests {
             .collect()
     }
 
-    fn algorithm() -> DigestAlgorithm {
-        DigestAlgorithm::Sha512
+    fn algorithm() -> ContentAlgorithm {
+        ContentAlgorithm::Sha512
     }
 
     #[test]

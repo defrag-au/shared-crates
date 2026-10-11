@@ -10,11 +10,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::digest::{DigestAlgorithm, digest_eq};
+use crate::digest::{ContentAlgorithm, DigestAlgorithm, digest_eq};
 use crate::time::has_rfc3339_shape;
 
 /// The inventory `type` URI for OCFL 1.1 — the spec requires the exact string.
 pub const INVENTORY_TYPE_1_1: &str = "https://ocfl.io/1.1/spec/#inventory";
+/// The registered name of the mutable HEAD extension (`0005-mutable-head`).
+pub const MUTABLE_HEAD_EXTENSION: &str = "0005-mutable-head";
 /// The inventory filename (§3.5).
 pub const INVENTORY_FILENAME: &str = "inventory.json";
 /// The object-root conformance declaration (§3.2).
@@ -46,7 +48,7 @@ pub fn version_number(dir: &str) -> Option<u32> {
 }
 
 /// The sidecar filename for an inventory digest (§3.6).
-pub fn sidecar_name(algorithm: DigestAlgorithm) -> String {
+pub fn sidecar_name(algorithm: ContentAlgorithm) -> String {
     format!("{INVENTORY_FILENAME}.{}", algorithm.as_str())
 }
 
@@ -65,6 +67,52 @@ pub fn parse_sidecar(text: &str) -> Option<String> {
         return None;
     }
     Some(digest.to_string())
+}
+
+/// How an inventory is being used — a root or version inventory under the core
+/// spec, or a mutable HEAD inventory (`0005-mutable-head`), whose manifest and
+/// fixity paths may point into the extension directory. Paths into the
+/// extension directory are a `MUST NOT` for a root inventory (§0005), so the
+/// distinction changes what validates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InventoryContext {
+    Core,
+    MutableHead,
+}
+
+/// Where a content path is allowed to sit: under a version directory's content
+/// directory, or — in the mutable HEAD context — under the extension's.
+fn content_path_placement(
+    path: &str,
+    known_dirs: &BTreeSet<&str>,
+    content_dir: &str,
+    context: InventoryContext,
+) -> Result<(), String> {
+    let mut elements = path.split('/');
+    let first = elements.next().unwrap_or_default();
+    if known_dirs.contains(first) {
+        let content = elements.next().unwrap_or_default();
+        if content != content_dir {
+            return Err(format!(
+                "does not sit under the content directory {content_dir:?}"
+            ));
+        }
+        return Ok(());
+    }
+    if context == InventoryContext::MutableHead
+        && first == "extensions"
+        && elements.next() == Some(MUTABLE_HEAD_EXTENSION)
+        && elements.next() == Some("head")
+    {
+        let content = elements.next().unwrap_or_default();
+        if content != content_dir {
+            return Err(format!(
+                "does not sit under the mutable HEAD content directory {content_dir:?}"
+            ));
+        }
+        return Ok(());
+    }
+    Err("does not start with a version directory".to_string())
 }
 
 /// OCFL path rules in one place — content paths (§3.5.2) and logical paths
@@ -146,7 +194,7 @@ pub struct Inventory {
     #[serde(rename = "type")]
     pub r#type: String,
     #[serde(rename = "digestAlgorithm")]
-    pub digest_algorithm: DigestAlgorithm,
+    pub digest_algorithm: ContentAlgorithm,
     /// The newest version directory name (`vN` with the highest number).
     pub head: String,
     /// Content directory name within each version; `None` = `content`.
@@ -160,6 +208,11 @@ pub struct Inventory {
     /// relative). Cumulative — entries from every version stay.
     #[serde(default)]
     pub manifest: BTreeMap<String, Vec<String>>,
+    /// Additional fixity values (§3.5.4), each algorithm block structured like
+    /// the manifest: algorithm → digest → content paths. Optional, and any
+    /// algorithm this client does not know MUST be ignored (§3.4).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fixity: BTreeMap<DigestAlgorithm, BTreeMap<String, Vec<String>>>,
     /// Version directory name → version block. Serialized in map order; the
     /// spec gives entry order no significance.
     #[serde(default)]
@@ -193,7 +246,7 @@ pub struct User {
 impl Inventory {
     /// An empty inventory — no versions yet. Not valid until the first version
     /// commits (OCFL objects contain one or more versions, §3.3).
-    pub fn new(id: impl Into<String>, digest_algorithm: DigestAlgorithm) -> Self {
+    pub fn new(id: impl Into<String>, digest_algorithm: ContentAlgorithm) -> Self {
         Self {
             id: id.into(),
             r#type: INVENTORY_TYPE_1_1.to_string(),
@@ -201,6 +254,7 @@ impl Inventory {
             head: String::new(),
             content_directory: None,
             manifest: BTreeMap::new(),
+            fixity: BTreeMap::new(),
             versions: BTreeMap::new(),
         }
     }
@@ -250,8 +304,16 @@ impl Inventory {
         Some(out)
     }
 
-    /// Validate the inventory against OCFL 1.1's structural rules.
+    /// Validate the inventory against OCFL 1.1's structural rules, in the
+    /// root/version context ([`InventoryContext::Core`]).
     pub fn validate(&self) -> Problems {
+        self.validate_in(InventoryContext::Core)
+    }
+
+    /// Validate against the spec's structural rules in a given context. The
+    /// mutable HEAD context additionally accepts manifest and fixity paths
+    /// under `extensions/0005-mutable-head/head/`.
+    pub fn validate_in(&self, context: InventoryContext) -> Problems {
         let mut p = Problems::default();
 
         if self.id.is_empty() {
@@ -350,23 +412,62 @@ impl Inventory {
                     p.error(format!("content path {path:?} {why}"));
                     continue;
                 }
-                let mut elements = path.split('/');
-                let dir = elements.next().unwrap_or_default();
-                let content = elements.next().unwrap_or_default();
-                if !known_dirs.contains(dir) {
-                    p.error(format!(
-                        "content path {path:?} does not start with a version directory"
-                    ));
-                } else if content != content_dir {
-                    p.error(format!(
-                        "content path {path:?} does not sit under the content directory {content_dir:?}"
-                    ));
+                if let Err(why) = content_path_placement(path, &known_dirs, content_dir, context) {
+                    p.error(format!("content path {path:?} {why}"));
                 }
                 manifest_paths.push(path);
             }
         }
         if let Some((a, b)) = path_conflict(manifest_paths.iter().copied()) {
             p.error(format!("content paths conflict: {a:?} and {b:?}"));
+        }
+
+        // Fixity (§3.5.4): each algorithm block follows the manifest's shape.
+        // Unknown algorithm names MUST be ignored — values are preserved, but
+        // nothing about them can be checked, so they warn rather than error.
+        for (algorithm, digests) in &self.fixity {
+            if !algorithm.is_known() {
+                p.warning(format!(
+                    "fixity: algorithm {algorithm:?} is not in this client's vocabulary — its values are ignored (§3.4)"
+                ));
+                continue;
+            }
+            let mut lower: BTreeSet<String> = BTreeSet::new();
+            let mut fixity_paths: Vec<&str> = Vec::new();
+            for (digest, paths) in digests {
+                if !algorithm.is_well_formed(digest) {
+                    p.error(format!(
+                        "fixity/{algorithm}: {digest:?} is not a well-formed {algorithm} digest"
+                    ));
+                }
+                if !lower.insert(digest.to_ascii_lowercase()) {
+                    p.error(format!(
+                        "fixity/{algorithm}: digest {digest:?} appears more than once (case-insensitively)"
+                    ));
+                }
+                if paths.is_empty() {
+                    p.error(format!(
+                        "fixity/{algorithm}: digest {digest:?} has no content paths"
+                    ));
+                }
+                for path in paths {
+                    if let Err(why) = check_path(path) {
+                        p.error(format!("fixity/{algorithm}: content path {path:?} {why}"));
+                        continue;
+                    }
+                    if let Err(why) =
+                        content_path_placement(path, &known_dirs, content_dir, context)
+                    {
+                        p.error(format!("fixity/{algorithm}: content path {path:?} {why}"));
+                    }
+                    fixity_paths.push(path);
+                }
+            }
+            if let Some((a, b)) = path_conflict(fixity_paths.iter().copied()) {
+                p.error(format!(
+                    "fixity/{algorithm}: content paths conflict: {a:?} and {b:?}"
+                ));
+            }
         }
 
         // Versions: state digests are in the manifest, logical paths obey the
@@ -462,7 +563,7 @@ mod tests {
 
     fn two_version_fixture() -> Inventory {
         let digest = |byte: char| byte.to_string().repeat(128);
-        let mut inventory = Inventory::new("urn:test:0001", DigestAlgorithm::Sha512);
+        let mut inventory = Inventory::new("urn:test:0001", ContentAlgorithm::Sha512);
         let a = digest('a');
         let b = digest('b');
         inventory
@@ -584,8 +685,105 @@ mod tests {
         assert_eq!(parse_sidecar(&text), Some(digest));
         assert_eq!(parse_sidecar("garbage"), None);
         assert_eq!(
-            sidecar_name(DigestAlgorithm::Sha512),
+            sidecar_name(ContentAlgorithm::Sha512),
             "inventory.json.sha512"
+        );
+    }
+
+    #[test]
+    fn a_fixity_block_validates_and_round_trips() {
+        let mut inventory = two_version_fixture();
+        inventory.fixity.insert(
+            DigestAlgorithm::Md5,
+            BTreeMap::from([
+                ("a".repeat(32), vec!["v1/content/a.txt".to_string()]),
+                ("b".repeat(32), vec!["v2/content/b.txt".to_string()]),
+            ]),
+        );
+        let problems = inventory.validate();
+        assert!(problems.is_ok(), "{:#?}", problems);
+        let json = serde_json::to_string(&inventory).unwrap();
+        assert!(json.contains("\"fixity\""), "{json}");
+        assert_eq!(serde_json::from_str::<Inventory>(&json).unwrap(), inventory);
+    }
+
+    #[test]
+    fn fixity_for_an_unknown_algorithm_is_ignored_with_a_warning() {
+        let mut inventory = two_version_fixture();
+        inventory.fixity.insert(
+            DigestAlgorithm::Other("xxh3-128".into()),
+            BTreeMap::from([(
+                "not-a-digest".to_string(),
+                vec!["v1/content/a.txt".to_string()],
+            )]),
+        );
+        let problems = inventory.validate();
+        assert!(problems.is_ok(), "{:#?}", problems.errors);
+        assert_eq!(problems.warnings.len(), 1, "{:#?}", problems.warnings);
+    }
+
+    #[test]
+    fn fixity_digests_are_shape_checked() {
+        let mut inventory = two_version_fixture();
+        inventory.fixity.insert(
+            DigestAlgorithm::Md5,
+            BTreeMap::from([("a".repeat(31), vec!["v1/content/a.txt".to_string()])]),
+        );
+        let problems = inventory.validate();
+        assert!(
+            problems
+                .errors
+                .iter()
+                .any(|e| e.contains("not a well-formed")),
+            "{problems:#?}"
+        );
+    }
+
+    #[test]
+    fn fixity_digests_are_case_insensitively_unique() {
+        let mut inventory = two_version_fixture();
+        inventory.fixity.insert(
+            DigestAlgorithm::Md5,
+            BTreeMap::from([
+                ("B".repeat(32), vec!["v1/content/a.txt".to_string()]),
+                ("b".repeat(32), vec!["v2/content/b.txt".to_string()]),
+            ]),
+        );
+        let problems = inventory.validate();
+        assert_eq!(problems.errors.len(), 1, "{problems:#?}");
+        assert!(
+            problems.errors[0].contains("more than once"),
+            "{problems:#?}"
+        );
+    }
+
+    #[test]
+    fn fixity_paths_obey_the_content_path_rules() {
+        let mut inventory = two_version_fixture();
+        inventory.fixity.insert(
+            DigestAlgorithm::Sha1,
+            BTreeMap::from([(
+                "c".repeat(40),
+                vec![
+                    "v3/content/a.txt".to_string(),
+                    "v1/content/../a.txt".to_string(),
+                ],
+            )]),
+        );
+        let problems = inventory.validate();
+        assert!(
+            problems
+                .errors
+                .iter()
+                .any(|e| e.contains("does not start with a version directory")),
+            "{problems:#?}"
+        );
+        assert!(
+            problems
+                .errors
+                .iter()
+                .any(|e| e.contains("has a `.` or `..` path element")),
+            "{problems:#?}"
         );
     }
 }

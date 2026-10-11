@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use ocfl::fs::{Layout, Object, ObjectWriter, Severity, StorageRoot};
-use ocfl::{DigestAlgorithm, LogicalState};
+use ocfl::{ContentAlgorithm, LogicalState};
 
 fn state(files: &[(&str, &[u8])]) -> LogicalState {
     files
@@ -15,7 +15,7 @@ fn state(files: &[(&str, &[u8])]) -> LogicalState {
 }
 
 fn mint(dir: &Path) -> ObjectWriter {
-    let mut writer = ObjectWriter::create(dir, "urn:mugz:0001", DigestAlgorithm::Sha512).unwrap();
+    let mut writer = ObjectWriter::create(dir, "urn:mugz:0001", ContentAlgorithm::Sha512).unwrap();
     writer
         .commit(
             &state(&[
@@ -208,7 +208,7 @@ fn a_storage_root_maps_ids_and_hosts_objects() {
     );
 
     let mut writer = root
-        .writer("urn:mugz:0001", DigestAlgorithm::Sha512)
+        .writer("urn:mugz:0001", ContentAlgorithm::Sha512)
         .unwrap();
     writer
         .commit(
@@ -222,4 +222,32 @@ fn a_storage_root_maps_ids_and_hosts_objects() {
     let object = root.object("urn:mugz:0001").unwrap();
     let report = object.verify();
     assert!(report.is_ok(), "{:#?}", report.issues);
+}
+
+#[test]
+fn a_custom_content_directory_is_honoured_end_to_end() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut writer =
+        ObjectWriter::create(dir.path(), "urn:mugz:0001", ContentAlgorithm::Sha512).unwrap();
+    writer.set_content_directory("data").unwrap();
+    writer
+        .commit(
+            &state(&[("0001.webp", b"still")]),
+            "2026-10-11T00:00:00Z",
+            None,
+            None,
+        )
+        .unwrap();
+    assert!(dir.path().join("v1/data/0001.webp").is_file());
+    assert!(!dir.path().join("v1/content").exists());
+
+    let object = Object::open(dir.path()).unwrap();
+    assert_eq!(object.inventory().content_dir(), "data");
+    assert_eq!(object.read_file("0001.webp").unwrap(), b"still");
+    let report = object.verify();
+    assert!(report.is_ok(), "{:#?}", report.issues);
+
+    // The name is fixed for the object's life (§3.3.1).
+    let mut writer = ObjectWriter::open(dir.path()).unwrap();
+    assert!(writer.set_content_directory("elsewhere").is_err());
 }
