@@ -6,9 +6,12 @@
 //! has to learn, and it costs a line of chrome and a hint underneath. The dial
 //! puts the three jobs in two places on one control instead:
 //!
-//! - **The puck** is the stick. Push and hold to move, at a rate, as far as you
-//!   like. Once it is held it can ride out over the rim, so the rim's edge is
-//!   also the edge of a full push.
+//! - **The puck** is a handle. Drag it and the subject moves with it, directly,
+//!   by a distance geared to the space ([`SLIDE_ACROSS`] points of drag cross
+//!   the whole of it). Push it out past the rim and it becomes a stick: the
+//!   subject keeps travelling at a rate for as long as it is held there, faster
+//!   the further past, so reach is never limited by the screen or a trackpad.
+//!   Short, exact moves are direct, and the joystick is the overflow.
 //! - **The rim** is a ring you can grab. Sweep it round to turn, or pull it out
 //!   or in to size. Both are direct rather than rates. A turn is circular, so a
 //!   ring never runs out of reach for it. A size rarely needs more than one pull,
@@ -66,7 +69,7 @@ use egui::{Align2, CursorIcon, Key, Pos2, Rect, Sense, Stroke, Ui, Vec2, pos2, v
 use crate::icons::PhosphorIcon;
 use crate::placement::Placement;
 use crate::theme::ThemeExt;
-use crate::transform_stick::{DEAD_ZONE, FINE, Rates, clamp_unit, response};
+use crate::transform_stick::{FINE, Rates, clamp_unit};
 
 /// The dial's side, in points. `theme-exempt`: a thumb affordance, sized so the
 /// rim band and the puck are each a fingertip.
@@ -94,6 +97,15 @@ const FLOOR: f32 = 12.0;
 /// outward is roughly a ×1.7.
 pub const PULL_PER_E: f32 = 64.0;
 
+/// Points of puck drag that move the subject across the whole of its space.
+/// Finer than dragging the subject itself, which is the dial's job; Shift
+/// gears it finer still. `theme-exempt`: a feel parameter.
+pub const SLIDE_ACROSS: f32 = 400.0;
+
+/// How far past the rim, as a fraction of the puck's travel, a push reaches
+/// the full move rate. `theme-exempt`: a feel parameter.
+const EDGE: f32 = 0.5;
+
 /// How many ridges the rim carries. They turn with a sweep, which is what makes
 /// the rim read as something that turns. `theme-exempt`: drawing detail.
 const RIDGES: usize = 28;
@@ -102,7 +114,8 @@ const RIDGES: usize = 28;
 const SPRING: f32 = 18.0;
 
 /// One line for the reader, for a caption or a first-run hint.
-pub const HINT: &str = "push the puck to move · sweep the rim to turn · pull it to size";
+pub const HINT: &str =
+    "drag the puck to move, past the rim to keep going · sweep the rim to turn · pull it to size";
 
 /// The keys, in one line, for a host with a keyboard to say so.
 pub const KEYS_HINT: &str = "hold R to turn, S to size, shift for fine";
@@ -258,9 +271,11 @@ pub struct TransformDial {
     /// thumb that lands off-centre.
     grab: Vec2,
     hold: Option<Hold>,
-    /// Turn and growth gathered since the last [`apply`](Self::apply).
+    /// Turn, growth and direct slide (in points) gathered since the last
+    /// [`apply`](Self::apply).
     turn: f32,
     grow: f32,
+    slide: Vec2,
     /// The rim's drawn turn: its ridges follow the thumb.
     ridges: f32,
     /// The rim's drawn pull, in points, springing home after release.
@@ -283,6 +298,7 @@ impl Default for TransformDial {
             hold: None,
             turn: 0.0,
             grow: 0.0,
+            slide: Vec2::ZERO,
             ridges: 0.0,
             pull: 0.0,
             mode: PuckMode::Move,
@@ -318,8 +334,9 @@ impl TransformDial {
         self.shift
     }
 
-    /// Is a move rate running? While it is, the caller must keep asking for
-    /// frames, or the subject stops with the pointer.
+    /// Is a move rate running — the puck pushed past the rim? While it is,
+    /// the caller must keep asking for frames, or the subject stops with the
+    /// pointer.
     pub fn engaged(&self) -> bool {
         self.push != Vec2::ZERO
     }
@@ -346,21 +363,28 @@ impl TransformDial {
         }
     }
 
-    /// The held puck, with the pointer at `at`. With no key held this is the
-    /// stick: the push is a move rate. With R or S held the push is ignored
-    /// and the pointer's own step since last frame is the change, geared as
-    /// the rim is — and drawn as the rim draws it.
+    /// The held puck, with the pointer at `at`. Every mode is the pointer's
+    /// own step since last frame: with no key held it slides the subject, and
+    /// with R or S held it turns or sizes, geared as the rim is and drawn as
+    /// the rim draws it. The one rate is a move with the puck pushed out past
+    /// the rim.
     fn track_puck(&mut self, at: Pos2, centre: Pos2, travel: f32) {
         let Some(Hold::Puck { last }) = &mut self.hold else {
             return;
         };
         let delta = at - *last;
         *last = at;
-        let push = clamp_unit((at + self.grab - centre) / travel);
+        let raw = (at + self.grab - centre) / travel;
         // The puck rides only the axis the held key reads.
-        self.puck = self.mode.constrain(push);
+        self.puck = self.mode.constrain(clamp_unit(raw));
         if self.mode == PuckMode::Move {
-            self.push = push;
+            let reach = raw.length();
+            if reach <= 1.0 {
+                self.slide += delta;
+            } else {
+                // Past the rim: a stick, at a rate that grows with how far.
+                self.push = raw / reach * ((reach - 1.0) / EDGE).min(1.0);
+            }
             return;
         }
         let (turn, grow) = keyed_step(self.mode, delta, self.rim);
@@ -563,9 +587,9 @@ impl TransformDial {
             );
         }
 
-        // The stick's own furniture: the cross, the dead zone, the puck. With
-        // a key held the puck rides only the axis that key reads, which is
-        // the push being honest about itself rather than a second signal.
+        // The handle's own furniture: the cross and the puck. With a key held
+        // the puck rides only the axis that key reads, which is the drag being
+        // honest about itself rather than a second signal.
         let guide = Stroke::new(1.0_f32, tokens.color.text_muted.gamma_multiply(0.3));
         let reach = inner - 4.0;
         painter.line_segment(
@@ -576,7 +600,28 @@ impl TransformDial {
             [centre - vec2(0.0, reach), centre + vec2(0.0, reach)],
             guide,
         );
-        painter.circle_stroke(centre, travel * DEAD_ZONE, guide);
+
+        // Pushed past the rim, the puck is a stick: the stretch of rim it is
+        // pushing against lights, brighter the faster it runs.
+        if self.push != Vec2::ZERO {
+            let heading = bearing(self.push);
+            let arc: Vec<Pos2> = (0..=12)
+                .map(|step| {
+                    let angle = heading + (step as f32 / 12.0 - 0.5) * 0.7;
+                    centre + vec2(angle.cos(), angle.sin()) * outer
+                })
+                .collect();
+            painter.add(egui::Shape::line(
+                arc,
+                Stroke::new(
+                    3.0_f32,
+                    tokens
+                        .color
+                        .accent
+                        .gamma_multiply(0.4 + 0.6 * self.push.length()),
+                ),
+            ));
+        }
 
         let at = centre + clamp_unit(self.puck) * travel;
         painter.circle_filled(at, PUCK, tokens.color.accent);
@@ -585,11 +630,13 @@ impl TransformDial {
 
     /// Carry this frame's gesture onto `placement`, and clear it.
     ///
-    /// Moving is the puck's rate, in [`Rates::pan`] units per second, and the
+    /// A puck drag moves the subject directly: [`SLIDE_ACROSS`] points cross
+    /// the larger side of `space`, whatever its units. Pushed past the rim, it
+    /// moves at up to [`Rates::pan`] units per second instead. Either way the
     /// centre is kept inside `space`. Turning and sizing — by the rim, or by
-    /// the puck with R or S held — are direct, so `Rates::turn` and
-    /// `Rates::size` are not read and `dt` does not scale them. `fine`, or
-    /// Shift held, gears everything down by the same factor.
+    /// the puck with R or S held — are direct too, so `Rates::turn` and
+    /// `Rates::size` are not read. `fine`, or Shift held, gears everything down
+    /// by the same factor.
     pub fn apply(
         &mut self,
         placement: &mut Placement,
@@ -601,15 +648,17 @@ impl TransformDial {
         let scale = if fine || self.shift { FINE } else { 1.0 };
         let mut changed = false;
 
-        let held = response(self.push);
-        if held != Vec2::ZERO {
-            let next = placement.center + held * rates.pan * scale * dt;
+        let span = space.width().max(space.height());
+        let travel = self.slide * (span / SLIDE_ACROSS) + self.push * rates.pan * dt;
+        if travel != Vec2::ZERO {
+            let next = placement.center + travel * scale;
             placement.center = pos2(
                 next.x.clamp(space.min.x, space.max.x),
                 next.y.clamp(space.min.y, space.max.y),
             );
             changed = true;
         }
+        self.slide = Vec2::ZERO;
         if self.turn != 0.0 {
             placement.angle += self.turn * scale;
             changed = true;
@@ -922,15 +971,100 @@ mod tests {
     }
 
     #[test]
-    fn with_no_key_the_puck_is_still_a_move_rate() {
-        let mut dial = holding(PuckMode::Move);
-        dial.track_puck(pos2(60.0, 0.0), Pos2::ZERO, 60.0);
-        assert!(dial.engaged());
+    fn a_puck_drag_moves_the_subject_directly() {
+        // 40 points of drag, inside the well, in a unit space: 40 / 400 of it.
         let mut placement = start();
-        dial.apply(&mut placement, space(), Rates::default(), 0.1, false);
-        assert!(placement.center.x > start().center.x);
+        let mut dial = holding(PuckMode::Move);
+        drag(&mut dial, &mut placement, vec2(40.0, -20.0), false);
+        let moved = placement.center - start().center;
+        // f32 steps added onto 0.5: a few ulps of drift over fifty frames.
+        assert!(
+            (moved.x - 40.0 / SLIDE_ACROSS).abs() < 1e-5,
+            "moved {moved:?}"
+        );
+        assert!(
+            (moved.y + 20.0 / SLIDE_ACROSS).abs() < 1e-5,
+            "moved {moved:?}"
+        );
         assert_eq!(placement.angle, 0.0);
         assert_eq!(placement.size, start().size);
+
+        // And held still there, it stays: inside the well it's a handle.
+        assert!(!dial.engaged());
+        let settled = placement;
+        for _ in 0..30 {
+            dial.track_puck(pos2(40.0, -20.0), Pos2::ZERO, 60.0);
+            dial.apply(&mut placement, space(), Rates::default(), 1.0 / 60.0, false);
+        }
+        assert_eq!(placement, settled);
+    }
+
+    #[test]
+    fn a_slide_is_geared_to_the_space_not_its_units() {
+        // The same drag crosses the same share of a space a thousand times
+        // larger.
+        let mut dial = holding(PuckMode::Move);
+        dial.track_puck(pos2(40.0, 0.0), Pos2::ZERO, 60.0);
+        let big = Rect::from_min_max(pos2(0.0, 0.0), pos2(1000.0, 1000.0));
+        let mut placement = Placement::new(pos2(500.0, 500.0), vec2(100.0, 100.0));
+        dial.apply(&mut placement, big, Rates::default(), 1.0 / 60.0, false);
+        assert!((placement.center.x - (500.0 + 1000.0 * 40.0 / SLIDE_ACROSS)).abs() < 1e-3);
+    }
+
+    #[test]
+    fn past_the_rim_the_puck_is_a_stick() {
+        // Pushed half a travel past the rim: the full rate, held still or not.
+        let mut dial = holding(PuckMode::Move);
+        dial.track_puck(pos2(90.0, 0.0), Pos2::ZERO, 60.0);
+        assert!(dial.engaged());
+        let mut placement = Placement::new(pos2(0.2, 0.5), vec2(0.1, 0.1));
+        let before = placement.center.x;
+        for _ in 0..10 {
+            dial.track_puck(pos2(90.0, 0.0), Pos2::ZERO, 60.0);
+            dial.apply(&mut placement, space(), Rates::default(), 0.1, false);
+        }
+        // One second at the full pan rate. The step that carried the pointer
+        // out there landed past the rim, so it slid nothing: outside the well
+        // is the rate's, and only the rate's.
+        let ran = placement.center.x - before;
+        assert!(
+            (ran - Rates::default().pan).abs() < 1e-3,
+            "ran {ran} against the pan rate"
+        );
+    }
+
+    #[test]
+    fn the_rate_past_the_rim_grows_with_how_far() {
+        let rate = |x: f32| {
+            let mut dial = holding(PuckMode::Move);
+            dial.hold = Some(Hold::Puck { last: pos2(x, 0.0) });
+            dial.track_puck(pos2(x, 0.0), Pos2::ZERO, 60.0);
+            dial.push.length()
+        };
+        assert_eq!(rate(60.0), 0.0, "at the rim, still a handle");
+        assert!(rate(66.0) > 0.0);
+        assert!(rate(66.0) < rate(78.0));
+        assert_eq!(rate(90.0), 1.0);
+        assert_eq!(rate(200.0), 1.0, "and no faster than the full rate");
+    }
+
+    #[test]
+    fn shift_gears_a_slide_down() {
+        let (mut coarse, mut fine) = (start(), start());
+        drag(
+            &mut holding(PuckMode::Move),
+            &mut coarse,
+            vec2(40.0, 0.0),
+            false,
+        );
+        let mut dial = TransformDial {
+            shift: true,
+            ..holding(PuckMode::Move)
+        };
+        drag(&mut dial, &mut fine, vec2(40.0, 0.0), false);
+        let a = coarse.center.x - start().center.x;
+        let b = fine.center.x - start().center.x;
+        assert!((b - a * FINE).abs() < 1e-6);
     }
 
     /// One look for one change: a held key moves the rim's ridges and ring
