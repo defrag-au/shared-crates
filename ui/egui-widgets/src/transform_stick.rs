@@ -165,7 +165,8 @@ impl TransformStick {
     /// rate should be driven by this frame, in the same units as a push.
     pub fn show(&mut self, ui: &mut Ui, dt: f32) -> Vec2 {
         let side = WELL.min(ui.available_width());
-        let (rect, interaction) = ui.allocate_exact_size(Vec2::splat(side), Sense::click_and_drag());
+        let (rect, interaction) =
+            ui.allocate_exact_size(Vec2::splat(side), Sense::click_and_drag());
         let tokens = ui.tokens();
         let painter = ui.painter().clone();
         let centre = rect.center();
@@ -215,11 +216,7 @@ impl TransformStick {
 
         let at = centre + clamp_unit(self.puck) * travel;
         painter.circle_filled(at, PUCK, tokens.color.accent);
-        painter.circle_stroke(
-            at,
-            PUCK,
-            Stroke::new(1.0_f32, tokens.color.bg_primary),
-        );
+        painter.circle_stroke(at, PUCK, Stroke::new(1.0_f32, tokens.color.bg_primary));
 
         if self.grabbing {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -342,8 +339,10 @@ mod tests {
 
     #[test]
     fn a_move_keeps_the_centre_inside_the_space() {
-        let mut stick = TransformStick::default();
-        stick.push = vec2(1.0, 0.0);
+        let stick = TransformStick {
+            push: vec2(1.0, 0.0),
+            ..Default::default()
+        };
         let space = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
         let mut placement = Placement {
             center: pos2(0.98, 0.5),
@@ -358,11 +357,13 @@ mod tests {
 
     #[test]
     fn size_up_grows_and_size_down_shrinks() {
-        let mut stick = TransformStick::default();
-        stick.mode = StickMode::Size;
+        let mut stick = TransformStick {
+            mode: StickMode::Size,
+            push: vec2(0.0, -1.0),
+            ..Default::default()
+        };
         let space = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 
-        stick.push = vec2(0.0, -1.0);
         let mut grown = Placement {
             center: pos2(0.5, 0.5),
             size: vec2(0.3, 0.3),
@@ -379,9 +380,11 @@ mod tests {
 
     #[test]
     fn turn_uses_the_sideways_axis() {
-        let mut stick = TransformStick::default();
-        stick.mode = StickMode::Turn;
-        stick.push = vec2(1.0, 0.0);
+        let stick = TransformStick {
+            mode: StickMode::Turn,
+            push: vec2(1.0, 0.0),
+            ..Default::default()
+        };
         let space = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
         let mut placement = Placement {
             center: pos2(0.5, 0.5),
@@ -394,13 +397,15 @@ mod tests {
 
     #[test]
     fn the_shape_stick_turns_and_grows_in_one_push() {
-        let mut stick = TransformStick::default();
-        stick.mode = StickMode::Shape;
         // A push to the rim, at 45°: the stick is a disc, not a square, so a
         // diagonal is one full push split between the two axes — not a full rate
         // on each. That is what makes "turn it a bit and grow it a bit" a single
         // gesture rather than two.
-        stick.push = vec2(0.707, -0.707);
+        let stick = TransformStick {
+            mode: StickMode::Shape,
+            push: vec2(0.707, -0.707),
+            ..Default::default()
+        };
         let space = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
         let mut placement = Placement {
             center: pos2(0.5, 0.5),

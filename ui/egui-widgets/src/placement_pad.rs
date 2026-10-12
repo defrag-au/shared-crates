@@ -32,9 +32,7 @@
 //! cannot carry: the map between the bench and the caller's units, and the drag in
 //! flight.
 
-use egui::{
-    Color32, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, epaint::Vertex, pos2, vec2,
-};
+use egui::{Color32, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, epaint::Vertex, pos2, vec2};
 
 use crate::placement::{Frame, Placement, PlacementEditor, PlacementStyle};
 use crate::theme::{Radius, ThemeExt};
@@ -91,7 +89,7 @@ impl PadMap {
     }
 
     /// A point of the caller's space on the bench.
-    fn to_px(&self, point: Pos2) -> Pos2 {
+    fn bench_point(&self, point: Pos2) -> Pos2 {
         pos2(
             self.bench.min.x + (point.x - self.space.min.x) * self.per_u,
             self.bench.min.y + (point.y - self.space.min.y) * self.per_v,
@@ -99,7 +97,7 @@ impl PadMap {
     }
 
     /// A point of the bench back in the caller's space.
-    fn from_px(&self, point: Pos2) -> Pos2 {
+    fn space_point(&self, point: Pos2) -> Pos2 {
         pos2(
             self.space.min.x + (point.x - self.bench.min.x) / self.per_u,
             self.space.min.y + (point.y - self.bench.min.y) / self.per_v,
@@ -109,7 +107,7 @@ impl PadMap {
     /// The subject's rectangle as the bench shows it.
     fn frame(&self, placement: &Placement) -> Frame {
         Frame {
-            corners: placement.corners().map(|corner| self.to_px(corner)),
+            corners: placement.corners().map(|corner| self.bench_point(corner)),
         }
     }
 }
@@ -199,7 +197,7 @@ impl PlacementPad {
         let pointer = ui
             .ctx()
             .input(|input| input.pointer.interact_pos())
-            .map(|at| map.from_px(at));
+            .map(|at| map.space_point(at));
         ui.scope_builder(egui::UiBuilder::new().max_rect(full), |ui| {
             self.editor
                 .show_in(ui, placement, &frame, pointer, PlacementStyle::Puck)
@@ -229,7 +227,7 @@ mod tests {
             pos2(0.42, 0.93),
             pos2(-0.2, 0.5),
         ] {
-            let back = map.from_px(map.to_px(point));
+            let back = map.space_point(map.bench_point(point));
             assert!((back.x - point.x).abs() < 1e-4, "{back:?} for {point:?}");
             assert!((back.y - point.y).abs() < 1e-4, "{back:?} for {point:?}");
         }
@@ -260,6 +258,6 @@ mod tests {
         };
         let frame = map.frame(&square);
         assert!((frame.placement().angle - 0.35).abs() < 1e-4);
-        assert!((frame.placement().center.x - map.to_px(pos2(0.5, 0.5)).x).abs() < 1e-4);
+        assert!((frame.placement().center.x - map.bench_point(pos2(0.5, 0.5)).x).abs() < 1e-4);
     }
 }
