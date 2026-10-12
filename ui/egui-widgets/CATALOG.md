@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-173 widgets.
+174 widgets.
 
 | module | what it is |
 |---|---|
@@ -159,6 +159,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `trade_table` | Trade table widget — TCG-style top/bottom offer display for the trade desk |
 | `trait_delta` | Trait delta widget — shows traits gained and lost in a trade |
 | `trait_filter` | Compound-key prefix trie tag filter widget |
+| `transform_dial` | `TransformDial` — one control with no modes: the puck moves the subject and the rim around it shapes it |
 | `transform_stick` | `TransformStick` — a spring-centred stick that pans, sizes and turns a subject that lives somewhere else on screen |
 | `tx_card` | `TxCard` — one transaction as a VERDICT: what it was, who it was between, and the one figure that says it — at three densities |
 | `tx_cart` | TX Cart widget — displays a list of pending chain actions with batch execution |

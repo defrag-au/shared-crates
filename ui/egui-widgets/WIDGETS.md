@@ -178,10 +178,11 @@ shape: builder → `.show(ui) -> Response { actions: Vec<…> }`.
   style, drag text overlays on an image; flatten to RGBA. **Composite
   image+text authoring.**
 - **`placement`** → `PlacementEditor` + `Placement` — One compound
-  move/size/turn gesture over a subject, in three styles (`Handles` /
-  `Halo` / `Puck`). **Placing a decal, a sticker or a stamp on a
-  surface — the value is in the caller's space, so a warped surface maps
-  the gestures back itself.**
+  move/size/turn gesture over a subject, in five styles (`Handles` /
+  `Halo` / `Puck` / `Knob` / `Drag`); `Drag` is move-only, for a host
+  that turns and sizes from a `TransformDial`. **Placing a decal, a
+  sticker or a stamp on a surface — the value is in the caller's space,
+  so a warped surface maps the gestures back itself.**
 - **`placement_pad`** → `PlacementPad` + `PadSpace` — The same
   move/size/turn on a flat bench: the space is drawn, the subject sits in
   it, and the control never leaves the plane the value lives in.
@@ -192,6 +193,12 @@ shape: builder → `.show(ui) -> Response { actions: Vec<…> }`.
   subject that is drawn somewhere else entirely. **Placing something on a
   curved or projected surface — a small fixed control with unlimited
   reach, which is what a dragged handle can never have.**
+- **`transform_dial`** → `TransformDial` + `PuckMode` — One modeless
+  control: the puck drags the subject directly (and runs at a rate once
+  pushed past the rim), the rim sweeps to turn and pulls to size, and
+  held R / S / Shift re-aim the puck at turn, size or the fine hand.
+  **The fine hand for a decal editor — pair it with `PlacementStyle::Drag`
+  on the subject so the subject only moves.**
 - **`wallet_asset_picker`** → `PickerAsset` + `PickerPolicyGroup` —
   Modal browser grouped by policy with multi-select summary bar.
   **Pick NFTs from wallet inventory.**
