@@ -54,7 +54,7 @@ impl Default for Rates {
 }
 
 /// How much of the travel the fine hand gets, on the fine modifier.
-const FINE: f32 = 0.15;
+pub(crate) const FINE: f32 = 0.15;
 
 /// The transform the stick is driving. One stick, three jobs — the mode is what
 /// makes a single small control compound.
@@ -296,7 +296,7 @@ impl TransformStick {
 
 /// `v` clamped into the unit disc — the puck rides a circle, not a square, so a
 /// diagonal push is not a longer one than a straight push.
-fn clamp_unit(v: Vec2) -> Vec2 {
+pub(crate) fn clamp_unit(v: Vec2) -> Vec2 {
     let length = v.length();
     if length <= 1.0 { v } else { v / length }
 }
@@ -396,7 +396,11 @@ mod tests {
     fn the_shape_stick_turns_and_grows_in_one_push() {
         let mut stick = TransformStick::default();
         stick.mode = StickMode::Shape;
-        stick.push = vec2(1.0, -1.0);
+        // A push to the rim, at 45°: the stick is a disc, not a square, so a
+        // diagonal is one full push split between the two axes — not a full rate
+        // on each. That is what makes "turn it a bit and grow it a bit" a single
+        // gesture rather than two.
+        stick.push = vec2(0.707, -0.707);
         let space = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
         let mut placement = Placement {
             center: pos2(0.5, 0.5),
@@ -404,9 +408,11 @@ mod tests {
             angle: 0.0,
         };
         stick.apply(&mut placement, space, Rates::default(), 1.0, false);
+        let rates = Rates::default();
         assert!(placement.angle > 0.0, "angle {}", placement.angle);
         assert!(placement.size.x > 0.3, "size {}", placement.size.x);
-        // A diagonal push is one push, not two: the same rates, one frame.
-        assert!((placement.angle - Rates::default().turn).abs() < 1e-5);
+        // Both axes ran, and each got its share of the one push.
+        assert!((placement.angle - 0.707 * rates.turn).abs() < 1e-3);
+        assert!((placement.size.x / 0.3 - (1.0 + 0.707 * rates.size)).abs() < 1e-3);
     }
 }

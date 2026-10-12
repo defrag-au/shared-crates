@@ -49,7 +49,7 @@
 
 use std::f32::consts::{PI, TAU};
 
-use egui::{Color32, CursorIcon, Pos2, Stroke, Ui, Vec2, vec2};
+use egui::{Color32, CursorIcon, Pos2, Rect, Stroke, Ui, Vec2, vec2};
 
 use crate::theme::ThemeExt;
 
@@ -67,6 +67,18 @@ const RING: f32 = 18.0;
 /// How far past the subject's `+u` edge the puck sits, on screen.
 /// `theme-exempt`: pointer affordance.
 const PUCK: f32 = 26.0;
+
+/// The [`PlacementStyle::Knob`]'s drawn radius, its grab radius and how far past
+/// the subject's edge it stands — all sized for a thumb rather than a cursor.
+/// `theme-exempt`: pointer affordances.
+const KNOB: f32 = 10.0;
+const KNOB_GRAB: f32 = 24.0;
+const KNOB_STANDOFF: f32 = 32.0;
+
+/// How far, on screen, a knob grab travels before it decides between a turn
+/// and a size — the same rule as the dial's rim. `theme-exempt`: a feel
+/// parameter.
+const KNOB_LOCK: f32 = 8.0;
 
 /// How many segments the halo's ring is drawn (and hit-tested) in. Enough that
 /// a warped ring reads as a curve; `theme-exempt`: geometry, not a themed size.
@@ -227,6 +239,13 @@ pub enum PlacementStyle {
     /// A single puck past the subject's edge: its distance sizes, its angle
     /// turns; the body drags.
     Puck,
+    /// The puck made for a thumb. One grab does ONE thing: the first few
+    /// points of travel decide between a sweep round the subject (turn) and a
+    /// pull along its axis (size), and the choice holds until release. The
+    /// knob stays under the pointer either way, hops to the other edge when
+    /// its usual one would leave the control's area, and a press on empty
+    /// space does nothing.
+    Knob,
 }
 
 impl PlacementStyle {
@@ -234,6 +253,7 @@ impl PlacementStyle {
         PlacementStyle::Handles,
         PlacementStyle::Halo,
         PlacementStyle::Puck,
+        PlacementStyle::Knob,
     ];
 
     pub fn label(self) -> &'static str {
@@ -241,6 +261,7 @@ impl PlacementStyle {
             PlacementStyle::Handles => "handles",
             PlacementStyle::Halo => "halo",
             PlacementStyle::Puck => "puck",
+            PlacementStyle::Knob => "knob",
         }
     }
 
@@ -251,8 +272,18 @@ impl PlacementStyle {
             PlacementStyle::Handles => "pull a corner to size and turn, the body to move",
             PlacementStyle::Halo => "drag inside to move, the ring to turn, outside to size",
             PlacementStyle::Puck => "the puck sizes and turns, the body moves",
+            PlacementStyle::Knob => "drag the body to move · sweep the knob to turn, pull it to size",
         }
     }
+}
+
+/// What a knob grab became once it had travelled far enough to say.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum KnobAxis {
+    /// Round the subject's centre.
+    Turn,
+    /// Along the line from the centre.
+    Size,
 }
 
 /// A gesture in flight. Every length here is in the **caller's** units, where
@@ -284,6 +315,18 @@ enum Drag {
         angle: f32,
         standoff: f32,
     },
+    /// The knob. `start` is the pointer's offset from the centre at the press
+    /// and `last` the one a turn last read; `lock` and `floor` are the
+    /// decision distance and the bearing floor, converted from screen points.
+    Knob {
+        start: Vec2,
+        last: Vec2,
+        axis: Option<KnobAxis>,
+        lock: f32,
+        floor: f32,
+        size: Vec2,
+        standoff: f32,
+    },
 }
 
 /// Where the pointer sits relative to the halo's ring.
@@ -306,12 +349,20 @@ struct Rig {
     /// The puck, in the caller's units and on screen.
     puck: Pos2,
     puck_screen: Pos2,
+    /// The knob, on screen: past the `+u` edge, or past the `−u` edge when
+    /// the rig was built flipped.
+    knob_screen: Pos2,
     /// Screen pixels per caller unit, averaged over the two axes.
     per_unit: f32,
 }
 
 impl Rig {
     fn new(placement: &Placement, frame: &Frame) -> Self {
+        Self::sided(placement, frame, false)
+    }
+
+    /// The rig with the knob on the `−u` edge when `flipped`.
+    fn sided(placement: &Placement, frame: &Frame, flipped: bool) -> Self {
         let unit = |point: Pos2| frame.unit(placement, point);
         let at = |point: Pos2| frame.at(unit(point));
         let half = placement.size * 0.5;
@@ -345,12 +396,17 @@ impl Rig {
         let out = vec2(half.x + standoff, 0.0);
         let puck = placement.center + vec2(out.x * cos - out.y * sin, out.x * sin + out.y * cos);
 
+        let side = if flipped { -1.0 } else { 1.0 };
+        let reach = side * (half.x + KNOB_STANDOFF / per_unit);
+        let knob = placement.center + vec2(reach * cos, reach * sin);
+
         Self {
             center: frame.center(),
             corners: placement.corners().map(at),
             ring,
             puck,
             puck_screen: at(puck),
+            knob_screen: at(knob),
             per_unit,
         }
     }
@@ -359,18 +415,60 @@ impl Rig {
     fn standoff(&self) -> f32 {
         PUCK / self.per_unit
     }
+
+    /// Is `screen` on the knob?
+    fn on_knob(&self, screen: Pos2) -> bool {
+        (screen - self.knob_screen).length() < KNOB_GRAB
+    }
 }
 
-/// The editor's cross-frame state: any drag in flight.
+/// Should the knob stand on the `−u` edge? Only when the `+u` one would leave
+/// `area` and the `−u` one would not — a knob that hopped about for less would
+/// be a knob the thumb had to chase.
+fn knob_flipped(placement: &Placement, frame: &Frame, area: Rect) -> bool {
+    let inside = |flipped| area.shrink(KNOB).contains(Rig::sided(placement, frame, flipped).knob_screen);
+    !inside(false) && inside(true)
+}
+
+/// The editor's cross-frame state: any drag in flight, and which edge the knob
+/// stands on.
 #[derive(Default)]
 pub struct PlacementEditor {
     drag: Option<Drag>,
+    /// Held through a drag, so the knob doesn't hop out from under the thumb.
+    knob_flipped: bool,
 }
 
 impl PlacementEditor {
     /// Is a gesture in flight?
     pub fn dragging(&self) -> bool {
         self.drag.is_some()
+    }
+
+    /// Would a press at `screen` take the style's sizing/turning handle rather
+    /// than the body?
+    ///
+    /// For a host that draws several subjects and lets a press pick which one
+    /// the editor holds: a press on another subject should select it, *unless*
+    /// it landed on the held subject's handle — which can stand over a
+    /// neighbour, because a puck or a corner sits on or past the subject's edge.
+    pub fn on_handle(
+        &self,
+        placement: &Placement,
+        frame: &Frame,
+        screen: Pos2,
+        style: PlacementStyle,
+    ) -> bool {
+        let rig = Rig::sided(placement, frame, self.knob_flipped);
+        match style {
+            PlacementStyle::Handles => rig
+                .corners
+                .iter()
+                .any(|corner| (screen - *corner).length() < GRAB),
+            PlacementStyle::Halo => ring_hit(&rig, screen) != RingHit::Inside,
+            PlacementStyle::Puck => (screen - rig.puck_screen).length() < GRAB,
+            PlacementStyle::Knob => rig.on_knob(screen),
+        }
     }
 
     /// Draw the control over a flat subject — one whose own space is the
@@ -400,7 +498,10 @@ impl PlacementEditor {
         let tokens = ui.tokens();
         let outline = tokens.geometry.border(tokens.color.border);
         let accent = tokens.color.accent;
-        let rig = Rig::new(placement, frame);
+        if self.drag.is_none() {
+            self.knob_flipped = knob_flipped(placement, frame, area);
+        }
+        let rig = Rig::sided(placement, frame, self.knob_flipped);
 
         // The press's own position, on screen: where the gesture is decided.
         let pressed = ui.ctx().input(|input| input.pointer.press_origin());
@@ -408,6 +509,7 @@ impl PlacementEditor {
         if response.drag_started()
             && let Some(p) = pressed
             && let Some(local) = pointer
+            && takes(placement, &rig, p, local, style)
         {
             self.drag = Some(begin(placement, &rig, p, local, style));
         }
@@ -472,8 +574,56 @@ impl PlacementEditor {
                 );
                 knob(ui, rig.puck_screen, accent, outline);
             }
+            PlacementStyle::Knob => {
+                let painter = ui.painter();
+                let reach = rig.knob_screen - rig.center;
+                let guide = Stroke::new(1.5, accent.gamma_multiply(0.45));
+                // Once a grab has decided, say what it decided: the orbit a
+                // turn rides, or the line a size slides along.
+                match self.drag {
+                    Some(Drag::Knob {
+                        axis: Some(KnobAxis::Turn),
+                        ..
+                    }) => {
+                        painter.circle_stroke(rig.center, reach.length(), guide);
+                    }
+                    Some(Drag::Knob {
+                        axis: Some(KnobAxis::Size),
+                        ..
+                    }) => {
+                        let direction = reach.normalized();
+                        painter.line_segment(
+                            [
+                                rig.center + direction * KNOB,
+                                rig.knob_screen + direction * KNOB_STANDOFF * 1.5,
+                            ],
+                            guide,
+                        );
+                    }
+                    _ => {}
+                }
+                painter.line_segment(
+                    [rig.center, rig.knob_screen],
+                    Stroke::new(1.0, tokens.color.border),
+                );
+                painter.circle_filled(rig.knob_screen, KNOB, accent);
+                painter.circle_stroke(rig.knob_screen, KNOB, outline);
+                // A hollow centre, so the knob reads as a thing to take hold
+                // of rather than a dot marking a point.
+                painter.circle_filled(rig.knob_screen, KNOB * 0.35, tokens.color.bg_primary);
+            }
         }
         changed
+    }
+}
+
+/// Does a press here start a gesture at all? Every style but the knob takes
+/// any press in its area as a move; the knob takes only itself and the body,
+/// so a press on empty space leaves the subject where it is.
+fn takes(placement: &Placement, rig: &Rig, screen: Pos2, local: Pos2, style: PlacementStyle) -> bool {
+    match style {
+        PlacementStyle::Knob => rig.on_knob(screen) || placement.contains(local),
+        _ => true,
     }
 }
 
