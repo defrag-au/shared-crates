@@ -18,6 +18,9 @@ pub struct WalletEditorStoryState {
     /// Rows still "resolving", as `(index, frames remaining)`. Stands in for the
     /// async handle lookup the real host runs.
     pending: Vec<(usize, u32)>,
+    /// Rows mid-link: `(index, frames remaining)`. The host's real flow waits
+    /// on a wallet dialog, which takes as long as the reader takes.
+    linking: Vec<(usize, u32)>,
     pub sidebar_w: f32,
 }
 
@@ -28,6 +31,7 @@ impl Default for WalletEditorStoryState {
             entries: mock_entries(),
             last_action: String::new(),
             pending: Vec::new(),
+            linking: Vec::new(),
             sidebar_w: 320.0,
         }
     }
@@ -42,11 +46,19 @@ fn mock_entries() -> Vec<WalletEditorEntry> {
             .handle("djo")
             .status(WalletEntryStatus::Ready),
         // The one the reader did not add. Cyan + a badge, both derived from the
-        // origin rather than chosen at the call site.
+        // origin rather than chosen at the call site. The host can prove this
+        // one — it is the connected browser wallet — so it carries the shield.
         WalletEditorEntry::resolving("stake1u8perplord")
             .handle("perplord")
             .status(WalletEntryStatus::Ready)
-            .origin(WalletOrigin::Browser),
+            .origin(WalletOrigin::Browser)
+            .linkable(true),
+        // Proven: a signature the server holds, so the row is green with a
+        // `linked` badge and its button says unlink rather than remove.
+        WalletEditorEntry::resolving("stake1u8hodler")
+            .handle("hodler")
+            .status(WalletEntryStatus::Ready)
+            .origin(WalletOrigin::Linked),
         WalletEditorEntry::resolving("curiousfutures"),
         WalletEditorEntry::resolving("stake1q8xkk4m9vhs2n7wlq3zzr5td0pmy6g4cnxj")
             .status(WalletEntryStatus::Loading),
@@ -54,10 +66,12 @@ fn mock_entries() -> Vec<WalletEditorEntry> {
         // the remove button out of its column.
         WalletEditorEntry::resolving("stake1qy2ffk39dj2mmz8tt5lq0wgc3xn7v4hp9k9fp")
             .status(WalletEntryStatus::Failed("no such handle".into())),
-        // An EVM account: the same roster, an owner string from another chain. No
-        // handle to resolve, so the row elides the account instead.
+        // An EVM account: the same roster, an owner string from another chain.
+        // No handle to resolve, so the row elides the account instead — and
+        // the host can prove it, because the injected provider holds it.
         WalletEditorEntry::resolving("0x7980aa64093853cb78c927e05b88fed96e945f81")
-            .status(WalletEntryStatus::Ready),
+            .status(WalletEntryStatus::Ready)
+            .linkable(true),
     ]
 }
 
@@ -71,11 +85,19 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
     );
     crate::caption(
         ui,
-        "Two colour systems, deliberately: the name's tint is where the entry \
-         came from (permanent), the leading mark is what the app is doing with \
-         it (transient). Both are derived — the origin enum decides the tint and \
-         the badge, so a call site cannot pick a colour that disagrees with the \
-         badge beside it.",
+        "Three origins, a ladder of trust rather than three flavours of one \
+         thing: blue is typed (the reader's note), cyan is the browser wallet \
+         the app found, green is LINKED — a signature the server holds. A \
+         surface that must not guess reads the linked set, never the roster. \
+         The shield links a row the host can prove; the `×` unlinks a proven \
+         one. Both are emitted as actions for the host to answer, not done by \
+         the widget.",
+    );
+    crate::caption(
+        ui,
+        "The status column is a separate system, deliberately: the leading \
+         mark is what the app is doing with the row (transient), the name's \
+         tint and badge are where it came from (permanent).",
     );
     ui.add_space(10.0);
 
@@ -103,6 +125,26 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
                 let key = e.key.clone();
                 e.handle = Some(key);
             }
+        }
+    }
+
+    // Tick the mock links — a wallet dialog's worth of waiting, then the proof.
+    let mut linked: Vec<usize> = Vec::new();
+    for (idx, frames) in &mut state.linking {
+        *frames = frames.saturating_sub(1);
+        if *frames == 0 {
+            linked.push(*idx);
+        }
+    }
+    if !state.linking.is_empty() {
+        ui.ctx().request_repaint();
+    }
+    state.linking.retain(|(_, f)| *f > 0);
+    for idx in linked {
+        if let Some(e) = state.entries.get_mut(idx) {
+            e.origin = WalletOrigin::Linked;
+            e.status = WalletEntryStatus::Ready;
+            e.linkable = false;
         }
     }
 
@@ -164,6 +206,29 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
                             };
                             state.entries.push(entry);
                             state.pending.push((state.entries.len() - 1, 90));
+                        }
+                        wallet_editor::WalletEditorAction::Unlink(idx) => {
+                            state.last_action = format!(
+                                "Unlink [{idx}] {} — a real host calls the server here, \
+                                 because a local drop would leave the link standing",
+                                state.entries.get(idx).map_or("?".into(), |e| e.display())
+                            );
+                            if let Some(e) = state.entries.get_mut(idx) {
+                                // Back to a local note: the wallet stays in the
+                                // roster, the proof is gone.
+                                e.origin = WalletOrigin::Typed;
+                                e.linkable = true;
+                            }
+                        }
+                        wallet_editor::WalletEditorAction::Link(idx) => {
+                            state.last_action = format!(
+                                "Link [{idx}] {} — the host runs challenge → sign → verify",
+                                state.entries.get(idx).map_or("?".into(), |e| e.display())
+                            );
+                            if let Some(e) = state.entries.get_mut(idx) {
+                                e.status = WalletEntryStatus::Loading;
+                            }
+                            state.linking.push((idx, 90));
                         }
                         wallet_editor::WalletEditorAction::Remove(idx) => {
                             state.last_action = format!(
@@ -244,6 +309,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
         "· `boef` — a bare word is a handle, which is what someone typing one means.\n\
          · `stake_test1uq…` — a testnet address. Used to be mangled into `$stake_test1…`.\n\
          · `addr1q9…` — a payment address. Used to go silently to a stake-keyed lookup.\n\
+         · The shield on a row the host can prove — it goes busy, then green \
+         with a `linked` badge, and its `×` starts saying unlink.\n\
          · Remove every row to see the empty state.",
     );
 

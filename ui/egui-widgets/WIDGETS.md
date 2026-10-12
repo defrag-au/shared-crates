@@ -182,6 +182,16 @@ shape: builder → `.show(ui) -> Response { actions: Vec<…> }`.
   `Halo` / `Puck`). **Placing a decal, a sticker or a stamp on a
   surface — the value is in the caller's space, so a warped surface maps
   the gestures back itself.**
+- **`placement_pad`** → `PlacementPad` + `PadSpace` — The same
+  move/size/turn on a flat bench: the space is drawn, the subject sits in
+  it, and the control never leaves the plane the value lives in.
+  **Placing a decal on a curved surface from the panel — nothing to
+  invert, so nothing to go wrong where the surface turns away.**
+- **`transform_stick`** → `TransformStick` + `StickMode` + `Rates` — A
+  spring-centred stick whose held push is a *rate*: move, size or turn a
+  subject that is drawn somewhere else entirely. **Placing something on a
+  curved or projected surface — a small fixed control with unlimited
+  reach, which is what a dragged handle can never have.**
 - **`wallet_asset_picker`** → `PickerAsset` + `PickerPolicyGroup` —
   Modal browser grouped by policy with multi-select summary bar.
   **Pick NFTs from wallet inventory.**

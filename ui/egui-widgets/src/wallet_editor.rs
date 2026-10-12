@@ -1,9 +1,10 @@
 //! `WalletEditor` — the reader's own roster of wallets: add one by handle or
-//! address, watch it resolve, drop it again.
+//! address, watch it resolve, link the ones that can be proven, drop them
+//! again.
 //!
 //! Backs the collection-ownership frontend's "My Wallets" sidebar. UI only — it
 //! classifies what was typed and emits a [`WalletEditorAction`]; resolution,
-//! persistence and fetching are the host's.
+//! persistence, fetching and the link flow itself are the host's.
 //!
 //! ## Not [`wallet_list`](crate::wallet_list)
 //!
@@ -56,6 +57,13 @@ use crate::viewport::Breakpoint;
 // ============================================================================
 
 /// Where an entry came from. Tints the name; never changes.
+///
+/// The three are a ladder of trust, not three flavours of the same thing:
+/// [`Self::Typed`] and [`Self::Browser`] are the reader's own notes (the app
+/// reads holdings with them, and nothing is claimed to anyone), while
+/// [`Self::Linked`] is a claim the **server** holds a signature for and has
+/// recorded against the reader's identity. A surface that must not guess — a
+/// gated mint, an allowlist — reads the linked set, never the roster.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum WalletOrigin {
     /// Typed in by hand, as an address or a handle.
@@ -64,16 +72,25 @@ pub enum WalletOrigin {
     /// Auto-connected from the browser wallet extension. Shown with a badge,
     /// because the reader did not put it there and may wonder why it is.
     Browser,
+    /// Proven: signed over the link challenge and recorded against the
+    /// reader's Discord identity. The only origin the server will answer for.
+    Linked,
 }
 
 impl WalletOrigin {
-    pub const ALL: [Self; 2] = [Self::Typed, Self::Browser];
+    pub const ALL: [Self; 3] = [Self::Typed, Self::Browser, Self::Linked];
 
     /// The name's tint. Derived, not configured — see the module header.
     pub const fn ink(self) -> Ink {
         match self {
-            Self::Typed => Ink::Token(Token::AccentGreen),
+            // Blue for the reader's own notes…
+            Self::Typed => Ink::Token(Token::AccentBlue),
             Self::Browser => Ink::Token(Token::AccentCyan),
+            // …and green for the proven ones, the same colour the status column
+            // uses for `Ready`: "confirmed" is one fact, and the two columns
+            // answering it in different colours was the first version's
+            // confusion, not a feature.
+            Self::Linked => Ink::Token(Token::AccentGreen),
         }
     }
 
@@ -82,6 +99,7 @@ impl WalletOrigin {
         match self {
             Self::Typed => None,
             Self::Browser => Some("browser"),
+            Self::Linked => Some("linked"),
         }
     }
 }
@@ -119,6 +137,11 @@ pub struct WalletEditorEntry {
     pub handle: Option<String>,
     pub status: WalletEntryStatus,
     pub origin: WalletOrigin,
+    /// Whether the host can prove this one **now** — it draws the link
+    /// affordance. The host answers it, because only the host knows what it has
+    /// to sign with: a connected browser wallet, or an injected EVM account
+    /// matching this address.
+    pub linkable: bool,
 }
 
 impl WalletEditorEntry {
@@ -129,6 +152,7 @@ impl WalletEditorEntry {
             handle: None,
             status: WalletEntryStatus::Resolving,
             origin: WalletOrigin::Typed,
+            linkable: false,
         }
     }
 
@@ -144,6 +168,12 @@ impl WalletEditorEntry {
 
     pub fn handle(mut self, handle: impl Into<String>) -> Self {
         self.handle = Some(handle.into());
+        self
+    }
+
+    /// Offer the link action for this row.
+    pub fn linkable(mut self, linkable: bool) -> Self {
+        self.linkable = linkable;
         self
     }
 
@@ -276,8 +306,16 @@ pub struct WalletEditorState {
 pub enum WalletEditorAction {
     /// The reader submitted something, already classified.
     Add(Submission),
+    /// Release a proven link at this index. The widget emits this instead of
+    /// [`Self::Remove`] for a [`WalletOrigin::Linked`] row, because removing it
+    /// locally would leave the server still holding it — only the host can
+    /// unlink, and it must.
+    Unlink(usize),
     /// Remove the entry at this index.
     Remove(usize),
+    /// Prove the entry at this index — the host runs its link flow (challenge,
+    /// signature, verify) for whatever it has to sign with.
+    Link(usize),
 }
 
 pub struct WalletEditorResponse {
@@ -345,6 +383,18 @@ pub fn show(
     let colors = ui.tokens().color;
     let spine = Spine::measure(ui);
     let mut action: Option<WalletEditorAction> = None;
+
+    // Trailing columns: the optional link affordance, then remove. The link
+    // column is reserved for EVERY row once ANY row can link, rather than per
+    // row: a column that appears and disappears down the list leaves the names
+    // ragged, and the roster is read as a column of names.
+    let link_col = match entries
+        .iter()
+        .any(|e| e.linkable && e.origin != WalletOrigin::Linked)
+    {
+        true => spine.remove,
+        false => 0.0,
+    };
 
     // ── Header: title left, `+` pinned to the far corner ────────────────────
     let button_w = spine.icon + spine.gap * 2.0;
@@ -489,7 +539,8 @@ pub fn show(
                     Some(b) => text_width(ui, b, TextSize::Xs) + spine.gap * 2.0,
                     None => 0.0,
                 };
-                let name_w = (row.width() - spine.mark - badge_w - spine.remove).max(20.0);
+                let name_w =
+                    (row.width() - spine.mark - badge_w - spine.remove - link_col).max(20.0);
                 let mut name = ui.new_child(
                     egui::UiBuilder::new()
                         .max_rect(egui::Rect::from_min_size(
@@ -529,6 +580,40 @@ pub fn show(
                     );
                 }
 
+                // Link, in its own column before the remove. Only drawn for a
+                // row the host says it can prove, and never for one already
+                // linked — the same slot stays empty so the `×` column still
+                // lines up down the list.
+                if link_col > 0.0 {
+                    let (link_rect, link_resp) =
+                        ui.allocate_exact_size(vec2(link_col, spine.row_h), Sense::click());
+                    if entry.linkable && entry.origin != WalletOrigin::Linked {
+                        if link_resp.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
+                        PhosphorIcon::Shield.paint(
+                            ui.painter(),
+                            link_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            spine.icon,
+                            match (link_resp.hovered(), hovered) {
+                                (true, _) => colors.accent_cyan,
+                                (false, true) => colors.text_secondary,
+                                (false, false) => colors.text_muted,
+                            },
+                        );
+                        if link_resp
+                            .on_hover_text(format!(
+                                "Link {} — sign a message to prove you hold it",
+                                entry.display()
+                            ))
+                            .clicked()
+                        {
+                            action = Some(WalletEditorAction::Link(i));
+                        }
+                    }
+                }
+
                 // Remove, in the trailing column — one axis down the list.
                 let (x_rect, x_resp) =
                     ui.allocate_exact_size(vec2(spine.remove, spine.row_h), Sense::click());
@@ -546,11 +631,19 @@ pub fn show(
                         (false, false) => colors.text_muted,
                     },
                 );
+                // A linked entry is the server's record, not a local note: the
+                // button releases the link, and the action says so.
+                let (verb, on_click) = match entry.origin {
+                    WalletOrigin::Linked => {
+                        ("Unlink", WalletEditorAction::Unlink(i))
+                    }
+                    _ => ("Remove", WalletEditorAction::Remove(i)),
+                };
                 if x_resp
-                    .on_hover_text(format!("Remove {}", entry.display()))
+                    .on_hover_text(format!("{verb} {}", entry.display()))
                     .clicked()
                 {
-                    action = Some(WalletEditorAction::Remove(i));
+                    action = Some(on_click);
                 }
             });
 
@@ -788,13 +881,37 @@ mod tests {
         // Every call site computed cyan-for-browser / green-for-typed from a
         // bool the widget already had. That is a derivation, not a choice, and
         // writing it out per call site is how two of them drift.
-        assert_ne!(
-            WalletOrigin::Typed.ink(),
-            WalletOrigin::Browser.ink(),
-            "the two origins must remain distinguishable"
-        );
+        //
+        // Three origins now, and the test asserts the property that matters for
+        // a ladder of trust: no two rungs share a tint, so a name's colour
+        // always says which one it is.
+        let inks: Vec<Ink> = WalletOrigin::ALL.iter().map(|o| o.ink()).collect();
+        for (i, a) in inks.iter().enumerate() {
+            for b in inks.iter().skip(i + 1) {
+                assert_ne!(a, b, "two origins share a tint");
+            }
+        }
+        // The badges are what name the two origins the reader did not create by
+        // hand — a typed row needs none, because it is what the roster looks
+        // like by default.
         assert!(WalletOrigin::Typed.badge().is_none());
         assert!(WalletOrigin::Browser.badge().is_some());
+        assert!(WalletOrigin::Linked.badge().is_some());
+    }
+
+    #[test]
+    fn the_link_action_is_opt_in_per_entry() {
+        // `resolving` is the entry every host builds first, and the affordance
+        // is off until the host says it can prove the wallet — so a host with
+        // nothing to sign with never shows it.
+        assert!(!WalletEditorEntry::resolving("stake1uabc").linkable);
+
+        // The origin does not switch it on either: the host says what it can
+        // prove, the origin says where the entry came from.
+        let linked = WalletEditorEntry::resolving("stake1uabc").origin(WalletOrigin::Linked);
+        assert!(!linked.linkable);
+
+        assert!(WalletEditorEntry::resolving("stake1uabc").linkable(true).linkable);
     }
 
     #[test]

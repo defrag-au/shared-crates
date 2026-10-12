@@ -61,6 +61,8 @@ pub mod perf_strip;
 pub mod perspective_text;
 pub mod pip_row;
 pub mod placement;
+pub mod placement_pad;
+pub mod transform_stick;
 pub mod price_timeline;
 pub mod pricing_ladder;
 pub mod printing_timeline;

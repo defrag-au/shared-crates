@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-171 widgets.
+173 widgets.
 
 | module | what it is |
 |---|---|
@@ -110,6 +110,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `phase_card` | `PhaseCard` — read-only display of one mint phase row |
 | `pip_row` | Horizontal pip row widget — a label on the left and a bar of colored pips (or density heatmap) on the right, each positioned proportionally by value |
 | `placement` | `PlacementEditor` — move, size and turn a subject, three ways |
+| `placement_pad` | `PlacementPad` — pan, size and turn a subject on a flat bench, detached from wherever it is actually shown |
 | `pool_inspector` | `PoolInspector` — a liquidity pool's ACTUAL state, including the parts that are easy to read wrongly |
 | `pool_liquidity_indicator` | Pool liquidity indicator — per-pool depth and health context cards |
 | `price_impact_curve` | Price impact curve chart — visualizes why split routing helps |
@@ -158,6 +159,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `trade_table` | Trade table widget — TCG-style top/bottom offer display for the trade desk |
 | `trait_delta` | Trait delta widget — shows traits gained and lost in a trade |
 | `trait_filter` | Compound-key prefix trie tag filter widget |
+| `transform_stick` | `TransformStick` — a spring-centred stick that pans, sizes and turns a subject that lives somewhere else on screen |
 | `tx_card` | `TxCard` — one transaction as a VERDICT: what it was, who it was between, and the one figure that says it — at three densities |
 | `tx_cart` | TX Cart widget — displays a list of pending chain actions with batch execution |
 | `tx_estimate` | Per-wallet transaction estimate widget — shows the local user's ADA impact |
@@ -175,7 +177,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `wallet_asset_picker` | Wallet asset picker — modal widget for browsing and selecting NFTs from a wallet, grouped by policy in an accordion layout |
 | `wallet_button` | Reusable wallet connection button widget for egui frontends |
 | `wallet_cta` | `WalletCta` — an action that needs a wallet: the button when one is connected, and a way to connect one right there when it is not |
-| `wallet_editor` | `WalletEditor` — the reader's own roster of wallets: add one by handle or address, watch it resolve, drop it again |
+| `wallet_editor` | `WalletEditor` — the reader's own roster of wallets: add one by handle or address, watch it resolve, link the ones that can be proven, drop them again |
 | `wallet_identity_header` | Wallet identity header — the big "this is who we're showing" strip at the top of a wallet-profile view |
 | `wallet_list` | Wallet roster — the per-client list rendered on the admin portal dashboard |
 | `wallet_mock` | Pseudo-wallet profiles for LOCAL demo modes |
