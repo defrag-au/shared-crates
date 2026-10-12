@@ -11,6 +11,11 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 1
   CARGO_PROFILE_DEV_DEBUG: 0
+  # The OCFL community fixtures (`OCFL/ocfl-fixtures`), pinned so that a red
+  # build means this repo's `ocfl` crate drifted from the spec — not that
+  # upstream moved overnight. Bump deliberately, and rehearse locally the same
+  # way `tests/fixtures.rs` documents.
+  OCFL_FIXTURES_REV: d323fc207126becec066998b43408d998bf0fb1b
 
 jobs:
   check-and-test:
@@ -30,6 +35,36 @@ jobs:
 
       - run: cargo check --workspace --exclude storybook-egui --all-targets
       - run: cargo test --workspace --exclude storybook-egui --all-targets
+
+  ocfl-fixtures:
+    name: OCFL Fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "test"
+          cache-on-failure: true
+
+      # The pinned revision, fetched shallow — GitHub serves fetches by SHA.
+      - name: Check out the community fixtures
+        run: |
+          mkdir -p .tmp
+          git init .tmp/ocfl-fixtures
+          git -C .tmp/ocfl-fixtures remote add origin https://github.com/OCFL/ocfl-fixtures
+          git -C .tmp/ocfl-fixtures fetch --depth 1 origin "${OCFL_FIXTURES_REV}"
+          git -C .tmp/ocfl-fixtures checkout --detach FETCH_HEAD
+
+      # 12 good objects must validate, 13 warning objects must not be
+      # rejected, 55 bad objects must be rejected; the test's own counts line
+      # (kept visible with --nocapture) is the signal. See tests/fixtures.rs.
+      - name: Run the fixture suite
+        run: OCFL_FIXTURES="${GITHUB_WORKSPACE}/.tmp/ocfl-fixtures" cargo test -p ocfl --test fixtures -- --nocapture
 
   clippy:
     name: Clippy

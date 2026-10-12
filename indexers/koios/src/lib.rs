@@ -648,21 +648,69 @@ impl KoiosPolicyAssetInfo {
 
 /// One asset's CIP-25 record inside a `721` payload.
 ///
-/// CIP-25 v1 keys the asset name as UTF-8 and v2 as hex; both are tried, hex
-/// first because it is unambiguous.
+/// CIP-25 keys the policy and asset name three ways in the wild: v1 uses the
+/// UTF-8 name, v2 uses the raw bytes rendered as `0x`-prefixed hex, and some
+/// minters emit bare hex. All three are tried, hex case-insensitively — a
+/// payload keyed `0x4F61…` is as valid as `0x4f61…` — while the UTF-8 form
+/// stays case-sensitive, because it is a name rather than an encoding.
 fn cip25_record_in<'a>(
     minting_tx_metadata: &'a serde_json::Value,
     policy_id: &str,
     asset_name_hex: &str,
 ) -> Option<&'a serde_json::Value> {
-    let by_policy = minting_tx_metadata.get("721")?.get(policy_id)?;
+    let by_policy = minting_tx_metadata.get("721")?;
+    let by_policy = by_policy
+        .get(policy_id)
+        .or_else(|| by_policy.get(format!("0x{policy_id}")))
+        .or_else(|| {
+            by_policy
+                .as_object()
+                .and_then(|map| {
+                    map.iter()
+                        .find(|(key, _)| policy_key_matches(key, policy_id))
+                })
+                .map(|(_, value)| value)
+        })?
+        .as_object()?;
     if let Some(record) = by_policy.get(asset_name_hex) {
+        return Some(record);
+    }
+    if let Some(record) = by_policy.get(&format!("0x{asset_name_hex}")) {
         return Some(record);
     }
     let utf8 = hex::decode(asset_name_hex)
         .ok()
-        .and_then(|b| String::from_utf8(b).ok())?;
-    by_policy.get(&utf8)
+        .and_then(|b| String::from_utf8(b).ok());
+    if let Some(name) = utf8.as_deref()
+        && let Some(record) = by_policy.get(name)
+    {
+        return Some(record);
+    }
+    by_policy
+        .iter()
+        .find(|(key, _)| name_key_matches(key, asset_name_hex, utf8.as_deref()))
+        .map(|(_, value)| value)
+}
+
+/// Whether a `721` policy key names `policy_id`: bare hex or `0x`-prefixed
+/// hex, either case.
+fn policy_key_matches(key: &str, policy_id: &str) -> bool {
+    key.eq_ignore_ascii_case(policy_id)
+        || key
+            .strip_prefix("0x")
+            .or_else(|| key.strip_prefix("0X"))
+            .is_some_and(|hex| hex.eq_ignore_ascii_case(policy_id))
+}
+
+/// Whether a `721` asset key names `asset_name_hex`: bare hex or
+/// `0x`-prefixed hex in any case, or the exact UTF-8 name.
+fn name_key_matches(key: &str, asset_name_hex: &str, utf8: Option<&str>) -> bool {
+    key.eq_ignore_ascii_case(asset_name_hex)
+        || key
+            .strip_prefix("0x")
+            .or_else(|| key.strip_prefix("0X"))
+            .is_some_and(|hex| hex.eq_ignore_ascii_case(asset_name_hex))
+        || utf8.is_some_and(|name| key == name)
 }
 
 /// Row from `GET /policy_asset_addresses` — one (asset, holder) pair for a
@@ -2176,6 +2224,10 @@ mod tests {
     /// `cip68` is the ADA Handle `$thiya` user token: a datum-backed asset
     /// that *also* carries a `721` payload, which is the one case where the
     /// two standards disagree about what an asset is.
+    ///
+    /// `cip25_v2` is Oasis Club #696, whose `721` keys are the raw
+    /// policy/name bytes rendered as `0x`-prefixed hex — the CIP-25 v2 shape
+    /// the bare-hex and UTF-8 lookups miss.
     fn asset_info(fixture: &str) -> KoiosAssetInfo {
         serde_json::from_str::<Vec<KoiosAssetInfo>>(fixture)
             .expect("fixture decodes")
@@ -2201,6 +2253,50 @@ mod tests {
         );
         assert_eq!(info.metadata_kind(), MetadataKind::Cip25);
         assert!(info.should_import());
+    }
+
+    /// CIP-25 **version 2** keys the `721` map by the raw policy/name bytes,
+    /// rendered as `0x`-prefixed hex. The v1 lookup's bare-hex and UTF-8 forms
+    /// both miss that shape, and a miss reads as "no metadata" — a permanent
+    /// 404 on every asset of the collection.
+    #[test]
+    fn cip25_v2_asset_resolves_from_its_0x_prefixed_keys() {
+        let info = asset_info(test_case!("cip25_v2_asset_info.json"));
+        let asset = info.to_asset().expect("resolves");
+
+        assert_eq!(asset.name, "Oasis Club #696");
+        assert_eq!(
+            asset.image,
+            "ipfs://QmYtgsB8T4aNXxjuBuzrbQyNW3UQnwdGCSPksEcdUUmZAp"
+        );
+        assert_eq!(asset.media_type.as_deref(), Some("image/png"));
+        assert_eq!(
+            asset.traits.get("Body").map(Vec::as_slice),
+            Some(["Mystic Purple".to_owned()].as_slice())
+        );
+        assert_eq!(info.metadata_kind(), MetadataKind::Cip25);
+        assert!(info.should_import());
+    }
+
+    /// Hex keys are an encoding, so they match in any case; the UTF-8 form is a
+    /// name, so it does not.
+    #[test]
+    fn cip25_hex_keys_match_any_case_but_utf8_names_do_not() {
+        let metadata = serde_json::json!({
+            "721": {
+                "0XaAbBcC": { "0xFfEe0011": { "name": "upper-hex" } }
+            }
+        });
+        let record =
+            cip25_record_in(&metadata, "aabbcc", "ffee0011").expect("upper-case hex keys resolve");
+        assert_eq!(record["name"], "upper-hex");
+
+        // `426f7373436174` decodes to "BossCat"; a `bosscat` key is a
+        // different name, not a different encoding of this one.
+        let utf8 = serde_json::json!({
+            "721": { "aabbcc": { "bosscat": { "name": "wrong case" } } }
+        });
+        assert!(cip25_record_in(&utf8, "aabbcc", "426f7373436174").is_none());
     }
 
     #[test]

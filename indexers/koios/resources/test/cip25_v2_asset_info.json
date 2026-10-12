@@ -1,0 +1,39 @@
+[
+  {
+    "policy_id": "06b85d3ef96291e8d58e63015727bc83dcf4f1e0eaa117d497fffda5",
+    "asset_name": "4f61736973436c7562363936",
+    "asset_name_ascii": "OasisClub696",
+    "fingerprint": "asset1zdyry527avqckes3psqdz7hxqswg6qnwjxj907",
+    "minting_tx_hash": "6aef5f634ca654941569cb7b74435b4697f2dd8ac5bdb6b05c0f83392b649ee5",
+    "total_supply": "1",
+    "mint_cnt": 1,
+    "burn_cnt": 0,
+    "creation_time": 1790967004,
+    "minting_tx_metadata": {
+      "721": {
+        "version": 2,
+        "0x06b85d3ef96291e8d58e63015727bc83dcf4f1e0eaa117d497fffda5": {
+          "0x4f61736973436c7562363936": {
+            "Eye": "Wink",
+            "Body": "Mystic Purple",
+            "Head": "Mecha Brain",
+            "name": "Oasis Club #696",
+            "Mouth": "Tongue Out",
+            "image": "ipfs://QmYtgsB8T4aNXxjuBuzrbQyNW3UQnwdGCSPksEcdUUmZAp",
+            "Clothes": "Polo Shirt",
+            "mediaType": "image/png",
+            "Background": "Solar Yellow",
+            "Collection": "Oasis Club",
+            "description": [
+              "A member of the Oasis Club. 888 camels journeying through the Ca",
+              "rdano Oasis."
+            ],
+            "Front Accessory": "Bakuton Gauntlet"
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null,
+    "cip68_metadata": null
+  }
+]

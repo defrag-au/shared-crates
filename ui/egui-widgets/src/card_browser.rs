@@ -13,7 +13,7 @@
 //! area, the image warm band or the single detail panel to get one.
 
 use crate::image_loader::CachedSpinner;
-use crate::smart_image::{ImagePass, Placeholder, SmartImage};
+use crate::smart_image::{Fit, ImagePass, Placeholder, SmartImage};
 use crate::theme::{Ink, Radius, Space, SpaceExt, TextRole, Theme, ThemeExt, Token, line_height};
 use egui::{Pos2, Rect, Sense, Stroke, Vec2};
 
@@ -31,8 +31,16 @@ pub struct CardBrowserConfig {
     /// Width of each card. The thumbnail fills this width (minus a small inset).
     pub card_width: f32,
     /// Aspect ratio of the thumbnail (height / width). Default 1.0 (square).
-    /// Use 1.395 for MtG cards (680/488).
+    /// Use 1.395 for MtG cards (680/488), or the collection's own art ratio
+    /// where the art is not square (a 2.35:1 bill is ≈0.43).
     pub thumb_aspect_ratio: f32,
+    /// How each thumbnail occupies its thumb rect — see [`Fit`]. The default
+    /// is [`Fit::Contain`], so art whose shape differs from
+    /// [`Self::thumb_aspect_ratio`] is letterboxed rather than stretched.
+    pub thumb_fit: Fit,
+    /// Fill painted behind a contained thumbnail's letterbox bands. `None`
+    /// (the default) lets the card background show through.
+    pub thumb_backdrop: Option<Ink>,
     /// Number of text lines below the thumbnail (e.g. name + subtitle + price = 3).
     pub text_lines: u8,
     /// Width of the detail panel when a card is selected.
@@ -194,6 +202,8 @@ impl Default for CardBrowserConfig {
         Self {
             card_width: 140.0,
             thumb_aspect_ratio: 1.0,
+            thumb_fit: Fit::default(),
+            thumb_backdrop: None,
             text_lines: 3,
             detail_width: 420.0,
             spacing: None,
@@ -710,6 +720,9 @@ pub fn show_sectioned<T>(
 /// Uses egui's built-in image loader. Returns `true` if the image is still
 /// loading (caller should batch `CachedSpinner::request_repaint` calls).
 ///
+/// Placed per `config.thumb_fit` — [`Fit::Contain`] by default, so art that
+/// is not the thumb's aspect is letterboxed, never stretched.
+///
 /// If `image_url` is `None`, draws a placeholder with a "?" glyph.
 pub fn draw_thumbnail(
     ui: &mut egui::Ui,
@@ -736,11 +749,14 @@ pub fn draw_thumbnail(
     // says "forty separate things have gone wrong". The skeleton is the same
     // information stated as the shape of the thing that is arriving, and it
     // is what the rest of this design system uses for content on its way.
-    SmartImage::from_option(image_url)
+    let mut image = SmartImage::from_option(image_url)
         .corner_radius(radius)
         .placeholder(Placeholder::Skeleton)
-        .show(ui, thumb_rect, ImagePass::Paint)
-        .wants_repaint()
+        .fit(config.thumb_fit);
+    if let Some(ink) = config.thumb_backdrop {
+        image = image.backdrop(ink);
+    }
+    image.show(ui, thumb_rect, ImagePass::Paint).wants_repaint()
 }
 
 #[cfg(test)]

@@ -41,9 +41,17 @@
 //! branch. That is the point: an opt-in `if warm { … return }` at every call
 //! site is a thing to forget, and forgetting it silently pays the full paint
 //! cost for the whole warm band.
+//!
+//! # Fit
+//!
+//! A ready image is drawn into its rect per [`Fit`], defaulting to
+//! [`Fit::Contain`] — the rect is a hole the caller has already decided, and
+//! putting the art in it without lying about its shape is this widget's job.
+//! [`Fit::Stretch`] survives only for a caller whose rect already matches
+//! its art; [`Fit::Cover`] fills the rect by cropping the centre.
 
 use crate::theme::{Ink, TextSize, ThemeExt, Token};
-use egui::{CornerRadius, Rect, TextureOptions, load::SizeHint};
+use egui::{CornerRadius, Pos2, Rect, TextureOptions, Vec2, load::SizeHint};
 
 /// Whether this call should draw the image, or only get it on its way.
 ///
@@ -63,10 +71,14 @@ pub enum ImagePass {
 }
 
 /// What became of the image this pass.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ImageState {
     /// Texture is up. Painted, unless this was a [`ImagePass::Warm`] pass.
-    Ready,
+    ///
+    /// `size` is the texture's own size — the aspect a caller needs when it
+    /// wants to lay out to the art rather than the other way round (a grid
+    /// learning its thumb ratio from the images it draws).
+    Ready { size: Vec2 },
     /// Still fetching or decoding — a caller driving a spinner should keep
     /// asking for frames.
     Loading,
@@ -85,6 +97,26 @@ impl ImageState {
     pub fn wants_repaint(self) -> bool {
         matches!(self, Self::Loading)
     }
+}
+
+/// How a ready image occupies the rect it was given.
+///
+/// The default is [`Fit::Contain`], and that is the point: stretching is the
+/// one mode that can distort the art, and it is only ever the right answer
+/// when the rect's aspect already equals the art's — in which case `Contain`
+/// draws the same thing. [`Fit::Stretch`] stays for exactly that caller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Fit {
+    /// Aspect preserved, the whole image visible, centred. The unused bands
+    /// show [`SmartImage::backdrop`] when one was given, and whatever the
+    /// caller painted behind the rect otherwise.
+    #[default]
+    Contain,
+    /// Aspect preserved, the rect fully covered — the overflow is cropped
+    /// from the centre.
+    Cover,
+    /// Stretched to the rect, aspect be damned.
+    Stretch,
 }
 
 /// What stands in for an image that is not there yet.
@@ -118,6 +150,10 @@ pub struct SmartImage<'a> {
     placeholder: Placeholder,
     /// Drawn centred when the load failed, or when there is no URL.
     fallback_glyph: Option<&'a str>,
+    fit: Fit,
+    /// Painted behind a contained image's letterbox bands. `None` leaves
+    /// whatever the caller painted behind the rect showing through.
+    backdrop: Option<Ink>,
 }
 
 impl<'a> SmartImage<'a> {
@@ -134,6 +170,8 @@ impl<'a> SmartImage<'a> {
             corner_radius: CornerRadius::same(4),
             placeholder: Placeholder::Skeleton,
             fallback_glyph: Some("?"),
+            fit: Fit::default(),
+            backdrop: None,
         }
     }
 
@@ -155,6 +193,22 @@ impl<'a> SmartImage<'a> {
         self
     }
 
+    /// How the image occupies its rect. Defaults to [`Fit::Contain`].
+    pub fn fit(mut self, fit: Fit) -> Self {
+        self.fit = fit;
+        self
+    }
+
+    /// A fill painted behind a [`Fit::Contain`] image's letterbox bands.
+    ///
+    /// Without one the bands show whatever the caller painted behind the
+    /// rect — the card's own background, in a grid — which is often what a
+    /// caller wants, and why this is not the default.
+    pub fn backdrop(mut self, ink: Ink) -> Self {
+        self.backdrop = Some(ink);
+        self
+    }
+
     pub fn show(self, ui: &mut egui::Ui, rect: Rect, pass: ImagePass) -> ImageState {
         let Some(url) = self.url else {
             if pass == ImagePass::Paint {
@@ -168,7 +222,9 @@ impl<'a> SmartImage<'a> {
                 .try_load_texture(url, TextureOptions::default(), size_hint_for(ui, rect));
 
         let state = match &poll {
-            Ok(egui::load::TexturePoll::Ready { .. }) => ImageState::Ready,
+            Ok(egui::load::TexturePoll::Ready { texture }) => {
+                ImageState::Ready { size: texture.size }
+            }
             Ok(egui::load::TexturePoll::Pending { .. }) => ImageState::Loading,
             Err(_) => ImageState::Failed,
         };
@@ -181,18 +237,37 @@ impl<'a> SmartImage<'a> {
         }
 
         match poll {
-            Ok(egui::load::TexturePoll::Ready { texture }) => {
-                // `paint_at`, not a child `Ui` with an `Image` widget: the
-                // widget form allocates and can reflow the layout around it,
-                // and every caller here has already decided the rect.
-                egui::Image::from_texture(texture)
-                    .corner_radius(self.corner_radius)
-                    .paint_at(ui, rect);
-            }
+            Ok(egui::load::TexturePoll::Ready { texture }) => self.paint_ready(ui, rect, texture),
             Ok(egui::load::TexturePoll::Pending { .. }) => self.paint_placeholder(ui, rect),
             Err(_) => self.paint_fallback(ui, rect),
         }
         state
+    }
+
+    /// A ready texture, placed per [`Self::fit`].
+    ///
+    /// Still `paint_at`, not a child `Ui` with an `Image` widget: the widget
+    /// form allocates and can reflow the layout around it, and every caller
+    /// here has already decided the rect. `paint_at` honours the image's uv
+    /// rect, so the cover crop needs no mesh of our own either.
+    fn paint_ready(&self, ui: &egui::Ui, rect: Rect, texture: egui::load::SizedTexture) {
+        let size = texture.size;
+        let image = egui::Image::from_texture(texture).corner_radius(self.corner_radius);
+        match self.fit {
+            Fit::Stretch => {
+                image.paint_at(ui, rect);
+            }
+            Fit::Contain => {
+                if let Some(ink) = self.backdrop {
+                    let fill = ink.resolve(&ui.tokens());
+                    ui.painter().rect_filled(rect, self.corner_radius, fill);
+                }
+                image.paint_at(ui, contain_rect(size, rect));
+            }
+            Fit::Cover => {
+                image.uv(cover_uv(size, rect)).paint_at(ui, rect);
+            }
+        }
     }
 
     fn paint_placeholder(&self, ui: &egui::Ui, rect: Rect) {
@@ -238,6 +313,44 @@ impl<'a> SmartImage<'a> {
             egui::FontId::proportional(ui.text_size(TextSize::Xl2)),
             muted,
         );
+    }
+}
+
+/// The largest rect with `image_size`'s aspect that fits inside `rect`,
+/// centred — what a [`Fit::Contain`] image is painted into.
+fn contain_rect(image_size: Vec2, rect: Rect) -> Rect {
+    let usable =
+        image_size.x > 0.0 && image_size.y > 0.0 && rect.width() > 0.0 && rect.height() > 0.0;
+    if !usable {
+        return rect;
+    }
+    let scale = (rect.width() / image_size.x).min(rect.height() / image_size.y);
+    Rect::from_center_size(rect.center(), image_size * scale)
+}
+
+/// The uv rect of `image_size` that covers `rect` with the aspect kept —
+/// the centre crop a [`Fit::Cover`] image is sampled through.
+fn cover_uv(image_size: Vec2, rect: Rect) -> Rect {
+    let full = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+    let usable =
+        image_size.x > 0.0 && image_size.y > 0.0 && rect.width() > 0.0 && rect.height() > 0.0;
+    if !usable {
+        return full;
+    }
+    let image_aspect = image_size.x / image_size.y;
+    let rect_aspect = rect.width() / rect.height();
+    // Crop the dimension with slack: an image wider than the rect loses its
+    // sides, a taller one loses its top and bottom. Both from the centre.
+    let (span, crop_horizontally) = if image_aspect > rect_aspect {
+        (rect_aspect / image_aspect, true)
+    } else {
+        (image_aspect / rect_aspect, false)
+    };
+    let offset = (1.0 - span) * 0.5;
+    if crop_horizontally {
+        Rect::from_min_max(Pos2::new(offset, 0.0), Pos2::new(offset + span, 1.0))
+    } else {
+        Rect::from_min_max(Pos2::new(0.0, offset), Pos2::new(1.0, offset + span))
     }
 }
 
@@ -332,8 +445,77 @@ mod tests {
     fn only_loading_asks_for_more_frames() {
         assert!(ImageState::Loading.wants_repaint());
         assert!(!ImageState::Failed.wants_repaint());
-        assert!(!ImageState::Ready.wants_repaint());
+        assert!(
+            !ImageState::Ready {
+                size: Vec2::splat(64.0)
+            }
+            .wants_repaint()
+        );
         assert!(!ImageState::Absent.wants_repaint());
+    }
+
+    /// Stretching is the mode that lies about the art, so it must never be
+    /// what a caller gets without asking.
+    #[test]
+    fn the_default_fit_contains() {
+        assert_eq!(Fit::default(), Fit::Contain);
+    }
+
+    /// The bug this option exists to kill: a wide image in a square rect
+    /// keeps its aspect and gains bands above and below.
+    #[test]
+    fn contain_letterboxes_a_wide_image_in_a_square() {
+        let square = Rect::from_min_size(Pos2::ZERO, Vec2::splat(100.0));
+        let out = contain_rect(Vec2::new(200.0, 100.0), square);
+        assert_eq!(out.size(), Vec2::new(100.0, 50.0));
+        assert_eq!(out.center(), square.center());
+    }
+
+    #[test]
+    fn contain_pillarboxes_a_tall_image_in_a_square() {
+        let square = Rect::from_min_size(Pos2::ZERO, Vec2::splat(100.0));
+        let out = contain_rect(Vec2::new(100.0, 200.0), square);
+        assert_eq!(out.size(), Vec2::new(50.0, 100.0));
+    }
+
+    /// A texture that already matches — or one whose size the loader has not
+    /// reported — must land on the rect itself, never a NaN one.
+    #[test]
+    fn contain_leaves_matching_and_degenerate_inputs_alone() {
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(300.0, 200.0));
+        assert_eq!(contain_rect(Vec2::new(30.0, 20.0), rect), rect);
+        assert_eq!(contain_rect(Vec2::ZERO, rect), rect);
+        assert_eq!(contain_rect(Vec2::new(f32::NAN, 20.0), rect), rect);
+    }
+
+    /// Cover keeps the whole rect and takes the same bands contain would
+    /// leave empty, off the CENTRE of the image instead.
+    #[test]
+    fn cover_crops_the_sides_of_a_wide_image() {
+        let square = Rect::from_min_size(Pos2::ZERO, Vec2::splat(100.0));
+        let uv = cover_uv(Vec2::new(200.0, 100.0), square);
+        assert_eq!(
+            uv,
+            Rect::from_min_max(Pos2::new(0.25, 0.0), Pos2::new(0.75, 1.0))
+        );
+    }
+
+    #[test]
+    fn cover_crops_the_top_and_bottom_of_a_tall_image() {
+        let square = Rect::from_min_size(Pos2::ZERO, Vec2::splat(100.0));
+        let uv = cover_uv(Vec2::new(100.0, 200.0), square);
+        assert_eq!(
+            uv,
+            Rect::from_min_max(Pos2::new(0.0, 0.25), Pos2::new(1.0, 0.75))
+        );
+    }
+
+    #[test]
+    fn cover_uses_the_whole_image_when_it_already_matches() {
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(300.0, 200.0));
+        let full = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+        assert_eq!(cover_uv(Vec2::new(30.0, 20.0), rect), full);
+        assert_eq!(cover_uv(Vec2::ZERO, rect), full);
     }
 
     fn hint(px: u32) -> SizeHint {

@@ -575,12 +575,17 @@ pub mod browser {
         let promise = match want.px() {
             Some(px) => {
                 let options = web_sys::ImageBitmapOptions::new();
+                // ONE axis, deliberately. With both `resizeWidth` and
+                // `resizeHeight` set the browser resizes to that exact box —
+                // aspect NOT kept — so a 400×166 artwork came back as a
+                // 256×256 texture with the art squashed into it, and every
+                // widget downstream drew the lie faithfully. Naming one axis
+                // makes the other follow the aspect; the longest-edge clamp
+                // at the readback below holds the pixel ceiling for tall
+                // sources.
                 options.set_resize_width(px);
-                options.set_resize_height(px);
-                // Aspect ratio is kept by the caller drawing it to fit; what
-                // matters here is the CEILING on decoded pixels. `Pixelated`
-                // would wreck photographic art, and the pixel-art path does
-                // its own scaling upstream in the IIIF service.
+                // `Pixelated` would wreck photographic art, and the pixel-art
+                // path does its own scaling upstream in the IIIF service.
                 options.set_resize_quality(web_sys::ResizeQuality::High);
                 if let Some(window) = global.dyn_ref::<web_sys::Window>() {
                     window
@@ -617,8 +622,19 @@ pub mod browser {
             .dyn_into()
             .map_err(|_| "Result is not an ImageBitmap".to_string())?;
 
-        let width = bitmap.width();
-        let height = bitmap.height();
+        let (width, height) = match want.px() {
+            // The ceiling is on the LONGEST edge: only one axis was named
+            // above, so a source taller than it is wide can come back past
+            // the rung on the other. Scaled down here, aspect kept.
+            Some(px) if bitmap.width().max(bitmap.height()) > px => {
+                let scale = px as f64 / bitmap.width().max(bitmap.height()) as f64;
+                (
+                    ((bitmap.width() as f64 * scale).round() as u32).max(1),
+                    ((bitmap.height() as f64 * scale).round() as u32).max(1),
+                )
+            }
+            _ => (bitmap.width(), bitmap.height()),
+        };
 
         if width == 0 || height == 0 {
             return Err("Image has zero dimensions".into());
@@ -638,9 +654,18 @@ pub mod browser {
             scratch.resize(width, height);
 
             // Draw the decoded bitmap onto the canvas
+            // dw/dh rather than the bitmap's own size: a clamped decode
+            // draws smaller than the bitmap, and this is where that scale
+            // lands.
             scratch
                 .ctx
-                .draw_image_with_image_bitmap(&bitmap, 0.0, 0.0)
+                .draw_image_with_image_bitmap_and_dw_and_dh(
+                    &bitmap,
+                    0.0,
+                    0.0,
+                    width as f64,
+                    height as f64,
+                )
                 .map_err(|e| format!("drawImage failed: {e:?}"))?;
 
             // Read back the RGBA pixels
