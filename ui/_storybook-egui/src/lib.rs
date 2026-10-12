@@ -103,6 +103,7 @@ mod app {
             PlacementEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::placement::show(ui, &mut a.placement_state);
             PlacementPad => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::placement_pad::show(ui, &mut a.placement_pad_state);
             TransformStick => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::transform_stick::show(ui, &mut a.transform_stick_state);
+            LiveryPanel => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::livery_panel::show(ui, &mut a.livery_panel_state);
             Keyring => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::keyring::show(ui, &mut a.keyring_state);
             IdPill => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::id_pill::show(ui);
             PropertyList => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::property_list::show(ui);
@@ -411,6 +412,7 @@ mod app {
                 Self::PlacementEditor => "Placement Editor",
                 Self::PlacementPad => "Placement Pad",
                 Self::TransformStick => "Transform Stick",
+                Self::LiveryPanel => "Livery Panel",
                 Self::Keyring => "Keyring",
                 Self::PropertyList => "Property List",
                 Self::IdPill => "ID Pill",
@@ -862,6 +864,9 @@ mod app {
                 }
                 Self::TransformStick => {
                     "A spring-centred stick that drives a subject elsewhere — held push is a rate, so the control's own reach never limits where it lands"
+                }
+                Self::LiveryPanel => {
+                    "A livery's layer stack — order, selection and an enabled flag that hides without deleting — and two hands for driving the selected layer"
                 }
                 Self::Keyring => {
                     "The API keys an app holds, one per provider — masked by default, revealable, clearable"
@@ -1472,6 +1477,7 @@ mod app {
         placement_state: stories::placement::PlacementState,
         placement_pad_state: stories::placement_pad::PlacementPadState,
         transform_stick_state: stories::transform_stick::TransformStickState,
+        livery_panel_state: stories::livery_panel::LiveryPanelState,
         keyring_state: stories::keyring::KeyringState,
         sparkline_state: stories::sparkline::SparklineState,
         perf_strip_state: stories::perf_strip::PerfStripStory,
@@ -1630,6 +1636,7 @@ mod app {
                 placement_state: stories::placement::PlacementState::default(),
                 placement_pad_state: stories::placement_pad::PlacementPadState::default(),
                 transform_stick_state: stories::transform_stick::TransformStickState::default(),
+                livery_panel_state: stories::livery_panel::LiveryPanelState::default(),
                 keyring_state: stories::keyring::KeyringState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 perf_strip_state: stories::perf_strip::PerfStripStory::default(),

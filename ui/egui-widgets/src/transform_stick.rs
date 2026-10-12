@@ -67,6 +67,10 @@ pub enum StickMode {
     Size,
     /// Sideways turns, either way.
     Turn,
+    /// Sideways turns *and* up grows, at once — what a second stick drives when
+    /// the hand prefers two sticks to a mode row. Not in [`ALL`](Self::ALL): it
+    /// is chosen by a layout, not picked from a row.
+    Shape,
 }
 
 impl StickMode {
@@ -77,6 +81,7 @@ impl StickMode {
             StickMode::Move => "move",
             StickMode::Size => "size",
             StickMode::Turn => "turn",
+            StickMode::Shape => "shape",
         }
     }
 
@@ -86,6 +91,7 @@ impl StickMode {
             StickMode::Move => "push to move it — it keeps going while you hold",
             StickMode::Size => "push up to grow, down to shrink",
             StickMode::Turn => "push sideways to turn",
+            StickMode::Shape => "sideways turns it, up grows it",
         }
     }
 }
@@ -263,6 +269,12 @@ impl TransformStick {
                 placement.angle += step(held.x, rates.turn * scale, dt);
                 true
             }
+            StickMode::Shape => {
+                placement.angle += step(held.x, rates.turn * scale, dt);
+                let growth = 1.0 + step(-held.y, rates.size * scale, dt);
+                placement.size *= growth.max(0.5);
+                true
+            }
         }
     }
 
@@ -377,6 +389,24 @@ mod tests {
             angle: 0.0,
         };
         stick.apply(&mut placement, space, Rates::default(), 1.0, false);
+        assert!((placement.angle - Rates::default().turn).abs() < 1e-5);
+    }
+
+    #[test]
+    fn the_shape_stick_turns_and_grows_in_one_push() {
+        let mut stick = TransformStick::default();
+        stick.mode = StickMode::Shape;
+        stick.push = vec2(1.0, -1.0);
+        let space = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+        let mut placement = Placement {
+            center: pos2(0.5, 0.5),
+            size: vec2(0.3, 0.3),
+            angle: 0.0,
+        };
+        stick.apply(&mut placement, space, Rates::default(), 1.0, false);
+        assert!(placement.angle > 0.0, "angle {}", placement.angle);
+        assert!(placement.size.x > 0.3, "size {}", placement.size.x);
+        // A diagonal push is one push, not two: the same rates, one frame.
         assert!((placement.angle - Rates::default().turn).abs() < 1e-5);
     }
 }

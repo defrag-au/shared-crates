@@ -1,7 +1,8 @@
 //! Census over a published directory: **how many candidate chunks does a
 //! resolve fan out to?**
 //!
-//! Run against a copy of `index/asset-meta/v1/directory/`:
+//! Run against a build's directory — the live `directory-v2/`, or the v1-layout
+//! `directory/` that `resolve_sample` still writes beside it (read by nothing):
 //!
 //!     cargo run -p asset-metadata-index --example dir_census -- <dir>
 //!
