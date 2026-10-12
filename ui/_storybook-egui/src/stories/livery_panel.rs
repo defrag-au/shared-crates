@@ -7,8 +7,9 @@
 //!
 //! Two hands, for two kinds of placement:
 //!
-//! - **Rough** — grab the subject itself. Drag a layer to move it and the knob
-//!   off its edge to size and turn it. A press on another layer selects it.
+//! - **Rough** — grab the subject itself. Dragging a layer moves it, and that
+//!   is all the subject does: no handles, no turn, no size. A press on another
+//!   layer selects it, and a press on empty space does nothing.
 //! - **Fine** — the [`TransformDial`], one control with no modes. The puck
 //!   moves at a rate, the rim sweeps to turn and pulls to size. The numbers
 //!   under it take a typed value for anything the hand can't hit exactly.
@@ -19,9 +20,9 @@
 //! so the hand still knows where it is.
 
 use egui_widgets::icons::PhosphorIcon;
-use egui_widgets::placement::{self, Frame, Placement, PlacementEditor, PlacementStyle};
+use egui_widgets::placement::{Frame, Placement, PlacementEditor, PlacementStyle};
 use egui_widgets::theme::{Radius, Space, TextSize, ThemeExt};
-use egui_widgets::transform_dial::{HINT, TransformDial};
+use egui_widgets::transform_dial::{HINT, KEYS_HINT, TransformDial};
 use egui_widgets::transform_stick::Rates;
 use egui_widgets::viewport::LayoutExt;
 
@@ -33,9 +34,10 @@ const PANEL: f32 = 340.0;
 /// The subject's largest side. `theme-exempt`: a stand-in for the mug card.
 const SUBJECT: f32 = 300.0;
 
-/// Room around the subject's surface for the knob past a layer's edge.
-/// `theme-exempt`: pointer affordance, matching `placement`'s puck standoff.
-const MARGIN: f32 = 28.0;
+/// A little room around the subject's surface, so a layer pushed to its edge
+/// can still be grabbed by the part hanging over. `theme-exempt`: pointer
+/// affordance.
+const MARGIN: f32 = 10.0;
 
 /// A layer row's height: a fingertip. `theme-exempt`: touch target.
 const ROW: f32 = 40.0;
@@ -43,9 +45,9 @@ const ROW: f32 = 40.0;
 /// An icon button's side: a fingertip. `theme-exempt`: touch target.
 const TAP: f32 = 32.0;
 
-/// The direct-drag control on the subject — the same one the mugz customiser
-/// puts on the mug.
-const STYLE: PlacementStyle = PlacementStyle::Puck;
+/// The direct control on the subject: move only. Turning and sizing belong to
+/// the dial, so the subject has one gesture and nothing on it to miss.
+const STYLE: PlacementStyle = PlacementStyle::Drag;
 
 /// The smallest and largest a layer may be, as a fraction of the surface's
 /// width, so a long pull can't lose one.
@@ -227,7 +229,7 @@ fn subject(ui: &mut egui::Ui, state: &mut LiveryPanelState) {
         let local = from_px(at);
         let held = &state.layers[state.selected].placement;
         let on_held =
-            held.contains(local) || placement::on_handle(held, &frame_of(held), at, STYLE);
+            held.contains(local) || state.editor.on_handle(held, &frame_of(held), at, STYLE);
         if on_held {
             state.sheet = Sheet::Edit;
         } else if let Some(index) = (0..state.layers.len()).rev().find(|index| {
@@ -448,18 +450,19 @@ fn edit(ui: &mut egui::Ui, state: &mut LiveryPanelState, docked: bool) {
     ui.add_space(tokens.space(Space::Sm));
 
     let dt = ui.ctx().input(|input| input.stable_dt).min(0.1);
-    let fine = state.fine || ui.ctx().input(|input| input.modifiers.shift);
     ui.vertical_centered(|ui| {
+        // The dial reads its own keys — R, S and shift — while held.
         state.dial.show(ui, dt);
         ui.weak(match state.dial.gesture() {
             Some(gesture) => gesture.label(),
             None => HINT,
         });
+        ui.weak(KEYS_HINT);
     });
     let placement = &mut state.layers[index].placement;
     if state
         .dial
-        .apply(placement, surface(), Rates::default(), dt, fine)
+        .apply(placement, surface(), Rates::default(), dt, state.fine)
     {
         keep_sane(placement);
     }
@@ -467,7 +470,9 @@ fn edit(ui: &mut egui::Ui, state: &mut LiveryPanelState, docked: bool) {
     ui.add_space(tokens.space(Space::Sm));
     ui.horizontal_wrapped(|ui| numbers(ui, placement));
     ui.horizontal(|ui| {
-        if ui.selectable_label(state.fine, "fine").clicked() {
+        // Lit while shift is held too, so the chip and the key agree.
+        let lit = state.fine || state.dial.fine_held();
+        if ui.selectable_label(lit, "fine").clicked() {
             state.fine = !state.fine;
         }
         ui.weak("gears every hand down — or hold shift");

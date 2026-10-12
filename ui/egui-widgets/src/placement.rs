@@ -246,6 +246,12 @@ pub enum PlacementStyle {
     /// its usual one would leave the control's area, and a press on empty
     /// space does nothing.
     Knob,
+    /// Move only: the body drags and nothing else is drawn or taken. For a
+    /// host that turns and sizes somewhere else — a
+    /// [`TransformDial`](crate::transform_dial::TransformDial) beside the
+    /// subject — so the subject itself has exactly one gesture. A press on
+    /// empty space does nothing.
+    Drag,
 }
 
 impl PlacementStyle {
@@ -254,6 +260,7 @@ impl PlacementStyle {
         PlacementStyle::Halo,
         PlacementStyle::Puck,
         PlacementStyle::Knob,
+        PlacementStyle::Drag,
     ];
 
     pub fn label(self) -> &'static str {
@@ -262,6 +269,7 @@ impl PlacementStyle {
             PlacementStyle::Halo => "halo",
             PlacementStyle::Puck => "puck",
             PlacementStyle::Knob => "knob",
+            PlacementStyle::Drag => "drag",
         }
     }
 
@@ -272,7 +280,10 @@ impl PlacementStyle {
             PlacementStyle::Handles => "pull a corner to size and turn, the body to move",
             PlacementStyle::Halo => "drag inside to move, the ring to turn, outside to size",
             PlacementStyle::Puck => "the puck sizes and turns, the body moves",
-            PlacementStyle::Knob => "drag the body to move · sweep the knob to turn, pull it to size",
+            PlacementStyle::Knob => {
+                "drag the body to move · sweep the knob to turn, pull it to size"
+            }
+            PlacementStyle::Drag => "drag it to move it",
         }
     }
 }
@@ -357,6 +368,8 @@ struct Rig {
 }
 
 impl Rig {
+    /// The rig with the knob on its usual `+u` edge.
+    #[cfg(test)]
     fn new(placement: &Placement, frame: &Frame) -> Self {
         Self::sided(placement, frame, false)
     }
@@ -426,7 +439,10 @@ impl Rig {
 /// `area` and the `−u` one would not — a knob that hopped about for less would
 /// be a knob the thumb had to chase.
 fn knob_flipped(placement: &Placement, frame: &Frame, area: Rect) -> bool {
-    let inside = |flipped| area.shrink(KNOB).contains(Rig::sided(placement, frame, flipped).knob_screen);
+    let inside = |flipped| {
+        area.shrink(KNOB)
+            .contains(Rig::sided(placement, frame, flipped).knob_screen)
+    };
     !inside(false) && inside(true)
 }
 
@@ -468,6 +484,8 @@ impl PlacementEditor {
             PlacementStyle::Halo => ring_hit(&rig, screen) != RingHit::Inside,
             PlacementStyle::Puck => (screen - rig.puck_screen).length() < GRAB,
             PlacementStyle::Knob => rig.on_knob(screen),
+            // No handle at all: the body is the whole control.
+            PlacementStyle::Drag => false,
         }
     }
 
@@ -612,17 +630,27 @@ impl PlacementEditor {
                 // of rather than a dot marking a point.
                 painter.circle_filled(rig.knob_screen, KNOB * 0.35, tokens.color.bg_primary);
             }
+            // The outline and tint above are the whole of it: nothing to
+            // grab but the subject.
+            PlacementStyle::Drag => {}
         }
         changed
     }
 }
 
-/// Does a press here start a gesture at all? Every style but the knob takes
-/// any press in its area as a move; the knob takes only itself and the body,
-/// so a press on empty space leaves the subject where it is.
-fn takes(placement: &Placement, rig: &Rig, screen: Pos2, local: Pos2, style: PlacementStyle) -> bool {
+/// Does a press here start a gesture at all? The older styles take any press
+/// in their area as a move. The knob takes only itself and the body, and drag
+/// only the body, so a press on empty space leaves the subject where it is.
+fn takes(
+    placement: &Placement,
+    rig: &Rig,
+    screen: Pos2,
+    local: Pos2,
+    style: PlacementStyle,
+) -> bool {
     match style {
         PlacementStyle::Knob => rig.on_knob(screen) || placement.contains(local),
+        PlacementStyle::Drag => placement.contains(local),
         _ => true,
     }
 }
@@ -700,7 +728,34 @@ fn hover_cursor(rig: &Rig, style: PlacementStyle, ui: &Ui) -> CursorIcon {
                 CursorIcon::Grab
             }
         }
+        PlacementStyle::Knob => {
+            if rig.on_knob(p) {
+                CursorIcon::Move
+            } else if contains_on_screen(rig, p) {
+                CursorIcon::Grab
+            } else {
+                CursorIcon::Default
+            }
+        }
+        PlacementStyle::Drag => {
+            if contains_on_screen(rig, p) {
+                CursorIcon::Grab
+            } else {
+                CursorIcon::Default
+            }
+        }
     }
+}
+
+/// Is `p` inside the subject as drawn? The frame's quad, for a hover cursor
+/// that has no caller-space pointer to ask with.
+fn contains_on_screen(rig: &Rig, p: Pos2) -> bool {
+    let corners = rig.corners;
+    let sign = |a: Pos2, b: Pos2| (b - a).x * (p - a).y - (b - a).y * (p - a).x;
+    let sides: Vec<f32> = (0..4)
+        .map(|i| sign(corners[i], corners[(i + 1) % 4]))
+        .collect();
+    sides.iter().all(|s| *s >= 0.0) || sides.iter().all(|s| *s <= 0.0)
 }
 
 /// The gesture a press begins: chosen where the reader sees it, on screen, and
@@ -759,6 +814,30 @@ fn begin(
                 }
             }
         }
+        PlacementStyle::Knob => {
+            if rig.on_knob(screen) {
+                // Everything is measured from where the press landed, not from
+                // the knob's centre, so a grab off-centre on a thumb-sized knob
+                // does not make the subject jump.
+                let start = local - placement.center;
+                Drag::Knob {
+                    start,
+                    last: start,
+                    axis: None,
+                    lock: KNOB_LOCK / rig.per_unit,
+                    floor: BEARING_FLOOR / rig.per_unit,
+                    size: placement.size,
+                    standoff: KNOB_STANDOFF / rig.per_unit,
+                }
+            } else {
+                Drag::Move {
+                    grab: local - placement.center,
+                }
+            }
+        }
+        PlacementStyle::Drag => Drag::Move {
+            grab: local - placement.center,
+        },
     }
 }
 
@@ -820,7 +899,62 @@ fn advance(placement: &mut Placement, drag: &mut Drag, p: Pos2) -> bool {
                 *angle + shortest_turn(offset.y.atan2(offset.x) - from.y.atan2(from.x));
             true
         }
+        Drag::Knob {
+            start,
+            last,
+            axis,
+            lock,
+            floor,
+            size,
+            standoff,
+        } => {
+            let offset = p - placement.center;
+            let decided = match *axis {
+                Some(decided) => decided,
+                None => {
+                    let moved = offset - *start;
+                    if moved.length() < *lock {
+                        return false;
+                    }
+                    // Mostly round the centre is a turn, mostly along the line
+                    // from it is a size — the dial's rim rule, in the subject's
+                    // own units.
+                    let out = start.normalized();
+                    let radial = moved.dot(out);
+                    let tangential = (moved - out * radial).length();
+                    let decided = if tangential >= radial.abs() {
+                        KnobAxis::Turn
+                    } else {
+                        KnobAxis::Size
+                    };
+                    *axis = Some(decided);
+                    decided
+                }
+            };
+            match decided {
+                KnobAxis::Turn => {
+                    if offset.length() < *floor {
+                        return false;
+                    }
+                    placement.angle += shortest_turn(bearing(offset) - bearing(*last));
+                    *last = offset;
+                }
+                KnobAxis::Size => {
+                    // Relative to where the press landed, so the knob stays
+                    // under the pointer however far off its centre it was taken.
+                    let from = (start.length() - *standoff).max(1e-6);
+                    let to = offset.length() - *standoff;
+                    placement.size = *size * (to / from).clamp(MIN_SCALE, MAX_SCALE);
+                }
+            }
+            true
+        }
     }
+}
+
+/// The bearing of `v`, clockwise on screen (y grows down).
+fn bearing(v: Vec2) -> f32 {
+    v.y.atan2(v.x)
 }
 
 /// The shortest turn between two bearings, in (-π, π].
@@ -939,6 +1073,141 @@ mod tests {
         // Straight out along the axis by half the original width doubles it.
         advance(&mut placement, &mut drag, pos2(126.0, 0.0));
         assert!((placement.size.x - 200.0).abs() < 1e-3);
+    }
+
+    /// A knob grab on a flat subject, taken at the knob's centre. On a plane
+    /// the caller's units are screen pixels, so screen and local agree.
+    fn knob_grab(placement: &Placement) -> Drag {
+        let rig = rig(placement);
+        let at = rig.knob_screen;
+        assert!(takes(placement, &rig, at, at, PlacementStyle::Knob));
+        let drag = begin(placement, &rig, at, at, PlacementStyle::Knob);
+        assert!(matches!(drag, Drag::Knob { .. }));
+        drag
+    }
+
+    #[test]
+    fn a_knob_sweep_turns_and_leaves_the_size_alone() {
+        let mut placement = Placement::new(pos2(0.0, 0.0), vec2(100.0, 50.0));
+        let mut drag = knob_grab(&placement);
+        let reach = 50.0 + KNOB_STANDOFF;
+        // Round a quarter turn, the thumb wandering in and out as it goes.
+        for (step, wobble) in [(1, 6.0), (2, -5.0), (3, 8.0), (4, -3.0), (5, 0.0)] {
+            let angle = step as f32 / 5.0 * PI * 0.5;
+            let radius = reach + wobble;
+            advance(
+                &mut placement,
+                &mut drag,
+                pos2(angle.cos() * radius, angle.sin() * radius),
+            );
+        }
+        assert!(
+            (placement.angle - PI * 0.5).abs() < 1e-3,
+            "angle {}",
+            placement.angle
+        );
+        assert_eq!(placement.size, vec2(100.0, 50.0));
+    }
+
+    #[test]
+    fn a_knob_pull_sizes_and_leaves_the_turn_alone() {
+        let mut placement = Placement::new(pos2(0.0, 0.0), vec2(100.0, 50.0));
+        let mut drag = knob_grab(&placement);
+        // Straight out, drifting a little sideways: still a pull.
+        let reach = 50.0 + KNOB_STANDOFF;
+        for (out, drift) in [(10.0, 2.0), (30.0, -3.0), (50.0, 4.0)] {
+            advance(&mut placement, &mut drag, pos2(reach + out, drift));
+        }
+        assert_eq!(placement.angle, 0.0);
+        // The edge followed the pointer out: it is 50 further, minus the drift.
+        assert!(
+            (placement.size.x - 200.0).abs() < 0.5,
+            "size {}",
+            placement.size.x
+        );
+        assert!((placement.size.y / placement.size.x - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn a_knob_grab_does_nothing_until_it_has_decided() {
+        let mut placement = Placement::new(pos2(0.0, 0.0), vec2(100.0, 50.0));
+        let before = placement;
+        let mut drag = knob_grab(&placement);
+        let reach = 50.0 + KNOB_STANDOFF;
+        assert!(!advance(&mut placement, &mut drag, pos2(reach + 3.0, 3.0)));
+        assert_eq!(placement, before);
+    }
+
+    #[test]
+    fn a_knob_press_on_empty_space_takes_nothing() {
+        let placement = Placement::new(pos2(0.0, 0.0), vec2(100.0, 50.0));
+        let rig = rig(&placement);
+        let empty = pos2(0.0, 120.0);
+        assert!(!takes(&placement, &rig, empty, empty, PlacementStyle::Knob));
+        // The body still takes a move, and the older styles keep taking any
+        // press as one.
+        assert!(takes(
+            &placement,
+            &rig,
+            pos2(10.0, 5.0),
+            pos2(10.0, 5.0),
+            PlacementStyle::Knob
+        ));
+        assert!(takes(&placement, &rig, empty, empty, PlacementStyle::Puck));
+    }
+
+    #[test]
+    fn drag_only_moves_and_only_from_the_body() {
+        let mut placement = Placement::new(pos2(0.0, 0.0), vec2(100.0, 50.0));
+        let rig = rig(&placement);
+        // Off the body — even where another style's handle would be — is
+        // nothing at all.
+        let corner = rig.corners[2];
+        assert!(!takes(
+            &placement,
+            &rig,
+            corner + vec2(4.0, 4.0),
+            corner + vec2(4.0, 4.0),
+            PlacementStyle::Drag
+        ));
+        assert!(!takes(
+            &placement,
+            &rig,
+            rig.knob_screen,
+            rig.knob_screen,
+            PlacementStyle::Drag
+        ));
+        assert!(!PlacementEditor::default().on_handle(
+            &placement,
+            &Frame::flat(&placement),
+            corner,
+            PlacementStyle::Drag
+        ));
+
+        // On the body, a move that keeps the grab where it landed and touches
+        // nothing else.
+        let at = pos2(40.0, 20.0);
+        assert!(takes(&placement, &rig, at, at, PlacementStyle::Drag));
+        let mut drag = begin(&placement, &rig, at, at, PlacementStyle::Drag);
+        advance(&mut placement, &mut drag, pos2(140.0, -30.0));
+        assert_eq!(placement.center, pos2(100.0, -50.0));
+        assert_eq!(placement.size, vec2(100.0, 50.0));
+        assert_eq!(placement.angle, 0.0);
+    }
+
+    #[test]
+    fn the_knob_hops_edges_only_when_it_must() {
+        let placement = Placement::new(pos2(100.0, 100.0), vec2(80.0, 40.0));
+        let frame = Frame::flat(&placement);
+        // Plenty of room: the usual edge.
+        let roomy = Rect::from_min_max(pos2(0.0, 0.0), pos2(400.0, 200.0));
+        assert!(!knob_flipped(&placement, &frame, roomy));
+        // The right-hand side cut off just past the subject: the other edge.
+        let cramped = Rect::from_min_max(pos2(0.0, 0.0), pos2(150.0, 200.0));
+        assert!(knob_flipped(&placement, &frame, cramped));
+        // No room either side: stay put rather than hop for nothing.
+        let boxed = Rect::from_min_max(pos2(55.0, 0.0), pos2(150.0, 200.0));
+        assert!(!knob_flipped(&placement, &frame, boxed));
     }
 
     /// Hit-testing has to follow the subject round, or a turned decal answers to

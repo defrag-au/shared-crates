@@ -34,16 +34,17 @@ const BENCH: egui::Vec2 = egui::vec2(300.0, 230.0);
 /// turn is visible at a glance.
 const SUBJECT: egui::Vec2 = egui::vec2(156.0, 88.0);
 
-/// Below this, three benches are three unusable slivers and stack instead.
-const SIDE_BY_SIDE: f32 = 780.0;
+/// Below this, the benches are unusable slivers and stack instead. Kept at the
+/// 260pt-per-bench the three-bench layout used, for all five.
+const SIDE_BY_SIDE: f32 = 1300.0;
 
 pub struct PlacementState {
     /// One editor per style: a drag is in flight in a specific control, and
     /// switching style mid-gesture must not move a different subject.
-    editors: [PlacementEditor; 3],
+    editors: [PlacementEditor; 5],
     /// Each subject in its bench's coordinates — the centre is an offset from
     /// the bench's top-left corner, so the layout can resize underneath it.
-    subjects: [Placement; 3],
+    subjects: [Placement; 5],
     pub style: PlacementStyle,
     pub compare: bool,
     /// The surface bench: its own editor, and the subject in *surface* units —
@@ -61,7 +62,13 @@ impl Default for PlacementState {
         };
         Self {
             editors: Default::default(),
-            subjects: [subject(0.0), subject(-0.22), subject(0.16)],
+            subjects: [
+                subject(0.0),
+                subject(-0.22),
+                subject(0.16),
+                subject(-0.10),
+                subject(0.08),
+            ],
             style: PlacementStyle::Handles,
             compare: true,
             surface_editor: PlacementEditor::default(),
@@ -116,7 +123,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PlacementState) {
             .unwrap_or(0);
         bench(ui, state, index, state.style);
     } else if ui.available_width() >= SIDE_BY_SIDE {
-        ui.columns(3, |cols| {
+        ui.columns(PlacementStyle::ALL.len(), |cols| {
             for (index, col) in cols.iter_mut().enumerate() {
                 bench(col, state, index, PlacementStyle::ALL[index]);
             }
