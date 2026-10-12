@@ -177,6 +177,11 @@ shape: builder → `.show(ui) -> Response { actions: Vec<…> }`.
 - **`image_text_editor`** → `ImageTextEditor` *(feature-gated)* — Place,
   style, drag text overlays on an image; flatten to RGBA. **Composite
   image+text authoring.**
+- **`placement`** → `PlacementEditor` + `Placement` — One compound
+  move/size/turn gesture over a subject, in three styles (`Handles` /
+  `Halo` / `Puck`). **Placing a decal, a sticker or a stamp on a
+  surface — the value is in the caller's space, so a warped surface maps
+  the gestures back itself.**
 - **`wallet_asset_picker`** → `PickerAsset` + `PickerPolicyGroup` —
   Modal browser grouped by policy with multi-select summary bar.
   **Pick NFTs from wallet inventory.**

@@ -17,22 +17,37 @@
 //! as a shorter, plausible name — the one output this format must not
 //! produce.
 //!
-//! # Latest wins
+//! # Standing is a supply
 //!
-//! Records are one-per-defining-event, appended across segments. `latest()`
-//! answers what an asset currently is: greatest `(chunk, body_offset)` —
-//! chain order, with the within-chunk position as the tie-break — and a burn
-//! as the latest event clears the asset.
+//! Records are one-per-defining-event, appended across segments, each stating
+//! the signed quantity its transaction moved. An asset stands while those
+//! quantities **sum above zero** ([`standing`]): a mint adds, a burn removes,
+//! an update moves none. The metadata in force is the greatest
+//! `(chunk, body_offset)` among the non-burn records — chain order, with the
+//! within-chunk position as the tie-break.
+//!
+//! Summing rather than "latest wins" is load-bearing, not fastidious. A burn
+//! is a supply decrement, not a deletion: CIP-25's dynamic-update trick mints
+//! the new copy and *then* burns the previous one, so the newest record is a
+//! burn while the asset still exists — and for a native token a quantity is
+//! the only answer there is.
+//!
+//! The sum runs in chain order and **floors at zero**: the index never saw a
+//! burn's copy minted if the mint predates its coverage, and such a burn must
+//! not erase an asset (it can only fail to restore one).
 
 use crate::POLICY_ID_LEN;
 use crate::bytes::{
-    array_at, put_u16_prefixed, put_u32_prefixed, take, take_u16_prefixed, take_u32_prefixed,
-    u8_at, u16_at, u32_at,
+    array_at, i64_at, put_u16_prefixed, put_u32_prefixed, take, take_u16_prefixed,
+    take_u32_prefixed, u8_at, u16_at, u32_at,
 };
 use crate::error::{DecodeError, EncodeError};
 
 /// Fixed head length: everything before the first variable-length field.
-pub const RECORD_HEAD_LEN: usize = 51;
+///
+/// `record_len` 4 · `family` 1 · `event` 1 · flags 2 · `qty` 8 ·
+/// `policy_id` 28 · provenance 14 · `name_len` 1.
+pub const RECORD_HEAD_LEN: usize = 59;
 
 /// Which metadata standard the chain stated. Informational — stored so the
 /// data is complete, never branched on by a caller.
@@ -138,6 +153,10 @@ pub struct Record {
     pub family: Family,
     /// Mint, burn or update.
     pub event: Event,
+    /// The signed quantity this event moved: positive for a mint, negative for
+    /// a burn, zero for an update. Stored as the ledger states it — the sum
+    /// over a name's records is what decides standing.
+    pub qty: i64,
     /// 28-byte policy id.
     pub policy_id: [u8; POLICY_ID_LEN],
     /// Where the event's bytes are, for the verifier.
@@ -183,11 +202,25 @@ impl Record {
 
     /// Append this record's bytes.
     pub fn encode_into(&self, out: &mut Vec<u8>) -> Result<(), EncodeError> {
+        // The sign is the event's. A quantity that contradicts it would move
+        // a supply the wrong way, so it is refused rather than written.
+        let sign_matches = match self.event {
+            Event::Mint => self.qty > 0,
+            Event::Burn => self.qty < 0,
+            Event::Update => self.qty == 0,
+        };
+        if !sign_matches {
+            return Err(EncodeError::BadQuantity {
+                event: self.event,
+                qty: self.qty,
+            });
+        }
         let start = out.len();
         out.extend_from_slice(&[0; 4]); // record_len, patched last
         out.push(u8::from(self.family));
         out.push(u8::from(self.event));
         out.extend_from_slice(&[0; 2]); // flags, reserved
+        out.extend_from_slice(&self.qty.to_le_bytes());
         out.extend_from_slice(&self.policy_id);
         out.extend_from_slice(&self.provenance.chunk.to_le_bytes());
         out.extend_from_slice(&self.provenance.body_offset.to_le_bytes());
@@ -239,6 +272,11 @@ impl Record {
         if flags != 0 {
             return Err(DecodeError::ReservedNotZero { at: at - 2 });
         }
+        // Read permissively: a sign that contradicts the event is still a
+        // number a reader can sum honestly, and refusing it would fail a
+        // whole segment over one bad record. The builder refuses it instead
+        // (`EncodeError::BadQuantity`).
+        let qty = i64_at(b, &mut at)?;
         let policy_id = array_at::<POLICY_ID_LEN>(b, &mut at)?;
         let provenance = Provenance {
             chunk: u16_at(b, &mut at)?,
@@ -274,6 +312,7 @@ impl Record {
             Self {
                 family,
                 event,
+                qty,
                 policy_id,
                 provenance,
                 name,
@@ -326,37 +365,72 @@ pub fn recency(record: &Record) -> (u16, u32) {
     (record.provenance.chunk, record.provenance.body_offset)
 }
 
-/// An asset's current state, decided by [`latest`].
+/// An asset's current state, decided by [`standing`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Standing<'a> {
-    /// The latest event carries the asset's metadata.
-    Active(&'a Record),
-    /// The latest event was a burn.
-    Burned(&'a Record),
+    /// Supply is above zero: the asset exists. `record` is the newest mint or
+    /// update — the metadata in force.
+    Active {
+        /// The newest non-burn record: where the metadata comes from.
+        record: &'a Record,
+        /// The copies the index can account for; above zero here.
+        supply: i64,
+    },
+    /// Supply is zero: the asset is gone. `record` is the newest record of any
+    /// kind — on a complete history, the burn that took the last copy.
+    Burned {
+        /// The newest record.
+        record: &'a Record,
+        /// The copies the index can account for; zero here (the sum floors
+        /// there).
+        supply: i64,
+    },
 }
 
-/// Which of an asset's records is current: greatest `(chunk, body_offset)`,
-/// burn clearing. The same rule for CIP-25 and CIP-68.
+/// Which of an asset's records is in force, and how many copies the index can
+/// account for: quantities summed **in chain order**, floored at zero, with the
+/// newest non-burn record carrying the metadata.
 ///
-/// Ties cannot happen for one asset (two events at the same `(chunk, offset)`
-/// would be the same transaction), and the first record wins if one ever does.
+/// A burn decrements, so it clears the asset only when it takes the last
+/// accounted copy. A CIP-25 dynamic update — mint the new copy, then burn the
+/// old — therefore stays standing and shows the new copy's metadata. A burn
+/// with no minted copy behind it (a mint outside the build's coverage) floors
+/// at zero rather than going negative: an incomplete history may understate a
+/// supply, it must never erase an asset. The same rule for both families.
+///
+/// Records are ordered here defensively — the walk and the emitter both
+/// produce chain order — so the answer does not depend on the caller's
+/// iteration order. Ties cannot happen for one asset (two events at the same
+/// `(chunk, offset)` would be the same transaction); the last wins if one
+/// ever does.
 #[must_use]
-pub fn latest<'a, I>(records: I) -> Option<Standing<'a>>
+pub fn standing<'a, I>(records: I) -> Option<Standing<'a>>
 where
     I: IntoIterator<Item = &'a Record>,
 {
-    let mut best: Option<&'a Record> = None;
-    for r in records {
-        if best.is_none_or(|b| recency(r) > recency(b)) {
-            best = Some(r);
+    let mut ordered: Vec<&'a Record> = records.into_iter().collect();
+    ordered.sort_by_key(|record| recency(record));
+
+    let mut supply: i64 = 0;
+    let mut newest_non_burn: Option<&'a Record> = None;
+    for record in &ordered {
+        // Saturating, not wrapping: corrupt data must not flip a standing
+        // asset out of its listing by overflowing the sum.
+        supply = supply.saturating_add(record.qty).max(0);
+        if record.event != Event::Burn {
+            newest_non_burn = Some(record);
         }
     }
-    best.map(|r| {
-        if r.event == Event::Burn {
-            Standing::Burned(r)
-        } else {
-            Standing::Active(r)
-        }
+    let newest = ordered.last().copied()?;
+    Some(match newest_non_burn {
+        Some(record) if supply > 0 => Standing::Active { record, supply },
+        // A positive supply with no mint or update behind it is bytes no
+        // writer can produce; report it burned rather than claim metadata
+        // that is not there.
+        _ => Standing::Burned {
+            record: newest,
+            supply,
+        },
     })
 }
 
@@ -375,8 +449,13 @@ pub struct ResolvedAsset {
     pub name: Vec<u8>,
     /// Which standard the chain stated. Informational.
     pub family: Family,
-    /// True when the latest event was a burn; the media fields are empty.
+    /// True when the asset is not standing — the index accounts for no copies
+    /// of it. The media fields are empty for a cleared asset.
     pub burned: bool,
+    /// The copies the index can account for: quantities summed in chain order,
+    /// floored at zero. Above zero for a standing asset (its supply); zero
+    /// once cleared.
+    pub supply: i64,
     /// The defining event the answer came from.
     pub event: Event,
     /// The image URI; empty when none.
@@ -395,14 +474,17 @@ pub struct ResolvedAsset {
 }
 
 impl ResolvedAsset {
-    /// Materialise the winner of [`latest`].
+    /// Materialise the winner of [`standing`].
     #[must_use]
-    pub fn from_record(record: &Record, as_of_chunk: u16) -> Self {
+    pub fn from_record(record: &Record, supply: i64, as_of_chunk: u16) -> Self {
         Self {
             policy_id: record.policy_id,
             name: record.name.clone(),
             family: record.family,
-            burned: record.event == Event::Burn,
+            // Standing is the supply, not the newest event: a burn that took
+            // one of several copies leaves the asset in place.
+            burned: supply == 0,
+            supply,
             event: record.event,
             image: record.image.clone(),
             media_type: record.media_type.clone(),
@@ -414,18 +496,19 @@ impl ResolvedAsset {
     }
 }
 
-/// The whole resolve, in one call: pick the latest event (burn clearing) and
-/// materialise it. `None` when the asset has no records at all.
+/// The whole resolve, in one call: sum the quantities, take the metadata in
+/// force, materialise it. `None` when the asset has no records at all.
 #[must_use]
 pub fn resolve<'a, I>(records: I, as_of_chunk: u16) -> Option<ResolvedAsset>
 where
     I: IntoIterator<Item = &'a Record>,
 {
-    let standing = latest(records)?;
-    let record = match standing {
-        Standing::Active(r) | Standing::Burned(r) => r,
+    let (record, supply) = match standing(records)? {
+        Standing::Active { record, supply } | Standing::Burned { record, supply } => {
+            (record, supply)
+        }
     };
-    Some(ResolvedAsset::from_record(record, as_of_chunk))
+    Some(ResolvedAsset::from_record(record, supply, as_of_chunk))
 }
 
 #[cfg(test)]
@@ -448,6 +531,7 @@ mod tests {
         Record {
             family: Family::Cip25,
             event: Event::Mint,
+            qty: 1,
             policy_id: policy(0xAA),
             provenance: Provenance {
                 chunk: 7,
@@ -474,7 +558,8 @@ mod tests {
     #[test]
     fn a_record_encodes_to_the_committed_bytes() {
         let expected = unhex(
-            "63000000 01 01 0000 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            "6b000000 01 01 0000 0100000000000000
+             aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
              0700 e8030000 f401 d0070000 2c01
              03 4e4654
              0800 697066733a2f2f78
@@ -503,6 +588,7 @@ mod tests {
         let record = Record {
             family: Family::None,
             event: Event::Burn,
+            qty: -1,
             policy_id: policy(0x01),
             provenance: Provenance {
                 chunk: 1,
@@ -574,8 +660,10 @@ mod tests {
         assert!(items[2].is_err());
     }
 
+    /// A quantity per record, summed: the metadata in force is the newest
+    /// non-burn, and a burn clears only the copy it took.
     #[test]
-    fn latest_picks_the_newest_event_and_a_burn_clears() {
+    fn standing_sums_quantities_and_keeps_the_newest_metadata() {
         let mut mint = sample();
         mint.provenance = Provenance {
             chunk: 10,
@@ -586,36 +674,111 @@ mod tests {
         };
         let mut update = mint.clone();
         update.event = Event::Update;
+        update.qty = 0;
+        update.image = b"ipfs://updated".to_vec();
         update.provenance.body_offset = 200;
+
+        // One copy, updated in place: the update's metadata is in force.
+        match standing([&mint, &update]) {
+            Some(Standing::Active { record, supply }) => {
+                assert_eq!(supply, 1);
+                assert_eq!(record.image, b"ipfs://updated");
+            }
+            other => panic!("expected active on the update, got {other:?}"),
+        }
+
+        // Burning that copy clears the asset.
         let mut burn = update.clone();
         burn.event = Event::Burn;
+        burn.qty = -1;
+        burn.image = Vec::new();
         burn.provenance.chunk = 11;
-
-        let all = [mint.clone(), update.clone()];
-        match latest(all.iter()) {
-            Some(Standing::Active(r)) => assert_eq!(*r, update),
-            other => panic!("expected the update to win, got {other:?}"),
+        match standing([&mint, &update, &burn]) {
+            Some(Standing::Burned { record, supply }) => {
+                assert_eq!(supply, 0);
+                assert_eq!(*record, burn);
+            }
+            other => panic!("expected burned, got {other:?}"),
         }
+    }
 
-        let all = [update.clone(), burn.clone()];
-        match latest(all.iter()) {
-            Some(Standing::Burned(r)) => assert_eq!(*r, burn),
-            other => panic!("expected the burn to win, got {other:?}"),
-        }
+    /// The CIP-25 dynamic-update trick: mint the new copy, then burn the old.
+    /// The newest record is a burn and the asset still stands — one copy, with
+    /// the new copy's metadata.
+    #[test]
+    fn a_burn_after_a_replacement_mint_leaves_the_asset_standing() {
+        let mut previous = sample();
+        previous.provenance = Provenance {
+            chunk: 10,
+            body_offset: 100,
+            body_len: 1,
+            aux_offset: 0,
+            aux_len: 0,
+        };
+        previous.image = b"ipfs://season-1".to_vec();
+        let mut replacement = previous.clone();
+        replacement.provenance.chunk = 11;
+        replacement.image = b"ipfs://season-2".to_vec();
+        let mut burn = replacement.clone();
+        burn.event = Event::Burn;
+        burn.qty = -1;
+        burn.image = Vec::new();
+        burn.provenance.chunk = 12;
 
-        // A re-mint after a burn wins again.
-        let mut remint = mint.clone();
-        remint.provenance.chunk = 12;
-        let all = [burn.clone(), remint.clone()];
-        match latest(all.iter()) {
-            Some(Standing::Active(r)) => assert_eq!(*r, remint),
-            other => panic!("expected the remint to win, got {other:?}"),
+        match standing([&previous, &replacement, &burn]) {
+            Some(Standing::Active { record, supply }) => {
+                assert_eq!(supply, 1);
+                assert_eq!(record.image, b"ipfs://season-2");
+            }
+            other => panic!("expected one copy standing on the replacement, got {other:?}"),
         }
+    }
+
+    /// A native token: five copies minted, three burned, two still stand.
+    #[test]
+    fn a_partial_burn_leaves_the_remaining_copies_standing() {
+        let mut mint = sample();
+        mint.qty = 5;
+        let mut burn = mint.clone();
+        burn.event = Event::Burn;
+        burn.qty = -3;
+        burn.provenance.chunk = 11;
+        match standing([&mint, &burn]) {
+            Some(Standing::Active { supply, .. }) => assert_eq!(supply, 2),
+            other => panic!("expected two copies standing, got {other:?}"),
+        }
+    }
+
+    /// The builder refuses a quantity whose sign contradicts its event.
+    #[test]
+    fn a_quantity_that_contradicts_its_event_is_refused() {
+        let mut mint = sample();
+        mint.qty = 0;
+        assert!(matches!(
+            mint.encode(),
+            Err(EncodeError::BadQuantity { qty: 0, .. })
+        ));
+
+        let mut burn = sample();
+        burn.event = Event::Burn;
+        burn.qty = 1;
+        assert!(matches!(
+            burn.encode(),
+            Err(EncodeError::BadQuantity { qty: 1, .. })
+        ));
+
+        let mut update = sample();
+        update.event = Event::Update;
+        update.qty = -2;
+        assert!(matches!(
+            update.encode(),
+            Err(EncodeError::BadQuantity { qty: -2, .. })
+        ));
     }
 
     /// The tie-break is within-chunk position, not arrival order.
     #[test]
-    fn latest_uses_within_chunk_order_when_the_chunk_is_the_same() {
+    fn standing_uses_within_chunk_order_for_the_metadata_in_force() {
         let mut first = sample();
         first.provenance = Provenance {
             chunk: 5,
@@ -627,16 +790,19 @@ mod tests {
         let mut second = first.clone();
         second.provenance.body_offset = 20;
         second.event = Event::Update;
-        match latest([&second, &first]) {
-            Some(Standing::Active(r)) => assert_eq!(r.provenance.body_offset, 20),
+        second.qty = 0;
+        match standing([&second, &first]) {
+            Some(Standing::Active { record, .. }) => {
+                assert_eq!(record.provenance.body_offset, 20)
+            }
             other => panic!("expected offset 20 to win, got {other:?}"),
         }
     }
 
-    /// The one-call read path: latest wins, materialised, with the build's
-    /// coverage stated.
+    /// The one-call read path: the metadata in force, materialised, with the
+    /// standing supply and the build's coverage stated.
     #[test]
-    fn resolve_materialises_the_winner() {
+    fn resolve_materialises_the_metadata_in_force() {
         let mut first = sample();
         first.provenance = Provenance {
             chunk: 5,
@@ -649,20 +815,24 @@ mod tests {
 
         let mut second = first.clone();
         second.event = Event::Update;
+        second.qty = 0;
         second.image = b"ipfs://new".to_vec();
         second.provenance.body_offset = 20;
         let got = resolve([&first, &second], 42).expect("resolves");
         assert_eq!(got.image, b"ipfs://new");
         assert!(!got.burned);
+        assert_eq!(got.supply, 1);
         assert_eq!(got.event, Event::Update);
         assert_eq!(got.as_of_chunk, 42);
 
         let mut burn = second.clone();
         burn.event = Event::Burn;
+        burn.qty = -1;
         burn.image = Vec::new();
         burn.provenance.chunk = 6;
         let got = resolve([&first, &second, &burn], 42).expect("resolves");
         assert!(got.burned);
+        assert_eq!(got.supply, 0);
         assert!(got.image.is_empty());
     }
 }

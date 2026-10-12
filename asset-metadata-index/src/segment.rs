@@ -9,15 +9,16 @@
 //!
 //! # The per-policy index
 //!
-//! Records are grouped by policy and sorted by `(policy_id, name)`. A fixed
-//! [`IndexEntry`] per policy gives the slice's byte range, so a reader fetches
-//! the index region once, binary-searches it, and range-reads exactly the
-//! policy's slice — no whole-object fetch, no scan of other policies.
+//! Records are grouped by policy, and within a policy they stay in chain
+//! order: the order every reader that sums an asset's quantities depends on.
+//! A fixed [`IndexEntry`] per policy gives the slice's byte range, so a reader
+//! fetches the index region once, binary-searches it, and range-reads exactly
+//! the policy's slice — no whole-object fetch, no scan of other policies.
 
 use crate::bytes::{array_at, u8_at, u16_at, u32_at};
 use crate::error::{DecodeError, EncodeError};
 use crate::record::{Record, Records, records};
-use crate::{FORMAT_VERSION, POLICY_ID_LEN, SEGMENT_MAGIC};
+use crate::{POLICY_ID_LEN, SEGMENT_MAGIC, SEGMENT_VERSION};
 
 /// Fixed header length.
 pub const SEGMENT_HEADER_LEN: usize = 64;
@@ -59,7 +60,7 @@ impl SegmentHeader {
             });
         }
         let version = u8_at(bytes, &mut at)?;
-        if version != FORMAT_VERSION {
+        if version != SEGMENT_VERSION {
             return Err(DecodeError::UnsupportedVersion(version));
         }
         let network = u8_at(bytes, &mut at)?;
@@ -94,7 +95,7 @@ impl SegmentHeader {
     pub fn encode(&self) -> [u8; SEGMENT_HEADER_LEN] {
         let mut out = [0u8; SEGMENT_HEADER_LEN];
         out[0..4].copy_from_slice(&SEGMENT_MAGIC);
-        out[4] = FORMAT_VERSION;
+        out[4] = SEGMENT_VERSION;
         out[5] = self.network;
         out[6..8].copy_from_slice(&self.chunk.to_le_bytes());
         // 8..10 flags, zero
@@ -320,6 +321,7 @@ mod tests {
         Record {
             family: Family::Cip25,
             event: Event::Mint,
+            qty: 1,
             policy_id: policy(byte),
             provenance: Provenance {
                 chunk: 3,

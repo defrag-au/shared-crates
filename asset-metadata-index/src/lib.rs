@@ -29,18 +29,23 @@
 //!
 //! # Standing
 //!
-//! `latest()` answers the only question that matters for serving: which of an
-//! asset's records is current. Latest wins by `(chunk, body_offset)` — chain
-//! order — and a burn as the latest event clears the asset. The same rule for
-//! both families.
+//! [`standing`] answers the only question that matters for serving: does the
+//! asset exist, and what does it look like. Quantities are summed across its
+//! records in chain order — a mint adds, a burn removes, an update moves none
+//! — floored at zero so a burn the build never saw minted cannot erase an
+//! asset. An asset stands while the sum is above zero, and the metadata in
+//! force is the newest non-burn record. The same rule for both families.
+//! Summing rather than "latest wins" is what a CIP-25 dynamic update (mint the
+//! new copy, then burn the old) and a native token's supply both require.
 //!
 //! # The read walk
 //!
 //! [`resolve_asset`] is the reader: the pointer and shard, then one batched
 //! round over the candidate segments — whole objects, with a ranges fallback
-//! for the ones past [`WHOLE_SEGMENT_CAP`] — ending in the same `latest` rule.
-//! The source owns the transport (files natively, KV and CDN at the edge); the
-//! crate owns the order of the reads and the bytes they must return.
+//! for the ones past [`WHOLE_SEGMENT_CAP`] — ending in the same `standing`
+//! rule. The source owns the transport (files natively, KV and CDN at the
+//! edge); the crate owns the order of the reads and the bytes they must
+//! return.
 //!
 //! # The daily sweep
 //!
@@ -75,7 +80,7 @@ pub use listing::{
 pub use pointer::{Pointer, VERSION_KEY};
 pub use record::{
     Event, Family, MediaLink, Provenance, RECORD_HEAD_LEN, Record, Records, ResolvedAsset,
-    Standing, latest, recency, records, resolve,
+    Standing, recency, records, resolve, standing,
 };
 pub use segment::{
     INDEX_ENTRY_LEN, IndexEntry, SEGMENT_HEADER_LEN, SegmentBuilder, SegmentHeader, SegmentView,
@@ -85,11 +90,25 @@ pub use walk::{
     pointer_key, resolve_asset, segment_key,
 };
 
-/// The format version every v1-layout object carries.
-pub const FORMAT_VERSION: u8 = 1;
+/// The segment (and the record inside it) layout this build writes and reads.
+///
+/// v2 added the record's signed `qty` — the quantity its transaction moved —
+/// which is what standing sums. There is no v1 reader: the v1 tree was
+/// superseded wholesale (`index/asset-meta/v2`), not read alongside.
+pub const SEGMENT_VERSION: u8 = 2;
 
-/// Directory entry-layout version 1 — chunk lists only. What the live full
-/// build published.
+/// The collection-listing layout this build writes and reads.
+///
+/// v2 added the per-entry `supply` — the copies in existence.
+pub const LISTING_VERSION: u8 = 2;
+
+/// The pointer manifest's version line (`ami_version`).
+///
+/// v2 marks a tree whose segments carry record quantities.
+pub const POINTER_VERSION: u8 = 2;
+
+/// Directory entry-layout version 1 — chunk lists only. The live full
+/// build published it once; no reader here still accepts it.
 pub const DIRECTORY_V1: u8 = 1;
 
 /// Directory entry-layout version 2 — each candidate also carries a Bloom

@@ -12,7 +12,7 @@
 //! consult for a policy the directory has not caught up with.
 
 use crate::error::DecodeError;
-use crate::{FORMAT_VERSION, NETWORK_MAINNET, NETWORK_PREPROD};
+use crate::{NETWORK_MAINNET, NETWORK_PREPROD, POINTER_VERSION};
 
 /// The manifest's version line, verbatim, is `ami_version <n>`.
 pub const VERSION_KEY: &str = "ami_version";
@@ -54,7 +54,7 @@ impl Pointer {
         let version: u8 = value
             .parse()
             .map_err(|_| DecodeError::BadField(VERSION_KEY))?;
-        if version != FORMAT_VERSION {
+        if version != POINTER_VERSION {
             return Err(DecodeError::UnsupportedVersion(version));
         }
 
@@ -128,7 +128,7 @@ impl Pointer {
             _ => "unknown",
         };
         format!(
-            "{VERSION_KEY} {FORMAT_VERSION}\n\
+            "{VERSION_KEY} {POINTER_VERSION}\n\
              network {network}\n\
              built_through {}\n\
              directory_through {}\n\
@@ -186,10 +186,10 @@ mod tests {
 
     #[test]
     fn a_future_version_is_refused() {
-        let text = "ami_version 2\nnetwork mainnet\n";
+        let text = "ami_version 3\nnetwork mainnet\n";
         assert!(matches!(
             Pointer::parse_str(text),
-            Err(DecodeError::UnsupportedVersion(2))
+            Err(DecodeError::UnsupportedVersion(3))
         ));
     }
 

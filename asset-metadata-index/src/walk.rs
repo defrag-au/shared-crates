@@ -32,8 +32,9 @@ use crate::{DirectoryView, POLICY_ID_LEN, Pointer};
 /// One read's outcome, keeping its object key for error context.
 type Fetched<E> = (String, Result<Vec<u8>, E>);
 
-/// The artifact's default prefix under the bucket.
-pub const DEFAULT_PREFIX: &str = "index/asset-meta/v1";
+/// The artifact's default prefix under the bucket. A `v1` tree carries no
+/// record quantities and no listing supplies; the reader walks the `v2` build.
+pub const DEFAULT_PREFIX: &str = "index/asset-meta/v2";
 
 /// The pointer's key — the build manifest, read first.
 #[must_use]
@@ -452,9 +453,17 @@ mod tests {
     }
 
     fn record(policy_byte: u8, name: &[u8], event: Event, chunk: u16, offset: u32) -> Record {
+        // The quantity the event moves, as the chain states it: a mint adds a
+        // copy, a burn removes one, an update moves none.
+        let qty = match event {
+            Event::Mint => 1,
+            Event::Burn => -1,
+            Event::Update => 0,
+        };
         Record {
             family: Family::Cip25,
             event,
+            qty,
             policy_id: policy(policy_byte),
             provenance: Provenance {
                 chunk,
@@ -609,19 +618,19 @@ mod tests {
     #[test]
     fn keys_follow_the_layout() {
         assert_eq!(pointer_key(""), "current");
-        assert_eq!(pointer_key(DEFAULT_PREFIX), "index/asset-meta/v1/current");
+        assert_eq!(pointer_key(DEFAULT_PREFIX), "index/asset-meta/v2/current");
         assert_eq!(
             directory_key(DEFAULT_PREFIX, 0x0a),
-            "index/asset-meta/v1/directory/0a.bin"
+            "index/asset-meta/v2/directory/0a.bin"
         );
         assert_eq!(
             segment_key(DEFAULT_PREFIX, 5242),
-            "index/asset-meta/v1/segments/05242.bin"
+            "index/asset-meta/v2/segments/05242.bin"
         );
         assert_eq!(
             listing_key(DEFAULT_PREFIX, &[0x93; POLICY_ID_LEN]),
             concat!(
-                "index/asset-meta/v1/collections/",
+                "index/asset-meta/v2/collections/",
                 "93939393",
                 "93939393",
                 "93939393",
@@ -648,8 +657,9 @@ mod tests {
         assert_eq!(asset.as_of_chunk, 100);
     }
 
+    /// One copy minted, one burned: the supply is zero and the asset is gone.
     #[test]
-    fn the_latest_event_across_chunks_wins_and_a_burn_clears() {
+    fn the_last_copy_burned_clears_the_asset() {
         let mut source = MapSource::new();
         source.put_segment(
             100,
@@ -673,10 +683,14 @@ mod tests {
             .expect("walks")
             .expect("found");
         assert!(asset.burned);
+        assert_eq!(asset.supply, 0);
         assert_eq!(asset.event, Event::Burn);
         assert_eq!(asset.provenance.chunk, 105);
     }
 
+    /// A burn with no minted copy behind it — the mint predates the build's
+    /// coverage — floors at zero instead of going negative, so a re-mint after
+    /// it still stands.
     #[test]
     fn a_remint_after_a_burn_is_active() {
         let mut source = MapSource::new();
@@ -702,8 +716,46 @@ mod tests {
             .expect("walks")
             .expect("found");
         assert!(!asset.burned);
+        assert_eq!(asset.supply, 1);
         assert_eq!(asset.provenance.chunk, 110);
         assert_eq!(asset.provenance.body_offset, 3);
+    }
+
+    /// The CIP-25 dynamic-update trick, from the walk's side: the replacement
+    /// mint lands first, the burn of the previous copy second, and the asset
+    /// still stands at one copy with the replacement's metadata.
+    #[test]
+    fn a_replacement_then_a_burn_of_the_previous_copy_stays_active() {
+        let mut source = MapSource::new();
+        source.put_segment(
+            108,
+            vec![(policy(0x02), vec![record(0x02, b"A", Event::Mint, 108, 4)])],
+        );
+        source.put_segment(
+            110,
+            vec![(policy(0x02), vec![record(0x02, b"A", Event::Mint, 110, 3)])],
+        );
+        source.put_segment(
+            112,
+            vec![(policy(0x02), vec![record(0x02, b"A", Event::Burn, 112, 1)])],
+        );
+        source.put_shard(
+            0x02,
+            112,
+            vec![DirectoryEntry {
+                policy_id: policy(0x02),
+                candidates: vec![candidate(108), candidate(110), candidate(112)],
+            }],
+        );
+        source.put_pointer(112, 112);
+
+        let asset = block_on(resolve_asset(&source, PREFIX, &policy(0x02), b"A"))
+            .expect("walks")
+            .expect("found");
+        assert!(!asset.burned);
+        assert_eq!(asset.supply, 1);
+        assert_eq!(asset.event, Event::Mint);
+        assert_eq!(asset.provenance.chunk, 110);
     }
 
     #[test]

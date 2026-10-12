@@ -103,6 +103,16 @@ pub enum EncodeError {
     /// is the listing's contract — a duplicate is a builder bug, not
     /// something to silently collapse.
     DuplicateName,
+    /// A record's quantity contradicts its event: a mint must state a positive
+    /// quantity, a burn a negative one, and an update neither. The sign is
+    /// summed into an asset's supply, so a wrong one would move a standing
+    /// asset out of its listing — a builder bug that must not reach bytes.
+    BadQuantity {
+        /// Which event the record states.
+        event: crate::Event,
+        /// The quantity the caller stated.
+        qty: i64,
+    },
 }
 
 impl fmt::Display for EncodeError {
@@ -121,6 +131,10 @@ impl fmt::Display for EncodeError {
             Self::DuplicateName => write!(
                 f,
                 "a listing carries one entry per name; a duplicate was handed to the builder"
+            ),
+            Self::BadQuantity { event, qty } => write!(
+                f,
+                "a {event:?} record states quantity {qty}; the sign must match the event"
             ),
         }
     }

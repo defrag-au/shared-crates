@@ -28,6 +28,16 @@ pub(crate) fn u32_at(b: &[u8], at: &mut usize) -> Result<u32, DecodeError> {
     Ok(u32::from_le_bytes(arr))
 }
 
+pub(crate) fn u64_at(b: &[u8], at: &mut usize) -> Result<u64, DecodeError> {
+    let arr: [u8; 8] = take(b, at, 8)?.try_into().expect("take returned 8 bytes");
+    Ok(u64::from_le_bytes(arr))
+}
+
+pub(crate) fn i64_at(b: &[u8], at: &mut usize) -> Result<i64, DecodeError> {
+    let arr: [u8; 8] = take(b, at, 8)?.try_into().expect("take returned 8 bytes");
+    Ok(i64::from_le_bytes(arr))
+}
+
 pub(crate) fn array_at<const N: usize>(b: &[u8], at: &mut usize) -> Result<[u8; N], DecodeError> {
     Ok(take(b, at, N)?.try_into().expect("take returned N bytes"))
 }

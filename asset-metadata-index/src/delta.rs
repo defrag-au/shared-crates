@@ -242,6 +242,7 @@ mod tests {
         Record {
             family: Family::Cip25,
             event: Event::Mint,
+            qty: 1,
             policy_id,
             provenance: Provenance {
                 chunk,

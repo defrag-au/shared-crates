@@ -12,7 +12,7 @@
 //! | off | size | field |
 //! |---|---|---|
 //! | 0 | 4 | magic `AMXL` |
-//! | 4 | 1 | format version ([`crate::FORMAT_VERSION`]) |
+//! | 4 | 1 | format version ([`crate::LISTING_VERSION`]) |
 //! | 5 | 1 | network byte |
 //! | 6 | 2 | reserved, zero |
 //! | 8 | 28 | `policy_id` |
@@ -26,6 +26,7 @@
 //! |---|---|
 //! | 1 | `name_len` (on-chain asset names are ≤ 32 bytes) |
 //! | n | `name` — raw bytes, exactly as minted |
+//! | 8 | `supply` — the copies in existence, LE; always above zero |
 //! | 2 | `image_len` |
 //! | n | `image` — the URI exactly as the chain states it; 0-length = none |
 //! | 2 | `media_type_len` |
@@ -37,10 +38,14 @@
 //!
 //! # Standing
 //!
-//! One entry per asset currently standing — the latest event per name
-//! ([`crate::latest`]), a burn clearing it. Deciding standing is the
-//! emitter's call; this module stores what it was handed. An asset with no
-//! image still has an entry: `image` is empty, not absent.
+//! One entry per asset currently standing: `supply` is what the asset's
+//! records sum to ([`crate::standing`]), and a burn takes an entry out only
+//! when it takes the last copy. The arithmetic lives here, not in the
+//! emitter: [`ListingEntry::apply`] is the write-side twin of
+//! [`crate::standing`], so the listing a sweep emits and the answer the walk
+//! gives cannot drift. An asset with no image still has an entry: `image` is
+//! empty, not absent. An asset with more than one copy is **one** entry
+//! stating that supply, never several entries.
 //!
 //! # Walking
 //!
@@ -55,19 +60,21 @@
 //! its standing set changes. Read it through the R2 binding, never the CDN —
 //! a cached copy of a key a later publish changed outlives the publish.
 
-use crate::bytes::{array_at, put_u16_prefixed, take, take_u16_prefixed, u8_at, u16_at, u32_at};
+use crate::bytes::{
+    array_at, put_u16_prefixed, take, take_u16_prefixed, u8_at, u16_at, u32_at, u64_at,
+};
 use crate::error::{DecodeError, EncodeError};
-use crate::record::Record;
-use crate::{FORMAT_VERSION, LISTING_MAGIC, POLICY_ID_LEN};
+use crate::record::{Event, Record};
+use crate::{LISTING_MAGIC, LISTING_VERSION, POLICY_ID_LEN};
 
 /// Fixed header length.
 pub const LISTING_HEADER_LEN: usize = 64;
 
 /// The largest entry the format can state: `name_len` is a `u8` (≤ 255),
-/// `image_len` and `media_type_len` are `u16`s (≤ 65,535), plus the three
-/// length prefixes. A paged reader sizes its window from this so one ranged
-/// read always reaches the end of the page's last entry.
-pub const LISTING_MAX_ENTRY_LEN: usize = 255 + 65_535 + 65_535 + 5;
+/// `supply` is 8, `image_len` and `media_type_len` are `u16`s (≤ 65,535),
+/// plus the three length prefixes. A paged reader sizes its window from this
+/// so one ranged read always reaches the end of the page's last entry.
+pub const LISTING_MAX_ENTRY_LEN: usize = 255 + 8 + 65_535 + 65_535 + 5;
 
 /// A listing's header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,7 +104,7 @@ impl ListingHeader {
             });
         }
         let version = u8_at(bytes, &mut at)?;
-        if version != FORMAT_VERSION {
+        if version != LISTING_VERSION {
             return Err(DecodeError::UnsupportedVersion(version));
         }
         let network = u8_at(bytes, &mut at)?;
@@ -126,7 +133,7 @@ impl ListingHeader {
     pub fn encode(&self) -> [u8; LISTING_HEADER_LEN] {
         let mut out = [0u8; LISTING_HEADER_LEN];
         out[0..4].copy_from_slice(&LISTING_MAGIC);
-        out[4] = FORMAT_VERSION;
+        out[4] = LISTING_VERSION;
         out[5] = self.network;
         // 6..8 reserved, zero
         out[8..36].copy_from_slice(&self.policy_id);
@@ -142,6 +149,9 @@ impl ListingHeader {
 pub struct ListingEntry {
     /// The asset name **exactly as minted**, raw bytes.
     pub name: Vec<u8>,
+    /// The copies in existence when the entry was written — the quantity the
+    /// asset's records sum to ([`crate::standing`]), above zero.
+    pub supply: u64,
     /// The image URI as the chain states it; empty when none.
     pub image: Vec<u8>,
     /// Top-level media type; empty when none.
@@ -149,15 +159,40 @@ pub struct ListingEntry {
 }
 
 impl ListingEntry {
-    /// The card fields of a standing record. The caller passes the winner of
-    /// [`crate::latest`]; a burn has no entry in a listing.
+    /// The card fields of a standing record, with the supply the emission has
+    /// summed to — the record's own quantity plus whatever the listing
+    /// already held for this name. A burn has no entry in a listing.
     #[must_use]
-    pub fn from_record(record: &Record) -> Self {
+    pub fn from_record(record: &Record, supply: u64) -> Self {
         Self {
             name: record.name.clone(),
+            supply,
             image: record.image.clone(),
             media_type: record.media_type.clone(),
         }
+    }
+
+    /// Apply one defining record to a standing entry — the write-side twin of
+    /// [`crate::standing`], deliberately the same arithmetic: quantities sum in
+    /// chain order, floored at zero, so a burn takes the entry down only as far
+    /// as the copies it accounts for. A mint or update replaces the metadata in
+    /// force; a burn leaves it alone.
+    ///
+    /// `false` means the entry no longer stands and the caller must drop it.
+    #[must_use]
+    pub fn apply(&mut self, record: &Record) -> bool {
+        let supply = i64::try_from(self.supply)
+            .unwrap_or(i64::MAX)
+            .saturating_add(record.qty);
+        if supply <= 0 {
+            return false;
+        }
+        if record.event != Event::Burn {
+            self.image = record.image.clone();
+            self.media_type = record.media_type.clone();
+        }
+        self.supply = u64::try_from(supply).expect("supply is above zero and below u64::MAX here");
+        true
     }
 }
 
@@ -209,11 +244,13 @@ fn entry_from(bytes: &[u8], at: usize) -> Result<(ListingEntry, usize), DecodeEr
     let mut cursor = at;
     let name_len = u8_at(bytes, &mut cursor)? as usize;
     let name = take(bytes, &mut cursor, name_len)?.to_vec();
+    let supply = u64_at(bytes, &mut cursor)?;
     let image = take_u16_prefixed(bytes, &mut cursor)?.to_vec();
     let media_type = take_u16_prefixed(bytes, &mut cursor)?.to_vec();
     Ok((
         ListingEntry {
             name,
+            supply,
             image,
             media_type,
         },
@@ -261,6 +298,7 @@ impl ListingBuilder {
                 })?;
             out.push(name_len);
             out.extend_from_slice(&entry.name);
+            out.extend_from_slice(&entry.supply.to_le_bytes());
             put_u16_prefixed(&mut out, "image", &entry.image)?;
             put_u16_prefixed(&mut out, "media_type", &entry.media_type)?;
         }
@@ -291,6 +329,7 @@ mod tests {
     fn entry(name: &[u8], image: &[u8], media_type: &[u8]) -> ListingEntry {
         ListingEntry {
             name: name.to_vec(),
+            supply: 1,
             image: image.to_vec(),
             media_type: media_type.to_vec(),
         }
@@ -311,13 +350,13 @@ mod tests {
     #[test]
     fn a_listing_encodes_to_the_committed_bytes() {
         let expected = unhex(
-            "414d584c 01 00 0000
+            "414d584c 02 00 0000
              93a06006
              00000000 00000000 00000000 00000000 00000000 00000000
              3412 02000000
              00000000 00000000 00000000 00000000 00000000 0000
-             01 41 0800 697066733a2f2f78 0900 696d6167652f706e67
-             01 42 0000 0000",
+             01 41 0100000000000000 0800 697066733a2f2f78 0900 696d6167652f706e67
+             01 42 0100000000000000 0000 0000",
         );
         let listing = builder(vec![
             entry(b"A", b"ipfs://x", b"image/png"),
@@ -347,6 +386,28 @@ mod tests {
                 entry(b"C", b"", b""),
             ]
         );
+    }
+
+    /// The supply is per entry and stated exactly: a native token's copy count
+    /// is one entry with a supply, never the entry repeated.
+    #[test]
+    fn a_listing_entry_states_its_supply() {
+        let mut many = entry(b"CNT", b"", b"");
+        many.supply = 10_000;
+        let bytes = builder(vec![many.clone(), entry(b"ONE", b"", b"")])
+            .encode()
+            .expect("encodes");
+        let view = ListingView::parse(&bytes).expect("parses");
+        assert_eq!(
+            view.entries().expect("entries"),
+            vec![many, entry(b"ONE", b"", b"")]
+        );
+        let (parsed, next) = entry_at(&bytes, LISTING_HEADER_LEN)
+            .expect("parses")
+            .expect("an entry");
+        assert_eq!(parsed.name, b"CNT".to_vec());
+        assert_eq!(parsed.supply, 10_000);
+        assert!(next > LISTING_HEADER_LEN);
     }
 
     #[test]
@@ -404,7 +465,7 @@ mod tests {
     #[test]
     fn a_truncated_object_refuses() {
         let mut short = LISTING_MAGIC.to_vec();
-        short.extend_from_slice(&[FORMAT_VERSION, NETWORK_MAINNET]);
+        short.extend_from_slice(&[LISTING_VERSION, NETWORK_MAINNET]);
         assert!(matches!(
             ListingHeader::parse(&short),
             Err(DecodeError::Truncated { .. })
@@ -429,11 +490,19 @@ mod tests {
             Err(DecodeError::BadMagic { .. })
         ));
 
-        let mut version = bytes.clone();
-        version[4] = 2;
+        // The superseded v1 layout states no entry supply, so it is refused
+        // rather than misread — and so is a version from the future.
+        let mut v1 = bytes.clone();
+        v1[4] = 1;
         assert_eq!(
-            ListingHeader::parse(&version),
-            Err(DecodeError::UnsupportedVersion(2))
+            ListingHeader::parse(&v1),
+            Err(DecodeError::UnsupportedVersion(1))
+        );
+        let mut future = bytes.clone();
+        future[4] = 3;
+        assert_eq!(
+            ListingHeader::parse(&future),
+            Err(DecodeError::UnsupportedVersion(3))
         );
 
         let mut reserved = bytes.clone();
@@ -503,6 +572,7 @@ mod tests {
     fn the_max_entry_len_is_reachable() {
         let max = ListingEntry {
             name: vec![b'a'; 255],
+            supply: 1,
             image: vec![b'i'; 65_535],
             media_type: vec![b'm'; 65_535],
         };
@@ -520,6 +590,7 @@ mod tests {
         let record = Record {
             family: Family::Cip25,
             event: Event::Mint,
+            qty: 1,
             policy_id: policy(),
             provenance: Provenance {
                 chunk: 7,
@@ -535,8 +606,54 @@ mod tests {
             payload: b"xyz".to_vec(),
         };
         assert_eq!(
-            ListingEntry::from_record(&record),
+            ListingEntry::from_record(&record, 1),
             entry(b"NFT", b"ipfs://x", b"image/png")
         );
+    }
+
+    /// The write-side twin of `standing`: the same sum, the same floor, the
+    /// same metadata rule — so a listing a sweep emits and the answer a walk
+    /// gives cannot disagree.
+    #[test]
+    fn applying_records_sums_quantities_and_floors_at_zero() {
+        fn event(event: Event, qty: i64, image: &[u8]) -> Record {
+            Record {
+                family: Family::Cip25,
+                event,
+                qty,
+                policy_id: policy(),
+                provenance: Provenance {
+                    chunk: 1,
+                    body_offset: 0,
+                    body_len: 1,
+                    aux_offset: 0,
+                    aux_len: 0,
+                },
+                name: b"A".to_vec(),
+                image: image.to_vec(),
+                media_type: b"image/png".to_vec(),
+                media: Vec::new(),
+                payload: Vec::new(),
+            }
+        }
+
+        // Five copies minted, two burned: three stand, and a burn does not
+        // clear the art.
+        let mut entry = ListingEntry::from_record(&event(Event::Mint, 5, b"ipfs://a"), 5);
+        assert!(entry.apply(&event(Event::Burn, -2, b"")));
+        assert_eq!(entry.supply, 3);
+        assert_eq!(entry.image, b"ipfs://a");
+
+        // The replacement mint's metadata wins, and the burn of the previous
+        // copy after it does not clear the entry.
+        assert!(entry.apply(&event(Event::Mint, 1, b"ipfs://b")));
+        assert!(entry.apply(&event(Event::Burn, -1, b"")));
+        assert_eq!(entry.supply, 3);
+        assert_eq!(entry.image, b"ipfs://b");
+
+        // A burn past the accounted copies floors at zero: no longer standing.
+        // The caller drops the entry — its state after a `false` is not
+        // promised, the standing set is.
+        assert!(!entry.apply(&event(Event::Burn, -3, b"")));
     }
 }

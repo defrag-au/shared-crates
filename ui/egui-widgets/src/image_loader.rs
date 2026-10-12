@@ -265,8 +265,8 @@ impl DecodeSize {
 /// at all. Pixels are then read back via `OffscreenCanvas` + `getImageData()`.
 #[cfg(target_arch = "wasm32")]
 pub mod browser {
-    use egui::load::{BytesPoll, ImageLoadResult, ImagePoll, LoadError, SizeHint};
     use egui::ColorImage;
+    use egui::load::{BytesPoll, ImageLoadResult, ImagePoll, LoadError, SizeHint};
     use std::sync::{Arc, Mutex};
     use std::task::Poll;
     use wasm_bindgen::JsCast;

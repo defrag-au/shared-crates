@@ -60,6 +60,7 @@ pub mod party_badge;
 pub mod perf_strip;
 pub mod perspective_text;
 pub mod pip_row;
+pub mod placement;
 pub mod price_timeline;
 pub mod pricing_ladder;
 pub mod printing_timeline;

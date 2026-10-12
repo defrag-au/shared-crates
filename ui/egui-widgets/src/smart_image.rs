@@ -51,7 +51,7 @@
 //! its art; [`Fit::Cover`] fills the rect by cropping the centre.
 
 use crate::theme::{Ink, TextSize, ThemeExt, Token};
-use egui::{load::SizeHint, CornerRadius, Pos2, Rect, TextureOptions, Vec2};
+use egui::{CornerRadius, Pos2, Rect, TextureOptions, Vec2, load::SizeHint};
 
 /// Whether this call should draw the image, or only get it on its way.
 ///
@@ -445,10 +445,12 @@ mod tests {
     fn only_loading_asks_for_more_frames() {
         assert!(ImageState::Loading.wants_repaint());
         assert!(!ImageState::Failed.wants_repaint());
-        assert!(!ImageState::Ready {
-            size: Vec2::splat(64.0)
-        }
-        .wants_repaint());
+        assert!(
+            !ImageState::Ready {
+                size: Vec2::splat(64.0)
+            }
+            .wants_repaint()
+        );
         assert!(!ImageState::Absent.wants_repaint());
     }
 

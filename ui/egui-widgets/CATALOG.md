@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-170 widgets.
+171 widgets.
 
 | module | what it is |
 |---|---|
@@ -109,6 +109,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `persona_strip` | Persona strip — italic one-liner describing a wallet (or any tagged entity), with an optional row of small tag chips beneath |
 | `phase_card` | `PhaseCard` — read-only display of one mint phase row |
 | `pip_row` | Horizontal pip row widget — a label on the left and a bar of colored pips (or density heatmap) on the right, each positioned proportionally by value |
+| `placement` | `PlacementEditor` — move, size and turn a subject, three ways |
 | `pool_inspector` | `PoolInspector` — a liquidity pool's ACTUAL state, including the parts that are easy to read wrongly |
 | `pool_liquidity_indicator` | Pool liquidity indicator — per-pool depth and health context cards |
 | `price_impact_curve` | Price impact curve chart — visualizes why split routing helps |

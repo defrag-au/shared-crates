@@ -120,6 +120,7 @@ fn resolve(root: &Path, policy: &str, name: &str) -> Result<(), Box<dyn std::err
         Ok(Some(asset)) => {
             let standing = if asset.burned { "burned" } else { "active" };
             println!("{standing} · {:?} · {:?}", asset.family, asset.event);
+            println!("supply     {}", asset.supply);
             println!(
                 "name       {} ({})",
                 hex(&asset.name),
@@ -149,9 +150,10 @@ fn describe(records: &[Record]) -> String {
         .iter()
         .map(|record| {
             format!(
-                "{:?} {:?} {} ({})",
+                "{:?} {:?} qty {} {} ({})",
                 record.family,
                 record.event,
+                record.qty,
                 hex(&record.name),
                 String::from_utf8_lossy(&record.name)
             )
