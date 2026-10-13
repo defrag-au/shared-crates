@@ -75,7 +75,7 @@ pub use directory::{
     DirectoryView,
 };
 pub use error::{DecodeError, EncodeError};
-pub use filter::{FilterBuilder, might_contain};
+pub use filter::{FilterBuilder, FilterVerdict, might_contain, verdict};
 pub use listing::{
     CIP68_REFERENCE_LABEL, Form, LISTING_HEADER_LEN, LISTING_MAX_ENTRY_LEN, ListingBuilder,
     ListingEntry, ListingHeader, ListingView, entry_at,
@@ -89,8 +89,8 @@ pub use segment::{
     INDEX_ENTRY_LEN, IndexEntry, SEGMENT_HEADER_LEN, SegmentBuilder, SegmentHeader, SegmentView,
 };
 pub use walk::{
-    DEFAULT_PREFIX, RangeSource, Read, WHOLE_SEGMENT_CAP, WalkError, directory_key, listing_key,
-    pointer_key, resolve_asset, segment_key,
+    DEFAULT_PREFIX, RangeSource, Read, WHOLE_SEGMENT_CAP, WalkError, WalkReport, directory_key,
+    listing_key, pointer_key, resolve_asset, resolve_asset_reported, segment_key,
 };
 
 /// The segment (and the record inside it) layout this build writes and reads.

@@ -23,6 +23,7 @@
 use std::fmt;
 
 use crate::error::DecodeError;
+use crate::filter::{FilterVerdict, verdict};
 use crate::record::{Record, ResolvedAsset, records, resolve};
 use crate::segment::{
     INDEX_ENTRY_LEN, SEGMENT_HEADER_LEN, SegmentHeader, SegmentView, find_index_entry,
@@ -31,6 +32,14 @@ use crate::{DirectoryView, POLICY_ID_LEN, Pointer};
 
 /// One read's outcome, keeping its object key for error context.
 type Fetched<E> = (String, Result<Vec<u8>, E>);
+
+/// Round 1's two reads — the pointer and the policy's directory shard — as an
+/// array once the fetch has checked its result count.
+type FirstReads<E> = [Fetched<E>; 2];
+
+/// What `try_into` hands back on the impossible short side, named so the
+/// conversion's type stays readable.
+type ShortBatch<E> = Vec<Fetched<E>>;
 
 /// The artifact's default prefix under the bucket. A `v1` tree carries no
 /// record quantities and no listing supplies; the reader walks the `v2` build.
@@ -172,6 +181,27 @@ impl<E: fmt::Display> fmt::Display for WalkError<E> {
 
 impl<E: fmt::Debug + fmt::Display> std::error::Error for WalkError<E> {}
 
+/// What a walk did — the diagnostic twin of its answer.
+///
+/// Returned alongside the answer by [`resolve_asset_reported`], and filled by
+/// the same code [`resolve_asset`] runs, so a report cannot disagree with the
+/// walk it describes about which chunks were read, in what order, and what
+/// the directory's filters said. `/diagnose` on the edge is this type's
+/// consumer.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WalkReport {
+    /// Every candidate the directory lists for the policy, in stored (chunk)
+    /// order, with the requested name's filter verdict.
+    pub candidates: Vec<(u16, FilterVerdict)>,
+    /// Frontier chunks — newer than the directory's own coverage — added to
+    /// the read set unconditionally.
+    pub frontier: Vec<u16>,
+    /// The chunks the walk read, ascending (admitted candidates ∪ frontier).
+    pub read_chunks: Vec<u16>,
+    /// Matching records found, per chunk read, in read order.
+    pub matches: Vec<(u16, u32)>,
+}
+
 /// Resolve `(policy_id, name)` against the build at `prefix`.
 ///
 /// Each candidate segment is fetched as **one whole object** — the shape gate
@@ -189,69 +219,143 @@ pub async fn resolve_asset<S: RangeSource>(
     policy_id: &[u8; POLICY_ID_LEN],
     name: &[u8],
 ) -> Result<Option<ResolvedAsset>, WalkError<S::Error>> {
+    resolve_asset_reported(source, prefix, policy_id, name).await.0
+}
+
+/// [`resolve_asset`], with the walk's reasoning attached — the debugging
+/// surface. The answer is the same code's; the report states the candidate
+/// list and its filter verdicts, the frontier, the chunks read and the
+/// records each produced, so "not in the index" can be told apart from "read
+/// and empty" and from "every filter rejected the name".
+pub async fn resolve_asset_reported<S: RangeSource>(
+    source: &S,
+    prefix: &str,
+    policy_id: &[u8; POLICY_ID_LEN],
+    name: &[u8],
+) -> (Result<Option<ResolvedAsset>, WalkError<S::Error>>, WalkReport) {
+    let mut report = WalkReport::default();
     // Round 1 — the pointer and the shard, whole objects.
     let first_reads = vec![
         Read::whole(pointer_key(prefix)),
         Read::whole(directory_key(prefix, policy_id[0])),
     ];
-    let first = fetch_checked(source, &first_reads).await?;
-    let [(pointer_key, pointer_result), (shard_key, shard_result)] = first_reads
+    let first = match fetch_checked(source, &first_reads).await {
+        Ok(first) => first,
+        Err(error) => return (Err(error), report),
+    };
+    let pairs: Vec<Fetched<S::Error>> = first_reads
         .into_iter()
         .zip(first)
         .map(|(read, result)| (read.key, result))
-        .collect::<Vec<_>>()
-        .try_into()
-        .map_err(|batch: Vec<Fetched<S::Error>>| WalkError::ResultCount {
-            expected: 2,
-            got: batch.len(),
-        })?;
-    let pointer_bytes = pointer_result.map_err(|cause| WalkError::Read {
-        key: pointer_key.clone(),
-        cause,
-    })?;
-    let shard_bytes = shard_result.map_err(|cause| WalkError::Read {
-        key: shard_key.clone(),
-        cause,
-    })?;
-    let pointer = Pointer::parse(&pointer_bytes).map_err(|cause| WalkError::Decode {
-        key: pointer_key,
-        cause,
-    })?;
-    let directory = DirectoryView::parse(&shard_bytes).map_err(|cause| WalkError::Decode {
-        key: shard_key.clone(),
-        cause,
-    })?;
+        .collect();
+    let pair: Result<FirstReads<S::Error>, ShortBatch<S::Error>> = pairs.try_into();
+    let [(pointer_key, pointer_result), (shard_key, shard_result)] = match pair {
+        Ok(pair) => pair,
+        Err(batch) => {
+            return (
+                Err(WalkError::ResultCount {
+                    expected: 2,
+                    got: batch.len(),
+                }),
+                report,
+            );
+        }
+    };
+    let pointer_bytes = match pointer_result {
+        Ok(bytes) => bytes,
+        Err(cause) => {
+            return (
+                Err(WalkError::Read {
+                    key: pointer_key.clone(),
+                    cause,
+                }),
+                report,
+            );
+        }
+    };
+    let shard_bytes = match shard_result {
+        Ok(bytes) => bytes,
+        Err(cause) => {
+            return (
+                Err(WalkError::Read {
+                    key: shard_key.clone(),
+                    cause,
+                }),
+                report,
+            );
+        }
+    };
+    let pointer = match Pointer::parse(&pointer_bytes) {
+        Ok(pointer) => pointer,
+        Err(cause) => {
+            return (
+                Err(WalkError::Decode {
+                    key: pointer_key,
+                    cause,
+                }),
+                report,
+            );
+        }
+    };
+    let directory = match DirectoryView::parse(&shard_bytes) {
+        Ok(directory) => directory,
+        Err(cause) => {
+            return (
+                Err(WalkError::Decode {
+                    key: shard_key.clone(),
+                    cause,
+                }),
+                report,
+            );
+        }
+    };
 
     // Candidates: what the shard lists, plus the frontier newer than the older
     // of the two "complete through" claims. Reading a listed chunk twice costs
     // a read; skipping one that a stale shard failed to list would cost the
     // answer.
-    let mut candidates = directory
-        .candidates_for(policy_id, name)
-        .map_err(|cause| WalkError::Decode {
-            key: shard_key,
-            cause,
-        })?
-        .unwrap_or_default();
+    let listed = match directory.candidates(policy_id) {
+        Ok(listed) => listed,
+        Err(cause) => {
+            return (
+                Err(WalkError::Decode {
+                    key: shard_key,
+                    cause,
+                }),
+                report,
+            );
+        }
+    };
+    let mut candidates: Vec<u16> = Vec::new();
+    if let Some(listed) = listed {
+        for candidate in &listed {
+            let verdict = verdict(&candidate.filter, name);
+            report.candidates.push((candidate.chunk, verdict));
+            if verdict != FilterVerdict::Rejected {
+                candidates.push(candidate.chunk);
+            }
+        }
+    }
     let frontier_from = directory
         .header
         .directory_through_chunk
         .min(pointer.directory_through_chunk);
-    candidates.extend(frontier_from.saturating_add(1)..=pointer.built_through_chunk);
+    report.frontier = (frontier_from.saturating_add(1)..=pointer.built_through_chunk).collect();
+    candidates.extend(report.frontier.iter().copied());
     candidates.sort_unstable();
     candidates.dedup();
+    report.read_chunks = candidates.clone();
 
     if candidates.is_empty() {
-        return Ok(None);
+        return (Ok(None), report);
     }
 
-    let keys: Vec<String> = candidates
-        .iter()
-        .map(|chunk| segment_key(prefix, *chunk))
-        .collect();
-    let found = read_segments(source, &keys, policy_id, name).await?;
+    let found = match read_segments(source, &candidates, prefix, policy_id, name, &mut report).await {
+        Ok(found) => found,
+        Err(error) => return (Err(error), report),
+    };
 
-    Ok(resolve(found.iter(), pointer.built_through_chunk))
+    (Ok(resolve(found.iter(), pointer.built_through_chunk)), report)
 }
 
 /// The largest segment fetched whole. MEASURED: the full build's segments
@@ -262,13 +366,19 @@ pub const WHOLE_SEGMENT_CAP: u64 = 8 << 20;
 
 /// Fetch each candidate segment (round 2) and collect the records the policy
 /// holds in it: whole when it fits [`WHOLE_SEGMENT_CAP`], as ranges when it
-/// does not.
+/// does not. Every chunk read appends its match count to the report.
 async fn read_segments<S: RangeSource>(
     source: &S,
-    keys: &[String],
+    chunks: &[u16],
+    prefix: &str,
     policy_id: &[u8; POLICY_ID_LEN],
     name: &[u8],
+    report: &mut WalkReport,
 ) -> Result<Vec<Record>, WalkError<S::Error>> {
+    let keys: Vec<String> = chunks
+        .iter()
+        .map(|chunk| segment_key(prefix, *chunk))
+        .collect();
     // One byte past the cap distinguishes "the whole object" from "needs
     // ranges" without a second round trip: a short read means it ended.
     let reads: Vec<Read> = keys
@@ -277,13 +387,15 @@ async fn read_segments<S: RangeSource>(
         .collect();
     let results = fetch_checked(source, &reads).await?;
     let mut found: Vec<Record> = Vec::new();
-    for (key, result) in keys.iter().zip(results) {
+    for ((chunk, key), result) in chunks.iter().zip(&keys).zip(results) {
         let bytes = result.map_err(|cause| WalkError::Read {
             key: key.clone(),
             cause,
         })?;
+        let mut matched = 0u32;
         if bytes.len() as u64 > WHOLE_SEGMENT_CAP {
-            read_ranges(source, key, policy_id, name, &mut found).await?;
+            read_ranges(source, key, policy_id, name, &mut found, &mut matched).await?;
+            report.matches.push((*chunk, matched));
             continue;
         }
         let view = SegmentView::parse(&bytes).map_err(|cause| WalkError::Decode {
@@ -297,6 +409,7 @@ async fn read_segments<S: RangeSource>(
                 cause,
             })?
         else {
+            report.matches.push((*chunk, 0));
             continue;
         };
         for record in region {
@@ -306,8 +419,10 @@ async fn read_segments<S: RangeSource>(
             })?;
             if record.name.as_slice() == name {
                 found.push(record);
+                matched += 1;
             }
         }
+        report.matches.push((*chunk, matched));
     }
     Ok(found)
 }
@@ -321,6 +436,7 @@ async fn read_ranges<S: RangeSource>(
     policy_id: &[u8; POLICY_ID_LEN],
     name: &[u8],
     found: &mut Vec<Record>,
+    matched: &mut u32,
 ) -> Result<(), WalkError<S::Error>> {
     let header_bytes = oneshot(source, key, 0, SEGMENT_HEADER_LEN as u64).await?;
     let header = SegmentHeader::parse(&header_bytes).map_err(|cause| WalkError::Decode {
@@ -379,6 +495,7 @@ async fn read_ranges<S: RangeSource>(
         })?;
         if record.name.as_slice() == name {
             found.push(record);
+            *matched += 1;
         }
     }
     Ok(())
@@ -973,5 +1090,58 @@ mod tests {
         assert!(asset.burned);
         assert_eq!(asset.event, Event::Burn);
         assert_eq!(asset.provenance.chunk, 105);
+    }
+
+    /// The report is the walk's own account, so it must agree with what the
+    /// walk read: a rejected candidate is not read, an admitted one is, and a
+    /// match lands on the chunk that holds it. `/diagnose` renders this.
+    #[test]
+    fn the_report_states_the_filter_verdicts_and_what_was_read() {
+        let mut source = MapSource::new();
+        source.put_pointer(5, 5);
+        source.put_shard_v2(
+            0xaa,
+            5,
+            vec![DirectoryEntry {
+                policy_id: policy(0xaa),
+                candidates: vec![filtered(3, &[b"held"]), filtered(4, &[b"other"])],
+            }],
+        );
+        source.put_segment(
+            3,
+            vec![(
+                policy(0xaa),
+                vec![record(0xaa, b"held", Event::Mint, 3, 0)],
+            )],
+        );
+
+        let (answer, report) =
+            block_on(resolve_asset_reported(&source, PREFIX, &policy(0xaa), b"held"));
+        assert!(answer.expect("walks").is_some());
+        assert_eq!(
+            report.candidates,
+            vec![
+                (3, FilterVerdict::Admitted),
+                (4, FilterVerdict::Rejected)
+            ]
+        );
+        assert_eq!(report.read_chunks, vec![3]);
+        assert_eq!(report.matches, vec![(3, 1)]);
+        assert!(report.frontier.is_empty());
+
+        // A name no filter admits: no reads at all, and the report says so —
+        // the distinction a bare `NOT_IN_INDEX` cannot carry.
+        let (answer, report) =
+            block_on(resolve_asset_reported(&source, PREFIX, &policy(0xaa), b"absent"));
+        assert!(answer.expect("walks").is_none());
+        assert!(report.read_chunks.is_empty());
+        assert!(report.matches.is_empty());
+        assert!(
+            report
+                .candidates
+                .iter()
+                .all(|(_, verdict)| *verdict == FilterVerdict::Rejected),
+            "{report:?}"
+        );
     }
 }

@@ -102,15 +102,43 @@ fn position(h1: u64, h2: u64, i: u64, bits: usize) -> usize {
 /// candidate* (the v1 shape and v2's escape hatch), so it answers `true`.
 #[must_use]
 pub fn might_contain(filter: &[u8], name: &[u8]) -> bool {
+    verdict(filter, name) != FilterVerdict::Rejected
+}
+
+/// What a candidate's filter says about a name — the readable form of
+/// [`might_contain`], and the one the walk's report states.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilterVerdict {
+    /// The filter admits the name — the candidate is read.
+    Admitted,
+    /// The filter rejects the name — a read saved. A Bloom has no false
+    /// negatives, so a rejection is the build saying it does not hold the
+    /// name.
+    Rejected,
+    /// No filter at all (a v1 shard, or the fail-safe escape hatch) — always
+    /// read.
+    Unfiltered,
+}
+
+/// The filter's verdict for a name. The predicate the reader prunes with
+/// ([`crate::DirectoryView::candidates_for`]) and the verdict the walk's
+/// report states are this one function, so they cannot drift.
+#[must_use]
+pub fn verdict(filter: &[u8], name: &[u8]) -> FilterVerdict {
     let bits = filter.len() * 8;
     if bits == 0 {
-        return true;
+        return FilterVerdict::Unfiltered;
     }
     let (h1, h2) = seeds(name);
-    (0..PROBES as u64).all(|i| {
+    let admits = (0..PROBES as u64).all(|i| {
         let at = position(h1, h2, i, bits);
         filter[at / 8] & (1 << (at % 8)) != 0
-    })
+    });
+    if admits {
+        FilterVerdict::Admitted
+    } else {
+        FilterVerdict::Rejected
+    }
 }
 
 /// Builds one candidate's filter.
