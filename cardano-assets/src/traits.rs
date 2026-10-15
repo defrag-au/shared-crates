@@ -1,5 +1,8 @@
 use serde::{Deserialize, Deserializer, Serialize};
-use std::{collections::HashMap, fmt::Display};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::Display,
+};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -55,11 +58,24 @@ impl From<String> for TraitValue {
     }
 }
 
-/// New consistent traits type using HashMap<String, Vec<String>>
+/// The canonical traits type: `Vec<String>` per category, ordered.
+///
+/// `BTreeMap` rather than `HashMap` so the order is a property of the type
+/// rather than of whichever path built it: categories iterate — and so
+/// serialize — in one stable order whether the map came from the extractor,
+/// a persisted payload or a fixture. A `HashMap`'s iteration order is seeded
+/// per process, which made a fresh trait-schema derive assign bit positions
+/// differently between environments and kept API responses from being
+/// byte-stable. Values *within* a category keep their stated order — the map
+/// is the trait set, the `Vec` is what the metadata said.
+///
+/// The wire format is unchanged (`{"Category": ["Value", …]}`), so data
+/// written in the `HashMap` era still deserializes; see the `Deserialize`
+/// impl for the shapes accepted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[cfg_attr(feature = "openapi", schema(value_type = std::collections::HashMap<String, Vec<String>>))]
-pub struct Traits(HashMap<String, Vec<String>>);
+pub struct Traits(BTreeMap<String, Vec<String>>);
 
 impl Display for Traits {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -72,7 +88,8 @@ impl Display for Traits {
     }
 }
 
-/// Custom serializer to ensure all traits are consistently serialized as Vec<String>
+/// Serialize as the map itself — one shape, `Vec<String>` values, in the
+/// map's canonical order.
 impl Serialize for Traits {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -87,6 +104,9 @@ impl Serialize for Traits {
 /// - HashMap<String, Vec<String>> - new canonical format
 /// - HashMap<String, TraitValue> - old format with Single/Multi enum
 /// - HashMap<String, String> - simple string map (most common onchain)
+///
+/// Every shape lands in the ordered map, so persisted data from any era
+/// keeps deserializing and simply normalises into canonical order.
 impl<'de> Deserialize<'de> for Traits {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -106,7 +126,7 @@ impl<'de> Deserialize<'de> for Traits {
         let format = TraitsFormat::deserialize(deserializer)?;
 
         match format {
-            TraitsFormat::VecStrings(map) => Ok(Traits(map)),
+            TraitsFormat::VecStrings(map) => Ok(Traits::from(map)),
             TraitsFormat::PlainStrings(string_map) => {
                 // Convert HashMap<String, String> to HashMap<String, Vec<String>>
                 // Trim values to normalize data quality issues (trailing spaces, etc)
@@ -131,21 +151,26 @@ impl<'de> Deserialize<'de> for Traits {
 impl Traits {
     /// Create new empty traits
     pub fn new() -> Self {
-        Self(HashMap::new())
+        Self(BTreeMap::new())
     }
 
-    /// Create from HashMap<String, Vec<String>>
-    pub fn from_map(map: HashMap<String, Vec<String>>) -> Self {
-        Self(map)
+    /// Build from any iterator of `(category, values)` pairs — a map a record
+    /// arrived in, a `collect()`, a filter of another set. The pairs are the
+    /// input; the order is the map's own.
+    pub fn from_map<I>(map: I) -> Self
+    where
+        I: IntoIterator<Item = (String, Vec<String>)>,
+    {
+        Self(map.into_iter().collect())
     }
 
-    /// Get a reference to the inner HashMap
-    pub fn inner(&self) -> &HashMap<String, Vec<String>> {
+    /// Get a reference to the inner ordered map.
+    pub fn inner(&self) -> &BTreeMap<String, Vec<String>> {
         &self.0
     }
 
-    /// Get a mutable reference to the inner HashMap
-    pub fn inner_mut(&mut self) -> &mut HashMap<String, Vec<String>> {
+    /// Get a mutable reference to the inner ordered map.
+    pub fn inner_mut(&mut self) -> &mut BTreeMap<String, Vec<String>> {
         &mut self.0
     }
 
@@ -223,7 +248,7 @@ impl Default for Traits {
 
 impl IntoIterator for Traits {
     type Item = (String, Vec<String>);
-    type IntoIter = std::collections::hash_map::IntoIter<String, Vec<String>>;
+    type IntoIter = std::collections::btree_map::IntoIter<String, Vec<String>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
@@ -232,22 +257,34 @@ impl IntoIterator for Traits {
 
 impl<'a> IntoIterator for &'a Traits {
     type Item = (&'a String, &'a Vec<String>);
-    type IntoIter = std::collections::hash_map::Iter<'a, String, Vec<String>>;
+    type IntoIter = std::collections::btree_map::Iter<'a, String, Vec<String>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
     }
 }
 
+impl From<BTreeMap<String, Vec<String>>> for Traits {
+    fn from(map: BTreeMap<String, Vec<String>>) -> Self {
+        Self(map)
+    }
+}
+
 impl From<HashMap<String, Vec<String>>> for Traits {
     fn from(map: HashMap<String, Vec<String>>) -> Self {
-        Self(map)
+        Self(map.into_iter().collect())
+    }
+}
+
+impl From<Traits> for BTreeMap<String, Vec<String>> {
+    fn from(traits: Traits) -> Self {
+        traits.0
     }
 }
 
 impl From<Traits> for HashMap<String, Vec<String>> {
     fn from(traits: Traits) -> Self {
-        traits.0
+        traits.0.into_iter().collect()
     }
 }
 
@@ -269,29 +306,25 @@ where
     V: Into<String>,
 {
     fn into_traits(self) -> Traits {
-        let map = self
-            .into_iter()
-            .map(|(k, v)| {
-                // Convert to owned String
-                let raw = v.into();
-                // Split on ", " and collect into Vec<String>
-                let parts: Vec<String> = raw
-                    .split(", ")
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect();
+        Traits::from_map(self.into_iter().map(|(k, v)| {
+            // Convert to owned String
+            let raw = v.into();
+            // Split on ", " and collect into Vec<String>
+            let parts: Vec<String> = raw
+                .split(", ")
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
 
-                // If no parts after filtering, use trimmed raw value
-                let values = if parts.is_empty() {
-                    vec![raw.trim().to_string()]
-                } else {
-                    parts
-                };
+            // If no parts after filtering, use trimmed raw value
+            let values = if parts.is_empty() {
+                vec![raw.trim().to_string()]
+            } else {
+                parts
+            };
 
-                (k.into(), values)
-            })
-            .collect();
-        Traits::from_map(map)
+            (k.into(), values)
+        }))
     }
 }
 
@@ -313,3 +346,81 @@ pub fn flatten_traits(traits: &Traits) -> HashMap<String, String> {
 /// Legacy type alias for backward compatibility
 #[deprecated(note = "Use Traits directly instead")]
 pub type LegacyTraits = HashMap<String, TraitValue>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- the compatibility contract: every persisted shape still loads ---
+
+    #[test]
+    fn deserializes_the_canonical_map() {
+        let traits: Traits =
+            serde_json::from_str(r#"{"Eyes": ["Feline", "Scar"], "Background": ["Black"]}"#)
+                .expect("canonical map deserializes");
+        assert_eq!(traits.get_single("Background").as_deref(), Some("Black"));
+        assert_eq!(
+            traits.get("Eyes"),
+            Some(&vec!["Feline".to_string(), "Scar".to_string()])
+        );
+    }
+
+    #[test]
+    fn deserializes_a_plain_string_map() {
+        let traits: Traits =
+            serde_json::from_str(r#"{"Background": "Black "}"#).expect("string map deserializes");
+        // The string arm trims — the same normalisation it always applied.
+        assert_eq!(traits.get_single("Background").as_deref(), Some("Black"));
+    }
+
+    #[test]
+    fn a_legacy_trait_value_map_converts() {
+        let legacy = HashMap::from([
+            (
+                "Background".to_string(),
+                TraitValue::Single("Black".to_string()),
+            ),
+            (
+                "Eyes".to_string(),
+                TraitValue::Multi(vec!["Feline".to_string(), "Scar".to_string()]),
+            ),
+        ]);
+        let traits: Traits = legacy.into();
+        assert_eq!(traits.get_single("Eyes").as_deref(), Some("Feline, Scar"));
+    }
+
+    // ---- order is canonical, values are not ---------------------------------
+
+    #[test]
+    fn categories_are_canonical_regardless_of_insertion_order() {
+        let mut traits = Traits::new();
+        traits.insert_single("Zebra".to_string(), "1".to_string());
+        traits.insert_single("alpha".to_string(), "2".to_string());
+        traits.insert_single("Background".to_string(), "3".to_string());
+
+        let order: Vec<&str> = traits.keys().map(String::as_str).collect();
+        assert_eq!(order, vec!["Background", "Zebra", "alpha"]);
+
+        // ...and serialisation agrees with iteration.
+        let json = serde_json::to_string(&traits).expect("serializes");
+        assert_eq!(json, r#"{"Background":["3"],"Zebra":["1"],"alpha":["2"]}"#);
+    }
+
+    #[test]
+    fn values_keep_their_stated_order() {
+        let traits: Traits =
+            serde_json::from_str(r#"{"Eyes": ["Scar", "Feline"]}"#).expect("deserializes");
+        assert_eq!(
+            traits.get("Eyes"),
+            Some(&vec!["Scar".to_string(), "Feline".to_string()])
+        );
+    }
+
+    #[test]
+    fn a_round_trip_is_stable() {
+        let traits: Traits = serde_json::from_str(r#"{"Eyes": ["Scar"], "Background": ["Black"]}"#)
+            .expect("deserializes");
+        let json = serde_json::to_string(&traits).expect("serializes");
+        assert_eq!(json, r#"{"Background":["Black"],"Eyes":["Scar"]}"#);
+    }
+}

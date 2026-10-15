@@ -166,6 +166,7 @@ mod app {
         group "Wallet" {
             WalletButton => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet::show(ui, &mut a.wallet_btn, &mut a.wallet_connector, &mut a.wallet_button_state);
             WalletEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_editor::show(ui, &mut a.wallet_editor_state);
+            WalletPanel => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_panel::show(ui, &mut a.wallet_panel_state);
             TxFlight => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_flight::show(ui, &mut a.tx_flight_state);
             StakeSession => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::stake_session::show(ui, &mut a.stake_session_state);
             ListingComposer => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::listing_composer::show(ui, &mut a.listing_composer_state);
@@ -317,6 +318,7 @@ mod app {
                 Self::WalletButton => "Wallet Button",
                 Self::TraitFilter => "Trait Filter",
                 Self::WalletEditor => "Wallet Editor",
+                Self::WalletPanel => "Wallet Panel",
                 Self::SwapModal => "Swap Modal",
                 Self::TraitDelta => "Trait Delta",
                 Self::CoverageDeltaBar => "Coverage Delta Bar",
@@ -578,6 +580,9 @@ mod app {
                 Self::WalletButton => "CIP-30 wallet connection button with state management",
                 Self::WalletEditor => {
                     "Wallet bundle editor with input, status indicators, and add/remove actions"
+                }
+                Self::WalletPanel => {
+                    "The wallet roster as a summary, with the management flow behind a popup"
                 }
                 Self::SwapModal => "DEX swap modal with preview, culture buys, and progress states",
                 Self::TraitDelta => {
@@ -1505,6 +1510,7 @@ mod app {
         icon_gallery_state: stories::icon_gallery::IconGalleryState,
         trait_filter_state: stories::trait_filter::TraitFilterStoryState,
         wallet_editor_state: stories::wallet_editor::WalletEditorStoryState,
+        wallet_panel_state: stories::wallet_panel::WalletPanelStoryState,
         wallet_btn: egui_widgets::WalletButton,
         wallet_connector: egui_widgets::wallet::WalletConnector,
         wallet_button_state: stories::wallet::WalletButtonStoryState,
@@ -1665,6 +1671,7 @@ mod app {
                 icon_gallery_state: stories::icon_gallery::IconGalleryState::default(),
                 trait_filter_state: stories::trait_filter::TraitFilterStoryState::default(),
                 wallet_editor_state: stories::wallet_editor::WalletEditorStoryState::default(),
+                wallet_panel_state: stories::wallet_panel::WalletPanelStoryState::default(),
                 wallet_btn: egui_widgets::WalletButton::new(),
                 wallet_connector: egui_widgets::wallet::WalletConnector::new(),
                 wallet_button_state: stories::wallet::WalletButtonStoryState::default(),

@@ -87,7 +87,9 @@ impl EvmProvider {
         // `sign_txs` documents, and here it would be a wallet that appears to
         // hold 42 one-character accounts.
         if !value.is_array() {
-            return Err(EvmError::Malformed(format!("{method} did not return a list")));
+            return Err(EvmError::Malformed(format!(
+                "{method} did not return a list"
+            )));
         }
         let array = js_sys::Array::from(&value);
         Ok(array.iter().filter_map(|v| v.as_string()).collect())

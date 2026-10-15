@@ -221,6 +221,10 @@ shape: builder → `.show(ui) -> Response { actions: Vec<…> }`.
 - **`wallet_editor`** → `WalletEditorEntry` + `WalletEditorAction` —
   List editor for stake addresses / handles with resolving / loading /
   ready / failed states. **Wallet bundle management flows.**
+- **`wallet_panel`** → `WalletPanel` + `WalletPanelAction` — The roster
+  as a summary (one mark per wallet, counts by chain, `Manage`), with the
+  connect strip and `wallet_editor` behind a popup it owns. **A sidebar
+  that cannot afford the roster inline.**
 - **`wallet_identity_header`** → `WalletIdentityAction` — Hero strip:
   handle (or short address) + full address + copy. **"Whose profile?"
   page header.**

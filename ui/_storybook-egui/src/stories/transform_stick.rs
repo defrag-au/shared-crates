@@ -126,13 +126,9 @@ fn control(ui: &mut egui::Ui, state: &mut TransformStickState, dt: f32, fine: bo
     state.stick.show(ui, dt);
     ui.add_space(tokens.space(Space::Sm));
 
-    let moved = state.stick.apply(
-        &mut state.placement,
-        surface(),
-        Rates::default(),
-        dt,
-        fine,
-    );
+    let moved = state
+        .stick
+        .apply(&mut state.placement, surface(), Rates::default(), dt, fine);
     if state.stick.engaged() {
         ui.weak(if fine { "held — fine" } else { "held" });
     } else if moved {
@@ -143,7 +139,9 @@ fn control(ui: &mut egui::Ui, state: &mut TransformStickState, dt: f32, fine: bo
     let v = state.placement.center.y;
     let turn = state.placement.angle.to_degrees();
     let width = state.placement.size.x;
-    ui.weak(format!("u {u:.2}   v {v:.2}   width {width:.2}   turn {turn:.0}"));
+    ui.weak(format!(
+        "u {u:.2}   v {v:.2}   width {width:.2}   turn {turn:.0}"
+    ));
     ui.weak("hold shift for a fine hand");
 }
 

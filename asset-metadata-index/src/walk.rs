@@ -219,7 +219,9 @@ pub async fn resolve_asset<S: RangeSource>(
     policy_id: &[u8; POLICY_ID_LEN],
     name: &[u8],
 ) -> Result<Option<ResolvedAsset>, WalkError<S::Error>> {
-    resolve_asset_reported(source, prefix, policy_id, name).await.0
+    resolve_asset_reported(source, prefix, policy_id, name)
+        .await
+        .0
 }
 
 /// [`resolve_asset`], with the walk's reasoning attached — the debugging
@@ -232,7 +234,10 @@ pub async fn resolve_asset_reported<S: RangeSource>(
     prefix: &str,
     policy_id: &[u8; POLICY_ID_LEN],
     name: &[u8],
-) -> (Result<Option<ResolvedAsset>, WalkError<S::Error>>, WalkReport) {
+) -> (
+    Result<Option<ResolvedAsset>, WalkError<S::Error>>,
+    WalkReport,
+) {
     let mut report = WalkReport::default();
     // Round 1 — the pointer and the shard, whole objects.
     let first_reads = vec![
@@ -350,12 +355,16 @@ pub async fn resolve_asset_reported<S: RangeSource>(
         return (Ok(None), report);
     }
 
-    let found = match read_segments(source, &candidates, prefix, policy_id, name, &mut report).await {
+    let found = match read_segments(source, &candidates, prefix, policy_id, name, &mut report).await
+    {
         Ok(found) => found,
         Err(error) => return (Err(error), report),
     };
 
-    (Ok(resolve(found.iter(), pointer.built_through_chunk)), report)
+    (
+        Ok(resolve(found.iter(), pointer.built_through_chunk)),
+        report,
+    )
 }
 
 /// The largest segment fetched whole. MEASURED: the full build's segments
@@ -1109,21 +1118,19 @@ mod tests {
         );
         source.put_segment(
             3,
-            vec![(
-                policy(0xaa),
-                vec![record(0xaa, b"held", Event::Mint, 3, 0)],
-            )],
+            vec![(policy(0xaa), vec![record(0xaa, b"held", Event::Mint, 3, 0)])],
         );
 
-        let (answer, report) =
-            block_on(resolve_asset_reported(&source, PREFIX, &policy(0xaa), b"held"));
+        let (answer, report) = block_on(resolve_asset_reported(
+            &source,
+            PREFIX,
+            &policy(0xaa),
+            b"held",
+        ));
         assert!(answer.expect("walks").is_some());
         assert_eq!(
             report.candidates,
-            vec![
-                (3, FilterVerdict::Admitted),
-                (4, FilterVerdict::Rejected)
-            ]
+            vec![(3, FilterVerdict::Admitted), (4, FilterVerdict::Rejected)]
         );
         assert_eq!(report.read_chunks, vec![3]);
         assert_eq!(report.matches, vec![(3, 1)]);
@@ -1131,8 +1138,12 @@ mod tests {
 
         // A name no filter admits: no reads at all, and the report says so —
         // the distinction a bare `NOT_IN_INDEX` cannot carry.
-        let (answer, report) =
-            block_on(resolve_asset_reported(&source, PREFIX, &policy(0xaa), b"absent"));
+        let (answer, report) = block_on(resolve_asset_reported(
+            &source,
+            PREFIX,
+            &policy(0xaa),
+            b"absent",
+        ));
         assert!(answer.expect("walks").is_none());
         assert!(report.read_chunks.is_empty());
         assert!(report.matches.is_empty());

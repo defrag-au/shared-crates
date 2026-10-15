@@ -114,8 +114,6 @@ pub mod phase_card;
 pub mod pip_row;
 pub mod placement;
 pub mod placement_pad;
-pub mod transform_dial;
-pub mod transform_stick;
 pub mod price_timeline;
 pub mod pricing_ladder;
 pub mod printing_timeline;
@@ -164,6 +162,8 @@ pub mod token_multiselect;
 pub mod touch;
 pub mod trade_flow;
 pub mod trait_filter;
+pub mod transform_dial;
+pub mod transform_stick;
 pub mod typeahead_search;
 pub mod user_badge;
 pub mod utils;
@@ -180,7 +180,7 @@ pub mod wallet_cta;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub use stake_session::{
     SignedChallenge, StakeSessionAction, StakeSessionPanel, StakeSessionPhase, StoredStakeSession,
-    sign_challenge,
+    sign_challenge, sign_challenge_for,
 };
 #[cfg(feature = "cardano")]
 pub mod wallet_editor;
@@ -188,6 +188,10 @@ pub mod wallet_identity_header;
 pub mod wallet_list;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet_mock;
+// Gated with `wallet_button`, whose connect strip it embeds; the summary half
+// could compile natively, the popup half could not.
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub mod wallet_panel;
 #[cfg(feature = "gateway")]
 pub mod wiring_editor;
 
@@ -442,6 +446,8 @@ pub use wallet_list::{
     WalletList, WalletListAction, WalletListLayout, WalletListResponse, WalletListRole,
     WalletListRow, WalletPoolBadge, WalletPoolBadgeHealth,
 };
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub use wallet_panel::{WalletPanel, WalletPanelAction, WalletPanelResponse, WalletPanelState};
 
 // DEX split swap re-exports
 pub use amount_input::{

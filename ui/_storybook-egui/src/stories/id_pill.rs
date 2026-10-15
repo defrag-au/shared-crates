@@ -10,7 +10,9 @@ pub fn show(ui: &mut egui::Ui) {
             "Truncated identifier + copy button. The recurring \
              `policy 8532f316dd09…45d87a1b 📋` pattern used for policy_id, \
              wallet addresses, deposit addresses, tx hashes. Hover the value \
-             to see the full string in a tooltip.",
+             to see the full string in a tooltip; click copy and the button \
+             turns into a green check for a moment, so a copy is something \
+             the reader SEES rather than has to trust.",
         )
         .color(muted(ui))
         .small(),

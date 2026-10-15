@@ -17,6 +17,20 @@ pub struct WalletConnectResult {
     pub network_id: u8,
 }
 
+/// The bech32 stake address a CIP-30 reward address (hex, `e1…`) names, when it
+/// parses. `None` for anything that is not a stake address — a payment address
+/// carries a stake credential but is not one, and `stake_address_bech32`
+/// refuses it.
+///
+/// The conversion every caller that compares a wallet's reward addresses
+/// against a bech32 claim needs: CIP-30 speaks hex throughout, and encoding is
+/// not identity.
+pub fn stake_address_bech32(address_hex: &str) -> Option<String> {
+    Address::from_hex(address_hex)
+        .ok()
+        .and_then(|addr| addr.stake_address_bech32())
+}
+
 /// Framework-agnostic wallet state.
 ///
 /// Holds connection state, derived addresses, and balance data.
@@ -178,9 +192,7 @@ pub async fn connect_wallet(
         .await
         .map_err(|e| format!("Failed to get address: {e}"))?;
 
-    let stake_address = Address::from_hex(&address_hex)
-        .ok()
-        .and_then(|addr| addr.stake_address_bech32());
+    let stake_address = stake_address_bech32(&address_hex);
 
     let result = WalletConnectResult {
         provider,

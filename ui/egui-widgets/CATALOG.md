@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-174 widgets.
+175 widgets.
 
 | module | what it is |
 |---|---|
@@ -182,4 +182,5 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `wallet_identity_header` | Wallet identity header — the big "this is who we're showing" strip at the top of a wallet-profile view |
 | `wallet_list` | Wallet roster — the per-client list rendered on the admin portal dashboard |
 | `wallet_mock` | Pseudo-wallet profiles for LOCAL demo modes |
+| `wallet_panel` | `WalletPanel` — the reader's wallets as a summary, with the whole management flow behind a popup it owns |
 | `wiring_editor` | The shared binding editor over `gateway-wiring`'s vocabulary (feature `gateway`) |
