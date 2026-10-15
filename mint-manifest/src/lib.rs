@@ -92,9 +92,12 @@ impl MintManifestEntry {
             );
         }
         // Traits → top-level keys: single value as a string, multi-value as an
-        // array (CIP-25 convention; mirrors `compose_cip25_inner`).
+        // array (CIP-25 convention; mirrors `compose_cip25_inner`). Values are
+        // written rendered — an altered value is its `"<value> (<alteration>)"`
+        // string.
         for (key, values) in self.traits.iter() {
-            let val = match values.as_slice() {
+            let rendered: Vec<String> = values.iter().map(ToString::to_string).collect();
+            let val = match rendered.as_slice() {
                 [single] => Value::String(single.clone()),
                 many => Value::Array(many.iter().map(|s| Value::String(s.clone())).collect()),
             };

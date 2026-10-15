@@ -167,7 +167,7 @@ fn plutus_key(pd: &PlutusData) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Asset, CidRole};
+    use crate::{Asset, CidRole, TraitValue};
 
     // Real CIP-68 reference-token datums lifted from the mitos
     // `asset-metadata-update` Nikeverse1501 fixture: the metadata of a
@@ -215,6 +215,76 @@ mod tests {
             cids[0].cid,
             "bafybeibaanddhnz7v7quubnv3dlngzkl2x56zxllbyhtfck3kybrepaee4"
         );
+    }
+
+    // GOOFS World (policy `312e…f42`), the reference datum exactly as the
+    // index holds it for Goof#2 (`/diagnose` reports `family: cip68`,
+    // `event: mint`) — the real document behind the pair-object report.
+    const GOOFS_WORLD_GOOF2: &[u8] =
+        include_bytes!("../resources/cip68/goofs_world_goof2.datum.cbor");
+
+    /// GOOFS World's `attributes` are `{trait, alteration}` objects: the v2
+    /// extractor keeps the pair as one value and renders it the way the
+    /// market shows it — `"<value> (<alteration>)"`. The category set is the
+    /// ten jpg.store records (`eyes`, `eyewear`, `fur color`, `fur pattern`,
+    /// `hands`, `headwear`, `muzzle`, `neckwear`, `overcoat`, `undershirt`) —
+    /// `collection` and `goof id` are siblings of the slot, not traits.
+    #[test]
+    fn goofs_world_attribute_pairs_reach_the_v2_extractor() {
+        let plutus: PlutusData =
+            pallas_codec::minicbor::decode(GOOFS_WORLD_GOOF2).expect("datum decodes");
+        let PlutusData::Constr(constr) = plutus else {
+            panic!("datum is not a constructor")
+        };
+        let fields: Vec<PlutusData> = constr.fields.into();
+        let metadata = plutus_to_json(fields.first().expect("metadata field"));
+
+        let asset = crate::asset_from_metadata_json(&metadata.to_string()).expect("v2 decode");
+        assert_eq!(asset.name, "Goof#2");
+        assert_eq!(
+            asset.image,
+            "ipfs://QmZYngL4LvCiAD6ejrE1PauTmoQyk2w5T52pTSFeZvkShW"
+        );
+
+        let all: Vec<(String, Vec<String>)> = asset
+            .traits
+            .iter()
+            .map(|(category, values)| {
+                (
+                    category.clone(),
+                    values.iter().map(TraitValue::rendered).collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            all,
+            vec![
+                ("Background".into(), vec!["Mage (Mage)".to_string()]),
+                ("Eyes".into(), vec!["Majin (Majin)".to_string()]),
+                ("Fur Color".into(), vec!["Golden (Golden)".to_string()]),
+                ("Headwear".into(), vec!["Troll (Moonstone)".to_string()]),
+                ("Muzzle".into(), vec!["Subzero (Subzero)".to_string()]),
+                ("Neckwear".into(), vec!["Bandito (Black)".to_string()]),
+                ("Overcoat".into(), vec!["Puffy Jacket (Blue)".to_string()]),
+                (
+                    "Undershirt".into(),
+                    vec!["Solid Button Up (Red)".to_string()]
+                ),
+            ]
+        );
+
+        // The pair survives as parts, not only as the rendered string — the
+        // alteration is what the collection's updates move.
+        assert_eq!(
+            asset.traits.get("Undershirt"),
+            Some(&vec![TraitValue::Altered {
+                value: "Solid Button Up".to_string(),
+                alteration: "Red".to_string(),
+            }])
+        );
+        // Slot siblings stay out: the market indexes the ten visual categories.
+        assert!(!asset.traits.contains_key("goof id"));
+        assert!(!asset.traits.contains_key("collection"));
     }
 
     #[test]

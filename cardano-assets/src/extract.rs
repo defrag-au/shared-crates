@@ -23,8 +23,8 @@
 //! `tests/extract_corpus.rs`.
 
 use crate::{
-    Asset, AssetFile, AssetId, DecodedAsset, Media, MediaRole, MediaType, PrimitiveOrList, Traits,
-    UnsigData,
+    Asset, AssetFile, AssetId, DecodedAsset, Media, MediaRole, MediaType, PrimitiveOrList,
+    TraitValue, Traits, UnsigData,
 };
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -487,7 +487,12 @@ fn candidate_traits(rest: &HashMap<String, serde_json::Value>) -> Traits {
             .map(str::to_string);
         let source_key = rest
             .get("source_key")
-            .map(json_to_strings)
+            .map(|value| {
+                json_trait_values(value)
+                    .into_iter()
+                    .map(|value| value.rendered())
+                    .collect()
+            })
             .unwrap_or_default();
         let source_tx_id = rest
             .get("source_tx_id")
@@ -527,7 +532,7 @@ pub(crate) fn unsig_traits(
     traits.insert_single("index".to_string(), unsigs.index.to_string());
     traits.insert_single("num_props".to_string(), unsigs.num_props.to_string());
     for (key, values) in unsigs.properties.inner() {
-        traits.insert_multi(key.clone(), values.clone());
+        traits.insert_vec(key.clone(), values.clone());
     }
     traits
 }
@@ -592,45 +597,69 @@ fn flat_all(rest: &HashMap<String, serde_json::Value>) -> Traits {
     traits
 }
 
-/// Insert a trait under `key`, coercing the JSON value to one or more
-/// strings. Numbers/bools stringify; string arrays stay multi-valued;
-/// objects, nulls and empty results are skipped.
+/// Insert a trait under `key`, coercing the JSON value to one or more trait
+/// values. Numbers/bools stringify; arrays stay multi-valued; a
+/// `{trait, alteration}` object is one altered value; other objects, nulls
+/// and empty results are skipped.
 fn insert_if_present(traits: &mut Traits, key: String, value: &serde_json::Value) {
-    let values = json_to_strings(value);
+    let values = json_trait_values(value);
     if !values.is_empty() {
         traits.insert_vec(key, values);
     }
 }
 
-/// Coerce a JSON value to trait string(s): scalars to a single trimmed
-/// string, arrays to their scalar elements (one level, trimmed,
-/// non-empty), objects/nulls to nothing.
-fn json_to_strings(value: &serde_json::Value) -> Vec<String> {
+/// Coerce a JSON value to trait values: scalars to one plain trimmed string,
+/// arrays to their elements (one level), a `{trait, alteration}` object to an
+/// altered value, and anything else to nothing.
+fn json_trait_values(value: &serde_json::Value) -> Vec<TraitValue> {
     match value {
-        serde_json::Value::String(s) => {
-            let s = s.trim();
-            if s.is_empty() {
-                vec![]
-            } else {
-                vec![s.to_string()]
-            }
-        }
-        serde_json::Value::Number(n) => vec![n.to_string()],
-        serde_json::Value::Bool(b) => vec![b.to_string()],
+        serde_json::Value::String(_)
+        | serde_json::Value::Number(_)
+        | serde_json::Value::Bool(_) => scalar_trait_value(value).into_iter().collect(),
         serde_json::Value::Array(arr) => arr
             .iter()
             .flat_map(|v| match v {
-                serde_json::Value::String(s) => {
-                    let s = s.trim();
-                    (!s.is_empty()).then(|| s.to_string())
-                }
-                serde_json::Value::Number(n) => Some(n.to_string()),
-                serde_json::Value::Bool(b) => Some(b.to_string()),
+                serde_json::Value::String(_)
+                | serde_json::Value::Number(_)
+                | serde_json::Value::Bool(_) => scalar_trait_value(v),
+                serde_json::Value::Object(obj) => trait_pair(obj),
                 _ => None,
             })
             .collect(),
-        _ => vec![],
+        serde_json::Value::Object(obj) => trait_pair(obj).into_iter().collect(),
+        serde_json::Value::Null => vec![],
     }
+}
+
+/// A scalar as a plain value: strings trimmed, numbers/bools stringified,
+/// empty strings and other shapes to nothing.
+fn scalar_trait_value(value: &serde_json::Value) -> Option<TraitValue> {
+    scalar_string(value).map(TraitValue::Plain)
+}
+
+/// A scalar as a trimmed, non-empty string.
+fn scalar_string(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(s) => {
+            let s = s.trim();
+            (!s.is_empty()).then(|| s.to_string())
+        }
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        serde_json::Value::Bool(b) => Some(b.to_string()),
+        _ => None,
+    }
+}
+
+/// The `{trait, alteration}` pair shape — GOOFS World's attribute objects —
+/// as one value: the base from `trait`, altered by a non-empty `alteration`
+/// (mirroring the market's `"<value> (<alteration>)"` rendering). Any other
+/// object is not a trait value and stays dropped.
+fn trait_pair(obj: &serde_json::Map<String, serde_json::Value>) -> Option<TraitValue> {
+    let value = scalar_string(obj.get("trait")?)?;
+    Some(match obj.get("alteration").and_then(scalar_string) {
+        Some(alteration) => TraitValue::Altered { value, alteration },
+        None => TraitValue::Plain(value),
+    })
 }
 
 #[cfg(test)]

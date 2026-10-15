@@ -434,7 +434,9 @@ mod integration_tests {
 
                     // Log trait details for verification
                     for (key, values) in asset.traits.inner() {
-                        println!("          {}: {}", key, values.join(", "));
+                        let rendered: Vec<String> =
+                            values.iter().map(|value| value.to_string()).collect();
+                        println!("          {}: {}", key, rendered.join(", "));
                     }
 
                     // Check if this is the UG1897 asset we expect - but now we should get the CIP-25 name

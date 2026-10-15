@@ -1928,6 +1928,7 @@ mod tests {
     //! - Tests include delays to prevent 429 rate limit errors
     //! - Run tests sequentially to avoid conflicts: `cargo test --lib -- --test-threads=1`
 
+    use cardano_assets::TraitValue;
     use std::time::Duration;
     use test_utils::test_case;
     use tokio::time::sleep;
@@ -2249,7 +2250,7 @@ mod tests {
         // traits; picking a sibling's record would still "resolve".
         assert_eq!(
             asset.traits.get("Fur").map(Vec::as_slice),
-            Some(["Cyborg".to_owned()].as_slice())
+            Some([TraitValue::Plain("Cyborg".to_owned())].as_slice())
         );
         assert_eq!(info.metadata_kind(), MetadataKind::Cip25);
         assert!(info.should_import());
@@ -2272,7 +2273,7 @@ mod tests {
         assert_eq!(asset.media_type.as_deref(), Some("image/png"));
         assert_eq!(
             asset.traits.get("Body").map(Vec::as_slice),
-            Some(["Mystic Purple".to_owned()].as_slice())
+            Some([TraitValue::Plain("Mystic Purple".to_owned())].as_slice())
         );
         assert_eq!(info.metadata_kind(), MetadataKind::Cip25);
         assert!(info.should_import());

@@ -3,7 +3,7 @@ mod tests {
     #![allow(clippy::assertions_on_constants)]
 
     use crate::*;
-    use cardano_assets::IntoTraits;
+    use cardano_assets::{IntoTraits, TraitValue};
     use std::collections::HashMap;
 
     macro_rules! test_case {
@@ -949,45 +949,48 @@ mod tests {
                 let traits = asset.traits.inner();
                 assert_eq!(traits.get("series"), None);
                 assert_eq!(traits.get("index"), None);
-                assert_eq!(traits.get("num_props"), Some(&vec!["5".to_string()]));
+                assert_eq!(
+                    traits.get("num_props"),
+                    Some(&vec![TraitValue::Plain("5".to_string())])
+                );
                 assert_eq!(
                     traits.get("colors"),
                     Some(&vec![
-                        "Blue".to_string(),
-                        "Red".to_string(),
-                        "Green".to_string(),
-                        "Green".to_string(),
-                        "Red".to_string()
+                        TraitValue::Plain("Blue".to_string()),
+                        TraitValue::Plain("Red".to_string()),
+                        TraitValue::Plain("Green".to_string()),
+                        TraitValue::Plain("Green".to_string()),
+                        TraitValue::Plain("Red".to_string())
                     ])
                 );
                 assert_eq!(
                     traits.get("distributions"),
                     Some(&vec![
-                        "CDF".to_string(),
-                        "CDF".to_string(),
-                        "CDF".to_string(),
-                        "CDF".to_string(),
-                        "CDF".to_string()
+                        TraitValue::Plain("CDF".to_string()),
+                        TraitValue::Plain("CDF".to_string()),
+                        TraitValue::Plain("CDF".to_string()),
+                        TraitValue::Plain("CDF".to_string()),
+                        TraitValue::Plain("CDF".to_string())
                     ])
                 );
                 assert_eq!(
                     traits.get("multipliers"),
                     Some(&vec![
-                        "0.5".to_string(),
-                        "1".to_string(),
-                        "2".to_string(),
-                        "2".to_string(),
-                        "4".to_string()
+                        TraitValue::Plain("0.5".to_string()),
+                        TraitValue::Plain("1".to_string()),
+                        TraitValue::Plain("2".to_string()),
+                        TraitValue::Plain("2".to_string()),
+                        TraitValue::Plain("4".to_string())
                     ])
                 );
                 assert_eq!(
                     traits.get("rotations"),
                     Some(&vec![
-                        "90".to_string(),
-                        "0".to_string(),
-                        "0".to_string(),
-                        "270".to_string(),
-                        "270".to_string()
+                        TraitValue::Plain("90".to_string()),
+                        TraitValue::Plain("0".to_string()),
+                        TraitValue::Plain("0".to_string()),
+                        TraitValue::Plain("270".to_string()),
+                        TraitValue::Plain("270".to_string())
                     ])
                 );
             }
@@ -1011,28 +1014,39 @@ mod tests {
 
                 // Check parsed colon-delimited traits
                 let traits = asset.traits.inner();
-                assert_eq!(traits.get("State"), Some(&vec!["Delusional".to_string()]));
+                assert_eq!(
+                    traits.get("State"),
+                    Some(&vec![TraitValue::Plain("Delusional".to_string())])
+                );
                 assert_eq!(
                     traits.get("Body Shape"),
-                    Some(&vec!["ModifiedBlock".to_string()])
+                    Some(&vec![TraitValue::Plain("ModifiedBlock".to_string())])
                 );
                 assert_eq!(
                     traits.get("Main Material"),
-                    Some(&vec!["Silicone".to_string()])
+                    Some(&vec![TraitValue::Plain("Silicone".to_string())])
                 );
                 assert_eq!(
                     traits.get("Display Box Base"),
-                    Some(&vec!["BlackCardboard+Styrofoam".to_string()])
+                    Some(&vec![TraitValue::Plain(
+                        "BlackCardboard+Styrofoam".to_string()
+                    )])
                 );
                 assert_eq!(
                     traits.get("Display Box Glass"),
-                    Some(&vec!["PlainPlexi".to_string()])
+                    Some(&vec![TraitValue::Plain("PlainPlexi".to_string())])
                 );
-                assert_eq!(traits.get("Gender"), Some(&vec!["Female".to_string()]));
+                assert_eq!(
+                    traits.get("Gender"),
+                    Some(&vec![TraitValue::Plain("Female".to_string())])
+                );
                 // v2: `number` (provenance) is dropped from the trait
                 // surface; `rarity` is a surfaced facet, kept.
                 assert_eq!(traits.get("number"), None);
-                assert_eq!(traits.get("rarity"), Some(&vec!["Common".to_string()]));
+                assert_eq!(
+                    traits.get("rarity"),
+                    Some(&vec![TraitValue::Plain("Common".to_string())])
+                );
             }
             Err(err) => {
                 println!("encountered decoding error: {err:?}");
