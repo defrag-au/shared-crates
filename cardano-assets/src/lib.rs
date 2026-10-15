@@ -48,7 +48,7 @@ pub use cid::{CidRole, ExtractedCid, cid_v0_to_v1, normalize_cid};
 #[cfg(feature = "cip25")]
 pub use cip25::{cip25_metadata_json, cip25_metadata_value, decode_cip25_metadata};
 #[cfg(feature = "cip68")]
-pub use cip68::{Cip68Error, decode_cip68_datum};
+pub use cip68::{Cip68Error, decode_cip68_datum, decode_cip68_datum_json};
 pub use collection::*;
 pub use decoded_asset::{DecodedAsset, Media, MediaRole, MediaType};
 pub use extract::{

@@ -30,7 +30,8 @@ pub enum Cip68Error {
     WrongConstructor,
     /// The constructor carried no fields — no metadata map present.
     EmptyDatum,
-    /// The metadata map did not match any known `AssetMetadata` shape.
+    /// The metadata map did not match any known `AssetMetadata` shape, or a
+    /// rendered document could not be serialized as JSON.
     Metadata(serde_json::Error),
 }
 
@@ -59,18 +60,7 @@ impl std::error::Error for Cip68Error {}
 /// [`AssetMetadata68::purpose`] is always [`NftPurpose::ReferenceNft`] —
 /// CIP-68 metadata datums only ever live on the reference token.
 pub fn decode_cip68_datum(datum_cbor: &[u8]) -> Result<AssetMetadata68, Cip68Error> {
-    let plutus: PlutusData =
-        pallas_codec::minicbor::decode(datum_cbor).map_err(|e| Cip68Error::Cbor(e.to_string()))?;
-
-    let constr = match plutus {
-        PlutusData::Constr(c) => c,
-        _ => return Err(Cip68Error::NotConstructor),
-    };
-    if constr.tag != CONSTR_0_TAG && constr.any_constructor != Some(0) {
-        return Err(Cip68Error::WrongConstructor);
-    }
-
-    let fields: Vec<PlutusData> = constr.fields.into();
+    let fields = datum_fields(datum_cbor)?;
     let metadata_pd = fields.first().ok_or(Cip68Error::EmptyDatum)?;
     let version = fields.get(1).and_then(plutus_as_u32).unwrap_or(1);
 
@@ -82,6 +72,45 @@ pub fn decode_cip68_datum(datum_cbor: &[u8]) -> Result<AssetMetadata68, Cip68Err
         version,
         metadata,
     })
+}
+
+/// A CIP-68 reference-token datum's metadata map, rendered as the JSON
+/// document the v2 extractor ([`crate::asset_from_metadata_json`]) reads.
+///
+/// The rendering is [`decode_cip68_datum`]'s, exposed as a string: byte
+/// strings become UTF-8 (or `0x…` hex), maps become objects, arrays stay
+/// arrays. A datum therefore renders to the document a CIP-25 payload
+/// carrying the same map would, and the traits extracted from either agree.
+///
+/// That agreement is the point: every consumer of the v2 path renders the
+/// datum this way — mitos does it before it ships `metadata_json` — so a
+/// reader rendering here cannot disagree with the ownership index about what
+/// a datum means. Reach for this rather than the legacy typed
+/// [`decode_cip68_datum`] when the trait surface is what is wanted: the v1
+/// projection drops structured attribute values, so GOOFS World's
+/// `{trait, alteration}` objects arrive whole only through the document.
+pub fn decode_cip68_datum_json(datum_cbor: &[u8]) -> Result<String, Cip68Error> {
+    let fields = datum_fields(datum_cbor)?;
+    let metadata_pd = fields.first().ok_or(Cip68Error::EmptyDatum)?;
+    serde_json::to_string(&plutus_to_json(metadata_pd)).map_err(Cip68Error::Metadata)
+}
+
+/// The fields of a CIP-68 reference-token datum — the framing both decoders
+/// share: the CBOR must be `Constr 0`, and a datum with no fields carries no
+/// metadata map.
+fn datum_fields(datum_cbor: &[u8]) -> Result<Vec<PlutusData>, Cip68Error> {
+    let plutus: PlutusData =
+        pallas_codec::minicbor::decode(datum_cbor).map_err(|e| Cip68Error::Cbor(e.to_string()))?;
+
+    let constr = match plutus {
+        PlutusData::Constr(c) => c,
+        _ => return Err(Cip68Error::NotConstructor),
+    };
+    if constr.tag != CONSTR_0_TAG && constr.any_constructor != Some(0) {
+        return Err(Cip68Error::WrongConstructor);
+    }
+
+    Ok(constr.fields.into())
 }
 
 /// Read a `PlutusData` integer as a `u32`, if it fits.
@@ -231,15 +260,8 @@ mod tests {
     /// `collection` and `goof id` are siblings of the slot, not traits.
     #[test]
     fn goofs_world_attribute_pairs_reach_the_v2_extractor() {
-        let plutus: PlutusData =
-            pallas_codec::minicbor::decode(GOOFS_WORLD_GOOF2).expect("datum decodes");
-        let PlutusData::Constr(constr) = plutus else {
-            panic!("datum is not a constructor")
-        };
-        let fields: Vec<PlutusData> = constr.fields.into();
-        let metadata = plutus_to_json(fields.first().expect("metadata field"));
-
-        let asset = crate::asset_from_metadata_json(&metadata.to_string()).expect("v2 decode");
+        let document = decode_cip68_datum_json(GOOFS_WORLD_GOOF2).expect("datum renders");
+        let asset = crate::asset_from_metadata_json(&document).expect("v2 decode");
         assert_eq!(asset.name, "Goof#2");
         assert_eq!(
             asset.image,
@@ -285,6 +307,25 @@ mod tests {
         // Slot siblings stay out: the market indexes the ten visual categories.
         assert!(!asset.traits.contains_key("goof id"));
         assert!(!asset.traits.contains_key("collection"));
+    }
+
+    /// The two GOOFS fixtures — the datum bytes and the corpus document —
+    /// describe one asset: rendering the datum through the public seam gives
+    /// the document the corpus pins, so the pair cannot drift apart.
+    #[test]
+    fn the_rendered_datum_is_the_corpus_document() {
+        let from_datum = crate::asset_from_metadata_json(
+            &decode_cip68_datum_json(GOOFS_WORLD_GOOF2).expect("datum renders"),
+        )
+        .expect("datum document extracts");
+        let from_fixture = crate::asset_from_metadata_json(include_str!(
+            "../resources/test/goofs-world-goof2.json"
+        ))
+        .expect("corpus fixture extracts");
+
+        assert_eq!(from_datum.name, from_fixture.name);
+        assert_eq!(from_datum.image, from_fixture.image);
+        assert_eq!(from_datum.traits, from_fixture.traits);
     }
 
     #[test]
