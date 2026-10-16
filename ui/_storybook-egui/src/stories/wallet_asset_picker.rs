@@ -6,6 +6,7 @@
 //! no wallet is connected.
 
 use egui_widgets::egui_inbox::{UiInbox, UiInboxSender};
+use egui_widgets::wallet::ChainFamily;
 use egui_widgets::wallet_asset_picker::{
     self, PickerAsset, PickerPolicyGroup, WalletAssetPickerConfig, WalletAssetPickerState,
 };
@@ -90,8 +91,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
     for msg in state.inbox.read(ui) {
         match msg {
             WalletMsg::Connected(result, api) => {
-                state.connector.apply_connect_result(result);
-                state.connector.api = Some(api.clone());
+                state.connector.apply_connect_result(result, api.clone());
                 state.status_msg = "Connected! Fetching balance...".into();
 
                 // Fetch balance
@@ -117,7 +117,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
                 state.connector.apply_balance(balance);
             }
             WalletMsg::Error(e) => {
-                state.connector.set_error(e.clone());
+                state.connector.set_error(ChainFamily::Cardano, e.clone());
                 state.status_msg = format!("Error: {e}");
             }
         }
@@ -149,8 +149,10 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
             ui.set_max_width(260.0);
             let action = state.wallet_btn.show(ui, &state.connector);
             match action {
-                egui_widgets::WalletAction::Connect(provider) => {
-                    state.connector.set_connecting();
+                egui_widgets::WalletAction::Connect(
+                    egui_widgets::wallet::WalletChoice::Cardano(provider),
+                ) => {
+                    state.connector.set_connecting(ChainFamily::Cardano);
                     state.status_msg = "Connecting...".into();
 
                     let sender = state.sender.clone();
@@ -165,10 +167,14 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
                         }
                     });
                 }
-                egui_widgets::WalletAction::Disconnect => {
-                    state.connector.disconnect();
+                egui_widgets::WalletAction::Disconnect(family) => {
+                    state.connector.disconnect(family);
                     state.groups.clear();
                     state.status_msg = "Disconnected".into();
+                }
+                // No EIP-1193 bridge in this crate yet, so an EVM pick has
+                // nothing to run.
+                egui_widgets::WalletAction::Connect(egui_widgets::wallet::WalletChoice::Evm(_)) => {
                 }
                 egui_widgets::WalletAction::None => {}
             }

@@ -174,7 +174,10 @@ pub mod vitals;
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet_button;
-// Gated with `wallet_button`, whose picker it opens.
+// Gated with `wallet_button`, which opens it — and `wallet_cta`, which opens it
+// at the point the reader was about to act.
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub mod wallet_connect_modal;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet_cta;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
@@ -434,6 +437,8 @@ pub use viewport::{
 };
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub use wallet_connect_modal::{ChainFamily, ChainRequirement, WalletConnectModal};
 #[cfg(feature = "cardano")]
 pub use wallet_editor::{
     WalletEditorAction, WalletEditorConfig, WalletEditorEntry, WalletEditorResponse,

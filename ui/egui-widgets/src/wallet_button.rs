@@ -1,7 +1,9 @@
 //! Reusable wallet connection button widget for egui frontends.
 //!
 //! Renders a compact wallet status bar that handles:
-//! - Disconnected: "Connect Wallet" button with wallet picker popup
+//! - Disconnected: one "Connect wallet" button, which opens the chain-then-wallet
+//!   flow in [`WalletConnectModal`] — never a list of wallets inline, because the
+//!   choice has steps and a header has one line
 //! - Connecting: spinner
 //! - Connected: icon + name + handle + balance + disconnect
 //! - Error: message + retry
@@ -12,9 +14,11 @@
 use egui::{Color32, RichText};
 
 use super::buttons::UiButtonExt;
-use super::wallet::{ConnectionState, WalletConnector, WalletProvider};
-use crate::option_group::{GroupDensity, GroupFlow, OptionGroup, OptionGroupItem};
+use super::wallet::{
+    ChainFamily, ConnectedIdentity, ConnectionPhase, WalletChoice, WalletConnector,
+};
 use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
+use crate::wallet_connect_modal::{ChainRequirement, WalletConnectModal};
 
 /// Which colour each of the wallet button's surfaces takes.
 ///
@@ -69,16 +73,80 @@ impl WalletButtonTheme {
 pub enum WalletAction {
     /// No action needed.
     None,
-    /// User selected a wallet to connect. Caller should spawn
-    /// `wallet::connect_wallet(provider)` and send the result.
-    Connect(WalletProvider),
-    /// User clicked disconnect. Caller should call `connector.disconnect()`.
-    Disconnect,
+    /// User selected a wallet to connect. The caller spawns the connect that
+    /// matches the chain — `wallet::connect_wallet(provider)` for
+    /// [`WalletChoice::Cardano`], the EIP-1193 bridge for
+    /// [`WalletChoice::Evm`] — and sends the result back.
+    Connect(WalletChoice),
+    /// User clicked disconnect on one chain. Caller should call
+    /// `connector.disconnect(family)` — one chain's disconnect says nothing
+    /// about another's, which is why this carries the chain.
+    Disconnect(ChainFamily),
+}
+
+/// Which chain a single-line button is *about*.
+///
+/// A button that shows one identity has to pick, and the requirement is what
+/// picks: a button that needs Cardano is about Cardano even when EVM is
+/// connected too. With no requirement it is about whichever chain answered
+/// first — `ChainFamily::ALL` order, so it does not change under the reader.
+enum Facing<'a> {
+    /// Nothing to show: no connection, nothing pending.
+    Idle,
+    /// The chain this button is about is mid-connect.
+    Connecting,
+    /// The identity to draw.
+    Connected(ConnectedIdentity<'a>),
+    /// The chain this button is about refused.
+    Failed(&'a str),
+}
+
+/// Read the set as one line's worth of state, for `requirement`.
+fn facing<'a>(requirement: ChainRequirement, connector: &'a WalletConnector) -> Facing<'a> {
+    let about = match requirement {
+        ChainRequirement::Only(family) => Some(family),
+        ChainRequirement::Any => None,
+    };
+
+    // Named chain first: everything below is the answer to "what about THAT
+    // chain", in the order a reader cares about it.
+    if let Some(family) = about {
+        if let Some(identity) = connector
+            .connections
+            .identities()
+            .find(|i| i.family == family)
+        {
+            return Facing::Connected(identity);
+        }
+        if connector.is_connecting(family) {
+            return Facing::Connecting;
+        }
+        if let Some(error) = connector.connections.error(family) {
+            return Facing::Failed(error);
+        }
+        return Facing::Idle;
+    }
+
+    // No named chain: whatever is connected, then anything in flight, then the
+    // first refusal.
+    if let Some(identity) = connector.identities().next() {
+        return Facing::Connected(identity);
+    }
+    if connector.connections.any_connecting() {
+        return Facing::Connecting;
+    }
+    if let Some((_, phase)) = connector.connections.iter().find_map(|(family, phase)| {
+        matches!(phase, ConnectionPhase::Error(_)).then_some((family, phase))
+    }) && let ConnectionPhase::Error(error) = phase
+    {
+        return Facing::Failed(error);
+    }
+    Facing::Idle
 }
 
 /// Whether the button draws its own surface.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum PickerChrome {
+pub enum ButtonChrome {
     /// A filled, rounded panel with margins — right when the button stands
     /// alone in a header or sidebar and IS the surface.
     #[default]
@@ -92,20 +160,25 @@ pub enum PickerChrome {
 pub struct WalletButton {
     /// Theme colors.
     pub theme: WalletButtonTheme,
-    /// How much of each wallet the picker shows. [`GroupDensity::Compact`]
-    /// keeps the extension's own icon and moves the name to the hover text,
-    /// for a sidebar that cannot spare a row per wallet.
-    pub picker_density: GroupDensity,
     /// Whether to draw the button's own panel around its contents.
-    pub chrome: PickerChrome,
+    pub chrome: ButtonChrome,
+    /// What the flow this button opens may offer. Defaults to any chain the
+    /// widget can connect; an action that needs a particular one says so here
+    /// and its reader never sees a wallet that could not have signed it.
+    pub requirement: ChainRequirement,
+    /// Distinguishes two of these that share one parent `Ui` — the flow's state
+    /// is keyed to where the button sits, and two buttons in one place would
+    /// otherwise share an open flag.
+    pub salt: &'static str,
 }
 
 impl WalletButton {
     pub fn new() -> Self {
         Self {
             theme: WalletButtonTheme::default(),
-            picker_density: GroupDensity::Full,
-            chrome: PickerChrome::Framed,
+            chrome: ButtonChrome::Framed,
+            requirement: ChainRequirement::Any,
+            salt: "wallet_button",
         }
     }
 
@@ -117,123 +190,99 @@ impl WalletButton {
         }
     }
 
-    /// Show the picker as icons only, with the wallet names as hover text.
-    pub fn compact_picker(mut self, compact: bool) -> Self {
-        self.picker_density = match compact {
-            true => GroupDensity::Compact,
-            false => GroupDensity::Full,
-        };
-        self
-    }
-
-    /// Draw with or without the button's own panel. See [`PickerChrome`].
-    pub fn chrome(mut self, chrome: PickerChrome) -> Self {
+    /// Draw with or without the button's own panel. See [`ButtonChrome`].
+    pub fn chrome(mut self, chrome: ButtonChrome) -> Self {
         self.chrome = chrome;
         self
     }
 
+    /// What the flow this button opens may offer. See [`ChainRequirement`].
+    pub fn requirement(mut self, requirement: ChainRequirement) -> Self {
+        self.requirement = requirement;
+        self
+    }
+
+    /// Distinguishes two of these that share one parent `Ui`.
+    pub fn salt(mut self, salt: &'static str) -> Self {
+        self.salt = salt;
+        self
+    }
+
+    /// The flow this button opens.
+    ///
+    /// Built fresh every frame: the open flag and the step it has reached live
+    /// in egui memory under the id, so the caller holds no state at all.
+    fn modal(&self, ui: &egui::Ui) -> WalletConnectModal<'static> {
+        WalletConnectModal::new(WalletConnectModal::id_for(ui, self.salt))
+            .requirement(self.requirement)
+    }
+
     /// Render the wallet button. Returns an action the caller must handle.
     pub fn show(&mut self, ui: &mut egui::Ui, connector: &WalletConnector) -> WalletAction {
-        match self.chrome {
-            PickerChrome::Framed => {
+        let modal = self.modal(ui);
+        let mut action = match self.chrome {
+            ButtonChrome::Framed => {
                 let theme = self.theme.resolved(&ui.tokens());
                 egui::Frame::new()
                     .fill(theme.bg)
                     .corner_radius(ui.tokens().corner(Radius::Md))
                     .inner_margin(ui.tokens().margin(Space::Md))
-                    .show(ui, |ui| self.body(ui, connector))
+                    .show(ui, |ui| self.body(ui, connector, &modal))
                     .inner
             }
-            PickerChrome::Bare => self.body(ui, connector),
+            ButtonChrome::Bare => self.body(ui, connector, &modal),
+        };
+
+        // Over the surface it was opened from, wherever that surface is.
+        if let Some(chosen) = modal.show(ui, connector) {
+            action = chosen;
         }
+        action
     }
 
     /// The button's contents for the current connection state, unframed.
-    fn body(&mut self, ui: &mut egui::Ui, connector: &WalletConnector) -> WalletAction {
+    fn body(
+        &mut self,
+        ui: &mut egui::Ui,
+        connector: &WalletConnector,
+        modal: &WalletConnectModal<'_>,
+    ) -> WalletAction {
         ui.set_width(ui.available_width());
-        match &connector.connection_state {
-            ConnectionState::Disconnected => self.draw_disconnected(ui, connector),
-            ConnectionState::Connecting => {
+        match facing(self.requirement, connector) {
+            Facing::Idle => self.draw_disconnected(ui, modal),
+            Facing::Connecting => {
                 self.draw_connecting(ui);
                 WalletAction::None
             }
-            ConnectionState::Connected { .. } => self.draw_connected(ui, connector),
-            ConnectionState::Error(err) => self.draw_error(ui, err, connector),
+            Facing::Connected(identity) => self.draw_connected(ui, connector, identity),
+            Facing::Failed(error) => self.draw_error(ui, error, modal),
         }
     }
 
     fn draw_disconnected(
         &mut self,
         ui: &mut egui::Ui,
-        connector: &WalletConnector,
+        modal: &WalletConnectModal<'_>,
     ) -> WalletAction {
-        let mut action = WalletAction::None;
         let theme = self.theme.resolved(&ui.tokens());
-
-        if connector.available_wallets.is_empty() {
-            ui.vertical_centered(|ui| {
-                ui.label(
-                    RichText::new("No wallets detected")
-                        .color(theme.text_muted)
-                        .size(ui.text_size(TextSize::Sm)),
-                );
-            });
-            return action;
+        // One control, and the decision is not made here: the flow asks which
+        // chain, then which wallet, then shows what the wallet answered. Drawn
+        // inline this was every wallet on every chain at once, in a header.
+        // "Nothing detected" is not a state of the button either — the flow says
+        // so where it can also say what to do about it.
+        let response = ui.add_clickable_sized(
+            [ui.available_width(), 32.0],
+            egui::Button::new(
+                RichText::new("Connect wallet")
+                    .color(theme.accent)
+                    .size(ui.text_size(TextSize::Md)),
+            )
+            .corner_radius(ui.tokens().corner(Radius::Base)),
+        );
+        if response.clicked() {
+            modal.open(ui);
         }
-
-        // Single wallet — connect directly with one button
-        if connector.available_wallets.len() == 1 {
-            let info = &connector.available_wallets[0];
-            let btn = ui.add_clickable_sized(
-                [ui.available_width(), 32.0],
-                egui::Button::new(
-                    RichText::new(format!("Connect {}", info.name))
-                        .color(theme.accent)
-                        .size(ui.text_size(TextSize::Md)),
-                )
-                .corner_radius(ui.tokens().corner(Radius::Base)),
-            );
-            if btn.clicked()
-                && let Some(provider) = WalletProvider::from_api_name(&info.api_name)
-            {
-                action = WalletAction::Connect(provider);
-            }
-            return action;
-        }
-
-        // Several wallets — ONE compound control, not a stack of buttons.
-        //
-        // They are alternatives to each other, so they read as one object you
-        // pick within. Drawn as separate bordered buttons they read as several
-        // unrelated things that happen to be adjacent, which is what a toolbar
-        // looks like — and this is not a toolbar.
-        let items: Vec<OptionGroupItem<'_>> = connector
-            .available_wallets
-            .iter()
-            .enumerate()
-            .map(|(i, w)| {
-                let mut item = OptionGroupItem::new(i as u64, &w.name);
-                if let Some(icon) = &w.icon {
-                    item = item.image(icon.as_str());
-                }
-                item
-            })
-            .collect();
-
-        let picked = OptionGroup::new()
-            .flow(GroupFlow::Stacked)
-            .density(self.picker_density)
-            .items(items)
-            .show(ui);
-
-        if let Some(i) = picked.clicked
-            && let Some(info) = connector.available_wallets.get(i as usize)
-            && let Some(provider) = WalletProvider::from_api_name(&info.api_name)
-        {
-            action = WalletAction::Connect(provider);
-        }
-
-        action
+        WalletAction::None
     }
 
     fn draw_connecting(&self, ui: &mut egui::Ui) {
@@ -247,8 +296,20 @@ impl WalletButton {
             .show(ui);
     }
 
-    fn draw_connected(&mut self, ui: &mut egui::Ui, connector: &WalletConnector) -> WalletAction {
+    /// One identity, drawn as the button's contents.
+    ///
+    /// The balance row is Cardano's: it is a reading about that connection, and
+    /// only that chain has one (see [`WalletConnector::balance`]). The identity
+    /// says which chain is on screen, so the row cannot appear under an EVM
+    /// address.
+    fn draw_connected(
+        &mut self,
+        ui: &mut egui::Ui,
+        connector: &WalletConnector,
+        identity: ConnectedIdentity<'_>,
+    ) -> WalletAction {
         let mut action = WalletAction::None;
+        let cardano = identity.family == ChainFamily::Cardano;
 
         // Copy theme colors to avoid borrow conflicts
         let t = self.theme.resolved(&ui.tokens());
@@ -257,37 +318,49 @@ impl WalletButton {
 
         // Top row: icon + handle/address
         ui.horizontal(|ui| {
-            if let Some(ref icon_url) = connector.connected_icon {
+            if let Some(icon_url) = identity.icon {
                 ui.add(
-                    egui::Image::new(icon_url.as_str())
+                    egui::Image::new(icon_url)
                         .fit_to_exact_size(egui::vec2(20.0, 20.0))
                         .corner_radius(ui.tokens().corner(Radius::Sm)),
                 );
             }
 
-            if let Some(ref handle) = connector.handle {
-                ui.label(
-                    RichText::new(handle)
-                        .color(accent)
-                        .size(ui.text_size(TextSize::Md))
-                        .strong(),
-                );
-            } else if let Some(ref stake) = connector.stake_address {
-                let truncated = if stake.len() > 20 {
-                    format!("{}...{}", &stake[..8], &stake[stake.len() - 6..])
-                } else {
-                    stake.clone()
-                };
-                ui.label(
-                    RichText::new(truncated)
-                        .color(text_muted)
-                        .size(ui.text_size(TextSize::Base)),
-                );
+            // The `$handle` when there is one — Cardano's, and only when it has
+            // been read: it is a name a human recognises, where the address is
+            // a string they cannot check.
+            let handle = if cardano {
+                connector.handle.as_deref()
+            } else {
+                None
+            };
+            match handle {
+                Some(handle) => {
+                    ui.label(
+                        RichText::new(handle)
+                            .color(accent)
+                            .size(ui.text_size(TextSize::Md))
+                            .strong(),
+                    );
+                }
+                None => {
+                    let account = identity.account;
+                    let truncated = if account.len() > 20 {
+                        format!("{}...{}", &account[..8], &account[account.len() - 6..])
+                    } else {
+                        account.to_string()
+                    };
+                    ui.label(
+                        RichText::new(truncated)
+                            .color(text_muted)
+                            .size(ui.text_size(TextSize::Base)),
+                    );
+                }
             }
         });
 
         // Balance row
-        if let Some(ref balance) = connector.balance {
+        if cardano && let Some(ref balance) = connector.balance {
             ui.gap(Space::Xs);
             ui.horizontal(|ui| {
                 let ada = balance.ada();
@@ -329,7 +402,7 @@ impl WalletButton {
             )
             .clicked()
         {
-            action = WalletAction::Disconnect;
+            action = WalletAction::Disconnect(identity.family);
         }
 
         action
@@ -339,9 +412,9 @@ impl WalletButton {
         &mut self,
         ui: &mut egui::Ui,
         error: &str,
-        connector: &WalletConnector,
+        modal: &WalletConnectModal<'_>,
     ) -> WalletAction {
-        let mut action = WalletAction::None;
+        let action = WalletAction::None;
         let theme = self.theme.resolved(&ui.tokens());
 
         ui.horizontal(|ui| {
@@ -366,12 +439,9 @@ impl WalletButton {
                     ))
                     .clicked()
                 {
-                    // Try to reconnect with the first available wallet
-                    if let Some(info) = connector.available_wallets.first()
-                        && let Some(provider) = WalletProvider::from_api_name(&info.api_name)
-                    {
-                        action = WalletAction::Connect(provider);
-                    }
+                    // Back through the flow, which knows which wallet was
+                    // asked — rather than guessing at the first detected one.
+                    modal.open(ui);
                 }
             });
         });

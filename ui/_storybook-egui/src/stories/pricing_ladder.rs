@@ -17,10 +17,14 @@ const NOW: i64 = 1_789_683_535;
 /// for no gain — it is not source, it is evidence.
 const FILLS_CSV: &str = include_str!("black_flag_fills.csv");
 
+/// One rung — `(value, supply, ratio, target, realized, support)`, named from
+/// the destructuring in [`black_flag`] so the thirteen rows below stay a table.
+type Rung = (&'static str, u64, f64, f64, Option<f64>, usize);
+
 /// The rungs as the server resolves them: supply, ratio, ladder price, and the
 /// demand model's own recency-weighted median with the group size it rests on.
 #[rustfmt::skip]
-const RUNGS: [(&str, u64, f64, f64, Option<f64>, usize); 13] = [
+const RUNGS: [Rung; 13] = [
     ("Swab",          389,  1.00,   49.0, Some(23.0),   55),
     ("Deckhand",      320,  1.22,   59.6, Some(39.0),   46),
     ("Lookout",       280,  1.39,   68.1, Some(18.0),   24),

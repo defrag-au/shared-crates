@@ -71,6 +71,9 @@ pub struct OptionGroupItem<'a> {
     /// Overrides the label as hover text. Under [`GroupDensity::Compact`] the
     /// label is already the hover text, so this is for saying more.
     pub hover: Option<&'a str>,
+    /// A qualifier drawn muted after the label — "connected as Eternl", "2
+    /// wallets". For the fact that shapes the choice rather than names it.
+    pub note: Option<&'a str>,
     pub enabled: bool,
 }
 
@@ -82,6 +85,7 @@ impl<'a> OptionGroupItem<'a> {
             image: None,
             icon: None,
             hover: None,
+            note: None,
             enabled: true,
         }
     }
@@ -98,6 +102,12 @@ impl<'a> OptionGroupItem<'a> {
 
     pub fn hover(mut self, text: &'a str) -> Self {
         self.hover = Some(text);
+        self
+    }
+
+    /// A qualifier drawn muted after the label. See [`Self::note`].
+    pub fn note(mut self, text: &'a str) -> Self {
+        self.note = Some(text);
         self
     }
 
@@ -360,9 +370,15 @@ fn draw_cell(
         true => image_px + pad,
         false => 0.0,
     };
+    // The note is part of the cell's measured content, so a labelled-and-noted
+    // item stays centred like any other rather than drifting left.
+    let note_w = match (compact, item.note) {
+        (false, Some(note)) => pad * 0.5 + text_width(ui, note),
+        _ => 0.0,
+    };
     let content_w = match compact {
         true => image_px,
-        false => art_w + text_width(ui, item.label),
+        false => art_w + text_width(ui, item.label) + note_w,
     };
     let mut x = cell.left() + ((cell.width() - content_w) * 0.5).max(pad);
 
@@ -395,6 +411,18 @@ fn draw_cell(
             egui::FontId::proportional(ui.text_size(TextSize::Base)),
             ink,
         );
+        if let Some(note) = item.note {
+            // Muted, and one size down: it qualifies the label, it is not a
+            // second label. The caller decides what it says — the control only
+            // decides that it is quieter than the thing it qualifies.
+            ui.painter().text(
+                egui::pos2(x + text_width(ui, item.label) + pad * 0.5, cell.center().y),
+                egui::Align2::LEFT_CENTER,
+                note,
+                egui::FontId::proportional(ui.text_size(TextSize::Sm)),
+                colors.text_muted,
+            );
+        }
     }
 }
 

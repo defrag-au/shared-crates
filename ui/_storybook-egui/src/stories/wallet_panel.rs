@@ -254,19 +254,31 @@ fn tick_resolutions(ui: &mut egui::Ui, state: &mut WalletPanelStoryState) {
 /// arm; here each arm lands in the note under the panel.
 fn apply(state: &mut WalletPanelStoryState, action: WalletPanelAction) {
     match action {
-        WalletPanelAction::Connect(provider) => {
+        WalletPanelAction::Connect(egui_widgets::wallet::WalletChoice::Cardano(provider)) => {
             state.last_action = format!(
                 "Connect {provider:?} — the host runs the CIP-30 dialog and reports \
                  the result back"
             );
-            state.connector.set_connecting();
+            state
+                .connector
+                .set_connecting(egui_widgets::wallet::ChainFamily::Cardano);
             state.connecting = Some(60);
         }
-        WalletPanelAction::Disconnect => {
-            state.last_action = "Disconnect — the host drops the session and the row \
-                                 it seeded, but never a LINKED row"
-                .to_string();
-            state.connector.disconnect();
+        WalletPanelAction::Connect(egui_widgets::wallet::WalletChoice::Evm(wallet)) => {
+            state.last_action = format!(
+                "Connect {} ({}) — the host runs the EIP-1193 connect and reports \
+                 the result back",
+                wallet.name, wallet.id
+            );
+            state.connecting = Some(60);
+        }
+        WalletPanelAction::Disconnect(family) => {
+            state.last_action = format!(
+                "Disconnect {} — the host drops that chain's session and the row it \
+                 seeded, but never a LINKED row",
+                family.display_name()
+            );
+            state.connector.disconnect(family);
         }
         WalletPanelAction::Editor(action) => apply_editor(state, action),
     }

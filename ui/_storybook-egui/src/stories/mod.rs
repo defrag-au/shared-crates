@@ -100,8 +100,15 @@ pub mod transform_stick;
 pub mod typeahead_search;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
+// Seeded with connectors, so it is wasm-only too.
+#[cfg(target_arch = "wasm32")]
+pub mod wallet_connect;
 pub mod wallet_cta;
 pub mod wallet_editor;
+/// Connectors as they look after a real connect — one place, because eight
+/// stories were seeding one each.
+#[cfg(target_arch = "wasm32")]
+pub mod wallet_fixture;
 pub mod wiring_editor;
 pub mod wrt_fixture;
 

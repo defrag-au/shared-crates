@@ -10,17 +10,17 @@
 //! corner, nowhere near the thing they were about to do.
 //!
 //! This makes the instruction the control. Disconnected, the action's place is
-//! taken by a prompt that opens the wallet picker in a modal, at the point the
-//! reader was about to act. Connected, the modal closes itself and the action
-//! is simply there, as a proper primary button.
+//! taken by a prompt that opens the wallet flow in a modal, at the point the
+//! reader was about to act. Connected, the action is simply there, as a proper
+//! primary button — once the flow's own last step has been read and dismissed.
 //!
 //! ## What it composes
 //!
-//! The picker is [`WalletButton`]'s — per-extension icons, the one-wallet
-//! shortcut, "no wallets detected", the error state. Drawn inline that picker
-//! calls `set_width(available_width())` and spans whatever it is in; inside a
-//! bounded modal the same call is exactly right. Connecting is shown with
-//! [`LabelledProgress`], so the busy mark is the size of its words.
+//! [`WalletConnectModal`] is the flow: which chain, which wallet, and then what
+//! the wallet answered with. The CTA's title and intro are that modal's, so the
+//! words the reader sees at the point of acting are the words on the modal they
+//! get. Connecting is shown with [`LabelledProgress`], so the busy mark is the
+//! size of its words.
 //!
 //! ## What it does not own
 //!
@@ -28,9 +28,9 @@
 //! it, like every wallet widget here. And whether the action is ready — that
 //! is [`ActionState`], and a blocked action says why on hover.
 //!
-//! The modal's open flag lives in egui memory, keyed to where the widget sits,
-//! so the caller holds no state at all and two of these on one page cannot
-//! open each other's modal.
+//! The modal's open flag and its step live in egui memory, keyed to where the
+//! widget sits, so the caller holds no state at all and two of these on one page
+//! cannot open each other's modal.
 //!
 //! ```no_run
 //! # use egui_widgets::wallet_cta::{ActionState, WalletCta, WalletCtaAction};
@@ -47,7 +47,7 @@
 //!     .show(ui, wallet)
 //! {
 //!     WalletCtaAction::Act => { /* add it */ }
-//!     WalletCtaAction::Connect(_provider) => { /* spawn the connect */ }
+//!     WalletCtaAction::Connect(_wallet) => { /* spawn the connect */ }
 //!     WalletCtaAction::None => {}
 //! }
 //! # }
@@ -58,8 +58,9 @@ use egui::{RichText, Ui};
 use crate::icons::PhosphorIcon;
 use crate::labelled_progress::LabelledProgress;
 use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
-use crate::wallet::{WalletConnector, WalletProvider};
-use crate::wallet_button::{PickerChrome, WalletAction, WalletButton};
+use crate::wallet::{WalletChoice, WalletConnector};
+use crate::wallet_button::WalletAction;
+use crate::wallet_connect_modal::{ChainRequirement, WalletConnectModal};
 
 /// What the reader did this frame.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,8 +68,9 @@ pub enum WalletCtaAction {
     None,
     /// The connected action was pressed.
     Act,
-    /// A wallet was chosen in the modal. The caller connects it.
-    Connect(WalletProvider),
+    /// A wallet was chosen in the modal, on whichever chain it is for. The
+    /// caller spawns the connect that matches.
+    Connect(WalletChoice),
 }
 
 /// Whether the action can be taken yet, once a wallet is connected.
@@ -104,6 +106,7 @@ pub struct WalletCta<'a> {
     prompt: ConnectPrompt,
     modal_title: &'a str,
     modal_intro: Option<&'a str>,
+    requirement: ChainRequirement,
     id_salt: &'a str,
 }
 
@@ -117,6 +120,7 @@ impl<'a> WalletCta<'a> {
             prompt: ConnectPrompt::default(),
             modal_title: "Connect a wallet",
             modal_intro: None,
+            requirement: ChainRequirement::Any,
             id_salt: "wallet_cta",
         }
     }
@@ -143,11 +147,20 @@ impl<'a> WalletCta<'a> {
         self
     }
 
-    /// One line under the modal title. The place to say what connecting does
-    /// and does not do — a reader asked to connect a wallet reasonably wants
-    /// to know whether anything will be sent.
+    /// What the modal should say connecting is FOR, and what it will not do —
+    /// a reader asked to connect a wallet reasonably wants to know whether
+    /// anything will be sent.
     pub fn modal_intro(mut self, intro: &'a str) -> Self {
         self.modal_intro = Some(intro);
+        self
+    }
+
+    /// What this action can actually be done with. Say it here rather than
+    /// letting the reader pick a wallet that could not have signed it: an EVM
+    /// proof says [`ChainRequirement::Only`] and the modal never offers Rabby
+    /// for a stake-key signature.
+    pub fn requirement(mut self, requirement: ChainRequirement) -> Self {
+        self.requirement = requirement;
         self
     }
 
@@ -162,36 +175,33 @@ impl<'a> WalletCta<'a> {
         // Keyed to where the widget sits AND a salt, so two on one page cannot
         // share — and so close — one modal. (A shared popup id is exactly how
         // the account bar's menu once became impossible to open.)
-        let id = ui.id().with(("wallet_cta", self.id_salt));
-        let mut open = ui.ctx().data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
+        let mut modal = WalletConnectModal::new(ui.id().with(("wallet_cta", self.id_salt)))
+            .title(self.modal_title)
+            .requirement(self.requirement);
+        if let Some(intro) = self.modal_intro {
+            modal = modal.intro(intro);
+        }
+
         let mut action = WalletCtaAction::None;
 
-        if connector.is_connected() {
-            // The job is done; nothing to keep open.
-            open = false;
+        if self.requirement.satisfied_by(connector) {
             if self.action_button(ui) {
                 action = WalletCtaAction::Act;
             }
-        } else if connector.is_connecting() && !open {
+        } else if self.requirement.connecting_on(connector) && !modal.is_open(ui) {
             // Connecting from somewhere else — the header, a reconnect. Say
             // so in the action's place rather than offer a second connect.
             LabelledProgress::new("Connecting wallet")
                 .size(TextSize::Base)
                 .show(ui);
         } else if self.connect_prompt(ui).clicked() {
-            open = true;
+            modal.open(ui);
         }
 
-        // Never from a sizing pass: a measuring pass sees every click as
-        // outside the modal and would close it the frame it opened.
-        if open
-            && !ui.is_sizing_pass()
-            && let Some(provider) = self.modal(ui, connector, id, &mut open)
-        {
-            action = WalletCtaAction::Connect(provider);
+        // The flow returns nothing but a choice — no disconnect lives in it.
+        if let Some(WalletAction::Connect(choice)) = modal.show(ui, connector) {
+            action = WalletCtaAction::Connect(choice);
         }
-
-        ui.ctx().data_mut(|d| d.insert_temp(id, open));
         action
     }
 
@@ -265,63 +275,5 @@ impl<'a> WalletCta<'a> {
                 response
             }
         }
-    }
-
-    /// The picker, in a modal. `Some` when a wallet was chosen.
-    fn modal(
-        &self,
-        ui: &Ui,
-        connector: &WalletConnector,
-        id: egui::Id,
-        open: &mut bool,
-    ) -> Option<WalletProvider> {
-        let mut picked = None;
-        let mut dismissed = false;
-        let response = egui::Modal::new(id.with("modal")).show(ui.ctx(), |ui| {
-            // Clamped to the viewport, as `AboutModal` does: a flat width wider
-            // than a phone would make the modal the thing that overflows.
-            let room = (ui.ctx().content_rect().width() - 32.0).max(240.0);
-            ui.set_min_width(300.0_f32.min(room));
-            ui.set_max_width(380.0_f32.min(room));
-
-            ui.label(
-                RichText::new(self.modal_title)
-                    .size(ui.text_size(TextSize::Xl))
-                    .strong(),
-            );
-            if let Some(intro) = self.modal_intro {
-                ui.label(
-                    RichText::new(intro)
-                        .color(ui.tokens().color.text_muted)
-                        .size(ui.text_size(TextSize::Sm)),
-                );
-            }
-            ui.gap(Space::Lg);
-
-            // Built fresh: the picker holds only its theme and density, and
-            // the connection state it draws is the caller's `connector`.
-            // `Bare`: the modal is already the surface. Framed, the picker drew
-            // its own filled panel inside it — a box inside a box.
-            match WalletButton::new()
-                .chrome(PickerChrome::Bare)
-                .show(ui, connector)
-            {
-                WalletAction::Connect(provider) => picked = Some(provider),
-                WalletAction::None | WalletAction::Disconnect => {}
-            }
-
-            ui.gap(Space::Lg);
-            ui.separator();
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Cancel").clicked() {
-                    dismissed = true;
-                }
-            });
-        });
-        // Escape and a click on the scrim are dismissals too.
-        if response.should_close() || dismissed {
-            *open = false;
-        }
-        picked
     }
 }

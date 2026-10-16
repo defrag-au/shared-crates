@@ -38,8 +38,9 @@ use crate::error_note::ErrorNote;
 use crate::icons::PhosphorIcon;
 use crate::theme::{Space, SpaceExt, ThemeExt};
 use crate::user_badge::{UserBadge, UserBadgeAction};
-use crate::wallet::{WalletApi, WalletConnector, WalletProvider};
+use crate::wallet::{WalletApi, WalletChoice, WalletConnector, WalletProvider};
 use crate::wallet_button::{WalletAction, WalletButton};
+use crate::wallet_connect_modal::{ChainFamily, ChainRequirement};
 
 // ============================================================================
 // The session
@@ -359,13 +360,28 @@ impl<'a> StakeSessionPanel<'a> {
             };
         }
 
-        // Not signed in: the connect step first.
-        let mut action = match WalletButton::new().show(ui, self.connector) {
+        // Not signed in: the connect step first. The flow is told what this
+        // panel can use — a stake key is a CIP-30 thing — so it offers Cardano
+        // wallets and nothing else, and the EVM arm below is unreachable rather
+        // than merely unhandled.
+        let mut action = match WalletButton::new()
+            .requirement(ChainRequirement::Only(ChainFamily::Cardano))
+            .show(ui, self.connector)
+        {
             WalletAction::None => StakeSessionAction::None,
-            WalletAction::Connect(p) => StakeSessionAction::Connect(p),
-            WalletAction::Disconnect => StakeSessionAction::Disconnect,
+            WalletAction::Connect(WalletChoice::Cardano(provider)) => {
+                StakeSessionAction::Connect(provider)
+            }
+            // Unreachable through the flow, which was told `Only(Cardano)`. Kept
+            // because `WalletChoice` is an enum and a host may still hand this
+            // connector an EVM announcement — but the reader cannot pick one.
+            WalletAction::Connect(WalletChoice::Evm(_)) => StakeSessionAction::None,
+            // The flow offers Cardano only here, so an EVM disconnect cannot be
+            // asked for — a session is a stake-key thing either way.
+            WalletAction::Disconnect(ChainFamily::Cardano) => StakeSessionAction::Disconnect,
+            WalletAction::Disconnect(_) => StakeSessionAction::None,
         };
-        if !self.connector.is_connected() {
+        if !self.connector.is_connected(ChainFamily::Cardano) {
             return action;
         }
 

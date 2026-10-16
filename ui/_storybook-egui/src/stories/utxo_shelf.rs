@@ -9,6 +9,7 @@
 use crate::muted;
 use cardano_assets::resolver::{NullResolver, PolicyResolver};
 use egui_widgets::egui_inbox::{UiInbox, UiInboxSender};
+use egui_widgets::wallet::ChainFamily;
 use egui_widgets::{ShelfConfig, ShelfData, ShelfState, WalletAction, classify_utxos};
 use std::collections::HashMap;
 
@@ -62,11 +63,10 @@ pub fn show(
     for msg in state.inbox.read(ui) {
         match msg {
             WalletMsg::Connected(Ok((result, api))) => {
-                connector.apply_connect_result(result);
-                connector.api = Some(api);
+                connector.apply_connect_result(result, api);
             }
             WalletMsg::Connected(Err(e)) => {
-                connector.set_error(e.clone());
+                connector.set_error(ChainFamily::Cardano, e.clone());
                 state.fetch_error = Some(e);
             }
             WalletMsg::UtxosFetched(Ok(utxos)) => {
@@ -93,26 +93,29 @@ pub fn show(
             ui.set_max_width(220.0);
             let action = wallet_btn.show(ui, connector);
             match action {
-                WalletAction::Connect(provider) => {
-                    connector.set_connecting();
+                WalletAction::Connect(egui_widgets::wallet::WalletChoice::Cardano(provider)) => {
+                    connector.set_connecting(ChainFamily::Cardano);
                     let sender = state.sender.clone();
                     wasm_bindgen_futures::spawn_local(async move {
                         let result = egui_widgets::wallet::connect_wallet(provider).await;
                         let _ = sender.send(WalletMsg::Connected(result));
                     });
                 }
-                WalletAction::Disconnect => {
-                    connector.disconnect();
+                WalletAction::Disconnect(family) => {
+                    connector.disconnect(family);
                     state.data = None;
                     state.fetch_error = None;
                 }
+                // No EIP-1193 bridge in this crate yet, so an EVM pick has
+                // nothing to run.
+                WalletAction::Connect(egui_widgets::wallet::WalletChoice::Evm(_)) => {}
                 WalletAction::None => {}
             }
         });
 
     ui.add_space(8.0);
 
-    if connector.is_connected() {
+    if connector.is_connected(ChainFamily::Cardano) {
         ui.horizontal(|ui| {
             let fetch_enabled = connector.has_api() && !state.fetching;
             if ui
@@ -128,7 +131,7 @@ pub fn show(
             {
                 state.fetching = true;
                 state.fetch_error = None;
-                let api = connector.api.clone().unwrap();
+                let api = connector.api().unwrap();
                 let sender = state.sender.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     let result = egui_widgets::wallet::fetch_wallet_utxos(&api).await;
@@ -136,7 +139,7 @@ pub fn show(
                 });
             }
 
-            if let Some(ref addr) = connector.stake_address {
+            if let Some(addr) = connector.cardano().and_then(|c| c.stake_address.as_deref()) {
                 ui.label(
                     egui::RichText::new(addr)
                         .color(muted(ui))
@@ -145,7 +148,7 @@ pub fn show(
                 );
             }
         });
-    } else if connector.is_connecting() {
+    } else if connector.is_connecting(ChainFamily::Cardano) {
         ui.label(
             egui::RichText::new("Connecting...")
                 .color(muted(ui))

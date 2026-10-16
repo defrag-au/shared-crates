@@ -28,7 +28,8 @@
 //! the roster actually reaches: an EVM account and a Cardano stake key are both
 //! "a wallet" here, and the reader adding the second one wants to see the first.
 //!
-//! // Gated with `wallet_button`, whose picker it opens: the connect strip is
+//! // Gated with `wallet_button`: the connect strip is the flow it opens, and a
+//! // native build has no wallet to open one on.
 //! the wasm half. Verified by the storybook story, not by `cargo test` — like
 //! [`wallet_mock`](crate::wallet_mock), this module never compiles natively.
 
@@ -37,8 +38,8 @@ use egui::{Align, Color32, Layout, RichText, Sense, Stroke, Ui, vec2};
 use crate::commands::Command;
 use crate::icons::PhosphorIcon;
 use crate::theme::{InkExt, Radius, Space, SpaceExt, TextSize, ThemeExt};
-use crate::wallet::{WalletConnector, WalletProvider};
-use crate::wallet_button::{PickerChrome, WalletAction, WalletButton};
+use crate::wallet::{ChainFamily, WalletChoice, WalletConnector};
+use crate::wallet_button::{ButtonChrome, WalletAction, WalletButton};
 use crate::wallet_editor::{
     self, Submission, WalletEditorAction, WalletEditorConfig, WalletEditorEntry, WalletEditorState,
     WalletEntryStatus, WalletOrigin,
@@ -72,12 +73,12 @@ pub struct WalletPanelState {
 /// What the reader did, for the host to perform.
 #[derive(Debug, Clone, PartialEq)]
 pub enum WalletPanelAction {
-    /// Connect this provider — the CIP-30 flow, exactly as `WalletButton`
-    /// reports it.
-    Connect(WalletProvider),
-    /// Drop the browser wallet connection. The roster row it seeded is the
-    /// host's to remove, not this.
-    Disconnect,
+    /// Connect this wallet — the CIP-30 flow for a Cardano choice, the EIP-1193
+    /// bridge for an EVM one, exactly as `WalletButton` reports it.
+    Connect(WalletChoice),
+    /// Drop the browser wallet connection on ONE chain. The roster row it
+    /// seeded is the host's to remove, not this.
+    Disconnect(ChainFamily),
     /// A roster edit — the same actions [`wallet_editor`] emits, unchanged.
     Editor(WalletEditorAction),
 }
@@ -235,14 +236,14 @@ impl<'a> WalletPanel<'a> {
                 });
                 ui.gap(Space::Base);
 
-                // The browser wallet, and the picker that reaches one.
-                let mut button = WalletButton::new().chrome(PickerChrome::Bare);
+                // The browser wallet, and the flow that reaches one.
+                let mut button = WalletButton::new().chrome(ButtonChrome::Bare);
                 match button.show(ui, self.connector) {
-                    WalletAction::Connect(provider) => {
-                        action = Some(WalletPanelAction::Connect(provider));
+                    WalletAction::Connect(choice) => {
+                        action = Some(WalletPanelAction::Connect(choice));
                     }
-                    WalletAction::Disconnect => {
-                        action = Some(WalletPanelAction::Disconnect);
+                    WalletAction::Disconnect(family) => {
+                        action = Some(WalletPanelAction::Disconnect(family));
                     }
                     WalletAction::None => {}
                 }

@@ -27,7 +27,10 @@
 //! **Apps must gate activation behind `cfg!(debug_assertions)`** (or an
 //! equivalent local-only check) so release builds cannot enter the mode.
 
-use super::wallet::{ConnectionState, Network, WalletBalance, WalletConnector, WalletProvider};
+use super::wallet::{
+    CardanoConnection, ChainConnection, EvmWalletId, EvmWalletInfo, Network, WalletBalance,
+    WalletConnector, WalletProvider,
+};
 use std::collections::HashMap;
 
 /// Black Flag — a real mainnet policy (assets `Pirate1`–`Pirate2000`), so
@@ -67,6 +70,32 @@ pub struct MockIdentity {
 /// Names of all registered profiles (for help text / pickers).
 pub fn profile_names() -> &'static [&'static str] {
     &["alice", "bob", "whale", "minnow", "trader", "hoarder"]
+}
+
+/// EVM wallets as an [EIP-6963] browser would announce them: the one this
+/// estate's demos meet, and the one everybody else has.
+///
+/// **The ids are demo-shaped on purpose** (`demo:rabby`). A real announcement
+/// cannot look like that, so a stale id in saved state reads as stale rather
+/// than as a wallet that moved. The names are the providers' own, because that
+/// is what an announcement carries and what the picker shows.
+///
+/// [EIP-6963]: https://eips.ethereum.org/EIPS/eip-6963
+pub fn evm_wallets() -> Vec<EvmWalletInfo> {
+    vec![
+        EvmWalletInfo {
+            id: EvmWalletId::from("demo:rabby".to_string()),
+            name: "Rabby".to_string(),
+            icon: None,
+            rdns: Some("io.rabby".to_string()),
+        },
+        EvmWalletInfo {
+            id: EvmWalletId::from("demo:metamask".to_string()),
+            name: "MetaMask".to_string(),
+            icon: None,
+            rdns: Some("io.metamask".to_string()),
+        },
+    ]
 }
 
 /// Look up a profile by name. Unknown names fall back to `alice` so a typo'd
@@ -234,13 +263,18 @@ pub fn balance(id: &MockIdentity) -> WalletBalance {
 /// localStorage (unlike `apply_connect_result`), so the next real page
 /// load doesn't try to auto-reconnect a wallet that doesn't exist.
 pub fn connect(connector: &mut WalletConnector, id: &MockIdentity) {
-    connector.connection_state = ConnectionState::Connected {
-        provider: WalletProvider::Eternl,
-        address: id.address.clone(),
-        network: Network::Mainnet,
-    };
-    connector.address_hex = None;
-    connector.stake_address = Some(id.stake.clone());
+    connector
+        .connections
+        .set_connected(ChainConnection::Cardano(CardanoConnection {
+            provider: WalletProvider::Eternl,
+            address_hex: id.address.clone(),
+            // `None`: a demo profile has no change address to derive one from,
+            // and the mock's identity IS the stake address.
+            stake_address: Some(id.stake.clone()),
+            network: Network::Mainnet,
+            api: None,
+            icon: None,
+        }));
     connector.handle = id.handle.clone();
 }
 

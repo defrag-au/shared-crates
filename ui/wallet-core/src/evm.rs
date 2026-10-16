@@ -16,7 +16,109 @@
 //! wallet signs exactly the bytes the server reconstructs — the same rule the
 //! light link page follows in JavaScript.
 
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
+
+/// One EVM wallet the browser offers.
+///
+/// The counterpart of [`crate::WalletInfo`], and deliberately *not* an enum:
+/// Cardano's set is closed (a known list of `window.cardano` keys), while EVM
+/// wallets announce themselves under [EIP-6963] with a uuid, a name and an icon
+/// — open-ended by design, because several of them otherwise have to fight over
+/// `window.ethereum`.
+///
+/// [`uuid`](Self::uuid) is the identity to reconnect with; `rdns` is the
+/// reverse-DNS name the wallet publishes (e.g. `io.rabby`), which is the stable
+/// way to recognise a wallet across versions when its display name changes.
+///
+/// [EIP-6963]: https://eips.ethereum.org/EIPS/eip-6963
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvmWalletInfo {
+    /// The wallet's own identifier. [`EvmWalletId::fallback`] when the only
+    /// provider available is the un-announced `window.ethereum`.
+    pub id: EvmWalletId,
+    /// Display name as the wallet gives it ("Rabby", "MetaMask").
+    pub name: String,
+    /// Data-URL icon, when the wallet supplied one.
+    pub icon: Option<String>,
+    /// Reverse-DNS identifier, e.g. `io.rabby`. `None` for the fallback.
+    pub rdns: Option<String>,
+}
+
+/// The handle for one EVM wallet: EIP-6963's `uuid`, as the wallet gave it.
+///
+/// A newtype rather than a `String` because this is an **identity** — the thing
+/// a host passes back to reach the provider again — and it must not be
+/// mistakable for the Cardano side's `api_name`, nor for a display name.
+///
+/// **Not validated, and not assumed to be a UUID.** EIP-6963 says wallets
+/// supply a uuid and most mint a real v4, but the spec sets no format
+/// requirement, so this is an opaque token: store it, compare it, hand it back.
+/// [`EvmWalletId::fallback`] is the only value this crate mints itself.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct EvmWalletId(String);
+
+impl EvmWalletId {
+    /// The identity of a provider found only as `window.ethereum` — a wallet
+    /// that does not announce, which an EIP-6963 host still has to offer.
+    ///
+    /// Spelled like a URL rather than a token so it cannot collide with an
+    /// announced uuid, and so a log line reads as what it is.
+    pub fn fallback() -> Self {
+        Self("window.ethereum".to_string())
+    }
+
+    /// The raw handle — for keying, for logs, and for the wire.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Whether this is [`Self::fallback`].
+    pub fn is_fallback(&self) -> bool {
+        self.as_str() == "window.ethereum"
+    }
+}
+
+impl From<String> for EvmWalletId {
+    /// From whatever an announcement carried. Infallible on purpose: there is
+    /// no syntax to get wrong.
+    fn from(uuid: String) -> Self {
+        Self(uuid)
+    }
+}
+
+impl std::fmt::Display for EvmWalletId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+#[cfg(test)]
+mod id_tests {
+    use super::EvmWalletId;
+
+    /// The fallback exists so nothing compares against a literal, and it has to
+    /// stay distinguishable from a wallet-minted id.
+    #[test]
+    fn the_fallback_is_a_value_of_its_own() {
+        let fallback = EvmWalletId::fallback();
+        assert!(fallback.is_fallback());
+        assert_eq!(fallback.as_str(), "window.ethereum");
+
+        let announced = EvmWalletId::from("c8c5f9d0-1f1a-4a8e-9c76-0a2f5f0b7d21".to_string());
+        assert!(!announced.is_fallback());
+        assert_ne!(announced, fallback);
+    }
+
+    /// Whatever the wallet called itself is preserved verbatim — this type is a
+    /// handle, not a parser, so it must not normalise or reformat.
+    #[test]
+    fn the_handle_is_kept_verbatim() {
+        let odd = EvmWalletId::from("Rabby! not.a.uuid".to_string());
+        assert_eq!(odd.as_str(), "Rabby! not.a.uuid");
+        assert_eq!(odd.to_string(), "Rabby! not.a.uuid");
+    }
+}
 
 /// The injected provider, as detected at [`EvmProvider::detect`].
 ///
@@ -133,6 +235,38 @@ export async function evmPersonalSign(provider, messageHex, address) {
     // wanted it the other way round; those versions are long out of service.
     return await provider.request({ method: 'personal_sign', params: [messageHex, address] });
 }
+
+// EIP-6963: a wallet answers `eip6963:requestProvider` with an
+// `eip6963:announceProvider` event carrying `detail.info` and `detail.provider`.
+// The listener has to be in place BEFORE the request goes out, and the answers
+// arrive in that same tick — the spec's event is synchronous — so this waits for
+// nothing and needs no task. Duplicates are dropped by uuid, because a wallet
+// may also have announced on load and must appear once.
+//
+// A provider that only injects `window.ethereum` and never announces is NOT
+// collected: see `collect_announced_wallets` for why that is deliberate.
+export function collectAnnouncedEvmWallets() {
+    if (typeof window === 'undefined') return [];
+    const announced = new Map();
+    const remember = (event) => {
+        const detail = event && event.detail;
+        const info = detail && detail.info;
+        if (!info || !info.uuid || !detail.provider) return;
+        announced.set(info.uuid, {
+            id: info.uuid,
+            name: info.name,
+            icon: info.icon ?? null,
+            rdns: info.rdns ?? null,
+        });
+    };
+    window.addEventListener('eip6963:announceProvider', remember);
+    try {
+        window.dispatchEvent(new CustomEvent('eip6963:requestProvider'));
+    } finally {
+        window.removeEventListener('eip6963:announceProvider', remember);
+    }
+    return Array.from(announced.values());
+}
 "#)]
 extern "C" {
     #[wasm_bindgen(js_name = evmProvider)]
@@ -151,6 +285,28 @@ extern "C" {
         message_hex: &str,
         address: &str,
     ) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(js_name = collectAnnouncedEvmWallets)]
+    fn collect_announced_evm_wallets_js() -> JsValue;
+}
+
+/// Every EVM wallet that answered `eip6963:requestProvider`.
+///
+/// The request is dispatched and the answers are read in the same tick — the
+/// spec's event is synchronous, so nothing here waits and nothing spawns a task,
+/// which is what lets a plain widget build the list on the frame it is drawn.
+///
+/// **Announced wallets only.** A provider that merely injects `window.ethereum`
+/// and never announces is left out, because it has no name: an announcement
+/// carries one, and a picker row reading `window.ethereum` is worse than no row
+/// at all. That is a decision rather than an oversight — a fallback would need a
+/// name to show first, and [`EvmWalletId::fallback`] stays unused until one
+/// exists.
+///
+/// A payload that does not parse yields an empty list rather than an error: this
+/// is a list of things to *offer*, and offering none is the safe end of that.
+pub fn collect_announced_wallets() -> Vec<EvmWalletInfo> {
+    serde_wasm_bindgen::from_value(collect_announced_evm_wallets_js()).unwrap_or_default()
 }
 
 #[cfg(test)]

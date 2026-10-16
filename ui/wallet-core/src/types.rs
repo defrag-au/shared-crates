@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::evm::EvmWalletInfo;
+
 /// Information about an available wallet extension
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -168,6 +170,13 @@ mod network_alias_tests {
 }
 
 /// Wallet connection state
+///
+/// ⚠️ **Superseded by [`WalletConnections`]**, which holds one connection per
+/// chain. This is the single-slot form, and a slot cannot express a reader with
+/// a Cardano wallet *and* an EVM wallet connected at once — it makes
+/// "connected" mean "a CIP-30 wallet is connected". It survives because
+/// `ui-components` (macroquad) and `wallet-leptos` still hold one, and moving
+/// them is its own change; nothing new should be built on it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum ConnectionState {
     #[default]
@@ -179,4 +188,18 @@ pub enum ConnectionState {
         network: Network,
     },
     Error(String),
+}
+
+/// Which wallet the reader picked — and therefore which bridge has to connect it.
+///
+/// One type rather than two connect variants, because the picker offers one
+/// list: where the choice comes *from* decides nothing, and a caller that can
+/// only act on one chain should have to say so once, in its own match — not
+/// discover a second action variant it never expected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WalletChoice {
+    /// A CIP-30 wallet: connect it with [`crate::WalletApi::connect`].
+    Cardano(WalletProvider),
+    /// An announced EIP-1193 wallet: connect it by [`EvmWalletInfo::id`].
+    Evm(EvmWalletInfo),
 }
