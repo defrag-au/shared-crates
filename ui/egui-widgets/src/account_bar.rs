@@ -64,7 +64,7 @@ use crate::wallet::{
     ChainFamily, ConnectedIdentity, ConnectionPhase, WalletChoice, WalletConnector,
 };
 use crate::wallet_button::WalletAction;
-use crate::wallet_connect_modal::WalletConnectModal;
+use crate::wallet_connect_modal::{ChainRequirement, WalletConnectModal};
 
 /// What the user did with the bar this frame.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -219,6 +219,9 @@ impl Default for AccountBarConfig {
 #[derive(Default)]
 pub struct AccountBar {
     pub config: AccountBarConfig,
+    /// What the connect flow behind the Connect pill may offer — see
+    /// [`Self::requirement`].
+    pub requirement: ChainRequirement,
     /// How tall the pills came out last frame. Claimed up front, so the bar's
     /// centre is the pills' centre (see [`Self::show`]).
     bar_height: f32,
@@ -243,8 +246,24 @@ impl AccountBar {
     pub fn with_config(config: AccountBarConfig) -> Self {
         Self {
             config,
+            requirement: ChainRequirement::default(),
             bar_height: 0.0,
         }
+    }
+
+    /// What the connect flow may offer.
+    ///
+    /// [`ChainRequirement::Any`] by default, because a bar that has not been
+    /// told what its app can sign with must not narrow the choice. An app that
+    /// signs with Cardano alone sets [`ChainRequirement::Only`], and the flow
+    /// then never offers a chain whose answer the app has no path to act on —
+    /// which is the alternative to every caller matching a [`WalletChoice`] it
+    /// cannot use.
+    ///
+    /// [`WalletChoice`]: crate::wallet::WalletChoice
+    pub fn requirement(mut self, requirement: ChainRequirement) -> Self {
+        self.requirement = requirement;
+        self
     }
 
     /// Draw the cluster, right-aligned in whatever width it is given.
@@ -459,7 +478,7 @@ impl AccountBar {
         }
         // Built fresh every frame: the open flag and the step it has reached
         // live in egui memory under `modal_id`.
-        let modal = WalletConnectModal::new(modal_id);
+        let modal = WalletConnectModal::new(modal_id).requirement(self.requirement);
         if pill.clicked() {
             modal.open(ui);
         }
