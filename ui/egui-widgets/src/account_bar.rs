@@ -48,7 +48,7 @@
 //!
 //! match bar.show(ui, wallet, &triggers) {
 //!     AccountBarAction::Trigger(id) if id == "cart" => { /* open the drawer */ }
-//!     AccountBarAction::Disconnect => { /* clear the session */ }
+//!     AccountBarAction::Disconnect(family) => { /* drop that chain's wallet */ }
 //!     _ => {}
 //! }
 //! # }
