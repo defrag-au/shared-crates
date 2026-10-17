@@ -150,6 +150,26 @@ pub enum EvmError {
     Malformed(String),
 }
 
+/// What an injected wallet says about this site, read without prompting.
+///
+/// The four cases are what a caller has to be able to act on differently: a new
+/// selection is a connection update, a lock is a wait, a revocation is a
+/// disconnection, and an unanswered question is none of those.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EvmSessionState {
+    /// Permitted, and naming this account — the wallet's selected one.
+    Account(String),
+    /// Permitted, but naming no account: the wallet is locked. Transient, and
+    /// the next signature is what unlocks it.
+    Locked,
+    /// Not permitted: the reader disconnected this site in the wallet, or the
+    /// permission was revoked there.
+    Revoked,
+    /// The wallet did not answer, or does not implement the permissions query.
+    /// An unanswered question is not a disconnection — keep what you have.
+    Unknown,
+}
+
 impl EvmProvider {
     /// The browser's provider, when it has one.
     ///
@@ -184,6 +204,58 @@ impl EvmProvider {
     /// Accounts the provider is already willing to name. Never prompts.
     pub async fn accounts(&self) -> Result<Vec<String>, EvmError> {
         self.account_list("eth_accounts").await
+    }
+
+    /// What this wallet says about the site right now, read without prompting.
+    ///
+    /// `eth_accounts` alone cannot tell a locked wallet from a disconnected one
+    /// — both answer with no accounts — so it is paired with
+    /// `wallet_getPermissions` (EIP-2255): permissions retained plus no account
+    /// is a lock, permissions gone is a disconnection. A wallet that does not
+    /// implement the permissions query yields [`EvmSessionState::Unknown`],
+    /// which is the honest answer rather than a guess in either direction.
+    ///
+    /// This is the question to ask on window focus and at startup, where a
+    /// wallet dialog the reader did not ask for would be an ambush.
+    pub async fn session_state(&self) -> EvmSessionState {
+        let accounts = match self.accounts().await {
+            Ok(accounts) => accounts,
+            Err(_) => return EvmSessionState::Unknown,
+        };
+        if let Some(account) = accounts.into_iter().next() {
+            return EvmSessionState::Account(account);
+        }
+        match self.permissions().await {
+            Ok(capabilities) if capabilities.iter().any(|c| c == "eth_accounts") => {
+                EvmSessionState::Locked
+            }
+            Ok(_) => EvmSessionState::Revoked,
+            Err(_) => EvmSessionState::Unknown,
+        }
+    }
+
+    /// The capabilities this origin has been granted. EIP-2255.
+    async fn permissions(&self) -> Result<Vec<String>, EvmError> {
+        let value = evm_request_js(
+            &self.provider,
+            "wallet_getPermissions",
+            &js_sys::Array::new(),
+        )
+        .await
+        .map_err(refused)?;
+        if !value.is_array() {
+            return Err(EvmError::Malformed(
+                "wallet_getPermissions did not return a list".into(),
+            ));
+        }
+        Ok(js_sys::Array::from(&value)
+            .iter()
+            .filter_map(|capability| {
+                js_sys::Reflect::get(&capability, &JsValue::from_str("parentCapability"))
+                    .ok()?
+                    .as_string()
+            })
+            .collect())
     }
 
     /// Accounts, *asking* the reader to connect if the wallet is locked or this

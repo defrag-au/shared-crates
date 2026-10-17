@@ -6,8 +6,9 @@
 
 pub use wallet_core::{
     CONNECTABLE, CardanoConnection, ChainConnection, ChainFamily, ConnectedIdentity,
-    ConnectionPhase, EvmConnection, EvmWalletId, EvmWalletInfo, Network, WalletApi, WalletChoice,
-    WalletConnections, WalletInfo, WalletProvider, collect_announced_wallets, on_window_focus,
+    ConnectionPhase, EvmConnection, EvmSessionState, EvmWalletId, EvmWalletInfo, Network,
+    WalletApi, WalletChoice, WalletConnections, WalletInfo, WalletProvider,
+    collect_announced_wallets, load_last_evm_wallet, on_window_focus,
 };
 pub use wallet_pallas::{Address, WalletBalance, decode_balance};
 
@@ -229,7 +230,12 @@ impl WalletConnector {
     ///
     /// The host owns the connect (it is the one that can await the dialog); the
     /// connector is told the result, the same way it is told about Cardano.
+    ///
+    /// Saved for the next load, as Cardano's is: the stored announcement is what
+    /// a restore connects by, and an app that never saved one would drop the
+    /// reader's EVM connection on every reload.
     pub fn apply_evm_connection(&mut self, wallet: EvmWalletInfo, address: String) {
+        wallet_core::save_last_evm_wallet(&wallet);
         self.connections
             .set_connected(ChainConnection::Evm(EvmConnection { wallet, address }));
     }
@@ -252,6 +258,9 @@ impl WalletConnector {
             self.balance = None;
             self.handle = None;
             wallet_core::clear_last_wallet();
+        }
+        if family == ChainFamily::Evm {
+            wallet_core::clear_last_evm_wallet();
         }
     }
 
@@ -333,20 +342,21 @@ pub async fn connect_evm(wallet: &EvmWalletInfo) -> Result<String, String> {
     })
 }
 
-/// Async helper: the account the connected EVM wallet currently has selected.
+/// Async helper: what the connected EVM wallet says about this site now.
 ///
-/// `eth_accounts` never prompts: it answers what the wallet is willing to name
-/// for this origin, and nothing while it is locked or the permission has been
-/// withdrawn. That is what makes it right for a window-focus refresh, where a
-/// dialog the reader did not ask for would be an ambush.
+/// `eth_accounts` never prompts, and the permissions query beside it never
+/// prompts either — which is what makes this right for a window-focus refresh
+/// and for a restore at startup, where a dialog the reader did not ask for
+/// would be an ambush.
 ///
-/// `None` when the wallet cannot be reached or reports no account. A caller
-/// refreshing a connection should then KEEP it: a locked wallet is transient,
-/// and the next signature reports its own failure rather than the app silently
-/// dropping the reader's account.
-pub async fn connected_evm_account(wallet: &EvmWalletInfo) -> Option<String> {
-    let provider = wallet_core::EvmProvider::for_wallet(wallet).ok()?;
-    provider.accounts().await.ok()?.into_iter().next()
+/// A locked wallet is [`EvmSessionState::Locked`], not a disconnection: keep the
+/// connection, because locking a wallet is something a reader does on the way to
+/// unlocking it.
+pub async fn evm_session_state(wallet: &EvmWalletInfo) -> EvmSessionState {
+    match wallet_core::EvmProvider::for_wallet(wallet) {
+        Ok(provider) => provider.session_state().await,
+        Err(_) => EvmSessionState::Unknown,
+    }
 }
 
 /// Async helper: fetch and decode wallet balance.
