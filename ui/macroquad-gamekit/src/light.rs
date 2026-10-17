@@ -71,19 +71,19 @@ void main() {
     float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - Radius;
     float inside = clamp(0.5 - d, 0.0, 1.0);
     float t = (uv.x + uv.y) * 0.5;
-    float band = exp(-pow((t - Phase) / 0.11, 2.0));
-    vec3 prism = 0.75 + 0.25 * cos(6.2832 * (t * 1.6 + vec3(0.0, 0.33, 0.67)));
+    // A tight bright core over a soft halo: foil catching the light, not a
+    // tinted veil across the card.
+    float x = t - Phase;
+    float band = 0.65 * exp(-pow(x / 0.03, 2.0)) + 0.35 * exp(-pow(x / 0.12, 2.0));
+    vec3 prism = 0.85 + 0.15 * cos(6.2832 * (t * 1.6 + vec3(0.0, 0.33, 0.67)));
     float a = band * inside * Strength;
-    gl_FragColor = vec4(prism * color.rgb * a, a);
+    // Added to what is under it: it only ever brightens.
+    gl_FragColor = vec4(prism * color.rgb * a, 0.0);
 }"#;
 
 fn material(fragment: &str, uniforms: Vec<UniformDesc>, additive: bool) -> Option<Material> {
     let blend = if additive {
-        BlendState::new(
-            Equation::Add,
-            BlendFactor::One,
-            BlendFactor::OneMinusValue(BlendValue::SourceAlpha),
-        )
+        BlendState::new(Equation::Add, BlendFactor::One, BlendFactor::One)
     } else {
         BlendState::new(
             Equation::Add,

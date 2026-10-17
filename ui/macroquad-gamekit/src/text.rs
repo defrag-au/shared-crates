@@ -112,21 +112,41 @@ pub struct MacroquadMeasure;
 
 impl Measure for MacroquadMeasure {
     fn width(&self, text: &str, style: &TextStyle) -> f32 {
-        measure_text(text, style.font.as_ref(), font_px(style.size), 1.0).width
+        measure(text, style).width
     }
 
     fn ascent(&self, style: &TextStyle) -> f32 {
-        measure_text("Mg", style.font.as_ref(), font_px(style.size), 1.0).offset_y
+        measure("Mg", style).offset_y
     }
 
     fn descent(&self, style: &TextStyle) -> f32 {
-        let d = measure_text("Mg", style.font.as_ref(), font_px(style.size), 1.0);
+        let d = measure("Mg", style);
         (d.height - d.offset_y).max(0.0)
     }
 }
 
-fn font_px(size: f32) -> u16 {
-    size.round().clamp(1.0, u16::MAX as f32) as u16
+/// Measured at a fine raster, scaled to the exact size: the same size the text
+/// is drawn at, whatever the pixel scale.
+fn measure(text: &str, style: &TextStyle) -> TextDimensions {
+    let (px, scale) = raster(style.size, MEASURE_SCALE);
+    measure_text(text, style.font.as_ref(), px, scale)
+}
+
+/// Pixels per point measurements rasterise at: fine enough that rounding the
+/// raster size moves a width by well under a pixel.
+const MEASURE_SCALE: f32 = 4.0;
+
+/// The glyph size to rasterise `size` points at `k` pixels per point, and the
+/// scale that brings it back to exactly `size`.
+///
+/// macroquad rasterises at whole pixel sizes. Scaling by `1 / k` would draw
+/// at `round(size * k) / k` points, which is not the size the layout measured
+/// at (fractional sizes, such as a title shrunk to fit, come out wider than
+/// measured and swallow the spaces between words); scaling by
+/// `size / round(size * k)` draws at exactly `size`, whatever `k` is.
+fn raster(size: f32, k: f32) -> (u16, f32) {
+    let px = (size * k).round().clamp(1.0, u16::MAX as f32);
+    (px as u16, size.max(0.0) / px)
 }
 
 /// One positioned piece of a laid-out [`RichText`], relative to its top-left.
@@ -430,10 +450,11 @@ impl TextLayout {
                 } => {
                     let st = &text.styles[style.0];
                     let at = origin + *pos;
+                    let raster = raster(st.size, k);
                     let params = |color: Color| TextParams {
                         font: st.font.as_ref(),
-                        font_size: font_px(st.size * k),
-                        font_scale: 1.0 / k,
+                        font_size: raster.0,
+                        font_scale: raster.1,
                         color: fade(color),
                         ..Default::default()
                     };
@@ -479,6 +500,19 @@ const OUTLINE_DIRS: [(f32, f32); 8] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_raster_draws_at_exactly_the_size_asked_at_any_pixel_scale() {
+        for size in [9.0, 10.25, 11.6, 12.9, 31.5] {
+            for k in [1.0, 1.5, 2.0, 2.625, 3.0, MEASURE_SCALE] {
+                let (px, scale) = raster(size, k);
+                assert_eq!(px, (size * k).round() as u16);
+                let drawn = px as f32 * scale;
+                assert!((drawn - size).abs() < 1e-4, "{size} at {k}x drew {drawn}");
+            }
+        }
+        assert_eq!(raster(0.0, 2.0).0, 1, "never a zero-pixel raster");
+    }
 
     /// Every character is `size / 2` wide; ascent is 0.8 of the size and
     /// descent 0.2, so a line is exactly `size` tall.
