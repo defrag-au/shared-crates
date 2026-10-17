@@ -17,6 +17,8 @@
 pub mod bake;
 pub mod ease;
 pub mod fx;
+pub mod light;
+pub mod paint;
 pub mod pointer;
 pub mod sequence;
 pub mod shape;
@@ -27,6 +29,11 @@ pub mod tween;
 pub use bake::Baked;
 pub use ease::Ease;
 pub use fx::{Particles, Popups, Shake};
+pub use light::Lighting;
+pub use paint::{
+    Gradient, bevel, fill_circle_gradient, fill_gradient, grain, inner_shadow, noise_pixels,
+    noise_texture,
+};
 pub use pointer::{HoverGrace, Pointer, PointerConfig, PointerEvent};
 pub use sequence::{Sequencer, stagger};
 pub use shape::{RoundedArt, cover_source, fill_rounded, stroke_rounded};

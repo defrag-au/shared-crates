@@ -10,13 +10,15 @@ across frames and takes time as an argument. Stories are in `macroquad-storybook
 under "gamekit". MACROQUAD only: no wasm-bindgen, see the shared-crates CLAUDE.md on
 runtime pairs.
 
-9 modules.
+11 modules.
 
 | module | what it is |
 |---|---|
 | `bake` | `Baked` — draw something once into a texture, then move, turn and fade the texture: how a card face is drawn every frame without laying out its text every frame |
 | `ease` | `Ease` — named easing curves, so an animation says how it moves rather than writing the maths at each call site |
 | `fx` | `Shake`, `Popups` and `Particles` — the effects that make a hit land: screen shake that decays, numbers that pop and drift, and bursts of bits |
+| `light` | `Lighting` — soft shadows, glows and a foil sheen, drawn by shader on a quad that turns with the thing it lights |
+| `paint` | `fill_gradient` and friends — the depth a printed card has and flat fills do not: gradient plates, bevels, inner shadows and a seeded grain texture |
 | `pointer` | `Pointer` — the press, drag, long-press and tap a card game needs, built on the widgets crate's `Gesture`; and `HoverGrace`, which keeps a hover alive for a moment between targets |
 | `sequence` | `Sequencer` — plays queued cues one after another, each holding the stage until its animation is done |
 | `shape` | `RoundedArt` — art cropped to fill a frame and clipped to its rounded corners, plus the rounded outline every card and badge needs |
