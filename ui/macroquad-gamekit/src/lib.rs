@@ -26,7 +26,7 @@ pub mod sprite;
 pub mod text;
 pub mod tween;
 
-pub use bake::Baked;
+pub use bake::{Baked, Baker};
 pub use ease::Ease;
 pub use fx::{Particles, Popups, Shake};
 pub use light::Lighting;

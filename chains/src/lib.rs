@@ -62,17 +62,19 @@ pub use asset::{AssetNamespace, AssetRefError, AssetType, TokenRef};
 pub enum ChainFamily {
     Cardano,
     Evm,
+    Solana,
     Midnight,
 }
 
 impl ChainFamily {
-    pub const ALL: [Self; 3] = [Self::Cardano, Self::Evm, Self::Midnight];
+    pub const ALL: [Self; 4] = [Self::Cardano, Self::Evm, Self::Solana, Self::Midnight];
 
     /// The CAIP-2 namespace this family's chains are written under.
     pub const fn namespace(self) -> &'static str {
         match self {
             Self::Cardano => "cardano",
             Self::Evm => "eip155",
+            Self::Solana => "solana",
             Self::Midnight => "midnight",
         }
     }
@@ -87,6 +89,7 @@ impl ChainFamily {
         match self {
             Self::Cardano => "Cardano",
             Self::Evm => "EVM",
+            Self::Solana => "Solana",
             Self::Midnight => "Midnight",
         }
     }
@@ -331,6 +334,80 @@ impl fmt::Display for MidnightNetwork {
     }
 }
 
+/// The Solana clusters this workspace names.
+///
+/// CAIP-2 identifies a Solana chain by the **first 32 characters of its genesis
+/// hash**, not by a friendly network name. The three references below are the
+/// ones the CAIP namespace registry publishes; a cluster that is not one of them
+/// is refused rather than given an invented reference.
+///
+/// The bare names (`mainnet`, `devnet`, `testnet`) are accepted on read because
+/// they are what an operator types, and normalised out on write so the CAIP-2
+/// form stays the only spelling that round-trips.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SolanaNetwork {
+    Mainnet,
+    Devnet,
+    Testnet,
+}
+
+impl SolanaNetwork {
+    /// The bare cluster name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Mainnet => "mainnet",
+            Self::Devnet => "devnet",
+            Self::Testnet => "testnet",
+        }
+    }
+
+    /// The CAIP-2 reference — the first 32 characters of the genesis hash.
+    pub const fn reference(self) -> &'static str {
+        match self {
+            Self::Mainnet => "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            Self::Devnet => "EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+            Self::Testnet => "4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z",
+        }
+    }
+
+    /// The `chain:reference` form.
+    pub const fn as_chain_str(self) -> &'static str {
+        match self {
+            Self::Mainnet => "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            Self::Devnet => "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+            Self::Testnet => "solana:4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z",
+        }
+    }
+
+    /// Parses a bare name or a `solana:`-prefixed reference.
+    ///
+    /// The namespace is matched case-insensitively; the reference is not,
+    /// because a Solana genesis hash is Base58 and case is part of the value.
+    pub fn from_chain_str(s: &str) -> Option<Self> {
+        let bare = s
+            .split_once(':')
+            .filter(|(namespace, _)| namespace.eq_ignore_ascii_case("solana"))
+            .map(|(_, reference)| reference)
+            .unwrap_or(s);
+
+        match bare {
+            "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" => Some(Self::Mainnet),
+            "EtWTRABZaYq6iMfeYKouRu166VU2xqa1" => Some(Self::Devnet),
+            "4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z" => Some(Self::Testnet),
+            _ if bare.eq_ignore_ascii_case("mainnet") => Some(Self::Mainnet),
+            _ if bare.eq_ignore_ascii_case("devnet") => Some(Self::Devnet),
+            _ if bare.eq_ignore_ascii_case("testnet") => Some(Self::Testnet),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for SolanaNetwork {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 // ============================================================================
 // ChainRef
 // ============================================================================
@@ -347,6 +424,7 @@ impl fmt::Display for MidnightNetwork {
 pub enum ChainRef {
     Cardano(CardanoNetwork),
     Evm(EvmChain),
+    Solana(SolanaNetwork),
     Midnight(MidnightNetwork),
 }
 
@@ -356,6 +434,7 @@ impl ChainRef {
         match self {
             Self::Cardano(_) => ChainFamily::Cardano,
             Self::Evm(_) => ChainFamily::Evm,
+            Self::Solana(_) => ChainFamily::Solana,
             Self::Midnight(_) => ChainFamily::Midnight,
         }
     }
@@ -373,6 +452,7 @@ impl ChainRef {
         match self {
             Self::Cardano(n) => n.as_chain_str().trim_start_matches("cardano:").to_string(),
             Self::Evm(c) => c.chain_id().to_string(),
+            Self::Solana(n) => n.reference().to_string(),
             Self::Midnight(n) => n.as_str().to_string(),
         }
     }
@@ -400,25 +480,25 @@ impl ChainRef {
     /// Whether this is Cardano **mainnet**.
     ///
     /// The question the estate actually asks — "mainnet or testnet" to pick an
-    /// address registry or a queue binding — is a Cardano one, so an EVM or
-    /// Midnight chain answers `false` rather than being given a network notion it
-    /// does not have. Cost of being wrong: a non-Cardano chain would be handed the
-    /// mainnet registry.
+    /// address registry or a queue binding — is a Cardano one, so an EVM, Solana
+    /// or Midnight chain answers `false` rather than being given a network notion
+    /// it does not have. Cost of being wrong: a non-Cardano chain would be handed
+    /// the mainnet registry.
     pub const fn is_mainnet(self) -> bool {
         matches!(self, Self::Cardano(CardanoNetwork::Mainnet))
     }
 
     /// This chain as a Cardano network, where it is one.
     ///
-    /// `None` for an EVM chain rather than an invented network — and it keeps all
-    /// three Cardano networks, which the `shared_types::ChainNetwork` this replaces
-    /// could not: its `Testnet` collapsed preprod and preview together, so nothing
-    /// downstream could tell them apart.
+    /// `None` for an EVM, Solana or Midnight chain rather than an invented
+    /// network — and it keeps all three Cardano networks, which the
+    /// `shared_types::ChainNetwork` this replaces could not: its `Testnet`
+    /// collapsed preprod and preview together, so nothing downstream could tell
+    /// them apart.
     pub const fn cardano_network(self) -> Option<CardanoNetwork> {
         match self {
             Self::Cardano(network) => Some(network),
-            Self::Evm(_) => None,
-            Self::Midnight(_) => None,
+            Self::Evm(_) | Self::Solana(_) | Self::Midnight(_) => None,
         }
     }
 
@@ -453,6 +533,7 @@ impl ChainRef {
             Self::Cardano(_) => "ADA",
             Self::Evm(EvmChain::Robinhood) => "RH",
             Self::Evm(EvmChain::Id(_)) => "EVM",
+            Self::Solana(_) => "SOL",
             // A placeholder label for a chain nothing here has verified; see
             // `MidnightNetwork`.
             Self::Midnight(_) => "MNT",
@@ -477,8 +558,7 @@ impl FromStr for ChainRef {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let trimmed = s.trim();
-        let lower = trimmed.to_ascii_lowercase();
-        let Some((namespace, reference)) = lower.split_once(':') else {
+        let Some((namespace, reference)) = trimmed.split_once(':') else {
             return Err(ChainRefError::NotCaip2(trimmed.to_string()));
         };
         // A third component is CAIP-10 (`namespace:reference:account`), not
@@ -487,27 +567,44 @@ impl FromStr for ChainRef {
         if reference.contains(':') {
             return Err(ChainRefError::NotCaip2(trimmed.to_string()));
         }
-        match namespace {
-            "cardano" => CardanoNetwork::from_chain_str(reference)
+        // The namespace is matched case-insensitively, but the reference is not:
+        // Solana's CAIP-2 reference is Base58, where case is part of the value.
+        // The per-family parsers below apply their own tolerance.
+        if namespace.eq_ignore_ascii_case("cardano") {
+            CardanoNetwork::from_chain_str(reference)
                 .map(Self::Cardano)
                 .ok_or_else(|| ChainRefError::UnknownReference {
                     namespace: "cardano",
                     reference: reference.to_string(),
-                }),
-            "eip155" => reference
+                })
+        } else if namespace.eq_ignore_ascii_case("eip155") {
+            reference
                 .parse::<u64>()
                 .map(|id| Self::Evm(EvmChain::from_chain_id(id)))
                 .map_err(|_| ChainRefError::UnknownReference {
                     namespace: "eip155",
                     reference: reference.to_string(),
-                }),
-            "midnight" => MidnightNetwork::from_chain_str(reference)
+                })
+        } else if namespace.eq_ignore_ascii_case("solana") {
+            SolanaNetwork::from_chain_str(reference)
+                .map(Self::Solana)
+                .ok_or_else(|| ChainRefError::UnknownReference {
+                    namespace: "solana",
+                    reference: reference.to_string(),
+                })
+        } else if namespace.eq_ignore_ascii_case("midnight") {
+            MidnightNetwork::from_chain_str(reference)
                 .map(Self::Midnight)
                 .ok_or_else(|| ChainRefError::UnknownReference {
                     namespace: "midnight",
                     reference: reference.to_string(),
-                }),
-            other => Err(ChainRefError::UnknownNamespace(other.to_string())),
+                })
+        } else {
+            // One spelling on the way out; the error names the namespace as the
+            // caller wrote it, lower-cased, so it cannot become a second identity.
+            Err(ChainRefError::UnknownNamespace(
+                namespace.to_ascii_lowercase(),
+            ))
         }
     }
 }
@@ -688,6 +785,9 @@ mod tests {
             ChainRef::Cardano(CardanoNetwork::Preview),
             ChainRef::Evm(EvmChain::Robinhood),
             ChainRef::Evm(EvmChain::Id(8453)),
+            ChainRef::Solana(SolanaNetwork::Mainnet),
+            ChainRef::Solana(SolanaNetwork::Devnet),
+            ChainRef::Solana(SolanaNetwork::Testnet),
             ChainRef::Midnight(MidnightNetwork::Mainnet),
             ChainRef::Midnight(MidnightNetwork::Testnet),
         ] {
@@ -715,6 +815,7 @@ mod tests {
         assert!(!ChainRef::cardano_preprod().is_mainnet());
         assert!(!ChainRef::cardano_preview().is_mainnet());
         assert!(!ChainRef::Evm(EvmChain::Robinhood).is_mainnet());
+        assert!(!ChainRef::Solana(SolanaNetwork::Mainnet).is_mainnet());
         assert!(!ChainRef::Midnight(MidnightNetwork::Mainnet).is_mainnet());
     }
 
@@ -847,13 +948,50 @@ mod tests {
     }
 
     #[test]
+    fn solana_is_a_known_namespace_and_round_trips() {
+        // CAIP-2 identifies a Solana chain by the first 32 characters of its
+        // genesis hash, so the friendly names are read but never written.
+        for network in [
+            SolanaNetwork::Mainnet,
+            SolanaNetwork::Devnet,
+            SolanaNetwork::Testnet,
+        ] {
+            let chain = ChainRef::Solana(network);
+            assert_eq!(chain.family(), ChainFamily::Solana);
+            assert_eq!(chain.namespace(), "solana");
+            assert_eq!(chain.monogram(), "SOL");
+            assert_eq!(chain.as_caip2(), network.as_chain_str());
+            assert_eq!(ChainRef::from_str(&chain.as_caip2()), Ok(chain));
+        }
+
+        // The friendly name is accepted on read and normalises to the reference.
+        assert_eq!(
+            ChainRef::from_str("solana:mainnet").unwrap().as_caip2(),
+            "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+        );
+        assert_eq!(
+            serde_json::to_string(&ChainRef::Solana(SolanaNetwork::Mainnet)).unwrap(),
+            "\"solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp\""
+        );
+
+        // The reference is Base58: case is part of the value, so a lower-cased
+        // reference is a different (unknown) chain rather than the same one.
+        assert!(matches!(
+            ChainRef::from_str("solana:5eykt4usfv8p8njdtrepy1vzqkqzkvdp"),
+            Err(ChainRefError::UnknownReference {
+                namespace: "solana",
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn an_unknown_namespace_is_an_error_and_never_cardano() {
         // The dangerous default, in its other form: an unrecognised namespace
         // must not fall back to the one chain this workspace knows best.
-        // `midnight` was in this list until 2026-09-27, when the namespace was
-        // deliberately added alongside `MidnightNetwork` — see
-        // `midnight_is_a_known_namespace_and_round_trips` for its own coverage.
-        for (input, namespace) in [("solana:mainnet", "solana"), ("sui:mainnet", "sui")] {
+        // `midnight` was in this list until 2026-09-27, and `solana` until
+        // 2026-10-17 — each removed when its namespace was deliberately added.
+        for (input, namespace) in [("aptos:mainnet", "aptos"), ("sui:mainnet", "sui")] {
             assert!(
                 matches!(
                     ChainRef::from_str(input),
@@ -884,6 +1022,8 @@ mod tests {
             "cardano:sanchonet",
             "eip155:abc",
             "eip155:-1",
+            "solana:",
+            "solana:stagenet",
             // CAIP-10, not CAIP-2 — an account is not a chain.
             "eip155:4663:0xe638f58c87258ece6c0eddc46f70327663635c69",
             "cardano:mainnet:stake1u8boef",

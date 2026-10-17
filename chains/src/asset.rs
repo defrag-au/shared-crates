@@ -50,7 +50,7 @@ const MAX_TOKEN_ID_LEN: usize = 78;
 /// refusing the rest, and `erc20` on a chain we do not serve is not an error — it
 /// is simply not ours.
 ///
-/// The two constants are the namespaces this workspace writes.
+/// The constants below are the namespaces this workspace writes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct AssetNamespace(String);
@@ -65,6 +65,20 @@ impl AssetNamespace {
     /// has to cover both: the same collection can hold either, and a namespace
     /// named after one of them would mis-describe the other.
     pub const CNT: &'static str = "cnt";
+
+    /// A Solana non-fungible token, per the Solana CAIP-19 profile.
+    ///
+    /// The reference is the **mint account**, which identifies both fungible and
+    /// non-fungible SPL tokens; `nft` is the profile's non-fungible namespace and
+    /// `token` its fungible one.
+    pub const NFT: &'static str = "nft";
+
+    /// A Midnight non-fungible token.
+    ///
+    /// There is no registered CAIP-19 profile for Midnight, so this is the
+    /// estate's namespace. It names the token standard rather than the chain,
+    /// matching `erc721` and `cnt` rather than repeating `midnight`.
+    pub const MIDNIGHT_NFT: &'static str = "mnft";
 
     /// The namespace as written in a reference.
     pub fn as_str(&self) -> &str {
@@ -227,6 +241,67 @@ impl TokenRef {
             Some(token_id) => format!("{asset_type}/{token_id}").parse(),
             None => asset_type.to_string().parse(),
         }
+    }
+
+    /// The path-safe form — the same identity with every `/` written as `:`.
+    ///
+    /// `cardano:mainnet/cnt:<policy>/<name>` becomes
+    /// `cardano:mainnet:cnt:<policy>:<name>`, which fits one URL path segment
+    /// where CAIP-19's separators would introduce four. It is reversible because
+    /// CAIP-19 forbids `:` inside a namespace, reference or token id — the only
+    /// colons in the result are the ones this function writes.
+    ///
+    /// Use the CAIP-19 [`Display`] for persistence; this is a transport form for
+    /// surfaces that cannot carry `/`.
+    pub fn to_path_identifier(&self) -> String {
+        let chain = self.asset_type.chain.as_caip2();
+        let namespace = &self.asset_type.namespace;
+        let reference = &self.asset_type.reference;
+        match &self.token_id {
+            Some(token_id) => format!("{chain}:{namespace}:{reference}:{token_id}"),
+            None => format!("{chain}:{namespace}:{reference}"),
+        }
+    }
+
+    /// Parses [`Self::to_path_identifier`]'s form.
+    ///
+    /// Accepts the four-part collection-level form and the five-part token form.
+    /// The body is reassembled into CAIP-19 and passed through the one parser, so
+    /// this cannot accept a shape the canonical form rejects.
+    pub fn parse_path_identifier(s: &str) -> Result<Self, AssetRefError> {
+        let parts: Vec<&str> = s.split(':').collect();
+        let (chain_namespace, chain_reference, namespace, reference, token_id) =
+            match parts.as_slice() {
+                [chain_namespace, chain_reference, namespace, reference] => (
+                    *chain_namespace,
+                    *chain_reference,
+                    *namespace,
+                    *reference,
+                    None,
+                ),
+                [
+                    chain_namespace,
+                    chain_reference,
+                    namespace,
+                    reference,
+                    token_id,
+                ] => (
+                    *chain_namespace,
+                    *chain_reference,
+                    *namespace,
+                    *reference,
+                    Some(*token_id),
+                ),
+                _ => return Err(AssetRefError::NotAssetRef(s.to_string())),
+            };
+
+        let caip19 = match token_id {
+            Some(token_id) => {
+                format!("{chain_namespace}:{chain_reference}/{namespace}:{reference}/{token_id}")
+            }
+            None => format!("{chain_namespace}:{chain_reference}/{namespace}:{reference}"),
+        };
+        caip19.parse()
     }
 }
 
@@ -537,9 +612,81 @@ mod tests {
     }
 
     #[test]
+    fn the_path_form_is_the_caip19_form_with_colon_separators() {
+        const POLICY: &str = "9a4b1e2c0d5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d";
+        const SOLANA_MAINNET: &str = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
+        let solana_mint = "Fz6LxeUg5qjesYX3BdmtTwyyzBtMxk644XiTqU5W3w9w";
+
+        for (caip19, path) in [
+            (
+                format!("{MADJACKET}/1234"),
+                "eip155:4663:erc721:0x7980aa64093853cb78c927e05b88fed96e945f81:1234".to_string(),
+            ),
+            (
+                format!("cardano:mainnet/cnt:{POLICY}/4f4e4654"),
+                format!("cardano:mainnet:cnt:{POLICY}:4f4e4654"),
+            ),
+            (
+                format!("solana:{SOLANA_MAINNET}/nft:{solana_mint}"),
+                format!("solana:{SOLANA_MAINNET}:nft:{solana_mint}"),
+            ),
+            (
+                "midnight:mainnet/mnft:0xabcdef/1".to_string(),
+                "midnight:mainnet:mnft:0xabcdef:1".to_string(),
+            ),
+        ] {
+            let token: TokenRef = caip19.parse().expect("caip-19 parses");
+            assert_eq!(token.to_path_identifier(), path);
+            assert_eq!(
+                TokenRef::parse_path_identifier(&path).expect("path form parses"),
+                token
+            );
+        }
+    }
+
+    #[test]
+    fn a_collection_level_reference_has_a_four_part_path_form() {
+        let policy = "9a4b1e2c0d5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d";
+        let caip19 = format!("cardano:mainnet/cnt:{policy}");
+        let token: TokenRef = caip19.parse().expect("parses");
+
+        let path = format!("cardano:mainnet:cnt:{policy}");
+        assert_eq!(token.to_path_identifier(), path);
+        assert_eq!(TokenRef::parse_path_identifier(&path).unwrap(), token);
+    }
+
+    #[test]
+    fn the_path_form_refuses_what_caip19_refuses() {
+        for bad in [
+            "policy:name",              // legacy Cardano shorthand, not a TokenRef
+            "eip155:4663:erc721",       // no reference
+            "a:b:c:d:e:f",              // too many parts
+            "eip155:4663:ERC721:0xabc", // namespace is lower-case only
+        ] {
+            assert!(
+                TokenRef::parse_path_identifier(bad).is_err(),
+                "{bad:?} should be refused"
+            );
+        }
+    }
+
+    #[test]
     fn an_unparseable_string_fails_to_deserialize_rather_than_defaulting() {
         // A persisted column read back malformed must be an error, not a
         // plausible-looking default — the failure this crate exists to prevent.
         assert!(serde_json::from_str::<TokenRef>("\"not-a-reference\"").is_err());
+    }
+
+    #[test]
+    fn a_solana_nft_is_the_mint_and_carries_no_token_id() {
+        let reference = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp/nft:Fz6LxeUg5qjesYX3BdmtTwyyzBtMxk644XiTqU5W3w9w";
+        let parsed: TokenRef = reference.parse().expect("should parse");
+
+        assert_eq!(parsed.asset_type().namespace(), AssetNamespace::NFT);
+        assert_eq!(parsed.token_id(), None);
+        assert_eq!(
+            parsed.chain().as_caip2(),
+            "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+        );
     }
 }
