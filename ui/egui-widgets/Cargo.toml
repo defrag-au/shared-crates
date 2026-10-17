@@ -11,6 +11,8 @@ cardano = [
     "dep:wallet-core",
     "dep:wallet-pallas",
     "dep:address-registry",
+    "dep:chains",
+    "dep:send_wrapper",
 ]
 # The shared binding editor over gateway-wiring's vocabulary. A feature so
 # consumers that only want a widget or two (the portal builds with
@@ -132,3 +134,10 @@ web-sys = { workspace = true, features = [
 js-sys = { workspace = true }
 wallet-core = { workspace = true, optional = true }
 wallet-pallas = { workspace = true, optional = true }
+# `wallet::CardanoSession` wraps the CIP-30 handle so the connect result and
+# its handle can cross an app's message channel together. Wasm-only with the
+# wallet modules it types, and enabled by `cardano` alongside them.
+send_wrapper = { version = "0.6", optional = true }
+# Chain identity — `ChainFamily` is what the wallet picker groups and filters by.
+# The pure home of that vocabulary: it names no renderer and no runtime.
+chains = { workspace = true, optional = true }

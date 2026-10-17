@@ -9,6 +9,15 @@
 #[macro_use]
 mod registry;
 
+// The storybook's own "copy the canvas": the encoder half is testable natively
+// (see its `mod tests`), which is why it lives out here rather than inside `app`.
+//
+// Gated because its only non-test caller (`take_capture`) is inside the wasm-only
+// `app`: compiled unconditionally, `encode_png` is dead code on a native build and
+// the lint run treats that as an error. `test` keeps the native coverage.
+#[cfg(any(target_arch = "wasm32", test))]
+mod canvas_copy;
+
 // Wasm-only because the palette helpers the stories call (`accent`, `muted`,
 // `secondary`, …) live in `mod app` below, which genuinely needs the browser.
 //
@@ -34,6 +43,7 @@ mod app {
     use eframe::wasm_bindgen::JsCast as _;
     use wasm_bindgen::prelude::*;
 
+    use super::canvas_copy;
     use super::stories;
     use egui_widgets::drawer::{Drawer, DrawerSide};
     use egui_widgets::viewport::{Breakpoint, PanelMode};
@@ -165,7 +175,9 @@ mod app {
         // each former block's order preserved.
         group "Wallet" {
             WalletButton => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet::show(ui, &mut a.wallet_btn, &mut a.wallet_connector, &mut a.wallet_button_state);
+            WalletConnect => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_connect::show(ui, &mut a.wallet_connect_state);
             WalletEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_editor::show(ui, &mut a.wallet_editor_state);
+            WalletPanel => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_panel::show(ui, &mut a.wallet_panel_state);
             TxFlight => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_flight::show(ui, &mut a.tx_flight_state);
             StakeSession => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::stake_session::show(ui, &mut a.stake_session_state);
             ListingComposer => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::listing_composer::show(ui, &mut a.listing_composer_state);
@@ -315,8 +327,10 @@ mod app {
                 Self::CardBrowser => "Card Browser",
                 Self::IconGallery => "Icon Gallery",
                 Self::WalletButton => "Wallet Button",
+                Self::WalletConnect => "Wallet Connect",
                 Self::TraitFilter => "Trait Filter",
                 Self::WalletEditor => "Wallet Editor",
+                Self::WalletPanel => "Wallet Panel",
                 Self::SwapModal => "Swap Modal",
                 Self::TraitDelta => "Trait Delta",
                 Self::CoverageDeltaBar => "Coverage Delta Bar",
@@ -469,7 +483,7 @@ mod app {
                 }
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
                 Self::WalletCta => {
-                    "An action that needs a wallet: the primary button when connected, and in its place a prompt that opens the wallet picker in a modal when not"
+                    "An action that needs a wallet: the primary button when connected, and in its place a prompt that opens the wallet flow in a modal when not"
                 }
                 Self::AccountBar => {
                     "An app header's trailing cluster: count-badged action triggers plus the connected account"
@@ -576,8 +590,15 @@ mod app {
                     "Compound-key prefix trie tag filter with dual category/value indexing"
                 }
                 Self::WalletButton => "CIP-30 wallet connection button with state management",
+                Self::WalletConnect => {
+                    "Chain, then wallet, then what the wallet answered — each step skipped \
+                     when its answer is already known"
+                }
                 Self::WalletEditor => {
                     "Wallet bundle editor with input, status indicators, and add/remove actions"
+                }
+                Self::WalletPanel => {
+                    "The wallet roster as a summary, with the management flow behind a popup"
                 }
                 Self::SwapModal => "DEX swap modal with preview, culture buys, and progress states",
                 Self::TraitDelta => {
@@ -1445,6 +1466,22 @@ mod app {
         /// Theme / density / motion / breakpoint under review — see
         /// [`ReviewControls`].
         review: ReviewControls,
+        /// The chrome's one-line answer to "did that copy?" — the result of the
+        /// last canvas capture, arriving a frame or two after the click.
+        capture_status: Option<String>,
+        /// The capture's async half: the PNG is encoded on the next paint, then
+        /// handed to the browser. A queue because a reader can click twice.
+        capture_inbox: egui_widgets::egui_inbox::UiInbox<String>,
+        capture_sender: egui_widgets::egui_inbox::UiInboxSender<String>,
+        /// How many captures the painter still owes us — a reader can press
+        /// "copy png" more than once, and each press is one reply.
+        ///
+        /// Its own count rather than a reading of `capture_status`, which also
+        /// means "done" and "failed". eframe reads the framebuffer back during a
+        /// paint and requests NO repaint for the reply, so something has to keep
+        /// frames coming while a command is genuinely outstanding — and a tick
+        /// keyed off a status that never clears would spin forever.
+        captures_in_flight: u32,
         /// ⌘K over every story plus whatever the story on screen offers. The
         /// storybook is the first real consumer of `egui_widgets::commands`,
         /// which is the point: a mechanism for widgets to advertise themselves
@@ -1505,9 +1542,11 @@ mod app {
         icon_gallery_state: stories::icon_gallery::IconGalleryState,
         trait_filter_state: stories::trait_filter::TraitFilterStoryState,
         wallet_editor_state: stories::wallet_editor::WalletEditorStoryState,
+        wallet_panel_state: stories::wallet_panel::WalletPanelStoryState,
         wallet_btn: egui_widgets::WalletButton,
         wallet_connector: egui_widgets::wallet::WalletConnector,
         wallet_button_state: stories::wallet::WalletButtonStoryState,
+        wallet_connect_state: stories::wallet_connect::WalletConnectStoryState,
         swap_modal: egui_widgets::SwapModal,
         swap_progress: egui_widgets::SwapProgress,
         // Trade desk
@@ -1595,6 +1634,8 @@ mod app {
                 egui::epaint::text::FontPriority::Highest,
             );
 
+            let (capture_sender, capture_inbox) = egui_widgets::egui_inbox::UiInbox::channel();
+
             Self {
                 current_story: story_from_location().unwrap_or(Story::Distribution),
                 // Read ONCE at startup: with the nav gone there is no way to
@@ -1602,6 +1643,10 @@ mod app {
                 nav_hidden: nav_hidden(),
                 nav_open: false,
                 review: review_from_location(),
+                capture_status: None,
+                capture_inbox,
+                capture_sender,
+                captures_in_flight: 0,
                 palette: Default::default(),
                 distribution_chart: egui_widgets::DistributionChart::new(),
                 marquee: egui_widgets::Marquee::default(),
@@ -1665,9 +1710,11 @@ mod app {
                 icon_gallery_state: stories::icon_gallery::IconGalleryState::default(),
                 trait_filter_state: stories::trait_filter::TraitFilterStoryState::default(),
                 wallet_editor_state: stories::wallet_editor::WalletEditorStoryState::default(),
+                wallet_panel_state: stories::wallet_panel::WalletPanelStoryState::default(),
                 wallet_btn: egui_widgets::WalletButton::new(),
                 wallet_connector: egui_widgets::wallet::WalletConnector::new(),
                 wallet_button_state: stories::wallet::WalletButtonStoryState::default(),
+                wallet_connect_state: stories::wallet_connect::WalletConnectStoryState::default(),
                 swap_modal: egui_widgets::SwapModal::new(egui_widgets::SwapModalConfig {
                     token_name: "TestToken".into(),
                     token_ticker: Some("TST".into()),
@@ -1845,6 +1892,102 @@ mod app {
                 }
             }
         }
+
+        /// The canvas row: one button, and the chrome's answer to the last press.
+        ///
+        /// Deliberately NOT part of [`ReviewControls`]: those are URL-backed review
+        /// settings, and a status line is neither a setting nor anything the address
+        /// bar should carry.
+        fn canvas_row(&mut self, ui: &mut egui::Ui) {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new("canvas")
+                        .color(CHROME_TEXT_MUTED)
+                        .small()
+                        .strong(),
+                );
+                if chrome_toggle(ui, "copy png", false)
+                    .on_hover_text(
+                        "Copies the whole rendered canvas — chrome and story — to the clipboard, \
+                     as the pixels actually on screen.",
+                    )
+                    .clicked()
+                {
+                    // The painter reads its own framebuffer back and answers with an
+                    // `Event::Screenshot` a frame or two later; see `canvas_copy`.
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::Screenshot(
+                            egui::UserData::default(),
+                        ));
+                    self.captures_in_flight += 1;
+                    self.capture_status = Some("capturing…".to_string());
+                }
+                if let Some(status) = &self.capture_status {
+                    ui.label(egui::RichText::new(status).color(CHROME_TEXT_MUTED).small());
+                }
+            });
+        }
+
+        /// Encode and hand over a capture, if one has arrived.
+        ///
+        /// Nothing is captured unless [`Self::canvas_row`] asked: the event is only
+        /// produced in reply to the command.
+        fn take_capture(&mut self, ctx: &egui::Context) {
+            // Every reply this frame, not the first: eframe batches both readbacks
+            // into one frame's events when a reader presses "copy png" twice in
+            // quick succession, and the inbox is a queue for the same reason.
+            let captured: Vec<egui::ColorImage> = ctx.input(|input| {
+                input
+                    .events
+                    .iter()
+                    .filter_map(|event| match event {
+                        egui::Event::Screenshot { image, .. } => Some((**image).clone()),
+                        _ => None,
+                    })
+                    .collect()
+            });
+
+            if captured.is_empty() {
+                // The reply does not deliver itself: eframe reads the framebuffer
+                // back during a paint and requests no repaint for the result, so
+                // without this the event waits for the next incidental frame — and
+                // the reader watches "capturing…" until they happened to twitch the
+                // mouse. Bounded by the count, so it stops the moment the last reply
+                // lands rather than spinning on a status that never clears.
+                if self.captures_in_flight > 0 {
+                    ctx.request_repaint();
+                }
+                return;
+            }
+            self.captures_in_flight = self
+                .captures_in_flight
+                .saturating_sub(captured.len() as u32);
+
+            for image in &captured {
+                match canvas_copy::encode_png(image) {
+                    Some(png) => {
+                        let name = format!(
+                            "{}-{}x{}.png",
+                            self.current_story.slug(),
+                            image.size[0],
+                            image.size[1]
+                        );
+                        let sender = self.capture_sender.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let status = canvas_copy::offer_png(png, name).await;
+                            let _ = sender.send(status);
+                        });
+                    }
+                    // Kept visible rather than swallowed: a capture whose pixels do not
+                    // match its own size is a frame nobody can paste, and the only clue
+                    // would otherwise be an image that never appears.
+                    None => {
+                        self.capture_status =
+                            Some("the capture did not match its own pixel count".into());
+                    }
+                }
+            }
+        }
     }
 
     impl eframe::App for StorybookApp {
@@ -1857,6 +2000,14 @@ mod app {
             // frame and read as far cheaper than the app really is.
             let _frame_scope = egui_widgets::perf_strip::FrameScope::begin();
             let ctx = ui.ctx().clone();
+
+            // The canvas copy's other half: the browser's answer — the clipboard
+            // took the PNG, or a tab was opened to save it from — arrives here a
+            // frame or two after the capture. Drained before the chrome draws, so
+            // the line the reader sees belongs to this frame.
+            if let Some(status) = self.capture_inbox.read(&ctx).last() {
+                self.capture_status = Some(status);
+            }
 
             // THE CHROME'S OWN BREAKPOINT, measured — never `Breakpoint::from_ctx`,
             // which honours the review controls' override. Those exist so a
@@ -1930,6 +2081,7 @@ mod app {
                     }
                     if !self.nav_hidden {
                         self.review.controls(ui);
+                        self.canvas_row(ui);
                     }
                     ui.separator();
                     ui.add_space(8.0);
@@ -1978,6 +2130,11 @@ mod app {
                         self.nav_open = open;
                     }
                 });
+
+            // Last, because a capture only ever exists in reply to [`Self::canvas_row`],
+            // and the reply is delivered once — reading it anywhere in the frame works,
+            // but the end is where every other piece of chrome has already drawn.
+            self.take_capture(&ctx);
         }
     }
 

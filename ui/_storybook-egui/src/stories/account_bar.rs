@@ -5,13 +5,10 @@ use egui_widgets::account_bar::{
 };
 use egui_widgets::auth::Session;
 use egui_widgets::icons::PhosphorIcon;
-use egui_widgets::wallet::{
-    ConnectionState, Network, WalletBalance, WalletConnector, WalletProvider,
-};
+use egui_widgets::wallet::{WalletBalance, WalletConnector};
 
+use crate::stories::wallet_fixture;
 use crate::{accent, bg, muted, secondary};
-
-const STAKE: &str = "stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9";
 
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
@@ -30,7 +27,7 @@ pub fn show(ui: &mut egui::Ui) {
     );
     ui.add_space(12.0);
 
-    // `show` is `&mut self` (it owns the wallet picker's state), so each panel
+    // `show` is `&mut self` (the bar measures its own last height), so each panel
     // needs its own. They are cheap and hold nothing but display config.
     let mut bars = [
         AccountBar::new(),
@@ -43,6 +40,7 @@ pub fn show(ui: &mut egui::Ui) {
         }),
         AccountBar::new(),
         AccountBar::new(),
+        AccountBar::new(),
     ];
     let [
         with_handle,
@@ -52,6 +50,7 @@ pub fn show(ui: &mut egui::Ui) {
         compact,
         session_only,
         session_paying,
+        both_chains,
     ] = &mut bars;
 
     // One variant per LINE, each the full width of the page.
@@ -99,10 +98,9 @@ pub fn show(ui: &mut egui::Ui) {
     panel(
         ui,
         "Not connected",
-        "The state every app starts in, and the one worth checking: the picker \
-         sizes itself to whatever it is given, so drawn inline it spans the \
-         whole header. It goes in a bounded popup behind a pill the same shape \
-         as the rest of the bar.",
+        "The state every app starts in, and the one worth checking: the pill \
+         stays the shape and size of every other pill in the bar, and the wallet \
+         flow opens over the app behind it rather than inside the header.",
         |ui| {
             disconnected.show(ui, &WalletConnector::default(), &[cart(0)]);
         },
@@ -164,13 +162,24 @@ pub fn show(ui: &mut egui::Ui) {
     );
 
     ui.add_space(12.0);
+    panel(
+        ui,
+        "Two chains connected",
+        "Cardano AND EVM at once: one pill each, because they are different \
+         identities answering different questions. The balance is Cardano's \
+         reading, so only its pill carries one.",
+        |ui| {
+            both_chains.show(ui, &wallet_fixture::two_chains(), &[cart(2)]);
+        },
+    );
+
+    ui.add_space(12.0);
     ui.label(
         egui::RichText::new(
-            "The picker behind Connect enumerates the extensions actually \
-             installed in the browser, so in a storybook it reports none — \
-             which is itself the state worth seeing. What this panel proves is \
-             that it is BOUNDED: drawn inline it sizes itself to the page and \
-             spans the whole header.",
+            "Connect opens the wallet flow — the same modal the Wallet Button and \
+             the CTA open. It enumerates the extensions actually installed in the \
+             browser, so in a storybook it reports none, which is itself the state \
+             worth seeing; the screens are the Wallet Connect story.",
         )
         .color(muted(ui))
         .size(11.0),
@@ -192,27 +201,18 @@ fn session() -> Session {
 }
 
 /// A connector as it looks after a real connect, without touching a browser.
+///
+/// The availability lists are deliberately empty: this helper is the state
+/// *after* a connect, where the flow is not drawn. Offers have their own story.
 fn connected(handle: Option<&str>) -> WalletConnector {
-    let mut connector = WalletConnector {
-        available_wallets: Vec::new(),
-        connection_state: ConnectionState::Connected {
-            provider: WalletProvider::Eternl,
-            address: format!("01{}", "ab".repeat(28)),
-            network: Network::Mainnet,
-        },
-        address_hex: Some(format!("01{}", "ab".repeat(28))),
-        stake_address: Some(STAKE.to_string()),
-        handle: handle.map(str::to_string),
-        balance: Some(WalletBalance {
-            lovelace: 4_080_590_650,
-            assets: Default::default(),
-        }),
-        api: None,
-        connected_icon: None,
-    };
-    // Belt and braces: the struct is built field-by-field above so a new field
-    // breaks this loudly rather than silently demoing a default.
+    let mut connector = wallet_fixture::cardano();
+    connector.available_wallets = Vec::new();
+    connector.available_evm_wallets = Vec::new();
     connector.handle = handle.map(str::to_string);
+    connector.balance = Some(WalletBalance {
+        lovelace: 4_080_590_650,
+        assets: Default::default(),
+    });
     connector
 }
 

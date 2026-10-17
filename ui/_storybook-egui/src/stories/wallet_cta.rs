@@ -1,10 +1,9 @@
 //! Storybook demo for the WalletCta widget.
 
-use egui_widgets::wallet::{
-    ConnectionState, Network, WalletBalance, WalletConnector, WalletProvider,
-};
+use egui_widgets::wallet::WalletConnector;
 use egui_widgets::wallet_cta::{ActionState, ConnectPrompt, WalletCta};
 
+use crate::stories::wallet_fixture;
 use crate::{accent, bg, muted, secondary};
 
 pub fn show(ui: &mut egui::Ui) {
@@ -17,7 +16,7 @@ pub fn show(ui: &mut egui::Ui) {
         egui::RichText::new(
             "An action that needs a wallet. Connected, it is the page's primary \
              button; not connected, its place is taken by a prompt that opens the \
-             wallet picker in a modal — the instruction IS the control, instead of \
+             wallet flow in a modal — the instruction IS the control, instead of \
              a disabled button beside some muted text.",
         )
         .color(muted(ui))
@@ -30,8 +29,8 @@ pub fn show(ui: &mut egui::Ui) {
     panel(
         ui,
         "Not connected — link (default)",
-        "Click it: the picker opens in a modal, right where the reader was about \
-         to act. In a storybook there are no wallet extensions, so the picker \
+        "Click it: the flow opens in a modal, right where the reader was about \
+         to act. In a storybook there are no wallet extensions, so the flow \
          honestly reports none.",
         |ui| {
             WalletCta::new("Add to route")
@@ -93,30 +92,17 @@ pub fn show(ui: &mut egui::Ui) {
 }
 
 fn connecting() -> WalletConnector {
-    WalletConnector {
-        connection_state: ConnectionState::Connecting,
-        ..WalletConnector::default()
-    }
+    wallet_fixture::connecting()
 }
 
 /// A connector as it looks after a real connect, without touching a browser.
 fn connected() -> WalletConnector {
-    WalletConnector {
-        connection_state: ConnectionState::Connected {
-            provider: WalletProvider::Eternl,
-            address: format!("01{}", "ab".repeat(28)),
-            network: Network::Mainnet,
-        },
-        address_hex: Some(format!("01{}", "ab".repeat(28))),
-        stake_address: Some(
-            "stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9".to_string(),
-        ),
-        balance: Some(WalletBalance {
-            lovelace: 4_080_590_650,
-            assets: Default::default(),
-        }),
-        ..WalletConnector::default()
-    }
+    let mut connector = wallet_fixture::cardano();
+    connector.balance = Some(egui_widgets::wallet::WalletBalance {
+        lovelace: 4_080_590_650,
+        assets: Default::default(),
+    });
+    connector
 }
 
 /// One variant per line: a title, a note, and the widget in a frame.

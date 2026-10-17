@@ -1,0 +1,48 @@
+{
+  "attributes": {
+    "Background": {
+      "alteration": "Mage",
+      "trait": "Mage"
+    },
+    "Eyes": {
+      "alteration": "Majin",
+      "trait": "Majin"
+    },
+    "Fur Color": {
+      "alteration": "Golden",
+      "trait": "Golden"
+    },
+    "Headwear": {
+      "alteration": "Moonstone",
+      "trait": "Troll"
+    },
+    "Muzzle": {
+      "alteration": "Subzero",
+      "trait": "Subzero"
+    },
+    "Neckwear": {
+      "alteration": "Black",
+      "trait": "Bandito"
+    },
+    "Overcoat": {
+      "alteration": "Blue",
+      "trait": "Puffy Jacket"
+    },
+    "Undershirt": {
+      "alteration": "Red",
+      "trait": "Solid Button Up"
+    }
+  },
+  "collection": "Goofs World",
+  "files": [
+    {
+      "mediaType": "image/jpeg",
+      "name": "Goof#2 - Goofs",
+      "src": "ipfs://QmZYngL4LvCiAD6ejrE1PauTmoQyk2w5T52pTSFeZvkShW"
+    }
+  ],
+  "goof id": "Goof2",
+  "image": "ipfs://QmZYngL4LvCiAD6ejrE1PauTmoQyk2w5T52pTSFeZvkShW",
+  "name": "Goof#2",
+  "purchased": []
+}

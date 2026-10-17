@@ -12,7 +12,8 @@ pub fn show(ui: &mut egui::Ui) {
         egui::RichText::new(
             "Picker tile with a state machine (Active / InCart / Spent), an image \
              or text-placeholder content area, and a top-right corner badge for \
-             quantity / multi-asset hints. Sized fixed so wrapping rows align.",
+             quantity / multi-asset hints — or a link to the marketplace page it \
+             names. Sized fixed so wrapping rows align.",
         )
         .color(muted(ui))
         .small(),
@@ -72,6 +73,41 @@ pub fn show(ui: &mut egui::Ui) {
         OfferTile::image("5.0 ADA", PLACEHOLDER_IMAGE.clone())
             .state(OfferTileState::InCart)
             .badge("+2")
+            .show(ui);
+    });
+    ui.add_space(16.0);
+
+    // ---------------------------------------------------------------
+    ui.label(
+        egui::RichText::new("Badge as a link — marketplace attribution that navigates")
+            .color(accent(ui))
+            .strong(),
+    );
+    ui.label(
+        egui::RichText::new(
+            "Hover underlines the badge; clicking it opens the page in a new tab \
+             and does NOT dispatch the tile's own click.",
+        )
+        .color(muted(ui))
+        .small(),
+    );
+    ui.add_space(4.0);
+    ui.horizontal_wrapped(|ui| {
+        // Real Wayup page, so the link is a click that goes somewhere.
+        OfferTile::image("80.0 ADA", PLACEHOLDER_IMAGE.clone())
+            .badge_link(
+                "Wayup",
+                "https://www.wayup.io/collection/f7f5a12b681be1a2c02054414a726fefadd47e24b0343cd287c0283d/asset/7a69676f7242656e6a616d696e7347726f75703033383231",
+            )
+            .tooltip("Wayup · Click to add cancellation to cart")
+            .show(ui);
+        OfferTile::image("80.0 ADA", PLACEHOLDER_IMAGE.clone())
+            .state(OfferTileState::Spent)
+            .badge_link(
+                "Wayup",
+                "https://www.wayup.io/collection/f7f5a12b681be1a2c02054414a726fefadd47e24b0343cd287c0283d",
+            )
+            .tooltip("Already spent")
             .show(ui);
     });
     ui.add_space(16.0);
@@ -141,6 +177,8 @@ pub fn show(ui: &mut egui::Ui) {
     ui.label("\u{2022} InCart / Spent tiles dim the frame and tint the image; clicks are inert");
     ui.label("\u{2022} Tooltip is consumer-supplied; usually disambiguates dimmed states");
     ui.label("\u{2022} Top-right badge overlays the content area without reserving extra height");
+    ui.label("\u{2022} A `badge_link` badge underlines + shows the hand on hover and opens its URL on click");
+    ui.label("\u{2022} A badge click does not dispatch the tile's own click; dimmed tiles still link (navigation, not cart)");
     ui.label("\u{2022} Placeholder tiles paint centred glyph text in lieu of an image");
     ui.label("\u{2022} Tiles are uniform-sized so `horizontal_wrapped` rows line up cleanly");
 }

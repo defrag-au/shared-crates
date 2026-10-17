@@ -7,7 +7,9 @@
 use egui_widgets::stake_session::{
     StakeSessionAction, StakeSessionPanel, StakeSessionPhase, StoredStakeSession,
 };
-use egui_widgets::wallet::{ConnectionState, Network, WalletConnector, WalletProvider};
+use egui_widgets::wallet::{
+    CardanoConnection, ChainConnection, ChainFamily, Network, WalletConnector, WalletProvider,
+};
 
 use crate::{accent, bg, muted};
 
@@ -64,19 +66,26 @@ fn session() -> StoredStakeSession {
 }
 
 /// Put the connector into a fake connected state — the panel only reads it.
+///
+/// Preprod and a testnet stake address on purpose: this story is an admin panel
+/// on a dev deployment, and a mainnet fixture would be the wrong picture.
 fn fake_connect(connector: &mut WalletConnector, connected: bool) {
     if connected {
         let provider = WalletProvider::from_api_name("eternl").unwrap_or(WalletProvider::all()[0]);
-        connector.connection_state = ConnectionState::Connected {
-            provider,
-            address: "addr_test1qqpple6hh…".into(),
-            network: Network::Preprod,
-        };
-        connector.stake_address =
-            Some("stake_test1uzv7qd9rl65pck6vc0n32k6nkumzq7gj5tax6n0jdg4lp4sepylau".into());
+        connector
+            .connections
+            .set_connected(ChainConnection::Cardano(CardanoConnection {
+                provider,
+                address_hex: "addr_test1qqpple6hh…".into(),
+                stake_address: Some(
+                    "stake_test1uzv7qd9rl65pck6vc0n32k6nkumzq7gj5tax6n0jdg4lp4sepylau".into(),
+                ),
+                network: Network::Preprod,
+                api: None,
+                icon: None,
+            }));
     } else {
-        connector.connection_state = ConnectionState::Disconnected;
-        connector.stake_address = None;
+        connector.connections.remove(ChainFamily::Cardano);
     }
 }
 

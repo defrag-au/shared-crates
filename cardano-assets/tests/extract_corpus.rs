@@ -13,7 +13,7 @@
 //! below nor in `NON_METADATA_FIXTURES` (with a reason). So a new
 //! fixture can't silently go unverified under v2 — you must classify it.
 
-use cardano_assets::{Asset, AssetMetadata, Traits, asset_from_metadata_json};
+use cardano_assets::{Asset, AssetMetadata, TraitValue, Traits, asset_from_metadata_json};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
@@ -27,7 +27,10 @@ fn fixture(name: &str) -> String {
 }
 
 fn sorted(t: &Traits) -> BTreeMap<String, Vec<String>> {
-    t.inner().clone().into_iter().collect()
+    t.inner()
+        .iter()
+        .map(|(k, values)| (k.clone(), values.iter().map(TraitValue::rendered).collect()))
+        .collect()
 }
 
 fn v1_traits(raw: &str) -> BTreeMap<String, Vec<String>> {
@@ -201,6 +204,30 @@ fn corpus_cases() -> Vec<(&'static str, Expect)> {
                 note: "attributes slot + promoted Rarity sibling, metadata siblings dropped",
             },
         ),
+        // GOOFS World's CIP-68 reference datum, as the renderer hands it to
+        // the v2 extractor: `attributes` is a map of `{trait, alteration}`
+        // objects, and each pair is one value rendered
+        // `"<value> (<alteration>)"` — the market's form (jpg.store's
+        // preserved GOOFS taxonomy carries `"puffy jacket (blue)"`). The
+        // `collection`/`goof id` siblings of the slot are not traits, which
+        // is also what that taxonomy says: its ten categories are the visual
+        // ones only.
+        (
+            "goofs-world-goof2.json",
+            Exact {
+                traits: &[
+                    ("Background", &["Mage (Mage)"]),
+                    ("Eyes", &["Majin (Majin)"]),
+                    ("Fur Color", &["Golden (Golden)"]),
+                    ("Headwear", &["Troll (Moonstone)"]),
+                    ("Muzzle", &["Subzero (Subzero)"]),
+                    ("Neckwear", &["Bandito (Black)"]),
+                    ("Overcoat", &["Puffy Jacket (Blue)"]),
+                    ("Undershirt", &["Solid Button Up (Red)"]),
+                ],
+                note: "CIP-68 attribute pairs kept whole and market-rendered",
+            },
+        ),
     ]
 }
 
@@ -297,8 +324,15 @@ fn value_only_traits_array_is_flat() {
     }"#;
     let asset = asset_from_metadata_json(json).expect("decode");
     assert_eq!(asset.name, "SpaceBud #0");
-    assert_eq!(asset.traits.get("type"), Some(&vec!["Frog".to_string()]));
-    let mut gadgets = asset.traits.get("traits").cloned().unwrap_or_default();
+    assert_eq!(
+        asset.traits.get("type"),
+        Some(&vec![TraitValue::Plain("Frog".to_string())])
+    );
+    let mut gadgets: Vec<String> = asset
+        .traits
+        .get("traits")
+        .map(|values| values.iter().map(TraitValue::rendered).collect())
+        .unwrap_or_default();
     gadgets.sort();
     assert_eq!(
         gadgets,
@@ -319,7 +353,48 @@ fn colon_delimited_attributes() {
     let asset = asset_from_metadata_json(json).expect("decode");
     assert_eq!(
         asset.traits.get("State"),
-        Some(&vec!["Delusional".to_string()])
+        Some(&vec![TraitValue::Plain("Delusional".to_string())])
     );
-    assert_eq!(asset.traits.get("Mood"), Some(&vec!["Gloomy".to_string()]));
+    assert_eq!(
+        asset.traits.get("Mood"),
+        Some(&vec![TraitValue::Plain("Gloomy".to_string())])
+    );
+}
+
+/// The `{trait, alteration}` pair shape — GOOFS World's attribute objects —
+/// extracts as one altered value, keeping the parts and rendering the way
+/// the market renders them. An object with only `trait` is a plain value;
+/// other objects stay dropped.
+#[test]
+fn pair_objects_extract_as_altered_values() {
+    let json = r#"{
+        "name": "Goof#1",
+        "image": "ipfs://abc",
+        "attributes": {
+            "Overcoat": { "trait": "Puffy Jacket", "alteration": "Green" },
+            "Fur Color": { "trait": "Latte", "alteration": "Latte" },
+            "Eyes": { "trait": "Bloodshot" },
+            "Not A Trait": { "something": "else" }
+        }
+    }"#;
+    let asset = asset_from_metadata_json(json).expect("decode");
+
+    assert_eq!(
+        asset.traits.get("Overcoat"),
+        Some(&vec![TraitValue::Altered {
+            value: "Puffy Jacket".to_string(),
+            alteration: "Green".to_string(),
+        }])
+    );
+    // The parenthetical is kept even when the two are equal — jpg.store's
+    // preserved taxonomy shows `latte (latte)`.
+    assert_eq!(
+        asset.traits.get_single("Fur Color").as_deref(),
+        Some("Latte (Latte)")
+    );
+    assert_eq!(
+        asset.traits.get("Eyes"),
+        Some(&vec![TraitValue::Plain("Bloodshot".to_string())])
+    );
+    assert!(!asset.traits.contains_key("Not A Trait"));
 }

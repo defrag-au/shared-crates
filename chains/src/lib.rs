@@ -54,7 +54,11 @@ pub use asset::{AssetNamespace, AssetRefError, AssetType, TokenRef};
 /// Two chains can be far apart (chain 4663 and chain 1) and still answer the
 /// same way to "how is an address validated, how does a signature look" — both
 /// are EVM. Two networks on the *same* chain can answer differently.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+///
+/// `Ord` because the natural order is the order a reader should meet them in —
+/// a wallet cluster keyed by family must not reshuffle between frames, and
+/// [`Self::ALL`] is the statement of that order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ChainFamily {
     Cardano,
     Evm,
@@ -70,6 +74,20 @@ impl ChainFamily {
             Self::Cardano => "cardano",
             Self::Evm => "eip155",
             Self::Midnight => "midnight",
+        }
+    }
+
+    /// What a reader calls this family — a picker row, a sentence.
+    ///
+    /// Distinct from [`ChainRef::monogram`], which is a *mark* ("ADA", "EVM")
+    /// and belongs in a chip; this is the word beside it. It lives here for the
+    /// same reason the monogram does: a call site that invents its own name is a
+    /// call site that can disagree with the identity beside it.
+    pub const fn display_name(self) -> &'static str {
+        match self {
+            Self::Cardano => "Cardano",
+            Self::Evm => "EVM",
+            Self::Midnight => "Midnight",
         }
     }
 }

@@ -25,9 +25,9 @@
 //! a middle-truncated address is not safe to eyeball, so it belongs behind a
 //! copy button and never in the pill itself.
 //!
-//! Disconnected, it delegates to [`WalletButton`](crate::wallet_button::WalletButton),
-//! which already owns the wallet picker and its per-extension icons. The bar
-//! holds that button so a caller stores one thing instead of two.
+//! Disconnected, it delegates to [`WalletButton`](crate::wallet_button::WalletButton)
+//! by opening the same flow it opens — the chain-then-wallet modal, not a second
+//! copy of it. The bar holds no connector state of its own.
 //!
 //! ## Triggers
 //!
@@ -48,7 +48,7 @@
 //!
 //! match bar.show(ui, wallet, &triggers) {
 //!     AccountBarAction::Trigger(id) if id == "cart" => { /* open the drawer */ }
-//!     AccountBarAction::Disconnect => { /* clear the session */ }
+//!     AccountBarAction::Disconnect(family) => { /* drop that chain's wallet */ }
 //!     _ => {}
 //! }
 //! # }
@@ -60,26 +60,26 @@ use crate::auth::Session;
 use crate::icons::PhosphorIcon;
 use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 use crate::user_badge::{UserBadge, UserBadgeAction};
-use crate::wallet::{ConnectionState, WalletConnector, WalletProvider};
-use crate::wallet_button::{WalletAction, WalletButton};
-
-/// How wide the wallet picker gets inside its popup.
-///
-/// Enough for the longest extension name and its icon on one line. The picker
-/// sizes itself to whatever it is given, so without a bound it takes the page.
-const PICKER_WIDTH: f32 = 240.0;
+use crate::wallet::{
+    ChainFamily, ConnectedIdentity, ConnectionPhase, WalletChoice, WalletConnector,
+};
+use crate::wallet_button::WalletAction;
+use crate::wallet_connect_modal::{ChainRequirement, WalletConnectModal};
 
 /// What the user did with the bar this frame.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum AccountBarAction {
     None,
-    /// A wallet was chosen from the picker. The caller connects it.
-    Connect(WalletProvider),
-    /// Leave — from the picker's own button, or the account popup.
+    /// A wallet was chosen in the connect flow, on whichever chain it is for. The
+    /// caller connects it — and says what it does about a chain it cannot
+    /// reach, which for most surfaces today is nothing yet.
+    Connect(WalletChoice),
+    /// Leave — from the account popup on the wallet path, on ONE chain.
     ///
-    /// This drops the WALLET. Under [`AccountIdentity::Session`] the session
+    /// This drops the wallet, and only the one named: a reader connected on two
+    /// chains keeps the other. Under [`AccountIdentity::Session`] the session
     /// survives it: a user detaching a wallet has not signed out.
-    Disconnect,
+    Disconnect(ChainFamily),
     /// End the session, from the identity badge's popup.
     ///
     /// Distinct from [`Self::Disconnect`] because under
@@ -212,12 +212,16 @@ impl Default for AccountBarConfig {
     }
 }
 
-/// The header's trailing cluster. Holds the wallet picker's state, so a
-/// caller stores this instead of a [`WalletButton`].
+/// The header's trailing cluster.
+///
+/// Holds nothing of the connect flow: its open flag and its step live in egui
+/// memory, keyed to where the bar sits, exactly as [`WalletButton`]'s does.
 #[derive(Default)]
 pub struct AccountBar {
     pub config: AccountBarConfig,
-    button: WalletButton,
+    /// What the connect flow behind the Connect pill may offer — see
+    /// [`Self::requirement`].
+    pub requirement: ChainRequirement,
     /// How tall the pills came out last frame. Claimed up front, so the bar's
     /// centre is the pills' centre (see [`Self::show`]).
     bar_height: f32,
@@ -242,9 +246,24 @@ impl AccountBar {
     pub fn with_config(config: AccountBarConfig) -> Self {
         Self {
             config,
-            button: WalletButton::default(),
+            requirement: ChainRequirement::default(),
             bar_height: 0.0,
         }
+    }
+
+    /// What the connect flow may offer.
+    ///
+    /// [`ChainRequirement::Any`] by default, because a bar that has not been
+    /// told what its app can sign with must not narrow the choice. An app that
+    /// signs with Cardano alone sets [`ChainRequirement::Only`], and the flow
+    /// then never offers a chain whose answer the app has no path to act on —
+    /// which is the alternative to every caller matching a [`WalletChoice`] it
+    /// cannot use.
+    ///
+    /// [`WalletChoice`]: crate::wallet::WalletChoice
+    pub fn requirement(mut self, requirement: ChainRequirement) -> Self {
+        self.requirement = requirement;
+        self
     }
 
     /// Draw the cluster, right-aligned in whatever width it is given.
@@ -303,9 +322,14 @@ impl AccountBar {
         // height, top and centre are the same place.
         let height = self.bar_height.max(ui.spacing().interact_size.y);
         let bar = Vec2::new(ui.available_width(), height);
+        // Keyed to the ui the caller handed us, not the one the pills are laid
+        // out in: `allocate_ui_with_layout` mints its child id from the
+        // allocation counter, so a widget appearing above the bar would move
+        // it — and a modal keyed to a moving id closes itself.
+        let connect_id = WalletConnectModal::id_for(ui, "account_bar");
         let drawn = ui.allocate_ui_with_layout(bar, Layout::right_to_left(Align::Center), |ui| {
             ui.set_item_gap_x(Space::Sm);
-            action = self.cluster(ui, identity, connector, triggers);
+            action = self.cluster(ui, identity, connector, triggers, connect_id);
         });
         let measured = drawn.response.rect.height();
         if (measured - self.bar_height).abs() > 0.5 {
@@ -323,6 +347,7 @@ impl AccountBar {
         identity: AccountIdentity<'_>,
         connector: &WalletConnector,
         triggers: &[Trigger<'_>],
+        connect_id: egui::Id,
     ) -> AccountBarAction {
         let mut action = AccountBarAction::None;
 
@@ -332,12 +357,12 @@ impl AccountBar {
         // the caller wrote them.
         match identity {
             AccountIdentity::Wallet => {
-                if connector.is_connected() {
-                    if self.account(ui, connector) == UserBadgeAction::SignOut {
-                        action = AccountBarAction::Disconnect;
+                if connector.any_connected() {
+                    if let Some(family) = self.accounts(ui, connector) {
+                        action = AccountBarAction::Disconnect(family);
                     }
                 } else {
-                    action = self.connect(ui, connector);
+                    action = self.connect(ui, connector, connect_id);
                 }
             }
             AccountIdentity::Session { session, role } => {
@@ -352,12 +377,12 @@ impl AccountBar {
                 // WALLET and leaves the session alone, which is why sign-out
                 // has its own action.
                 if role == WalletRole::Paying {
-                    if connector.is_connected() {
-                        if self.account(ui, connector) == UserBadgeAction::SignOut {
-                            action = AccountBarAction::Disconnect;
+                    if connector.any_connected() {
+                        if let Some(family) = self.accounts(ui, connector) {
+                            action = AccountBarAction::Disconnect(family);
                         }
                     } else {
-                        let connect = self.connect(ui, connector);
+                        let connect = self.connect(ui, connector, connect_id);
                         if connect != AccountBarAction::None {
                             action = connect;
                         }
@@ -374,15 +399,6 @@ impl AccountBar {
         action
     }
 
-    /// Not connected yet: a pill, with the wallet picker behind it.
-    ///
-    /// The picker itself is still [`WalletButton`] — it owns the per-extension
-    /// icons, the connecting spinner and the error state, and a second copy
-    /// would be a second set of wallet icons to keep current. What changed is
-    /// where it is drawn. Inline it calls `set_width(available_width())` and
-    /// spans the entire header with a stacked list of wallets, which is how
-    /// the routes app ended up with a picker wider than its own page. In a
-    /// bounded popup that same width call is exactly right.
     /// The identity badge for a session-authenticated app.
     ///
     /// The subtitle comes from the session rather than
@@ -409,10 +425,24 @@ impl AccountBar {
         badge.show(ui)
     }
 
-    fn connect(&mut self, ui: &mut Ui, connector: &WalletConnector) -> AccountBarAction {
+    /// Not connected yet: a pill that opens the wallet flow.
+    ///
+    /// The flow is [`WalletConnectModal`] — the same one [`WalletButton`] opens,
+    /// because a second connect surface is a second set of chain and wallet
+    /// rules to keep in step. It draws over the whole app, so the pill stays a
+    /// pill: nothing is stacked inside the bar's own height.
+    fn connect(
+        &mut self,
+        ui: &mut Ui,
+        connector: &WalletConnector,
+        modal_id: egui::Id,
+    ) -> AccountBarAction {
         let tokens = ui.tokens();
-        let failed = matches!(connector.connection_state, ConnectionState::Error(_));
-        let connecting = connector.is_connecting();
+        let failed = connector
+            .connections
+            .iter()
+            .any(|(_, phase)| matches!(phase, ConnectionPhase::Error(_)));
+        let connecting = connector.connections.any_connecting();
         let ink = if failed {
             tokens.color.error
         } else {
@@ -446,46 +476,83 @@ impl AccountBar {
         if ui.is_sizing_pass() {
             return action;
         }
-        egui::Popup::menu(&pill)
-            .id(pill.id.with("account_bar_connect"))
-            .gap(tokens.space(Space::Sm))
-            .align(egui::RectAlign::BOTTOM_END)
-            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-            .show(|ui| {
-                // Bounded, so the picker's own `available_width` is this and
-                // not the page.
-                ui.set_min_width(PICKER_WIDTH);
-                ui.set_max_width(PICKER_WIDTH);
-                match self.button.show(ui, connector) {
-                    WalletAction::None => {}
-                    WalletAction::Connect(p) => action = AccountBarAction::Connect(p),
-                    WalletAction::Disconnect => action = AccountBarAction::Disconnect,
-                }
-            });
+        // Built fresh every frame: the open flag and the step it has reached
+        // live in egui memory under `modal_id`.
+        let modal = WalletConnectModal::new(modal_id).requirement(self.requirement);
+        if pill.clicked() {
+            modal.open(ui);
+        }
+        match modal.show(ui, connector) {
+            Some(WalletAction::Connect(choice)) => action = AccountBarAction::Connect(choice),
+            // The flow returns choices, not disconnects — the badge's popup is
+            // where a chain is dropped.
+            Some(WalletAction::Disconnect(family)) => action = AccountBarAction::Disconnect(family),
+            Some(WalletAction::None) | None => {}
+        }
         action
     }
 
-    /// The connected account, as a [`UserBadge`].
-    fn account(&self, ui: &mut Ui, connector: &WalletConnector) -> UserBadgeAction {
+    /// One badge per connected chain — the cluster's account half.
+    ///
+    /// A reader can have Cardano and EVM connected at once, and they are
+    /// different identities answering different questions, so each gets its own
+    /// pill rather than the newest one hiding the other. `Some(family)` when the
+    /// reader asked to drop that one.
+    fn accounts(&self, ui: &mut Ui, connector: &WalletConnector) -> Option<ChainFamily> {
+        let mut sign_out = None;
+        for identity in connector.identities() {
+            // The cluster lays out right-to-left, so the FIRST identity drawn
+            // lands rightmost — Cardano, in `ChainFamily::ALL` order, where a
+            // reader looks for the account they sign with day to day.
+            if self.account(ui, connector, identity) == UserBadgeAction::SignOut {
+                sign_out = Some(identity.family);
+            }
+        }
+        sign_out
+    }
+
+    /// One connected account, as a [`UserBadge`].
+    fn account(
+        &self,
+        ui: &mut Ui,
+        connector: &WalletConnector,
+        identity: ConnectedIdentity<'_>,
+    ) -> UserBadgeAction {
+        let cardano = identity.family == ChainFamily::Cardano;
         // A `$handle` when there is one — it is what a human recognises. The
-        // stake address is the fallback, middle-elided, and it is ALSO in the
-        // popup as a copyable pill, because a truncated address on its own is
-        // a string you cannot do anything with.
-        let stake = connector.stake_address.as_deref().unwrap_or_default();
-        let name = match connector.handle.as_deref() {
-            Some(handle) => handle.to_string(),
-            None => elide(stake),
+        // account is the fallback, middle-elided, and it is ALSO in the popup as
+        // a copyable pill, because a truncated address on its own is a string
+        // you cannot do anything with.
+        let account = identity.account;
+        let name = match (cardano, connector.handle.as_deref()) {
+            (true, Some(handle)) => handle.to_string(),
+            _ => elide(account),
+        };
+
+        // The subtitle names the chain when there is more than one connection to
+        // tell apart; with a single connection the caller's subtitle stands, as
+        // it always did.
+        let subtitle = if connector.identities().count() > 1 {
+            identity.family.display_name()
+        } else {
+            self.config.subtitle
         };
 
         let mut badge = UserBadge::new(&name)
             .icon(PhosphorIcon::Wallet)
-            .subtitle(self.config.subtitle)
-            .avatar_url(connector.connected_icon.as_deref())
-            .id_salt("account_bar");
-        if !stake.is_empty() {
-            badge = badge.identifier("stake", stake);
+            .subtitle(subtitle)
+            .avatar_url(identity.icon)
+            .id_salt(match identity.family {
+                ChainFamily::Cardano => "account_bar",
+                ChainFamily::Evm => "account_bar_evm",
+                ChainFamily::Midnight => "account_bar_midnight",
+            });
+        if !account.is_empty() {
+            badge = badge.identifier("stake", account);
         }
-        if let Some(balance) = &connector.balance {
+        // The balance is the Cardano connection's reading; an EVM pill has none
+        // to show and must not borrow Cardano's.
+        if cardano && let Some(balance) = &connector.balance {
             badge = badge.detail("Balance", format!("{:.2} ADA", balance.ada()));
             let tokens = balance.token_count();
             if tokens > 0 {

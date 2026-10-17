@@ -28,6 +28,13 @@
 //!   in place of an image. Used when there's no specific asset
 //!   to depict (collection offers, untyped queue items).
 //!
+//! ## Badge links
+//!
+//! [`OfferTile::badge_link`] gives the corner badge a destination:
+//! it underlines on hover, shows the pointing hand, and opens the
+//! URL in a new tab. The badge owns that click, so the tile's own
+//! click — "act on this tile" — keeps the rest of its surface.
+//!
 //! ## Example
 //!
 //! ```ignore
@@ -163,6 +170,7 @@ pub struct OfferTile<'a> {
     state: OfferTileState,
     price: String,
     badge: Option<String>,
+    badge_url: Option<String>,
     tooltip: Option<String>,
     config: OfferTileConfig,
 }
@@ -187,6 +195,7 @@ impl<'a> OfferTile<'a> {
             state: OfferTileState::Active,
             price: price.into(),
             badge: None,
+            badge_url: None,
             tooltip: None,
             config: OfferTileConfig::default(),
         }
@@ -201,6 +210,18 @@ impl<'a> OfferTile<'a> {
     /// (`"8×"`, `"5 left"`) or multi-asset hint (`"+2"`).
     pub fn badge(mut self, badge: impl Into<String>) -> Self {
         self.badge = Some(badge.into());
+        self
+    }
+
+    /// Corner badge that is also a link to the place it names (a
+    /// marketplace page, say): clicking it opens `url` in a new tab
+    /// and does not activate the tile.
+    ///
+    /// `text` is what the badge reads and what the hover tooltip is
+    /// phrased from ("Open Wayup in a new tab").
+    pub fn badge_link(mut self, text: impl Into<String>, url: impl Into<String>) -> Self {
+        self.badge = Some(text.into());
+        self.badge_url = Some(url.into());
         self
     }
 
@@ -302,21 +323,6 @@ impl<'a> OfferTile<'a> {
                             }
                         };
 
-                        // Top-right corner badge. Painted as an
-                        // overlay rather than allocated inline so
-                        // image tiles don't reserve extra
-                        // vertical space for it.
-                        if let Some(badge_text) = &self.badge {
-                            let badge_pos = content_rect.right_top() + Vec2::new(-6.0, 6.0);
-                            ui.painter().text(
-                                badge_pos,
-                                egui::Align2::RIGHT_TOP,
-                                badge_text,
-                                egui::FontId::proportional(cfg.badge_size),
-                                badge_color,
-                            );
-                        }
-
                         ui.gap(Space::Xs);
                         ui.label(
                             RichText::new(&self.price)
@@ -324,7 +330,12 @@ impl<'a> OfferTile<'a> {
                                 .size(cfg.price_size)
                                 .strong(),
                         );
-                    });
+
+                        // The badge's anchor rect, for `show` to paint once
+                        // the link's hover state is known to it.
+                        content_rect
+                    })
+                    .inner
             },
         );
 
@@ -333,9 +344,64 @@ impl<'a> OfferTile<'a> {
         // `clicked()` on a dimmed tile as a no-op via the state
         // check.
         let response = inner.response.interact(Sense::click());
+
+        // Corner badge, painted as an overlay rather than allocated
+        // inline so image tiles don't reserve extra vertical space for
+        // it. Registered after the tile's click sense: a widget added
+        // later wins the hit-test tie, so a badge link takes the click
+        // in its corner and the tile keeps the rest of its surface.
+        let mut badge_link: Option<egui::Response> = None;
+        if let Some(badge_text) = &self.badge {
+            let galley = ui.painter().layout_no_wrap(
+                badge_text.clone(),
+                egui::FontId::proportional(cfg.badge_size),
+                badge_color,
+            );
+            let anchor = inner.inner.right_top() + Vec2::new(-6.0, 6.0);
+            let badge_rect = egui::Rect::from_min_size(
+                egui::pos2(anchor.x - galley.size().x, anchor.y),
+                galley.size(),
+            );
+
+            let mut underline = None;
+            if let Some(url) = self.badge_url.as_deref() {
+                let link = ui.interact(
+                    badge_rect.expand(2.0),
+                    response.id.with("badge"),
+                    Sense::click(),
+                );
+                if link.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    underline = Some(egui::Stroke::new(1.0, badge_color));
+                }
+                if link.clicked() {
+                    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                }
+                badge_link = Some(link);
+            }
+
+            let mut shape = egui::epaint::TextShape::new(badge_rect.min, galley, badge_color);
+            if let Some(stroke) = underline {
+                shape = shape.with_underline(stroke);
+            }
+            ui.painter().add(shape);
+        }
+
         if self.state.is_active() && response.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
+
+        // While the pointer is on the badge link, the tile's tooltip would
+        // describe the cart action a click there does not take, so the badge
+        // takes the tooltip slot instead (egui shows one tooltip per layer).
+        if let Some(link) = badge_link
+            && link.hovered()
+            && let Some(badge_text) = &self.badge
+        {
+            link.on_hover_text(format!("Open {badge_text} in a new tab"));
+            return response;
+        }
+
         if let Some(tooltip) = self.tooltip {
             response.on_hover_text(tooltip)
         } else {

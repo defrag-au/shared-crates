@@ -48,7 +48,7 @@ pub use cid::{CidRole, ExtractedCid, cid_v0_to_v1, normalize_cid};
 #[cfg(feature = "cip25")]
 pub use cip25::{cip25_metadata_json, cip25_metadata_value, decode_cip25_metadata};
 #[cfg(feature = "cip68")]
-pub use cip68::{Cip68Error, decode_cip68_datum};
+pub use cip68::{Cip68Error, decode_cip68_datum, decode_cip68_datum_json};
 pub use collection::*;
 pub use decoded_asset::{DecodedAsset, Media, MediaRole, MediaType};
 pub use extract::{
@@ -1109,7 +1109,7 @@ impl From<Asset> for Traits {
     fn from(value: Asset) -> Self {
         let s = serde_json::to_string(&value.traits).unwrap();
         let mut map: Traits = serde_json::from_str(&s).unwrap();
-        map.insert("Name".to_string(), TraitValue::Single(value.name));
+        map.insert("Name".to_string(), TraitValue::Plain(value.name));
 
         map
     }
@@ -1152,10 +1152,10 @@ impl TraitSummary {
             // Ensure an entry for this trait name
             let counter = self.traits.entry(trait_name.clone()).or_default();
 
-            // trait_values is now Vec<String>, so iterate over all values
+            // Values leave the summary rendered, as every JSON consumer reads them.
             for val in trait_values {
                 counter
-                    .entry(val.clone())
+                    .entry(val.rendered())
                     .and_modify(|c| *c += 1)
                     .or_insert(1);
             }
@@ -1330,7 +1330,7 @@ mod tests {
                 );
                 assert_eq!(
                     asset.traits.get("Background"),
-                    Some(&vec!["Cobalt Waves".to_string()])
+                    Some(&vec![TraitValue::Plain("Cobalt Waves".to_string())])
                 );
                 assert_eq!(
                     Asset::get_image_source(&asset.image),
@@ -1363,8 +1363,15 @@ mod tests {
             serde_json::from_str(json).expect("decode SpaceBudz CIP-68 metadata");
         let asset = Asset::from(meta);
         assert_eq!(asset.name, "SpaceBud #0");
-        assert_eq!(asset.traits.get("type"), Some(&vec!["Frog".to_string()]));
-        let mut gadgets = asset.traits.get("traits").cloned().unwrap_or_default();
+        assert_eq!(
+            asset.traits.get("type"),
+            Some(&vec![TraitValue::Plain("Frog".to_string())])
+        );
+        let mut gadgets: Vec<String> = asset
+            .traits
+            .get("traits")
+            .map(|values| values.iter().map(TraitValue::rendered).collect())
+            .unwrap_or_default();
         gadgets.sort();
         assert_eq!(
             gadgets,
@@ -1693,11 +1700,13 @@ mod tests {
         assert_eq!(asset.name, "Chadano Citizen #1396");
         assert_eq!(
             asset.traits.get("Background"),
-            Some(&vec!["Crimson".to_string()])
+            Some(&vec![TraitValue::Plain("Crimson".to_string())])
         );
         assert_eq!(
             asset.traits.get("Hand Accessories"),
-            Some(&vec!["Commercial Here Tumbler".to_string()])
+            Some(&vec![TraitValue::Plain(
+                "Commercial Here Tumbler".to_string()
+            )])
         );
     }
 
@@ -1715,10 +1724,16 @@ mod tests {
                 );
                 assert_eq!(
                     asset.traits.get("Collection"),
-                    Some(&vec!["Old Money".to_string()])
+                    Some(&vec![TraitValue::Plain("Old Money".to_string())])
                 );
-                assert_eq!(asset.traits.get("Eyes"), Some(&vec!["Red".to_string()]));
-                assert_eq!(asset.traits.get("Stamp"), Some(&vec!["Panama".to_string()]));
+                assert_eq!(
+                    asset.traits.get("Eyes"),
+                    Some(&vec![TraitValue::Plain("Red".to_string())])
+                );
+                assert_eq!(
+                    asset.traits.get("Stamp"),
+                    Some(&vec![TraitValue::Plain("Panama".to_string())])
+                );
             }
             Err(err) => {
                 panic!("failed decoding Old Money metadata with capital Name: {err:?}");

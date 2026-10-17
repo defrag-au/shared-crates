@@ -89,9 +89,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
          thing: blue is typed (the reader's note), cyan is the browser wallet \
          the app found, green is LINKED — a signature the server holds. A \
          surface that must not guess reads the linked set, never the roster. \
-         The shield links a row the host can prove; the `×` unlinks a proven \
-         one. Both are emitted as actions for the host to answer, not done by \
-         the widget.",
+         The `Link` button proves a row the host can prove — a labelled \
+         button, because the bare shield it used to be read as chrome beside \
+         the `×`; the `×` unlinks a proven one. Both are emitted as actions \
+         for the host to answer, not done by the widget.",
     );
     crate::caption(
         ui,

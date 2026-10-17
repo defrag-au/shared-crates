@@ -90,7 +90,7 @@ fn roster() -> Vec<Lookup> {
                 offset: 1 << (seed.next() % 26),
                 len: 120 + (seed.next() % 280) as u16,
             },
-            settled: seed.next() % 97 != 0,
+            settled: !seed.next().is_multiple_of(97),
             at: i as f32 * (RUN / FOUND as f32),
             flight: COLD,
         });

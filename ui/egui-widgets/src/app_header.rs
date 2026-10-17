@@ -28,8 +28,8 @@
 //! # use egui_widgets::wallet::WalletConnector;
 //! # fn demo(ui: &mut egui::Ui, header: &mut AppHeader, wallet: &WalletConnector) {
 //! match header.show(ui, wallet, &[], |_ui| {}) {
-//!     AccountBarAction::Connect(provider) => { /* connect it */ }
-//!     AccountBarAction::Disconnect => { /* clear the session */ }
+//!     AccountBarAction::Connect(choice) => { /* connect it, on its chain */ }
+//!     AccountBarAction::Disconnect(family) => { /* drop that chain's wallet */ }
 //!     _ => {}
 //! }
 //! # }
@@ -42,6 +42,7 @@ use crate::account_bar::{
 };
 use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
 use crate::wallet::WalletConnector;
+use crate::wallet_connect_modal::ChainRequirement;
 
 /// The app's name, what it is for, and the account cluster.
 pub struct AppHeader {
@@ -80,8 +81,22 @@ impl AppHeader {
     }
 
     /// Configure the account cluster (density, text sizes, popup subtitle).
+    ///
+    /// Assigns the config rather than replacing the cluster, so a
+    /// [`Self::requirement`] set before this survives it.
     pub fn account(mut self, config: AccountBarConfig) -> Self {
-        self.account = AccountBar::with_config(config);
+        self.account.config = config;
+        self
+    }
+
+    /// What the connect flow behind the account cluster may offer — see
+    /// [`AccountBar::requirement`].
+    ///
+    /// An app that signs with Cardano alone sets [`ChainRequirement::Only`],
+    /// and the flow then never offers a chain its own header has no path to
+    /// act on.
+    pub fn requirement(mut self, requirement: ChainRequirement) -> Self {
+        self.account.requirement = requirement;
         self
     }
 

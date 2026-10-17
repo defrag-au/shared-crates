@@ -30,6 +30,8 @@ pub enum DecodeError {
     BadFamily(u8),
     /// An `event` byte outside `1..=3`.
     BadEvent(u8),
+    /// A listing `form` byte outside `0..=3`.
+    BadForm(u8),
     /// A reserved field that must be zero was not.
     ReservedNotZero {
         /// Offset into the object.
@@ -64,6 +66,7 @@ impl fmt::Display for DecodeError {
             Self::UnsupportedVersion(v) => write!(f, "unsupported format version {v}"),
             Self::BadFamily(b) => write!(f, "unknown family byte {b}"),
             Self::BadEvent(b) => write!(f, "unknown event byte {b}"),
+            Self::BadForm(b) => write!(f, "unknown listing form byte {b}"),
             Self::MissingField(key) => write!(f, "manifest field '{key}' is missing"),
             Self::BadField(key) => write!(f, "manifest field '{key}' is malformed"),
             Self::ReservedNotZero { at } => {
@@ -103,6 +106,10 @@ pub enum EncodeError {
     /// is the listing's contract — a duplicate is a builder bug, not
     /// something to silently collapse.
     DuplicateName,
+    /// A v3 listing entry states no form. Every entry of the layout states
+    /// one — a listing parsed from a v2 object carries none and cannot be
+    /// re-encoded; rebuild it from the segments (the `--fold-only` reseed).
+    MissingForm,
     /// A record's quantity contradicts its event: a mint must state a positive
     /// quantity, a burn a negative one, and an update neither. The sign is
     /// summed into an asset's supply, so a wrong one would move a standing
@@ -131,6 +138,11 @@ impl fmt::Display for EncodeError {
             Self::DuplicateName => write!(
                 f,
                 "a listing carries one entry per name; a duplicate was handed to the builder"
+            ),
+            Self::MissingForm => write!(
+                f,
+                "a v3 listing entry states no form — a listing parsed from a v2 object \
+                 cannot be re-encoded; reseed it from the segments"
             ),
             Self::BadQuantity { event, qty } => write!(
                 f,

@@ -38,8 +38,9 @@ use crate::error_note::ErrorNote;
 use crate::icons::PhosphorIcon;
 use crate::theme::{Space, SpaceExt, ThemeExt};
 use crate::user_badge::{UserBadge, UserBadgeAction};
-use crate::wallet::{WalletApi, WalletConnector, WalletProvider};
+use crate::wallet::{WalletApi, WalletChoice, WalletConnector, WalletProvider};
 use crate::wallet_button::{WalletAction, WalletButton};
+use crate::wallet_connect_modal::{ChainFamily, ChainRequirement};
 
 // ============================================================================
 // The session
@@ -126,11 +127,16 @@ pub struct SignedChallenge {
 /// challenge carried one. A wrong-network wallet is refused here with a
 /// sentence, rather than being asked to sign and then bounced with an opaque
 /// 401 because its mainnet stake matches no preprod allowlist.
+///
+/// Signs with the wallet's **first** reward address, which is right when the
+/// wallet IS the identity being claimed (a sign-in). A surface claiming an
+/// address it already holds — a roster row — wants [`sign_challenge_for`].
 pub async fn sign_challenge(
     api: &WalletApi,
     payload_to_sign_hex: &str,
     expected_network: Option<&str>,
 ) -> Result<SignedChallenge, String> {
+    check_network(api, expected_network).await?;
     let reward_addrs = api
         .reward_addresses()
         .await
@@ -139,7 +145,57 @@ pub async fn sign_challenge(
         .first()
         .cloned()
         .ok_or("wallet returned no reward addresses (no stake key)")?;
+    sign_with(api, &stake_addr_hex, payload_to_sign_hex).await
+}
 
+/// Sign a worker's challenge with **one specific** of the wallet's stake keys.
+///
+/// The sibling of [`sign_challenge`] for a surface that claims an address it
+/// already holds: a roster row is `stake1…`, and the signature has to come from
+/// the key that owns THAT address. A wallet holding several stake keys (an
+/// Eternl wallet with more than one account) answers `getRewardAddresses()`
+/// with more than one, and the first is not necessarily the row the reader
+/// pointed at — signing with the wrong one is a valid signature over a claim it
+/// does not own, which reaches the reader as an address mismatch they can do
+/// nothing with. Refusing HERE instead says which wallet to switch to.
+pub async fn sign_challenge_for(
+    api: &WalletApi,
+    payload_to_sign_hex: &str,
+    expected_network: Option<&str>,
+    stake_address: &str,
+) -> Result<SignedChallenge, String> {
+    // The network check first: a wallet on the wrong network does not "hold a
+    // different account", and answering a network mistake with account advice
+    // sends the reader looking in the wrong place.
+    check_network(api, expected_network).await?;
+    let reward_addrs = api
+        .reward_addresses()
+        .await
+        .map_err(|e| format!("getRewardAddresses: {e}"))?;
+    // A wallet with no stake key at all is not a wallet on the wrong account,
+    // and the two fixes are different — keep the sentence the sign-in path uses
+    // for the first, and blame the account only when there IS one.
+    if reward_addrs.is_empty() {
+        return Err("wallet returned no reward addresses (no stake key)".to_string());
+    }
+    let matching = reward_addrs.iter().find(|addr| {
+        // Either spelling: CIP-30 says hex, and a wallet that hands back bech32
+        // anyway should link rather than be told it does not hold the address
+        // it just named.
+        addr.as_str() == stake_address
+            || crate::wallet::stake_address_bech32(addr).as_deref() == Some(stake_address)
+    });
+    let Some(stake_hex) = matching else {
+        return Err(format!(
+            "this wallet does not sign with {stake_address} — switch to that account in your \
+             wallet and reconnect, or link the account you have connected"
+        ));
+    };
+    sign_with(api, stake_hex, payload_to_sign_hex).await
+}
+
+/// The network pre-check both entry points share.
+async fn check_network(api: &WalletApi, expected_network: Option<&str>) -> Result<(), String> {
     let expected = expected_network.filter(|n| !n.is_empty());
     if let (Some(expected), Ok(wallet_net)) = (expected, api.network_id().await) {
         let expects_mainnet = expected.contains("mainnet");
@@ -155,9 +211,17 @@ pub async fn sign_challenge(
             ));
         }
     }
+    Ok(())
+}
 
+/// `signData` over `stake_hex`, the address the wallet signs with.
+async fn sign_with(
+    api: &WalletApi,
+    stake_hex: &str,
+    payload_to_sign_hex: &str,
+) -> Result<SignedChallenge, String> {
     let signed = api
-        .sign_data(&stake_addr_hex, payload_to_sign_hex)
+        .sign_data(stake_hex, payload_to_sign_hex)
         .await
         .map_err(|e| format!("signData: {e}"))?;
     Ok(SignedChallenge {
@@ -296,13 +360,28 @@ impl<'a> StakeSessionPanel<'a> {
             };
         }
 
-        // Not signed in: the connect step first.
-        let mut action = match WalletButton::new().show(ui, self.connector) {
+        // Not signed in: the connect step first. The flow is told what this
+        // panel can use — a stake key is a CIP-30 thing — so it offers Cardano
+        // wallets and nothing else, and the EVM arm below is unreachable rather
+        // than merely unhandled.
+        let mut action = match WalletButton::new()
+            .requirement(ChainRequirement::Only(ChainFamily::Cardano))
+            .show(ui, self.connector)
+        {
             WalletAction::None => StakeSessionAction::None,
-            WalletAction::Connect(p) => StakeSessionAction::Connect(p),
-            WalletAction::Disconnect => StakeSessionAction::Disconnect,
+            WalletAction::Connect(WalletChoice::Cardano(provider)) => {
+                StakeSessionAction::Connect(provider)
+            }
+            // Unreachable through the flow, which was told `Only(Cardano)`. Kept
+            // because `WalletChoice` is an enum and a host may still hand this
+            // connector an EVM announcement — but the reader cannot pick one.
+            WalletAction::Connect(WalletChoice::Evm(_)) => StakeSessionAction::None,
+            // The flow offers Cardano only here, so an EVM disconnect cannot be
+            // asked for — a session is a stake-key thing either way.
+            WalletAction::Disconnect(ChainFamily::Cardano) => StakeSessionAction::Disconnect,
+            WalletAction::Disconnect(_) => StakeSessionAction::None,
         };
-        if !self.connector.is_connected() {
+        if !self.connector.is_connected(ChainFamily::Cardano) {
             return action;
         }
 

@@ -2000,6 +2000,8 @@ pub(crate) fn strip_control_chars(input: &str) -> String {
 
 #[cfg(test)]
 mod trait_parity_tests {
+    use cardano_assets::TraitValue;
+
     use super::*;
 
     // Maestro-derived traits must equal the v2 extractor run directly on
@@ -2052,7 +2054,10 @@ mod trait_parity_tests {
         )).unwrap();
         let asset = Asset::try_from(standards).expect("asset");
         assert_eq!(asset.name, "from68");
-        assert_eq!(asset.traits.get("K"), Some(&vec!["v68".to_string()]));
+        assert_eq!(
+            asset.traits.get("K"),
+            Some(&vec![TraitValue::Plain("v68".to_string())])
+        );
     }
 
     #[test]

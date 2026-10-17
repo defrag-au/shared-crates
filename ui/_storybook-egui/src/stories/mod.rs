@@ -43,6 +43,7 @@ pub mod knob;
 pub mod leaderboard;
 pub mod listing_composer;
 pub mod listing_grid;
+pub mod livery_panel;
 pub mod locator_graph;
 pub mod locator_strips;
 pub mod machine;
@@ -62,8 +63,6 @@ pub mod perspective_text;
 pub mod pip_row;
 pub mod placement;
 pub mod placement_pad;
-pub mod transform_stick;
-pub mod livery_panel;
 pub mod price_timeline;
 pub mod pricing_ladder;
 pub mod printing_timeline;
@@ -97,11 +96,19 @@ pub mod token_kinetic;
 pub mod token_multiselect;
 pub mod token_particles;
 pub mod trait_filter;
+pub mod transform_stick;
 pub mod typeahead_search;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
+// Seeded with connectors, so it is wasm-only too.
+#[cfg(target_arch = "wasm32")]
+pub mod wallet_connect;
 pub mod wallet_cta;
 pub mod wallet_editor;
+/// Connectors as they look after a real connect — one place, because eight
+/// stories were seeding one each.
+#[cfg(target_arch = "wasm32")]
+pub mod wallet_fixture;
 pub mod wiring_editor;
 pub mod wrt_fixture;
 
@@ -187,3 +194,4 @@ pub mod variant_split;
 pub mod viewport;
 pub mod wallet_identity_header;
 pub mod wallet_list;
+pub mod wallet_panel;

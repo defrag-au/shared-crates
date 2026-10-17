@@ -29,5 +29,42 @@
     </head>
     <body>
         <canvas id="egui_canvas"></canvas>
+        <script>
+            // `?fakeevm=1` installs one stub EIP-6963 wallet before the wasm
+            // boots, so the EVM half of the wallet work can be seen and tested
+            // in a browser that has no EVM extension installed at all —
+            // including headless, where nothing ever announces. It answers the
+            // protocol the real ones do and nothing else: no chain id, no
+            // signature, and an account that is the same synthetic fixture the
+            // Rust-side stories use.
+            //
+            // It is off unless the parameter asks for it, and it announces
+            // itself as `Stub EVM wallet` so it can never be mistaken for an
+            // installed one.
+            if (location.search.includes('fakeevm=1')) {
+                const STUB_ACCOUNT = '0x' + '1f'.repeat(20);
+                window.addEventListener('eip6963:requestProvider', () => {
+                    window.dispatchEvent(
+                        new CustomEvent('eip6963:announceProvider', {
+                            detail: {
+                                info: {
+                                    uuid: 'stub-evm-wallet',
+                                    name: 'Stub EVM wallet',
+                                    icon: null,
+                                    rdns: 'dev.stub.evm',
+                                },
+                                provider: {
+                                    request: async ({ method }) =>
+                                        method === 'eth_requestAccounts' ||
+                                        method === 'eth_accounts'
+                                            ? [STUB_ACCOUNT]
+                                            : null,
+                                },
+                            },
+                        }),
+                    );
+                });
+            }
+        </script>
     </body>
 </html>

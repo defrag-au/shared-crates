@@ -373,6 +373,22 @@ impl Spine {
 }
 
 /// Render the roster.
+/// The row height [`show`] lays its entries at, for this `Ui`'s theme.
+///
+/// Exposed for a host that has to reserve the space the roster will use before
+/// drawing it — [`WalletPanel`](crate::wallet_panel) sizes the window around the
+/// roster this way, because a scroll view sized from "whatever is left" inside a
+/// content-sized area reproduces its own clamp and settles at the wrong height.
+pub fn row_height(ui: &Ui) -> f32 {
+    Spine::measure(ui).row_h
+}
+
+/// Width the link button asks for: the shield glyph, the word, and the button's
+/// own padding. Clamped against the row's width at the call site, so a very
+/// narrow surface loses the name column last.
+const LINK_COL: f32 = 58.0;
+const LINK_LABEL: &str = "Link";
+
 pub fn show(
     ui: &mut Ui,
     state: &mut WalletEditorState,
@@ -388,11 +404,15 @@ pub fn show(
     // column is reserved for EVERY row once ANY row can link, rather than per
     // row: a column that appears and disappears down the list leaves the names
     // ragged, and the roster is read as a column of names.
+    //
+    // The affordance is a LABELLED button, not the bare shield it used to be.
+    // A glyph among glyphs reads as chrome — the roster's own reader could not
+    // find it — and the cost of the word is ~20pt off the name column.
     let link_col = match entries
         .iter()
         .any(|e| e.linkable && e.origin != WalletOrigin::Linked)
     {
-        true => spine.remove,
+        true => LINK_COL.min(ui.available_width() * 0.3),
         false => 0.0,
     };
 
@@ -585,24 +605,17 @@ pub fn show(
                 // linked — the same slot stays empty so the `×` column still
                 // lines up down the list.
                 if link_col > 0.0 {
-                    let (link_rect, link_resp) =
-                        ui.allocate_exact_size(vec2(link_col, spine.row_h), Sense::click());
+                    let (link_rect, _) =
+                        ui.allocate_exact_size(vec2(link_col, spine.row_h), Sense::hover());
                     if entry.linkable && entry.origin != WalletOrigin::Linked {
-                        if link_resp.hovered() {
-                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                        }
-                        PhosphorIcon::Shield.paint(
-                            ui.painter(),
-                            link_rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            spine.icon,
-                            match (link_resp.hovered(), hovered) {
-                                (true, _) => colors.accent_cyan,
-                                (false, true) => colors.text_secondary,
-                                (false, false) => colors.text_muted,
-                            },
-                        );
-                        if link_resp
+                        let label =
+                            crate::icons::phosphor_label(ui, PhosphorIcon::Shield, LINK_LABEL);
+                        let button = egui::Button::new(label)
+                            .fill(colors.bg_highlight)
+                            .stroke(crate::theme::hairline(colors.border))
+                            .corner_radius(ui.tokens().corner(Radius::Sm));
+                        if ui
+                            .put(link_rect, button)
                             .on_hover_text(format!(
                                 "Link {} — sign a message to prove you hold it",
                                 entry.display()
@@ -634,9 +647,7 @@ pub fn show(
                 // A linked entry is the server's record, not a local note: the
                 // button releases the link, and the action says so.
                 let (verb, on_click) = match entry.origin {
-                    WalletOrigin::Linked => {
-                        ("Unlink", WalletEditorAction::Unlink(i))
-                    }
+                    WalletOrigin::Linked => ("Unlink", WalletEditorAction::Unlink(i)),
                     _ => ("Remove", WalletEditorAction::Remove(i)),
                 };
                 if x_resp
@@ -911,7 +922,11 @@ mod tests {
         let linked = WalletEditorEntry::resolving("stake1uabc").origin(WalletOrigin::Linked);
         assert!(!linked.linkable);
 
-        assert!(WalletEditorEntry::resolving("stake1uabc").linkable(true).linkable);
+        assert!(
+            WalletEditorEntry::resolving("stake1uabc")
+                .linkable(true)
+                .linkable
+        );
     }
 
     #[test]

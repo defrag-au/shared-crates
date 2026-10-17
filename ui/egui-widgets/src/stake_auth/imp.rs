@@ -14,7 +14,7 @@ use crate::auth::{AuthPhase, AuthStrategy, Session};
 use crate::stake_session::{
     StakeSessionAction, StakeSessionPanel, StakeSessionPhase, StoredStakeSession, sign_challenge,
 };
-use crate::wallet::{self, Network, WalletApi, WalletConnector, WalletProvider};
+use crate::wallet::{self, ChainFamily, Network, WalletApi, WalletConnector, WalletProvider};
 
 // ─── wire types ──────────────────────────────────────────────────────────────
 //
@@ -75,8 +75,8 @@ pub struct StakeAuthStrategy {
     /// advisory rather than enforceable.
     connector: WalletConnector,
     /// Last known stake address of the *live* wallet. Distinct from
-    /// `connector.stake_address`, which is whatever was true at connect time;
-    /// this one is refreshed by [`Self::recheck_binding`].
+    /// `connector.cardano()`, whose stake address is whatever was true at
+    /// connect time; this one is refreshed by [`Self::recheck_binding`].
     active_stake: Option<String>,
     binding: WalletBinding,
     /// The network the worker serves. `None` until the app says, which means
@@ -137,7 +137,7 @@ impl StakeAuthStrategy {
     /// [`Self::connected_api`] is impossible to miss at a call site.
     pub fn signing_api(&self) -> Option<WalletApi> {
         match self.binding.may_sign() {
-            true => self.connector.api.clone(),
+            true => self.connector.api(),
             false => None,
         }
     }
@@ -160,7 +160,7 @@ impl StakeAuthStrategy {
     /// attributes nothing. The moment a handle is used to authorise something,
     /// it must come from [`Self::signing_api`].
     pub fn connected_api(&self) -> Option<WalletApi> {
-        self.connector.api.clone()
+        self.connector.api()
     }
 
     /// Read-only view of the connector, for display (balances, icon, name).
@@ -210,7 +210,7 @@ impl StakeAuthStrategy {
     /// until something asks. A timer cannot close the window between "user
     /// clicks sign" and "wallet signs"; this can.
     pub fn recheck_binding(&mut self) {
-        let Some(api) = self.connector.api.clone() else {
+        let Some(api) = self.connector.api() else {
             self.active_stake = None;
             self.recompute_binding();
             return;
@@ -245,10 +245,11 @@ impl StakeAuthStrategy {
     fn recompute_binding(&mut self) {
         // Prefer the freshly-read address; fall back to the connect-time one so
         // a binding exists before the first recheck completes.
-        let active = self
-            .active_stake
-            .as_deref()
-            .or(self.connector.stake_address.as_deref());
+        let active = self.active_stake.as_deref().or_else(|| {
+            self.connector
+                .cardano()
+                .and_then(|c| c.stake_address.as_deref())
+        });
         self.binding = super::classify(self.signed_in_stake(), active);
     }
 
@@ -269,7 +270,7 @@ impl StakeAuthStrategy {
     }
 
     fn connect(&mut self, provider: WalletProvider) {
-        self.connector.set_connecting();
+        self.connector.set_connecting(ChainFamily::Cardano);
         let inbox = Rc::clone(&self.inbox);
         wasm_bindgen_futures::spawn_local(async move {
             let msg = match wallet::connect_wallet(provider).await {
@@ -284,14 +285,15 @@ impl StakeAuthStrategy {
     }
 
     fn start_sign_in(&mut self) {
-        let Some(api) = self.connector.api.clone() else {
+        let Some(api) = self.connector.api() else {
             self.session_phase = StakeSessionPhase::Failed("Connect a wallet first.".to_string());
             self.adopt();
             return;
         };
         let wallet_name = self
             .connector
-            .provider_name()
+            .cardano()
+            .map(|c| c.provider.display_name())
             .unwrap_or("wallet")
             .to_string();
         self.session_phase = StakeSessionPhase::SigningIn;
@@ -400,10 +402,9 @@ impl AuthStrategy for StakeAuthStrategy {
                     // known for certain, so adopt it rather than waiting for a
                     // recheck.
                     self.active_stake = result.stake_address.clone();
-                    self.connector.apply_connect_result(*result);
-                    self.connector.api = Some(*api);
+                    self.connector.apply_connect_result(*result, *api);
                 }
-                StakeMsg::ConnectFailed(e) => self.connector.set_error(e),
+                StakeMsg::ConnectFailed(e) => self.connector.set_error(ChainFamily::Cardano, e),
                 StakeMsg::SignedIn(session) => {
                     session.save(&self.config.session_key);
                     self.session_phase = StakeSessionPhase::SignedIn(*session);
@@ -433,7 +434,7 @@ impl AuthStrategy for StakeAuthStrategy {
         match action {
             StakeSessionAction::Connect(provider) => self.connect(provider),
             StakeSessionAction::Disconnect => {
-                self.connector.disconnect();
+                self.connector.disconnect(ChainFamily::Cardano);
                 self.active_stake = None;
                 self.adopt();
             }

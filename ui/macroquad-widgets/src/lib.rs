@@ -16,6 +16,7 @@ mod button;
 // Host-owned helpers, not widgets: these hold state across frames, which the
 // charter forbids inside a widget precisely so it lives somewhere named.
 pub mod assets;
+mod floating_stick;
 mod fonts;
 mod gesture;
 mod mint_checkout;
@@ -38,6 +39,10 @@ pub use block_train::{
     TrainState, block_train, rider_depth, riders,
 };
 pub use button::{Button, ButtonVariant};
+pub use floating_stick::{
+    Cardinal, FloatingStick, Release, StickFrame, StickView, floating_stick,
+    response as stick_response,
+};
 pub use fonts::{FontFiles, Fonts, Slot};
 pub use gesture::{Gesture, Gestures, SwipeDir};
 pub use mint_checkout::{

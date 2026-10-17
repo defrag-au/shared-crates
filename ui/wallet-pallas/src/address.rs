@@ -155,6 +155,14 @@ impl Address {
                 let stake_addr = StakeAddress::new(network, stake_payload);
                 stake_addr.to_bech32().ok()
             }
+            // A bare reward address IS a stake address — it converts to itself.
+            //
+            // Not a footnote: `getRewardAddresses()` hands CIP-30 clients `e1…`
+            // reward addresses, so this arm is what any "does this wallet hold
+            // that stake key?" comparison runs through. Without it they all
+            // answer `None`, which reads as "not mine" for the wallet that just
+            // named it.
+            PallasAddress::Stake(addr) => addr.to_bech32().ok(),
             _ => None,
         }
     }
@@ -175,5 +183,33 @@ impl Address {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A reward address converts to ITSELF.
+    ///
+    /// `getRewardAddresses()` answers with `e1…` reward addresses — a bare
+    /// stake address, not a payment address carrying a delegation — and this
+    /// method used to return `None` for them. Every "does this wallet hold that
+    /// stake key?" comparison therefore answered no, which is how a correctly
+    /// connected wallet came to be told it "does not sign with" the address it
+    /// had just connected with (the collection-ownership roster's Link button).
+    #[test]
+    fn a_reward_address_converts_to_itself() {
+        let stake = "stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9";
+        let reward = Address::from_bech32(stake).expect("the fixture parses");
+        // Through hex, which is the form CIP-30 speaks in.
+        let hex = reward.to_hex();
+        assert_eq!(
+            Address::from_hex(&hex)
+                .expect("the hex form parses")
+                .stake_address_bech32()
+                .as_deref(),
+            Some(stake),
+        );
     }
 }

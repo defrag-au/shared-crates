@@ -90,7 +90,10 @@ mod tests {
 
     #[test]
     fn a_wallet_without_a_handle_round_trips() {
-        let wallet = cardano("stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9", None);
+        let wallet = cardano(
+            "stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9",
+            None,
+        );
         let json = serde_json::to_string(&wallet).unwrap();
         assert!(!json.contains("handle"), "absent handle should be omitted");
         assert_eq!(serde_json::from_str::<LinkedWallet>(&json).unwrap(), wallet);
@@ -111,7 +114,8 @@ mod tests {
     /// Producers may add fields; a consumer must not break on them.
     #[test]
     fn unknown_fields_are_ignored() {
-        let json = r#"{"chain":"cardano:mainnet","address":"stake1abc","handle":"$boef","linked_at":123}"#;
+        let json =
+            r#"{"chain":"cardano:mainnet","address":"stake1abc","handle":"$boef","linked_at":123}"#;
         let wallet: LinkedWallet = serde_json::from_str(json).unwrap();
         assert_eq!(wallet.handle.as_deref(), Some("$boef"));
     }
@@ -135,8 +139,11 @@ mod tests {
     #[test]
     fn cardano_address_yields_only_cardano_links() {
         assert_eq!(
-            cardano("stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9", None)
-                .cardano_address(),
+            cardano(
+                "stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9",
+                None
+            )
+            .cardano_address(),
             Some("stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9")
         );
         // Any Cardano network, not just mainnet: which one is the consumer's

@@ -8,7 +8,9 @@
 //! - monospace **truncated value** (middle-elided) with the full value
 //!   on hover for verification
 //! - **copy button** (Phosphor `Copy` glyph by default; the widget
-//!   handles the clipboard call itself)
+//!   handles the clipboard call itself, and turns the glyph into a green
+//!   `Check` for a moment so a copy is something the reader SEES — a button
+//!   that gives no sign of having worked is a button they press twice)
 //!
 //! The widget owns truncation: callers pass the full value + a
 //! `(prefix_width, suffix_width)` pair; if the value already fits the
@@ -31,6 +33,64 @@ use crate::theme::{Ink, InkExt, Radius, Space, TextSize, ThemeExt, Token};
 use egui::{Align, Color32, Layout, RichText, Ui};
 
 use crate::icons::PhosphorIcon;
+
+/// How long the copy button stays a `Check` after a copy. Long enough to read,
+/// short enough not to be mistaken for the button's resting state — the same
+/// window [`crate::art_viewer`] chose for its own copy button.
+const COPIED_FEEDBACK_SECS: f64 = 1.5;
+
+/// Where the last copy of `value` is remembered.
+///
+/// A pill is a builder with no state of its own, and the confirmation has to
+/// outlive the pass it was clicked in (egui repaints on demand, so the next
+/// pass is not a given). egui's own memory is the one store that survives the
+/// pass without the host holding anything. Keyed by the VALUE rather than by
+/// the pill's position: two pills showing the same identifier are the same
+/// fact copied, and they agree.
+fn copied_id(value: &str) -> egui::Id {
+    egui::Id::new(("id_pill_copied", value))
+}
+
+/// The copy button's current face: which glyph, in which colour, saying what.
+struct CopyFace {
+    icon: PhosphorIcon,
+    colour: Color32,
+    hover: &'static str,
+}
+
+/// Resolve the face against the confirmation window, and keep the frame loop
+/// awake only for as long as the `Check` is up — the revert is a deadline, and
+/// nothing else in an on-demand app would wake it.
+fn copy_face(ui: &Ui, value: &str, idle: Color32) -> CopyFace {
+    let now = ui.input(|i| i.time);
+    let until = ui
+        .ctx()
+        .data(|d| d.get_temp::<f64>(copied_id(value)))
+        .unwrap_or(0.0);
+    if now < until {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_secs_f64(until - now));
+        return CopyFace {
+            icon: PhosphorIcon::Check,
+            colour: ui.tokens().color.accent_green,
+            hover: "Copied",
+        };
+    }
+    CopyFace {
+        icon: PhosphorIcon::Copy,
+        colour: idle,
+        hover: "Copy to clipboard",
+    }
+}
+
+/// Start (or restart) the confirmation window for `value`.
+fn mark_copied(ui: &Ui, value: &str) {
+    let until = ui.input(|i| i.time) + COPIED_FEEDBACK_SECS;
+    ui.ctx()
+        .data_mut(|d| d.insert_temp(copied_id(value), until));
+    ui.ctx()
+        .request_repaint_after(std::time::Duration::from_secs_f64(COPIED_FEEDBACK_SECS));
+}
 
 /// Visual layout pick — `IdPill::layout(…)` consumes one of these.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -362,20 +422,19 @@ impl<'a> IdPill<'a> {
                     if !self.copyable {
                         return;
                     }
+                    let face = copy_face(ui, self.value_full.as_ref(), self.label_col(ui));
+                    let icon = face.icon.rich_text(12.0, face.colour);
                     let clicked = if right_align_copy {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.small_button(PhosphorIcon::Copy.rich_text(12.0, self.label_col(ui)))
-                                .on_hover_text("Copy to clipboard")
-                                .clicked()
+                            ui.small_button(icon).on_hover_text(face.hover).clicked()
                         })
                         .inner
                     } else {
-                        ui.small_button(PhosphorIcon::Copy.rich_text(12.0, self.label_col(ui)))
-                            .on_hover_text("Copy to clipboard")
-                            .clicked()
+                        ui.small_button(icon).on_hover_text(face.hover).clicked()
                     };
                     if clicked {
                         ui.ctx().copy_text(self.value_full.to_string());
+                        mark_copied(ui, self.value_full.as_ref());
                         response.copied = true;
                     }
                     if let Some(url) = &self.link
@@ -426,12 +485,14 @@ impl<'a> IdPill<'a> {
             value_resp.on_hover_text(self.value_full.as_ref());
             if self.copyable {
                 crate::icons::ensure_fonts(ui);
+                let face = copy_face(ui, self.value_full.as_ref(), label_col);
                 if ui
-                    .small_button(PhosphorIcon::Copy.rich_text(11.0, label_col).small())
-                    .on_hover_text("Copy to clipboard")
+                    .small_button(face.icon.rich_text(11.0, face.colour).small())
+                    .on_hover_text(face.hover)
                     .clicked()
                 {
                     ui.ctx().copy_text(self.value_full.to_string());
+                    mark_copied(ui, self.value_full.as_ref());
                     response.copied = true;
                 }
             }
@@ -541,6 +602,123 @@ pub fn truncate_middle(s: &str, prefix: usize, suffix: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
+    use egui::{Event, PointerButton, Pos2, RawInput, Rect, vec2};
+
+    /// A pill in a context, with the clock under the test's control.
+    ///
+    /// `RawInput::time` is the only clock `InputState::time` reads, which is
+    /// what makes "the check is up, then it is not" a claim a test can make
+    /// without sleeping.
+    struct Harness {
+        ctx: egui::Context,
+        time: f64,
+    }
+
+    impl Harness {
+        fn new() -> Self {
+            let ctx = egui::Context::default();
+            // The pill draws a phosphor glyph; without the font bound, layout
+            // falls back to a proportional one and the glyphs are not there to
+            // click or to find.
+            crate::install_phosphor_font(&ctx);
+            Self { ctx, time: 0.0 }
+        }
+
+        /// One pass `dt` seconds after the last, returning every glyph painted
+        /// and what the pill reported.
+        fn frame(&mut self, dt: f64, events: Vec<Event>) -> (Vec<(String, Pos2)>, IdPillResponse) {
+            self.time += dt;
+            let raw = RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(600.0, 400.0))),
+                time: Some(self.time),
+                events,
+                ..Default::default()
+            };
+            let mut resp = IdPillResponse::default();
+            let out = self.ctx.test_pass(raw, |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    resp = IdPill::new("policy", POLICY)
+                        .layout(IdPillLayout::Inline)
+                        .show(ui);
+                });
+            });
+            (painted(&out), resp)
+        }
+    }
+
+    const POLICY: &str = "4df03f3b7ac14b8d0e2f6a9c1d5e8b3a72c9f46d0e81a35b67a04e9c2d7f10";
+
+    /// Every text shape in the pass, as `(glyph, top-left)`.
+    fn painted(out: &egui::FullOutput) -> Vec<(String, Pos2)> {
+        fn walk(shape: &egui::Shape, into: &mut Vec<(String, Pos2)>) {
+            match shape {
+                egui::Shape::Text(t) => into.push((t.galley.text().to_string(), t.pos)),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, into)),
+                _ => {}
+            }
+        }
+        let mut found = Vec::new();
+        for cs in &out.shapes {
+            walk(&cs.shape, &mut found);
+        }
+        found
+    }
+
+    fn glyph_at(found: &[(String, Pos2)], glyph: &str) -> Option<Pos2> {
+        found.iter().find(|(t, _)| t == glyph).map(|(_, p)| *p)
+    }
+
+    /// Clicking the copy button turns it into a `Check`, and the check goes away
+    /// on its own.
+    ///
+    /// The claim is the one the button previously could not make: that the
+    /// clipboard write HAPPENED. A test that only asserted `response.copied`
+    /// would pass with the button drawing the same `Copy` glyph it started with
+    /// — which is exactly how it shipped the first time.
+    #[test]
+    fn the_copy_button_confirms_and_then_reverts() {
+        let mut h = Harness::new();
+        h.frame(0.0, vec![]); // fonts bind at the start of a pass
+        let (found, _) = h.frame(1.0 / 60.0, vec![]);
+        let copy = glyph_at(&found, &PhosphorIcon::Copy.as_str())
+            .expect("the resting face is the Copy glyph");
+        let at = copy + vec2(2.0, 2.0);
+
+        // Hover first: egui attributes a press against the geometry the PREVIOUS
+        // pass registered, so the press and its release are separate passes.
+        let press = |pressed| Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        h.frame(1.0 / 60.0, vec![Event::PointerMoved(at)]);
+        h.frame(1.0 / 60.0, vec![Event::PointerMoved(at), press(true)]);
+        let (_found, resp) = h.frame(1.0 / 60.0, vec![press(false)]);
+        assert!(resp.copied, "the click is the pill's, and it copied");
+
+        // The copy landed on the pass before this one, so the next pass draws the
+        // confirmation — the pass in which the click is seen is the pass that
+        // still has to report it.
+        let (found, _) = h.frame(1.0 / 60.0, vec![]);
+        assert!(
+            glyph_at(&found, &PhosphorIcon::Check.as_str()).is_some(),
+            "a copy the reader cannot see is the bug this confirmation exists for"
+        );
+        assert!(
+            glyph_at(&found, &PhosphorIcon::Copy.as_str()).is_none(),
+            "the two faces are alternatives, not both"
+        );
+
+        // …and it is a window, not a new resting state.
+        let (found, _) = h.frame(COPIED_FEEDBACK_SECS + 0.1, vec![]);
+        assert!(
+            glyph_at(&found, &PhosphorIcon::Copy.as_str()).is_some(),
+            "the check must revert on its own"
+        );
+        assert!(glyph_at(&found, &PhosphorIcon::Check.as_str()).is_none());
+    }
 
     #[test]
     fn truncate_short_string_unchanged() {

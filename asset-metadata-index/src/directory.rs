@@ -140,12 +140,14 @@ impl<'a> DirectoryView<'a> {
         }))
     }
 
-    /// The candidate chunks whose filter admits `name`. Every candidate in a
-    /// v1 shard, and every unfiltered candidate anywhere: an empty filter
-    /// means *always a candidate*, and a Bloom has no false negatives, so
-    /// pruning cannot hide a name that was inserted — a false positive only
-    /// costs a read, and the walk still confirms every candidate it reads by
-    /// parsing it.
+    /// The candidate chunks whose filter admits `name` — the chunks a walk
+    /// reads. Every candidate in a v1 shard, and every unfiltered candidate
+    /// anywhere: an empty filter means *always a candidate*, and a Bloom has
+    /// no false negatives, so pruning cannot hide a name that was inserted —
+    /// a false positive only costs a read, and the walk still confirms every
+    /// candidate it reads by parsing it. The verdict is
+    /// [`crate::FilterVerdict`]'s one predicate, so what a walk reads and
+    /// what its report states cannot drift.
     pub fn candidates_for(
         &self,
         policy_id: &[u8; POLICY_ID_LEN],
@@ -154,9 +156,7 @@ impl<'a> DirectoryView<'a> {
         Ok(self.candidates(policy_id)?.map(|candidates| {
             candidates
                 .into_iter()
-                .filter(|candidate| {
-                    candidate.filter.is_empty() || might_contain(&candidate.filter, name)
-                })
+                .filter(|candidate| might_contain(&candidate.filter, name))
                 .map(|candidate| candidate.chunk)
                 .collect()
         }))

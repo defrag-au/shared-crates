@@ -41,7 +41,7 @@ use crate::cip25::{bytes_to_string, metadatum_key, metadatum_to_json};
 use crate::extract::{
     FieldClass, SLOT_KEYS, SlotShape, classify_field, trait_eligible, unsig_traits,
 };
-use crate::{AssetId, DecodedAsset, Media, MediaRole, MediaType, Traits, UnsigData};
+use crate::{AssetId, DecodedAsset, Media, MediaRole, MediaType, TraitValue, Traits, UnsigData};
 use pallas_codec::utils::KeyValuePairs;
 use pallas_primitives::Metadatum;
 
@@ -204,7 +204,14 @@ fn unsig_candidate(pairs: &KeyValuePairs<Metadatum, Metadatum>) -> Option<Traits
             .map(|(_, v)| v)
     };
     let series = sibling("series").and_then(json_string_value);
-    let source_key = sibling("source_key").map(json_strings).unwrap_or_default();
+    let source_key = sibling("source_key")
+        .map(|value| {
+            json_trait_values(value)
+                .into_iter()
+                .map(|value| value.rendered())
+                .collect()
+        })
+        .unwrap_or_default();
     let source_tx_id = sibling("source_tx_id").and_then(json_string_value);
     Some(unsig_traits(&unsigs, series, source_key, source_tx_id))
 }
@@ -461,38 +468,69 @@ fn json_string_value(m: &Metadatum) -> Option<String> {
     }
 }
 
-/// `json_to_strings`, over a `Metadatum`: scalars to one trimmed string, arrays
-/// to their scalar elements, objects and empties to nothing.
-fn json_strings(v: &Metadatum) -> Vec<String> {
+/// `json_to_strings`, over a `Metadatum`: scalars to one plain trimmed
+/// string, arrays to their elements, a `{trait, alteration}` map to an
+/// altered value, and other maps to nothing.
+fn json_trait_values(v: &Metadatum) -> Vec<TraitValue> {
     match v {
-        Metadatum::Text(s) => trimmed(s),
-        Metadatum::Bytes(b) => trimmed(&bytes_to_string(b)),
-        Metadatum::Int(i) => vec![i128::from(*i).to_string()],
+        Metadatum::Text(_) | Metadatum::Bytes(_) | Metadatum::Int(_) => {
+            scalar_trait_value(v).into_iter().collect()
+        }
         Metadatum::Array(items) => items
             .iter()
             .flat_map(|item| match item {
-                Metadatum::Text(s) => trimmed(s),
-                Metadatum::Bytes(b) => trimmed(&bytes_to_string(b)),
-                Metadatum::Int(i) => vec![i128::from(*i).to_string()],
-                _ => Vec::new(),
+                Metadatum::Text(_) | Metadatum::Bytes(_) | Metadatum::Int(_) => {
+                    scalar_trait_value(item)
+                }
+                Metadatum::Map(kv) => trait_pair(kv),
+                _ => None,
             })
             .collect(),
-        Metadatum::Map(_) => Vec::new(),
+        Metadatum::Map(kv) => trait_pair(kv).into_iter().collect(),
     }
 }
 
-fn trimmed(s: &str) -> Vec<String> {
-    let t = s.trim();
-    if t.is_empty() {
-        Vec::new()
-    } else {
-        vec![t.to_string()]
+/// A scalar as a plain value: text/bytes trimmed, ints stringified, empty
+/// strings and other shapes to nothing.
+fn scalar_trait_value(v: &Metadatum) -> Option<TraitValue> {
+    scalar_string(v).map(TraitValue::Plain)
+}
+
+/// A scalar as a trimmed, non-empty string.
+fn scalar_string(v: &Metadatum) -> Option<String> {
+    match v {
+        Metadatum::Text(s) => trimmed_string(s),
+        Metadatum::Bytes(b) => trimmed_string(&bytes_to_string(b)),
+        Metadatum::Int(i) => Some(i128::from(*i).to_string()),
+        _ => None,
     }
+}
+
+fn trimmed_string(s: &str) -> Option<String> {
+    let t = s.trim();
+    (!t.is_empty()).then(|| t.to_string())
+}
+
+/// The `{trait, alteration}` pair shape — GOOFS World's attribute objects —
+/// as one value: the base from `trait`, altered by a non-empty `alteration`
+/// (mirroring the market's `"<value> (<alteration>)"` rendering). Any other
+/// map is not a trait value and stays dropped.
+fn trait_pair(kv: &KeyValuePairs<Metadatum, Metadatum>) -> Option<TraitValue> {
+    let find = |want: &str| {
+        kv.iter()
+            .find(|(k, _)| metadatum_key(k) == want)
+            .map(|(_, v)| v)
+    };
+    let value = scalar_string(find("trait")?)?;
+    Some(match find("alteration").and_then(scalar_string) {
+        Some(alteration) => TraitValue::Altered { value, alteration },
+        None => TraitValue::Plain(value),
+    })
 }
 
 /// `insert_if_present`: a trait goes in only when the value coerces to something.
 fn insert_if_present(traits: &mut Traits, key: String, value: &Metadatum) {
-    let values = json_strings(value);
+    let values = json_trait_values(value);
     if !values.is_empty() {
         traits.insert_vec(key, values);
     }
@@ -615,6 +653,44 @@ mod tests {
             .traits
     }
 
+    /// The `{trait, alteration}` pair shape reads as one altered value — the
+    /// CBOR twin of the document path's `pair_objects_extract_as_altered_values`.
+    #[test]
+    fn the_walk_reads_a_trait_alteration_pair() {
+        let doc = map(vec![
+            ("name", text("Goof#1")),
+            ("image", text("ipfs://x")),
+            (
+                "attributes",
+                map(vec![
+                    (
+                        "Overcoat",
+                        map(vec![
+                            ("trait", text("Puffy Jacket")),
+                            ("alteration", text("Green")),
+                        ]),
+                    ),
+                    ("Fur Color", map(vec![("trait", text("Latte"))])),
+                ]),
+            ),
+        ]);
+        let traits = metadatum_traits(&doc).expect("map");
+        assert_eq!(
+            traits.get("Overcoat"),
+            Some(&vec![TraitValue::Altered {
+                value: "Puffy Jacket".to_string(),
+                alteration: "Green".to_string(),
+            }])
+        );
+        assert_eq!(
+            traits.get("Fur Color"),
+            Some(&vec![TraitValue::Plain("Latte".to_string())])
+        );
+
+        // Parity: the document path reads the same bytes the same way.
+        assert_eq!(platform_traits(&doc), traits);
+    }
+
     /// The walk classifies through the crate's own registry, so the fields that
     /// are never traits stay out of the set.
     #[test]
@@ -701,7 +777,10 @@ mod tests {
         assert_eq!(traits.get_single("Level").as_deref(), Some("15"));
         assert_eq!(
             traits.get("Layers"),
-            Some(&vec!["A".to_string(), "B".to_string()])
+            Some(&vec![
+                TraitValue::Plain("A".to_string()),
+                TraitValue::Plain("B".to_string())
+            ])
         );
         assert!(!traits.contains_key("Empty"));
         assert!(!traits.contains_key("Nested"));
