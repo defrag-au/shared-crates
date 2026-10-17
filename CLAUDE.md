@@ -577,8 +577,31 @@ picture with no error.
 - **Images decode from PNG and TGA only.** Convert art to PNG at build time, not JPEG.
 - **With `high_dpi`, touches arrive in device pixels and the mouse in points.** Read the mouse
   (macroquad turns touches into mouse events) and convert once, through `Viewport::to_design`.
-- **`get_screen_data` returns black on macOS.** Capture through a render target (`harness::Capture`).
+- **`get_screen_data` returns black on macOS** when the window is unfocused or not yet composited,
+  and works when it is: so it passes at the desk and fails in a background run. Capture through a
+  render target (`harness::Capture`).
 - **`draw_arc` thickness grows outward from the radius**, not centred on it.
+
+Two more pass every native run and capture, and fail only in the browser:
+
+- **`render_target()` kills the web build.** In macroquad 0.4 it defaults to `sample_count: 1`,
+  which `render_target_ex` treats as multisampled, so every pass ends in a `glReadBuffer` blit.
+  WebGL 1, miniquad's default in the browser, lacks it: "gl.readBuffer is not a function" on the
+  first frame, then a panic at miniquad's `wasm.rs:34` on every later event. Use
+  `harness::plain_target` (sample count 0). The kit's `tests/plain_targets.rs` scan fails on a
+  bare call.
+- **A missing miniquad plugin never stops the page loading.** `gl.js` stubs each import nothing
+  provides and logs "No <name> function in gl.js" when it is called: no quad-snd `audio.js` is a
+  silent game, no gamepads plugin is deaf pads, no `quad-net.js` a dead socket. Take audio and
+  gamepads from the kit's `audio` and `gamepads` features, and stamp their JS from `build.rs` with
+  `macroquad_gamekit::web::stamp` — never a CDN copy.
+- **A copied `gl.js` drifts from the miniquad it runs beside**, and a mismatch is a blank canvas
+  with no error (cnft.dev-workers committed 0.4.10's beside a 0.4.11 wasm). Never commit or
+  hand-copy miniquad's JS, or write a bundle's `index.html` by hand. Bundle with shared-crates'
+  `macroquad-bundle`, run in each repo as `cargo run -p mq-bundle` (`tools/mq-bundle`): it takes
+  the JS from the versions the package links, renders the shared shell, and fails the build if the
+  wasm imports a function no staged script provides. `--base /path/` for a page served at a bare
+  path.
 
 
 ## Capture the exact moment, read its report, then check the real window
