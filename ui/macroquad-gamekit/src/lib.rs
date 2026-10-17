@@ -14,12 +14,21 @@
 //! Stories for each module are in `macroquad-storybook`, under "gamekit".
 //! Read `CATALOG.md` before adding a module, and `CARD-FACES.md` before
 //! building a card face. A game client's review loop is [`harness`].
+//!
+//! Two opt-in features, off by default because each needs a system library
+//! natively on Linux: `audio` (sound, music, mute — [`audio`]) and
+//! `gamepads` (pads by player slot — [`pads`]). In the browser both run
+//! through miniquad plugins the page must load; [`web`] ships them.
 
+#[cfg(feature = "audio")]
+pub mod audio;
 pub mod bake;
 pub mod ease;
 pub mod fx;
 pub mod harness;
 pub mod light;
+#[cfg(feature = "gamepads")]
+pub mod pads;
 pub mod paint;
 pub mod pointer;
 pub mod sequence;
@@ -27,12 +36,17 @@ pub mod shape;
 pub mod sprite;
 pub mod text;
 pub mod tween;
+pub mod web;
 
+#[cfg(feature = "audio")]
+pub use audio::{Audio, load_pcm, wav};
 pub use bake::{Baked, Baker};
 pub use ease::Ease;
 pub use fx::{Particles, Popups, Shake};
 pub use harness::{Args, Capture, Script, Scripted, Viewport, plain_target, window_camera};
 pub use light::Lighting;
+#[cfg(feature = "gamepads")]
+pub use pads::{Pad, Pads};
 pub use paint::{
     Gradient, bevel, fill_circle_gradient, fill_gradient, grain, inner_shadow, noise_pixels,
     noise_texture,

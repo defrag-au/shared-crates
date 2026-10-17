@@ -109,7 +109,10 @@ mod tests {
     fn the_public_chains_map_to_their_eip155_ids() {
         // The five rows added for the metadata index: the id half is what the
         // `chainid.network` registry states, and the inverse must find the slug.
-        assert_eq!(chain_ref("base"), Some(ChainRef::Evm(chains::EvmChain::Id(8453))));
+        assert_eq!(
+            chain_ref("base"),
+            Some(ChainRef::Evm(chains::EvmChain::Id(8453)))
+        );
         assert_eq!(
             chain_ref("arbitrum"),
             Some(ChainRef::Evm(chains::EvmChain::Id(42161)))

@@ -220,9 +220,10 @@ mod tests {
     fn a_config_naming_an_unknown_chain_fails_rather_than_defaulting_to_cardano() {
         // `chains` refuses a chain it cannot name, and the refusal has to survive
         // the trip through this type — a default here would put a Robinhood
-        // collection on mainnet Cardano.
+        // collection on mainnet Cardano. The fixture is an unknown *namespace*:
+        // `solana:…` used to be the example here, and is a chain we now name.
         let error = serde_json::from_str::<WatchSet>(
-            r#"{"collections":[{"slug":"x","chain":"solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"}]}"#,
+            r#"{"collections":[{"slug":"x","chain":"cosmos:cosmoshub-4"}]}"#,
         )
         .unwrap_err();
         assert!(error.to_string().contains("chain"), "got {error}");

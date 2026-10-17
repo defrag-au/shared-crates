@@ -59,6 +59,9 @@ impl AssetNamespace {
     /// ERC-721 — the NFT standard on EVM chains.
     pub const ERC721: &'static str = "erc721";
 
+    /// ERC-1155 — the multi-token standard, also used for NFTs.
+    pub const ERC1155: &'static str = "erc1155";
+
     /// A Cardano native token.
     ///
     /// Named for the ledger concept rather than for CIP-25 or CIP-68, because it

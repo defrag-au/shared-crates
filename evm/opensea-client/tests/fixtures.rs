@@ -11,7 +11,7 @@
 
 use opensea_client::{
     ChainInfo, ChainSlug, CollectionDetails, CollectionPage, CollectionStats, Contract, NftPage,
-    OpenseaClient,
+    NftResponse, OpenseaClient,
 };
 
 const CHAINS: &str = include_str!("fixtures/chains.json");
@@ -219,6 +219,67 @@ fn an_nfts_page_parses_tokens_and_their_traits() {
     assert_eq!(broker.decimals, None);
 
     assert!(page.next.is_some());
+}
+
+#[test]
+fn a_single_nft_is_the_list_object_under_an_envelope() {
+    // The single-NFT endpoint has no capture of its own yet. The OpenAPI schema
+    // states the body is `{"nft": NftDetailed}`, and a live lookup of the
+    // Sentience token on 2026-10-18 confirmed the envelope; the object below is
+    // a real entry from the list capture, so the field values are the API's
+    // rather than invented. Replace this with a captured body when one exists.
+    let page: NftPage = serde_json::from_str(NFTS_PAGE).expect("the nfts page should parse");
+    let entry = page.nfts.first().expect("the capture carries two tokens");
+    let body = format!(
+        r#"{{"nft":{}}}"#,
+        serde_json::to_string(entry).expect("the captured entry serialises")
+    );
+
+    let response: NftResponse = serde_json::from_str(&body).expect("the envelope should parse");
+    assert_eq!(response.nft.identifier, entry.identifier);
+    assert_eq!(response.nft.traits.len(), entry.traits.len());
+
+    // `original_image_url` is null in the capture while `display_image_url` is
+    // populated, so the preference order is exercised on real values.
+    assert_eq!(response.nft.original_image_url, None);
+    assert_eq!(response.nft.image(), Some(entry.display_image_url.as_str()));
+}
+
+#[test]
+fn a_bare_nft_object_is_not_a_single_nft_response() {
+    // The failure this pins: a bare object deserialises into `NftDetails` with
+    // every optional field empty, which reads as "the token states no image"
+    // for a token that has one. The envelope is required, so the wrong shape is
+    // a decode failure — and a decode failure is upstream, never a miss.
+    let page: NftPage = serde_json::from_str(NFTS_PAGE).expect("the nfts page should parse");
+    let body = serde_json::to_string(&page.nfts[0]).expect("the captured entry serialises");
+
+    assert!(serde_json::from_str::<NftResponse>(&body).is_err());
+}
+
+#[test]
+fn null_image_fields_are_not_an_error() {
+    // The detail schema is `["string", "null"]` for every image field. These
+    // required fields are the captured token's own values; only the image
+    // fields are nulled, so the test asserts null handling rather than a shape.
+    let response: NftResponse = serde_json::from_str(
+        r#"{"nft":{
+            "identifier":"1672",
+            "collection":"stonkbrokers-434284142",
+            "contract":"0x539cdd042c2f3d93ebc5be7dfff0c79f3b4fabf0",
+            "token_standard":"erc721",
+            "image_url":null,
+            "display_image_url":null,
+            "original_image_url":null,
+            "opensea_url":"https://opensea.io/assets/robinhood/0x539cdd042c2f3d93ebc5be7dfff0c79f3b4fabf0/1672",
+            "updated_at":"2026-09-26T23:54:57.810195",
+            "is_disabled":false,
+            "is_nsfw":false
+        }}"#,
+    )
+    .expect("explicit nulls should parse");
+
+    assert_eq!(response.nft.image(), None);
 }
 
 #[test]
