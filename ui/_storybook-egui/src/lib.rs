@@ -11,6 +11,11 @@ mod registry;
 
 // The storybook's own "copy the canvas": the encoder half is testable natively
 // (see its `mod tests`), which is why it lives out here rather than inside `app`.
+//
+// Gated because its only non-test caller (`take_capture`) is inside the wasm-only
+// `app`: compiled unconditionally, `encode_png` is dead code on a native build and
+// the lint run treats that as an error. `test` keeps the native coverage.
+#[cfg(any(target_arch = "wasm32", test))]
 mod canvas_copy;
 
 // Wasm-only because the palette helpers the stories call (`accent`, `muted`,
