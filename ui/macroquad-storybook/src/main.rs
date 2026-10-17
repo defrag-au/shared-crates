@@ -15,16 +15,19 @@ use chain_fixture::{ChainSim, Scenario};
 use macroquad::prelude::*;
 use macroquad_widgets::{
     BlockPulseVm, BlockTrainVm, Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility,
-    FulfilmentAction, FulfilmentStatus, FulfilmentTx, Gestures, MintCheckoutVm, OrderFulfilmentVm,
-    OrderStatus, Painter, PulseDetail, PulseTicker, QuantityStepperVm, RiderState, SquadCandidate,
-    SquadCommit, SquadPickerAction, SquadPickerVm, StepperAction, SwipeDir, Theme, TrainRider,
-    TrainState, WalletAction, WalletConnectVm, WalletItem, WalletListAction, WalletListState,
-    WalletListVm, WalletRow, WalletState, block_pulse, block_train, mint_checkout,
-    order_fulfilment, quantity_stepper, squad_picker, theme, wallet_connect, wallet_list,
+    FloatingStick, FulfilmentAction, FulfilmentStatus, FulfilmentTx, Gestures, MintCheckoutVm,
+    OrderFulfilmentVm, OrderStatus, Painter, PulseDetail, PulseTicker, QuantityStepperVm,
+    RiderState, SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerVm, StepperAction,
+    StickView, SwipeDir, Theme, TrainRider, TrainState, WalletAction, WalletConnectVm, WalletItem,
+    WalletListAction, WalletListState, WalletListVm, WalletRow, WalletState, block_pulse,
+    block_train, floating_stick, mint_checkout, order_fulfilment, quantity_stepper, squad_picker,
+    theme, wallet_connect, wallet_list,
 };
 use ui_theme::{TextSize, Token};
 
 const SIDEBAR_W: f32 = 210.0;
+/// The stick story's well radius: roughly a thumb's reach at desktop scale.
+const STICK_RADIUS: f32 = 64.0;
 const SIM_INTERVAL: f64 = 1.2;
 const SIM_CHUNKS: [u32; 3] = [3, 3, 2];
 
@@ -110,6 +113,15 @@ enum Body {
     Checkout(MintCheckoutVm),
     Fulfilment(Fulfilment),
     SquadPicker(SquadPickerVm),
+    /// The live stick and the last thing it reported, for the readout.
+    Stick(Box<StickStory>),
+}
+
+/// A floating stick the reader can drag with the mouse, beside fixed samples
+/// so a capture shows the anatomy without a hand on it.
+struct StickStory {
+    stick: FloatingStick,
+    last: String,
 }
 
 /// Cheap copy of the story kind — lets `draw_main` dispatch without holding a
@@ -124,6 +136,7 @@ enum Kind {
     Checkout,
     Fulfilment,
     SquadPicker,
+    Stick,
 }
 
 struct Story {
@@ -225,6 +238,18 @@ impl Story {
             Body::Checkout(_) => Kind::Checkout,
             Body::Fulfilment(_) => Kind::Fulfilment,
             Body::SquadPicker(_) => Kind::SquadPicker,
+            Body::Stick(_) => Kind::Stick,
+        }
+    }
+
+    fn stick(category: &'static str, name: &'static str) -> Self {
+        Self {
+            category,
+            name,
+            body: Body::Stick(Box::new(StickStory {
+                stick: FloatingStick::new(STICK_RADIUS),
+                last: "press and drag anywhere in the stage".into(),
+            })),
         }
     }
 
@@ -365,6 +390,7 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
     vec![
         Story::buttons("atoms", "buttons"),
         Story::stepper("atoms", "quantity stepper", 2),
+        Story::stick("input", "floating stick"),
         Story::wallet(
             "wallet",
             "disconnected",
@@ -859,7 +885,79 @@ impl Storybook {
             Kind::Checkout => self.draw_checkout(p, sel, x0, y, col_w),
             Kind::Fulfilment => self.draw_fulfilment(p, sel, x0, y, col_w),
             Kind::SquadPicker => self.draw_squad_picker(p, sel, x0, y, col_w),
+            Kind::Stick => self.draw_stick(p, sel, x0, y),
         }
+    }
+
+    /// Three fixed samples — at rest, half a push, a full diagonal — then the
+    /// live stick, which appears wherever the mouse is pressed in the stage.
+    fn draw_stick(&mut self, p: &Painter, sel: usize, x0: f32, y: f32) {
+        let Body::Stick(story) = &mut self.stories[sel].body else {
+            return;
+        };
+        let r = STICK_RADIUS;
+        let samples = [
+            ("at rest", vec2(0.0, 0.0)),
+            ("half push", vec2(0.0, -0.5)),
+            ("full diagonal", vec2(0.707, 0.707)),
+        ];
+        for (i, (label, deflection)) in samples.iter().enumerate() {
+            let anchor = vec2(x0 + r + i as f32 * (r * 2.0 + 32.0), y + r + 8.0);
+            floating_stick(
+                p,
+                &StickView {
+                    anchor,
+                    deflection: *deflection,
+                    radius: r,
+                },
+            );
+            let w = p.measure(label, 13.0).width;
+            p.text(
+                label,
+                anchor.x - w * 0.5,
+                anchor.y + r + 22.0,
+                13.0,
+                p.theme.color.text_muted,
+            );
+        }
+
+        let stage_top = y + r * 2.0 + 56.0;
+        let stage = Rect::new(
+            x0,
+            stage_top,
+            screen_width() - x0 - 28.0,
+            screen_height() - stage_top - 48.0,
+        );
+        draw_rectangle_lines(
+            stage.x,
+            stage.y,
+            stage.w,
+            stage.h,
+            1.0,
+            p.theme.color.border,
+        );
+        let frame = story.stick.update(stage);
+        if let Some(view) = &frame.view {
+            floating_stick(p, view);
+        }
+        if frame.view.is_some() {
+            story.last = format!(
+                "push ({:+.2}, {:+.2})  ·  {:?}",
+                frame.push.x,
+                frame.push.y,
+                frame.cardinal()
+            );
+        }
+        if let Some(released) = frame.released {
+            story.last = format!("released: {released:?}");
+        }
+        p.text(
+            &story.last,
+            stage.x + 12.0,
+            stage.y + 24.0,
+            13.0,
+            p.theme.color.text_muted,
+        );
     }
 
     /// The picker is fully interactive here — the storybook plays the host,

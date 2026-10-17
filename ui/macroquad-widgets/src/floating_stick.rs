@@ -320,13 +320,38 @@ pub fn floating_stick(p: &Painter, view: &StickView) {
 
     // The well is translucent: it sits over the game, which should still read
     // through it.
-    draw_circle(anchor.x, anchor.y, view.radius, Color { a: 0.55, ..c.bg_secondary });
+    draw_circle(
+        anchor.x,
+        anchor.y,
+        view.radius,
+        Color {
+            a: 0.55,
+            ..c.bg_secondary
+        },
+    );
     draw_circle_lines(anchor.x, anchor.y, view.radius, line, c.border);
     draw_circle_lines(anchor.x, anchor.y, travel * DEAD_ZONE, line, c.border);
 
-    let guide = Color { a: 0.3, ..c.text_muted };
-    draw_line(anchor.x - travel, anchor.y, anchor.x + travel, anchor.y, line, guide);
-    draw_line(anchor.x, anchor.y - travel, anchor.x, anchor.y + travel, line, guide);
+    let guide = Color {
+        a: 0.3,
+        ..c.text_muted
+    };
+    draw_line(
+        anchor.x - travel,
+        anchor.y,
+        anchor.x + travel,
+        anchor.y,
+        line,
+        guide,
+    );
+    draw_line(
+        anchor.x,
+        anchor.y - travel,
+        anchor.x,
+        anchor.y + travel,
+        line,
+        guide,
+    );
 
     let knob = view.knob();
     let knob_r = view.radius * KNOB_FRACTION;

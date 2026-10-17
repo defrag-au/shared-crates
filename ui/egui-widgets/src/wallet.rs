@@ -19,6 +19,16 @@ pub struct WalletConnectResult {
     pub network_id: u8,
 }
 
+/// A connected Cardano wallet travelling as one value: the connect result
+/// and the CIP-30 handle it signs with.
+///
+/// The connector is told about both at once —
+/// [`WalletConnector::apply_connect_result`] — because a result with no handle
+/// is not a connection. This is therefore the payload an app's message channel
+/// carries back from its connect task; the handle is a JS value, wrapped so
+/// the pair can cross a channel that asks for `Send`.
+pub type CardanoSession = (WalletConnectResult, send_wrapper::SendWrapper<WalletApi>);
+
 /// The bech32 stake address a CIP-30 reward address (hex, `e1…`) names, when it
 /// parses. `None` for anything that is not a stake address — a payment address
 /// carries a stake credential but is not one, and `stake_address_bech32`

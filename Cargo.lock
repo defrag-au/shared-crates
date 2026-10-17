@@ -1588,6 +1588,7 @@ dependencies = [
  "perf-probe",
  "profiling",
  "puffin",
+ "send_wrapper",
  "serde",
  "serde_json",
  "statig",
