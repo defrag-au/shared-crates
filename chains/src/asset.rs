@@ -163,6 +163,18 @@ impl AssetType {
         let chain = chain.as_caip2();
         format!("{chain}/{namespace}:{reference}").parse()
     }
+
+    /// The collection half of the path-safe form — `cardano:mainnet:cnt:<policy>`.
+    ///
+    /// See [`TokenRef::to_path_identifier`] for why a path form exists at all.
+    pub fn to_path_identifier(&self) -> String {
+        format!(
+            "{}:{}:{}",
+            self.chain.as_caip2(),
+            self.namespace,
+            self.reference
+        )
+    }
 }
 
 impl fmt::Display for AssetType {
@@ -254,12 +266,10 @@ impl TokenRef {
     /// Use the CAIP-19 [`Display`] for persistence; this is a transport form for
     /// surfaces that cannot carry `/`.
     pub fn to_path_identifier(&self) -> String {
-        let chain = self.asset_type.chain.as_caip2();
-        let namespace = &self.asset_type.namespace;
-        let reference = &self.asset_type.reference;
+        let collection = self.asset_type.to_path_identifier();
         match &self.token_id {
-            Some(token_id) => format!("{chain}:{namespace}:{reference}:{token_id}"),
-            None => format!("{chain}:{namespace}:{reference}"),
+            Some(token_id) => format!("{collection}:{token_id}"),
+            None => collection,
         }
     }
 

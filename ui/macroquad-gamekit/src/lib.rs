@@ -12,11 +12,13 @@
 //! are unit-tested, paused, stepped and captured at exact moments.
 //!
 //! Stories for each module are in `macroquad-storybook`, under "gamekit".
-//! Read `CATALOG.md` before adding a module.
+//! Read `CATALOG.md` before adding a module, and `CARD-FACES.md` before
+//! building a card face. A game client's review loop is [`harness`].
 
 pub mod bake;
 pub mod ease;
 pub mod fx;
+pub mod harness;
 pub mod light;
 pub mod paint;
 pub mod pointer;
@@ -29,6 +31,7 @@ pub mod tween;
 pub use bake::{Baked, Baker};
 pub use ease::Ease;
 pub use fx::{Particles, Popups, Shake};
+pub use harness::{Args, Capture, Script, Scripted, Viewport, plain_target, window_camera};
 pub use light::Lighting;
 pub use paint::{
     Gradient, bevel, fill_circle_gradient, fill_gradient, grain, inner_shadow, noise_pixels,

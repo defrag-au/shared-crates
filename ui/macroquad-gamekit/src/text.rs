@@ -472,6 +472,13 @@ impl TextLayout {
                         }
                     }
                     draw_text_ex(s, at.x, at.y, params(st.color));
+                    if crate::harness::report::on() {
+                        let m = MacroquadMeasure;
+                        let ascent = m.ascent(st);
+                        let rect =
+                            Rect::new(at.x, at.y - ascent, m.width(s, st), ascent + m.descent(st));
+                        crate::harness::report::line(s, rect, st.size, alpha);
+                    }
                 }
                 Placed::Icon { id, rect } => {
                     icon(

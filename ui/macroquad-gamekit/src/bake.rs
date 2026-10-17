@@ -24,6 +24,7 @@
 use macroquad::miniquad::PipelineParams;
 use macroquad::prelude::*;
 
+use crate::harness::{plain_target, report, target_camera};
 use crate::sprite::Pose;
 
 pub struct Baked {
@@ -40,14 +41,14 @@ pub struct Baked {
 fn bake_into(size: Vec2, k: f32, draw: impl FnOnce()) -> RenderTarget {
     let w = (size.x * k).ceil().max(1.0) as u32;
     let h = (size.y * k).ceil().max(1.0) as u32;
-    let target = render_target(w, h);
+    let target = plain_target(w, h);
     target.texture.set_filter(FilterMode::Linear);
-    let mut cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, size.x, size.y));
-    cam.render_target = Some(target.clone());
     push_camera_state();
-    set_camera(&cam);
+    set_camera(&target_camera(size, Vec2::ZERO, &target));
     clear_background(Color::new(0.0, 0.0, 0.0, 0.0));
+    report::begin_bake(size);
     draw();
+    report::end_bake();
     pop_camera_state();
     target
 }
@@ -163,6 +164,7 @@ impl Baker {
         let raw = Baked::render(size, pixel_scale, |k| {
             draw(k);
             clear_background(Color::new(0.0, 0.0, 0.0, 0.0));
+            report::restart_bake();
             draw(k);
         });
         let Some(seal) = &self.seal else { return raw };

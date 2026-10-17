@@ -11,10 +11,18 @@
 //!
 //! | OpenSea slug | Our identity | How the pair was established |
 //! | --- | --- | --- |
+//! | `ethereum` | `eip155:1` | Ethereum's EIP-155 id is `1`; the slug is the one OpenSea's own chain list uses |
+//! | `optimism` | `eip155:10` | OP Mainnet's EIP-155 id is `10`; slug as above |
+//! | `polygon` | `eip155:137` | Polygon PoS's EIP-155 id is `137`; slug as above |
+//! | `base` | `eip155:8453` | Base's EIP-155 id is `8453`; slug as above |
 //! | `robinhood` | `eip155:4663` | `chains::EvmChain::Robinhood` is 4663, verified against the live chain via `eth_chainId`; `robinhood` is the slug the stream sends for that chain's collections |
+//! | `arbitrum` | `eip155:42161` | Arbitrum One's EIP-155 id is `42161`; slug as above |
 //!
-//! One row, and that is the honest size of what has been checked. Adding a row means
-//! both halves: see the slug on a captured frame's `chain` field, and see the id
+//! The five rows added on 2026-10-18 pair OpenSea's documented chain slugs with the
+//! ids in the `chainid.network` registry, checked against that registry on the same
+//! day. The Robinhood row is the older one and rests on `eth_chainId`.
+//!
+//! Adding a row means both halves: see the slug OpenSea actually uses, and see the id
 //! from the chain itself (or from a second source that agrees). A row added from
 //! memory is a mapping that looks right and sends movements to the wrong chain's
 //! collection.
@@ -28,6 +36,19 @@ use chains::ChainRef;
 /// The OpenSea chain slug for Robinhood Chain.
 pub const ROBINHOOD_SLUG: &str = "robinhood";
 
+/// Every OpenSea slug we can name, with the EIP-155 chain id it denotes.
+///
+/// One table, read by both directions, so a slug cannot be added on one side and
+/// forgotten on the other.
+const SLUGS: &[(&str, u64)] = &[
+    ("ethereum", 1),
+    ("optimism", 10),
+    ("polygon", 137),
+    ("robinhood", 4663),
+    ("base", 8453),
+    ("arbitrum", 42161),
+];
+
 /// The chain a stream slug names, where we can name it.
 ///
 /// Case-insensitive, because the slug is OpenSea's to spell and nothing promises
@@ -36,10 +57,11 @@ pub const ROBINHOOD_SLUG: &str = "robinhood";
 /// `None` is not a failure: it is a chain we have not checked yet, and the caller
 /// says what it wants to do about that rather than being handed a wrong id.
 pub fn chain_ref(slug: &str) -> Option<ChainRef> {
-    match slug.trim().to_ascii_lowercase().as_str() {
-        ROBINHOOD_SLUG => Some(ChainRef::Evm(chains::EvmChain::Robinhood)),
-        _ => None,
-    }
+    let slug = slug.trim();
+    SLUGS
+        .iter()
+        .find(|(known, _)| known.eq_ignore_ascii_case(slug))
+        .map(|(_, id)| ChainRef::Evm(chains::EvmChain::from_chain_id(*id)))
 }
 
 /// The OpenSea slug for a chain we can name, where there is one.
@@ -47,10 +69,13 @@ pub fn chain_ref(slug: &str) -> Option<ChainRef> {
 /// The inverse of [`chain_ref`], and derived from the same table rather than written
 /// out a second time.
 pub fn chain_slug(chain: ChainRef) -> Option<&'static str> {
-    match chain {
-        ChainRef::Evm(chains::EvmChain::Robinhood) => Some(ROBINHOOD_SLUG),
-        _ => None,
-    }
+    let ChainRef::Evm(evm) = chain else {
+        return None;
+    };
+    SLUGS
+        .iter()
+        .find(|(_, id)| *id == evm.chain_id())
+        .map(|(slug, _)| *slug)
 }
 
 #[cfg(test)]
@@ -59,8 +84,8 @@ mod tests {
 
     #[test]
     fn robinhood_is_chain_4663() {
-        // The one row in the table, asserted against `chains` rather than against a
-        // literal here, so the slug and the id cannot drift apart.
+        // Asserted against `chains` rather than against a literal here, so the slug
+        // and the id cannot drift apart: `from_chain_id` is what names the variant.
         let chain = chain_ref(ROBINHOOD_SLUG).expect("robinhood is in the table");
         assert_eq!(chain, ChainRef::Evm(chains::EvmChain::Robinhood));
         assert_eq!(chain.as_caip2(), "eip155:4663");
@@ -72,11 +97,41 @@ mod tests {
     }
 
     #[test]
+    fn every_named_chain_round_trips() {
+        for (slug, id) in SLUGS {
+            let chain = chain_ref(slug).unwrap_or_else(|| panic!("{slug} is in the table"));
+            assert_eq!(chain.as_caip2(), format!("eip155:{id}"));
+            assert_eq!(chain_slug(chain), Some(*slug));
+        }
+    }
+
+    #[test]
+    fn the_public_chains_map_to_their_eip155_ids() {
+        // The five rows added for the metadata index: the id half is what the
+        // `chainid.network` registry states, and the inverse must find the slug.
+        assert_eq!(chain_ref("base"), Some(ChainRef::Evm(chains::EvmChain::Id(8453))));
+        assert_eq!(
+            chain_ref("arbitrum"),
+            Some(ChainRef::Evm(chains::EvmChain::Id(42161)))
+        );
+        assert_eq!(
+            chain_ref("polygon"),
+            Some(ChainRef::Evm(chains::EvmChain::Id(137)))
+        );
+        assert_eq!(
+            chain_ref("optimism"),
+            Some(ChainRef::Evm(chains::EvmChain::Id(10)))
+        );
+        assert_eq!(
+            chain_ref("ethereum"),
+            Some(ChainRef::Evm(chains::EvmChain::Id(1)))
+        );
+    }
+
+    #[test]
     fn a_chain_we_have_not_checked_is_unnamed_rather_than_guessed() {
-        // Both appear on captured frames — `base` on a transfer, `abstract` on a
-        // metadata update — and neither has a verified chain id here. A wrong id is
-        // worse than an absent one: it would point a reconcile at another chain.
-        assert_eq!(chain_ref("base"), None);
+        // `abstract` appears on a captured metadata update. A wrong id is worse
+        // than an absent one: it would point a reconcile at another chain.
         assert_eq!(chain_ref("abstract"), None);
     }
 
@@ -86,6 +141,10 @@ mod tests {
         assert_eq!(chain_slug(chain), Some(ROBINHOOD_SLUG));
         assert_eq!(
             chain_slug(ChainRef::Cardano(chains::CardanoNetwork::Mainnet)),
+            None
+        );
+        assert_eq!(
+            chain_slug(ChainRef::Evm(chains::EvmChain::Id(999_999))),
             None
         );
     }
