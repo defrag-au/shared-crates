@@ -170,6 +170,11 @@ pub struct WalletButton {
     /// is keyed to where the button sits, and two buttons in one place would
     /// otherwise share an open flag.
     pub salt: &'static str,
+    /// The id the flow's state lives under, when the host needs to name it.
+    /// `None` derives one from the `Ui` the button sits in — which is the right
+    /// default, and unnameable from outside that frame when a host has to close
+    /// the flow with the surface it lives on.
+    pub flow: Option<egui::Id>,
 }
 
 impl WalletButton {
@@ -179,6 +184,7 @@ impl WalletButton {
             chrome: ButtonChrome::Framed,
             requirement: ChainRequirement::Any,
             salt: "wallet_button",
+            flow: None,
         }
     }
 
@@ -202,9 +208,21 @@ impl WalletButton {
         self
     }
 
-    /// Distinguishes two of these that share one parent `Ui`.
+    /// Distinguishes two of these that share one parent `Ui`. See [`Self::salt`].
     pub fn salt(mut self, salt: &'static str) -> Self {
         self.salt = salt;
+        self
+    }
+
+    /// Name the flow's state yourself instead of deriving it from the `Ui`.
+    ///
+    /// For a host that closes the surface this button sits on: a flow left open
+    /// there survives the close and reappears, with whatever it had already
+    /// settled, the next time the surface is drawn. An id derived from the
+    /// button's parent cannot be named from outside the frame that drew it, so
+    /// the host names one here and closes it with `WalletConnectModal::close`.
+    pub fn flow(mut self, id: egui::Id) -> Self {
+        self.flow = Some(id);
         self
     }
 
@@ -213,8 +231,10 @@ impl WalletButton {
     /// Built fresh every frame: the open flag and the step it has reached live
     /// in egui memory under the id, so the caller holds no state at all.
     fn modal(&self, ui: &egui::Ui) -> WalletConnectModal<'static> {
-        WalletConnectModal::new(WalletConnectModal::id_for(ui, self.salt))
-            .requirement(self.requirement)
+        let id = self
+            .flow
+            .unwrap_or_else(|| WalletConnectModal::id_for(ui, self.salt));
+        WalletConnectModal::new(id).requirement(self.requirement)
     }
 
     /// Render the wallet button. Returns an action the caller must handle.

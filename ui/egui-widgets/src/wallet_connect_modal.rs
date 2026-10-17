@@ -292,6 +292,14 @@ impl<'a> WalletConnectModal<'a> {
             .map(|(_, offers)| offers.as_slice())
             .unwrap_or(&[]);
 
+        // "Choose another wallet" with nothing to choose is not a step. The
+        // wallet list would be empty, and because `reconnecting` forces that
+        // step it would also be the step every frame afterwards — a dead end
+        // whose only exits were Cancel and Done. Back to the receipt.
+        if state.reconnecting && on_chain.is_empty() {
+            state.reconnecting = false;
+        }
+
         // What the flow's chain has to say, when it has been asked. Per-chain:
         // a Cardano connection is not an answer to an EVM flow, which is the
         // bug the set model exists to make unrepresentable.
@@ -406,11 +414,17 @@ impl<'a> WalletConnectModal<'a> {
                 }
                 Step::Wallet => {
                     if on_chain.is_empty() {
-                        let family = state.family.unwrap_or(ChainFamily::Cardano);
-                        ui.label(muted(
-                            ui,
-                            &format!("No {} wallets detected.", family.display_name()),
-                        ));
+                        // Name the chain only when one is actually settled. This
+                        // used to fall back to Cardano, so a flow that had lost
+                        // its own chain's wallets reported "No Cardano wallets
+                        // detected" — a claim about a list nobody had asked for.
+                        let message = match state.family {
+                            Some(family) => {
+                                format!("No {} wallets detected.", family.display_name())
+                            }
+                            None => "No wallets detected.".to_owned(),
+                        };
+                        ui.label(muted(ui, &message));
                         ui.gap(Space::Sm);
                         ui.label(muted(
                             ui,

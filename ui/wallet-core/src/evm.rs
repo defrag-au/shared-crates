@@ -140,6 +140,10 @@ pub struct EvmProvider {
 pub enum EvmError {
     #[error("no EVM provider (window.ethereum) is installed in this browser")]
     Unavailable,
+    /// A wallet that was offered is no longer answering — the announcement the
+    /// flow listed it from is gone, so there is no provider to reach.
+    #[error("the {0} wallet did not answer — reload the page and try again")]
+    NotAnnounced(String),
     #[error("{0}")]
     Refused(String),
     #[error("the provider answered with something this bridge cannot read: {0}")]
@@ -156,6 +160,25 @@ impl EvmProvider {
         Some(Self {
             provider: evm_provider_js()?,
         })
+    }
+
+    /// The provider behind one announced wallet.
+    ///
+    /// [`Self::detect`] answers "is there an injected EVM wallet", which with
+    /// several installed is not the same question as "the wallet the reader
+    /// picked" — only one of them owns `window.ethereum`. The EIP-6963 uuid is
+    /// the handle that distinguishes them, and the announcement is the only
+    /// thing that carries the provider it names.
+    pub fn for_wallet(wallet: &EvmWalletInfo) -> Result<Self, EvmError> {
+        if let Some(provider) = evm_provider_for_js(wallet.id.as_str()) {
+            return Ok(Self { provider });
+        }
+        // An un-announced `window.ethereum` is the one wallet with no
+        // announcement to resolve; there the injected global IS the answer.
+        if wallet.id.is_fallback() {
+            return Self::detect().ok_or(EvmError::Unavailable);
+        }
+        Err(EvmError::NotAnnounced(wallet.name.clone()))
     }
 
     /// Accounts the provider is already willing to name. Never prompts.
@@ -238,34 +261,47 @@ export async function evmPersonalSign(provider, messageHex, address) {
 
 // EIP-6963: a wallet answers `eip6963:requestProvider` with an
 // `eip6963:announceProvider` event carrying `detail.info` and `detail.provider`.
-// The listener has to be in place BEFORE the request goes out, and the answers
-// arrive in that same tick — the spec's event is synchronous — so this waits for
-// nothing and needs no task. Duplicates are dropped by uuid, because a wallet
-// may also have announced on load and must appear once.
-//
-// A provider that only injects `window.ethereum` and never announces is NOT
+// The announcement is the ONLY route to a specific wallet's provider — several
+// wallets can be installed at once and just one of them owns `window.ethereum` —
+// so the provider is kept here by uuid rather than read again per call.
+const announcedProviders = new Map();
+
+function rememberAnnouncement(event) {
+    const detail = event && event.detail;
+    const info = detail && detail.info;
+    if (!info || !info.uuid || !detail.provider) return;
+    announcedProviders.set(info.uuid, { info, provider: detail.provider });
+}
+
+// Installed once, at module init, rather than for the length of one collect:
+// the map has to outlive the call that listed the wallets, or the connect that
+// follows a click has nothing to resolve.
+if (typeof window !== 'undefined') {
+    window.addEventListener('eip6963:announceProvider', rememberAnnouncement);
+}
+
+// A wallet that only injects `window.ethereum` and never announces is NOT
 // collected: see `collect_announced_wallets` for why that is deliberate.
+// Duplicates are dropped by uuid, so a wallet may announce on load and again
+// when asked without appearing twice.
 export function collectAnnouncedEvmWallets() {
     if (typeof window === 'undefined') return [];
-    const announced = new Map();
-    const remember = (event) => {
-        const detail = event && event.detail;
-        const info = detail && detail.info;
-        if (!info || !info.uuid || !detail.provider) return;
-        announced.set(info.uuid, {
-            id: info.uuid,
-            name: info.name,
-            icon: info.icon ?? null,
-            rdns: info.rdns ?? null,
-        });
-    };
-    window.addEventListener('eip6963:announceProvider', remember);
-    try {
-        window.dispatchEvent(new CustomEvent('eip6963:requestProvider'));
-    } finally {
-        window.removeEventListener('eip6963:announceProvider', remember);
-    }
-    return Array.from(announced.values());
+    // Ask again, in case a wallet announced before this module loaded.
+    window.dispatchEvent(new CustomEvent('eip6963:requestProvider'));
+    return Array.from(announcedProviders.entries()).map(([uuid, entry]) => ({
+        id: uuid,
+        name: entry.info.name,
+        icon: entry.info.icon ?? null,
+        rdns: entry.info.rdns ?? null,
+    }));
+}
+
+// The provider one announced wallet published, for connecting the row the
+// reader picked rather than whichever wallet won `window.ethereum`.
+export function evmProviderFor(uuid) {
+    if (typeof window === 'undefined') return undefined;
+    const entry = announcedProviders.get(uuid);
+    return entry ? entry.provider : undefined;
 }
 "#)]
 extern "C" {
@@ -288,6 +324,9 @@ extern "C" {
 
     #[wasm_bindgen(js_name = collectAnnouncedEvmWallets)]
     fn collect_announced_evm_wallets_js() -> JsValue;
+
+    #[wasm_bindgen(js_name = evmProviderFor)]
+    fn evm_provider_for_js(uuid: &str) -> Option<JsValue>;
 }
 
 /// Every EVM wallet that answered `eip6963:requestProvider`.

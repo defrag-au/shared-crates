@@ -305,6 +305,50 @@ pub async fn connect_wallet(
     Ok((result, api))
 }
 
+/// Async helper: connect a chosen EVM wallet and return the account it gave.
+///
+/// The provider is resolved from the wallet's EIP-6963 id, not from
+/// `window.ethereum`: several wallets install at once and only one of them owns
+/// that global, so reading it would connect whichever won rather than the row
+/// the reader picked.
+///
+/// Call from `wasm_bindgen_futures::spawn_local` and send the account through
+/// your app's message channel; then hand the wallet and the account to
+/// [`WalletConnector::apply_evm_connection`].
+///
+/// The first account is the answer. EIP-1193 returns the accounts the reader
+/// granted, in the wallet's own order, and the active account is the first of
+/// them — the same rule `wallet_links::link_evm` follows.
+pub async fn connect_evm(wallet: &EvmWalletInfo) -> Result<String, String> {
+    let provider = wallet_core::EvmProvider::for_wallet(wallet).map_err(|e| e.to_string())?;
+    let accounts = provider
+        .request_accounts()
+        .await
+        .map_err(|e| e.to_string())?;
+    accounts.into_iter().next().ok_or_else(|| {
+        format!(
+            "{name} returned no account — unlock it and try again",
+            name = wallet.name
+        )
+    })
+}
+
+/// Async helper: the account the connected EVM wallet currently has selected.
+///
+/// `eth_accounts` never prompts: it answers what the wallet is willing to name
+/// for this origin, and nothing while it is locked or the permission has been
+/// withdrawn. That is what makes it right for a window-focus refresh, where a
+/// dialog the reader did not ask for would be an ambush.
+///
+/// `None` when the wallet cannot be reached or reports no account. A caller
+/// refreshing a connection should then KEEP it: a locked wallet is transient,
+/// and the next signature reports its own failure rather than the app silently
+/// dropping the reader's account.
+pub async fn connected_evm_account(wallet: &EvmWalletInfo) -> Option<String> {
+    let provider = wallet_core::EvmProvider::for_wallet(wallet).ok()?;
+    provider.accounts().await.ok()?.into_iter().next()
+}
+
 /// Async helper: fetch and decode wallet balance.
 ///
 /// Call from `wasm_bindgen_futures::spawn_local` and send the result

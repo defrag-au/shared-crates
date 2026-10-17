@@ -40,6 +40,7 @@ use crate::icons::PhosphorIcon;
 use crate::theme::{InkExt, Radius, Space, SpaceExt, TextSize, ThemeExt};
 use crate::wallet::{ChainFamily, WalletChoice, WalletConnector};
 use crate::wallet_button::{ButtonChrome, WalletAction, WalletButton};
+use crate::wallet_connect_modal::WalletConnectModal;
 use crate::wallet_editor::{
     self, Submission, WalletEditorAction, WalletEditorConfig, WalletEditorEntry, WalletEditorState,
     WalletEntryStatus, WalletOrigin,
@@ -186,6 +187,16 @@ impl<'a> WalletPanel<'a> {
 
         if state.open {
             response.action = self.manager(ui, state);
+        } else {
+            // The connect flow opened from this popup belongs to it. Left open
+            // it survives the close and reappears — with whatever the previous
+            // attempt had already settled — the next time the popup is drawn,
+            // which is a modal on top of a roster nobody asked for. Guarded on
+            // `is_open` so an idle frame writes nothing.
+            let flow = WalletConnectModal::new(self.connect_flow_id());
+            if flow.is_open(ui) {
+                flow.close(ui);
+            }
         }
         response
     }
@@ -236,8 +247,12 @@ impl<'a> WalletPanel<'a> {
                 });
                 ui.gap(Space::Base);
 
-                // The browser wallet, and the flow that reaches one.
-                let mut button = WalletButton::new().chrome(ButtonChrome::Bare);
+                // The browser wallet, and the flow that reaches one. The flow's
+                // id is named here rather than derived from this popup's `Ui`,
+                // so closing the popup can close it too — see `connect_flow_id`.
+                let mut button = WalletButton::new()
+                    .chrome(ButtonChrome::Bare)
+                    .flow(self.connect_flow_id());
                 match button.show(ui, self.connector) {
                     WalletAction::Connect(choice) => {
                         action = Some(WalletPanelAction::Connect(choice));
@@ -293,6 +308,15 @@ impl<'a> WalletPanel<'a> {
             state.editor.adding = false;
         }
         action
+    }
+
+    /// The id the connect flow lives under.
+    ///
+    /// Derived from the panel's own id rather than the `Ui` it was drawn in, so
+    /// two managers in one app cannot share a flow — and so this one can close
+    /// the flow when the popup closes.
+    fn connect_flow_id(&self) -> egui::Id {
+        egui::Id::new(("wallet-panel-connect", self.config.command_id))
     }
 
     /// The editor's config with its heading suppressed: the popup's title row
