@@ -3482,11 +3482,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "macroquad-gamekit"
+version = "0.1.0"
+dependencies = [
+ "macroquad",
+ "macroquad-widgets",
+]
+
+[[package]]
 name = "macroquad-storybook"
 version = "0.1.0"
 dependencies = [
  "chain-heartbeat",
  "macroquad",
+ "macroquad-gamekit",
  "macroquad-widgets",
  "ui-theme",
 ]

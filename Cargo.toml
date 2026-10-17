@@ -63,6 +63,7 @@ members = [
     "ui/macroquad-tui",
     "ui/macroquad-wallet-flow",
     "ui/macroquad-widgets",
+    "ui/macroquad-gamekit",
     "ui/macroquad-storybook",
     "ui/miniquad-platform",
     "ui/canvas-bridge",

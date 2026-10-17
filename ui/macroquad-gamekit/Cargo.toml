@@ -1,0 +1,27 @@
+[package]
+name = "macroquad-gamekit"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+# The game-feel layer for macroquad clients: easing, tweens, sequencing of
+# animation cues, retained sprites with rotated hit tests, baked card faces,
+# rich text with inline icons, rounded and cover-cropped art, and the usual
+# effects (shake, number pops, particles).
+#
+# The companion to `macroquad-widgets`, not part of it: that crate's widgets are
+# stateless by charter (the host owns a VM, the widget draws it), while
+# everything here is state that lives across frames. The kit depends on the
+# widgets crate, never the reverse.
+#
+# Time is always an argument: nothing reads the clock, so every animation can
+# be unit-tested, paused, stepped and captured at an exact moment.
+#
+# No wasm-bindgen anywhere in the tree (the miniquad runtime cannot host it);
+# check with `cargo tree --target wasm32-unknown-unknown -p macroquad-gamekit`.
+
+[dependencies]
+macroquad = "0.4"
+# `Gesture` — the pointer facts the kit's `Pointer` tracker builds on, so a game
+# and the widgets read one recogniser rather than two.
+macroquad-widgets = { path = "../macroquad-widgets" }
