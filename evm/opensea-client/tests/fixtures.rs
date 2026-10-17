@@ -1,10 +1,11 @@
 //! Parsing tests over captured OpenSea responses.
 //!
 //! Each fixture under `tests/fixtures/` is the **verbatim body** of one live
-//! request, captured from `api.opensea.io` on 2026-09-27 and promoted to a file
-//! without editing. These tests therefore assert the API's shape as it really
-//! answered, offline and deterministically — no key, no network, nothing to
-//! flake.
+//! request, captured from `api.opensea.io`: the original set on 2026-09-27, and
+//! `collections_robinhood_page_20261018.json` and `nft_sentience_4860.json` on
+//! 2026-10-18. They are promoted to files without editing. These tests therefore
+//! assert the API's shape as it really answered, offline and deterministically —
+//! no key, no network, nothing to flake.
 //!
 //! What they cannot tell you is whether OpenSea still answers that way. That is
 //! `tests/live.rs`, behind the `live` feature.
@@ -16,6 +17,9 @@ use opensea_client::{
 
 const CHAINS: &str = include_str!("fixtures/chains.json");
 const COLLECTIONS_PAGE: &str = include_str!("fixtures/collections_robinhood_page.json");
+const COLLECTIONS_PAGE_20261018: &str =
+    include_str!("fixtures/collections_robinhood_page_20261018.json");
+const NFT_SENTIENCE: &str = include_str!("fixtures/nft_sentience_4860.json");
 const COLLECTION: &str = include_str!("fixtures/collection_heritage_hood.json");
 const COLLECTION_STATS: &str = include_str!("fixtures/collection_heritage_hood_stats.json");
 const CONTRACT: &str = include_str!("fixtures/contract_stonkbrokers.json");
@@ -66,6 +70,26 @@ fn chain_slug_is_the_bare_string_on_the_wire() {
     // the wire form has regressed to something that no longer matches
     // `"chain": "robinhood"`.
     assert!(serde_json::from_str::<ChainSlug>("{\"Robinhood\":null}").is_err());
+}
+
+#[test]
+fn a_partially_indexed_collection_reports_a_null_description() {
+    // The September capture has `"description": ""` on every entry. On
+    // 2026-10-18 the live API returned `null` for a collection it had only
+    // partially indexed, which failed the whole page while `description` was a
+    // `String`. The field is `Option` for that reason.
+    let page: CollectionPage =
+        serde_json::from_str(COLLECTIONS_PAGE_20261018).expect("the October page should parse");
+
+    let partially_indexed = page
+        .collections
+        .iter()
+        .find(|collection| collection.collection == "future-hookscribe-by-virtuals")
+        .expect("the captured page carries the partially indexed collection");
+
+    assert_eq!(partially_indexed.description, None);
+    assert_eq!(partially_indexed.image_url, None);
+    assert!(!partially_indexed.contracts.is_empty());
 }
 
 #[test]
@@ -222,27 +246,27 @@ fn an_nfts_page_parses_tokens_and_their_traits() {
 }
 
 #[test]
-fn a_single_nft_is_the_list_object_under_an_envelope() {
-    // The single-NFT endpoint has no capture of its own yet. The OpenAPI schema
-    // states the body is `{"nft": NftDetailed}`, and a live lookup of the
-    // Sentience token on 2026-10-18 confirmed the envelope; the object below is
-    // a real entry from the list capture, so the field values are the API's
-    // rather than invented. Replace this with a captured body when one exists.
-    let page: NftPage = serde_json::from_str(NFTS_PAGE).expect("the nfts page should parse");
-    let entry = page.nfts.first().expect("the capture carries two tokens");
-    let body = format!(
-        r#"{{"nft":{}}}"#,
-        serde_json::to_string(entry).expect("the captured entry serialises")
+fn a_captured_single_nft_parses_and_prefers_its_ipfs_original() {
+    let response: NftResponse =
+        serde_json::from_str(NFT_SENTIENCE).expect("the Sentience capture should parse");
+    let nft = &response.nft;
+
+    assert_eq!(nft.identifier, "4860");
+    assert_eq!(nft.token_standard, "erc721");
+    assert_eq!(nft.name.as_deref(), Some("Amsden Taylor"));
+
+    // Three URLs, and the preference picks the original — the IPFS source the
+    // IIIF worker fetches, not the marketplace's resized JPEG.
+    assert_eq!(
+        nft.image(),
+        Some("ipfs://bafybeiczgve33eflcmnqch74o5aobheaxodgboimqxxaqni674paxhhb4a/4860.jpg")
     );
-
-    let response: NftResponse = serde_json::from_str(&body).expect("the envelope should parse");
-    assert_eq!(response.nft.identifier, entry.identifier);
-    assert_eq!(response.nft.traits.len(), entry.traits.len());
-
-    // `original_image_url` is null in the capture while `display_image_url` is
-    // populated, so the preference order is exercised on real values.
-    assert_eq!(response.nft.original_image_url, None);
-    assert_eq!(response.nft.image(), Some(entry.display_image_url.as_str()));
+    assert!(
+        nft.image_url
+            .as_deref()
+            .is_some_and(|url| url.contains("seadn.io"))
+    );
+    assert!(nft.display_image_url.is_some());
 }
 
 #[test]
@@ -251,10 +275,11 @@ fn a_bare_nft_object_is_not_a_single_nft_response() {
     // every optional field empty, which reads as "the token states no image"
     // for a token that has one. The envelope is required, so the wrong shape is
     // a decode failure — and a decode failure is upstream, never a miss.
-    let page: NftPage = serde_json::from_str(NFTS_PAGE).expect("the nfts page should parse");
-    let body = serde_json::to_string(&page.nfts[0]).expect("the captured entry serialises");
+    let response: NftResponse =
+        serde_json::from_str(NFT_SENTIENCE).expect("the Sentience capture should parse");
+    let bare = serde_json::to_string(&response.nft).expect("the NFT serialises");
 
-    assert!(serde_json::from_str::<NftResponse>(&body).is_err());
+    assert!(serde_json::from_str::<NftResponse>(&bare).is_err());
 }
 
 #[test]

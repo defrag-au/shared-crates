@@ -1,0 +1,76 @@
+{
+  "collections" : [ {
+    "collection" : "meta0twist",
+    "name" : "Meta Twist",
+    "description" : "",
+    "image_url" : null,
+    "banner_image_url" : null,
+    "owner" : "0x909fc67c6fb680c751bb02c92c1dcddd422a4302",
+    "safelist_status" : "not_requested",
+    "category" : "",
+    "is_disabled" : false,
+    "is_nsfw" : false,
+    "trait_offers_enabled" : false,
+    "collection_offers_enabled" : false,
+    "opensea_url" : "https://opensea.io/collection/meta0twist",
+    "project_url" : "",
+    "wiki_url" : "",
+    "discord_url" : "",
+    "telegram_url" : "",
+    "twitter_username" : null,
+    "instagram_username" : "",
+    "contracts" : [ {
+      "address" : "0x1fca703e9daacb120265355b78aeae5bae759211",
+      "chain" : "robinhood"
+    } ]
+  }, {
+    "collection" : "skulls-rh",
+    "name" : "Skulls",
+    "description" : "500 zkSkulls in RH",
+    "image_url" : "https://i2c.seadn.io/collection/skulls-183767593/image_type_logo/d2c1e2b1b4cbfcc2c3adbbdb8b6692/37d2c1e2b1b4cbfcc2c3adbbdb8b6692.jpeg",
+    "banner_image_url" : null,
+    "owner" : "0xf6b7071b2c9e98989e886951bc0a1dbac93cba46",
+    "safelist_status" : "not_requested",
+    "category" : "",
+    "is_disabled" : false,
+    "is_nsfw" : false,
+    "trait_offers_enabled" : false,
+    "collection_offers_enabled" : false,
+    "opensea_url" : "https://opensea.io/collection/skulls-rh",
+    "project_url" : "https://the-zkskulls.xyz",
+    "wiki_url" : "",
+    "discord_url" : "",
+    "telegram_url" : "",
+    "twitter_username" : "zk_skulls",
+    "instagram_username" : "",
+    "contracts" : [ {
+      "address" : "0xbd5dfe58d40368636036b65d4d12e1ab9824f78a",
+      "chain" : "robinhood"
+    } ]
+  }, {
+    "collection" : "future-hookscribe-by-virtuals",
+    "name" : "Future Hookscribe by Virtuals",
+    "description" : null,
+    "image_url" : null,
+    "banner_image_url" : null,
+    "owner" : "0x81f7ca6af86d1ca6335e44a2c28bc88807491415",
+    "safelist_status" : "not_requested",
+    "category" : "",
+    "is_disabled" : false,
+    "is_nsfw" : false,
+    "trait_offers_enabled" : false,
+    "collection_offers_enabled" : true,
+    "opensea_url" : "https://opensea.io/collection/future-hookscribe-by-virtuals",
+    "project_url" : "",
+    "wiki_url" : "",
+    "discord_url" : "",
+    "telegram_url" : "",
+    "twitter_username" : null,
+    "instagram_username" : "",
+    "contracts" : [ {
+      "address" : "0xb323a58c7fdbe51d2aece372b31ca2ac03ac6732",
+      "chain" : "robinhood"
+    } ]
+  } ],
+  "next" : "WyIyMDI2LTEwLTE3VDIyOjQ0OjIwWiIsImQyMTg2ZTNlLWE5NWMtM2UxZS1iYTkwLWU1Y2UxMmYxZDZiNCJd"
+}

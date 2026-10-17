@@ -104,8 +104,9 @@ pub struct CollectionSummary {
     /// The slug — `"heritage-hood"` — which is the key every other endpoint takes.
     pub collection: String,
     pub name: String,
-    /// Empty string in the captures, never absent.
-    pub description: String,
+    /// Empty string in the September captures, `null` on a collection OpenSea
+    /// has only partially indexed (observed 2026-10-18). `Option` covers both.
+    pub description: Option<String>,
     pub image_url: Option<String>,
     /// `null` in every list entry captured, while the detail response for the
     /// same collection carries a URL — the two endpoints genuinely differ here,

@@ -3654,6 +3654,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "macroquad-bundle"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "macroquad-gamekit"
 version = "0.1.0"
 dependencies = [
