@@ -76,6 +76,14 @@ impl AssetNamespace {
     /// `token` its fungible one.
     pub const NFT: &'static str = "nft";
 
+    /// A Tezos FA2 token.
+    ///
+    /// The reference is the **contract** (`KT1…`) and the token id is the token
+    /// part — the same shape as `cnt` and `erc721`, not `nft`'s "the asset is the
+    /// reference". There is no registered CAIP-19 Tezos profile yet, so this is
+    /// the estate's namespace; it names the standard rather than the chain.
+    pub const FA2: &'static str = "fa2";
+
     /// A Midnight non-fungible token.
     ///
     /// There is no registered CAIP-19 profile for Midnight, so this is the

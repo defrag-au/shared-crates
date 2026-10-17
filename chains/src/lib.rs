@@ -63,11 +63,18 @@ pub enum ChainFamily {
     Cardano,
     Evm,
     Solana,
+    Tezos,
     Midnight,
 }
 
 impl ChainFamily {
-    pub const ALL: [Self; 4] = [Self::Cardano, Self::Evm, Self::Solana, Self::Midnight];
+    pub const ALL: [Self; 5] = [
+        Self::Cardano,
+        Self::Evm,
+        Self::Solana,
+        Self::Tezos,
+        Self::Midnight,
+    ];
 
     /// The CAIP-2 namespace this family's chains are written under.
     pub const fn namespace(self) -> &'static str {
@@ -75,6 +82,7 @@ impl ChainFamily {
             Self::Cardano => "cardano",
             Self::Evm => "eip155",
             Self::Solana => "solana",
+            Self::Tezos => "tezos",
             Self::Midnight => "midnight",
         }
     }
@@ -90,6 +98,7 @@ impl ChainFamily {
             Self::Cardano => "Cardano",
             Self::Evm => "EVM",
             Self::Solana => "Solana",
+            Self::Tezos => "Tezos",
             Self::Midnight => "Midnight",
         }
     }
@@ -409,6 +418,78 @@ impl fmt::Display for SolanaNetwork {
 }
 
 // ============================================================================
+// Tezos
+// ============================================================================
+
+/// The Tezos networks this workspace names.
+///
+/// CAIP-2 identifies a Tezos chain by a `Net…` chain id derived from its genesis
+/// block hash, not by the friendly network name. The two references below are the
+/// ones the CAIP namespace registry publishes; anything else is refused rather
+/// than given an invented reference.
+///
+/// The aliases (`mainnet`, `ghostnet`) are accepted on read because they are what
+/// an operator types, and normalised out on write so the `Net…` form is the only
+/// spelling that round-trips.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TezosNetwork {
+    Mainnet,
+    Ghostnet,
+}
+
+impl TezosNetwork {
+    /// The bare network name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Mainnet => "mainnet",
+            Self::Ghostnet => "ghostnet",
+        }
+    }
+
+    /// The CAIP-2 reference — the chain id, not the genesis hash itself.
+    pub const fn reference(self) -> &'static str {
+        match self {
+            Self::Mainnet => "NetXdQprcVkpaWU",
+            Self::Ghostnet => "NetXnHfVqm9iesp",
+        }
+    }
+
+    /// The `tezos:reference` form.
+    pub const fn as_chain_str(self) -> &'static str {
+        match self {
+            Self::Mainnet => "tezos:NetXdQprcVkpaWU",
+            Self::Ghostnet => "tezos:NetXnHfVqm9iesp",
+        }
+    }
+
+    /// Parses a bare alias or a `tezos:`-prefixed reference.
+    ///
+    /// The namespace is matched case-insensitively; the reference is not, because
+    /// a Tezos chain id is Base58 and case is part of the value.
+    pub fn from_chain_str(s: &str) -> Option<Self> {
+        let bare = s
+            .split_once(':')
+            .filter(|(namespace, _)| namespace.eq_ignore_ascii_case("tezos"))
+            .map(|(_, reference)| reference)
+            .unwrap_or(s);
+
+        match bare {
+            "NetXdQprcVkpaWU" => Some(Self::Mainnet),
+            "NetXnHfVqm9iesp" => Some(Self::Ghostnet),
+            _ if bare.eq_ignore_ascii_case("mainnet") => Some(Self::Mainnet),
+            _ if bare.eq_ignore_ascii_case("ghostnet") => Some(Self::Ghostnet),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for TezosNetwork {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+// ============================================================================
 // ChainRef
 // ============================================================================
 
@@ -425,6 +506,7 @@ pub enum ChainRef {
     Cardano(CardanoNetwork),
     Evm(EvmChain),
     Solana(SolanaNetwork),
+    Tezos(TezosNetwork),
     Midnight(MidnightNetwork),
 }
 
@@ -435,6 +517,7 @@ impl ChainRef {
             Self::Cardano(_) => ChainFamily::Cardano,
             Self::Evm(_) => ChainFamily::Evm,
             Self::Solana(_) => ChainFamily::Solana,
+            Self::Tezos(_) => ChainFamily::Tezos,
             Self::Midnight(_) => ChainFamily::Midnight,
         }
     }
@@ -453,6 +536,7 @@ impl ChainRef {
             Self::Cardano(n) => n.as_chain_str().trim_start_matches("cardano:").to_string(),
             Self::Evm(c) => c.chain_id().to_string(),
             Self::Solana(n) => n.reference().to_string(),
+            Self::Tezos(n) => n.reference().to_string(),
             Self::Midnight(n) => n.as_str().to_string(),
         }
     }
@@ -480,17 +564,17 @@ impl ChainRef {
     /// Whether this is Cardano **mainnet**.
     ///
     /// The question the estate actually asks — "mainnet or testnet" to pick an
-    /// address registry or a queue binding — is a Cardano one, so an EVM, Solana
-    /// or Midnight chain answers `false` rather than being given a network notion
-    /// it does not have. Cost of being wrong: a non-Cardano chain would be handed
-    /// the mainnet registry.
+    /// address registry or a queue binding — is a Cardano one, so an EVM, Solana,
+    /// Tezos or Midnight chain answers `false` rather than being given a network
+    /// notion it does not have. Cost of being wrong: a non-Cardano chain would be
+    /// handed the mainnet registry.
     pub const fn is_mainnet(self) -> bool {
         matches!(self, Self::Cardano(CardanoNetwork::Mainnet))
     }
 
     /// This chain as a Cardano network, where it is one.
     ///
-    /// `None` for an EVM, Solana or Midnight chain rather than an invented
+    /// `None` for an EVM, Solana, Tezos or Midnight chain rather than an invented
     /// network — and it keeps all three Cardano networks, which the
     /// `shared_types::ChainNetwork` this replaces could not: its `Testnet`
     /// collapsed preprod and preview together, so nothing downstream could tell
@@ -498,7 +582,7 @@ impl ChainRef {
     pub const fn cardano_network(self) -> Option<CardanoNetwork> {
         match self {
             Self::Cardano(network) => Some(network),
-            Self::Evm(_) | Self::Solana(_) | Self::Midnight(_) => None,
+            Self::Evm(_) | Self::Solana(_) | Self::Tezos(_) | Self::Midnight(_) => None,
         }
     }
 
@@ -534,6 +618,7 @@ impl ChainRef {
             Self::Evm(EvmChain::Robinhood) => "RH",
             Self::Evm(EvmChain::Id(_)) => "EVM",
             Self::Solana(_) => "SOL",
+            Self::Tezos(_) => "XTZ",
             // A placeholder label for a chain nothing here has verified; see
             // `MidnightNetwork`.
             Self::Midnight(_) => "MNT",
@@ -590,6 +675,13 @@ impl FromStr for ChainRef {
                 .map(Self::Solana)
                 .ok_or_else(|| ChainRefError::UnknownReference {
                     namespace: "solana",
+                    reference: reference.to_string(),
+                })
+        } else if namespace.eq_ignore_ascii_case("tezos") {
+            TezosNetwork::from_chain_str(reference)
+                .map(Self::Tezos)
+                .ok_or_else(|| ChainRefError::UnknownReference {
+                    namespace: "tezos",
                     reference: reference.to_string(),
                 })
         } else if namespace.eq_ignore_ascii_case("midnight") {
@@ -788,6 +880,8 @@ mod tests {
             ChainRef::Solana(SolanaNetwork::Mainnet),
             ChainRef::Solana(SolanaNetwork::Devnet),
             ChainRef::Solana(SolanaNetwork::Testnet),
+            ChainRef::Tezos(TezosNetwork::Mainnet),
+            ChainRef::Tezos(TezosNetwork::Ghostnet),
             ChainRef::Midnight(MidnightNetwork::Mainnet),
             ChainRef::Midnight(MidnightNetwork::Testnet),
         ] {
@@ -816,7 +910,27 @@ mod tests {
         assert!(!ChainRef::cardano_preview().is_mainnet());
         assert!(!ChainRef::Evm(EvmChain::Robinhood).is_mainnet());
         assert!(!ChainRef::Solana(SolanaNetwork::Mainnet).is_mainnet());
+        assert!(!ChainRef::Tezos(TezosNetwork::Mainnet).is_mainnet());
         assert!(!ChainRef::Midnight(MidnightNetwork::Mainnet).is_mainnet());
+    }
+
+    #[test]
+    fn tezos_uses_its_net_chain_id_and_accepts_the_alias() {
+        let mainnet: ChainRef = "tezos:NetXdQprcVkpaWU".parse().expect("parses");
+        assert_eq!(mainnet, ChainRef::Tezos(TezosNetwork::Mainnet));
+        assert_eq!(mainnet.as_caip2(), "tezos:NetXdQprcVkpaWU");
+        assert_eq!(mainnet.family(), ChainFamily::Tezos);
+        assert_eq!(mainnet.monogram(), "XTZ");
+
+        // The alias is a read convenience; the write form stays the chain id.
+        let alias: ChainRef = "tezos:mainnet".parse().expect("the alias reads");
+        assert_eq!(alias.as_caip2(), "tezos:NetXdQprcVkpaWU");
+
+        assert_eq!(
+            "tezos:NetXnHfVqm9iesp".parse::<ChainRef>().unwrap(),
+            ChainRef::Tezos(TezosNetwork::Ghostnet)
+        );
+        assert!("tezos:NetXunknown".parse::<ChainRef>().is_err());
     }
 
     #[test]
