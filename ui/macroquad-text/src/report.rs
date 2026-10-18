@@ -29,6 +29,8 @@ pub struct Surface {
 #[derive(Default)]
 struct State {
     on: bool,
+    /// Depth of [`muted`] scopes: text drawn inside one is not recorded.
+    muted: u32,
     screen: Surface,
     /// Faces baked since recording began, each once, in bake order.
     bakes: Vec<Surface>,
@@ -94,11 +96,26 @@ pub fn end_bake() {
     });
 }
 
+/// Run `draw` without recording its text.
+///
+/// For text drawn into an intermediate target that is composited somewhere
+/// else every frame — one half of a split screen — whose coordinates are the
+/// target's, not the screen's, so it would be reported in the wrong place.
+/// Draw the screen's own text (a HUD) on the screen instead, where it is
+/// recorded where it lands. A face baked once and kept belongs in a bake
+/// ([`begin_bake`]), not here.
+pub fn muted<R>(draw: impl FnOnce() -> R) -> R {
+    STATE.with(|s| s.borrow_mut().muted += 1);
+    let out = draw();
+    STATE.with(|s| s.borrow_mut().muted -= 1);
+    out
+}
+
 /// A line of text was drawn.
 pub fn line(text: &str, rect: Rect, size: f32, alpha: f32) {
     STATE.with(|s| {
         let mut s = s.borrow_mut();
-        if !s.on {
+        if !s.on || s.muted > 0 {
             return;
         }
         let line = Line {

@@ -138,6 +138,19 @@ impl Startup {
         }
     }
 
+    /// A screen whose text never changes scale — a pixel canvas, whatever
+    /// the window does to it — so there is nothing to settle: glyphs warm
+    /// behind the preloader from the first frame.
+    pub fn steady() -> Self {
+        Self {
+            phase: Phase::Warming,
+            preloader: Preloader::new(),
+            scale: None,
+            clock: 0.0,
+            fixed: true,
+        }
+    }
+
     /// Before drawing. `pixel_scale` is device pixels per design unit this
     /// frame. Returns whether it changed, for a frame log.
     pub fn begin(&mut self, dt: f32, pixel_scale: f32) -> bool {
@@ -247,6 +260,16 @@ mod tests {
         }
         assert!(!startup.text(), "one frame short");
         startup.begin(DT, 2.31);
+        assert!(startup.text());
+    }
+
+    #[test]
+    fn a_steady_screen_warms_from_its_first_frame_behind_the_cover() {
+        let mut startup = Startup::steady();
+        startup.begin(DT, 1.0);
+        assert!(startup.text(), "nothing to settle");
+        assert_eq!(startup.phase(), Phase::Warming);
+        startup.begin(DT, 1.0);
         assert!(startup.text());
     }
 

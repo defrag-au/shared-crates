@@ -49,7 +49,7 @@ pub mod text;
 pub mod tween;
 pub mod web;
 
-pub use app::{Backdrop, Frame, Game};
+pub use app::{Backdrop, Frame, Game, Stage};
 #[cfg(feature = "audio")]
 pub use audio::{Audio, load_pcm, wav};
 pub use bake::{Baked, Baker};
@@ -71,7 +71,7 @@ pub use sprite::{Pose, Sprite, draw_order, topmost};
 pub use startup::{Finished, Phase, Startup};
 pub use text::{
     Align, GlyphFlush, MacroquadMeasure, Measure, MeasureAt, Outline, Placed, RichText, Shadow,
-    StyleId, TextLayout, TextStyle, enable_glyph_gate, flush_glyphs, glyphs_pending, load_font,
-    register_font, warm_font_cache,
+    StyleId, TextLayout, TextStyle, draw_run, enable_glyph_gate, flush_glyphs, glyphs_pending,
+    load_font, measure_run, register_font, ungated, warm_font_cache,
 };
 pub use tween::{Animated, Lerp};

@@ -425,11 +425,19 @@ impl Capture {
     /// no transparency, so a capture of one should not either.
     pub fn save(self, path: &str, note: &str) -> std::io::Result<PathBuf> {
         set_default_camera();
-        save_texture_png(&self.target.texture, path);
-        let txt = Path::new(path).with_extension("txt");
-        std::fs::write(&txt, report::render(path, note))?;
-        Ok(txt)
+        write_capture(&self.target.texture, path, note)
     }
+}
+
+/// Write `texture` as a capture: the PNG at `path`, opaque, and the text
+/// report beside it. The texture must be finished: draws into a render target
+/// run when the camera next changes, so set another camera first (presenting
+/// a pixel stage does). Returns the report's path.
+pub fn write_capture(texture: &Texture2D, path: &str, note: &str) -> std::io::Result<PathBuf> {
+    save_texture_png(texture, path);
+    let txt = Path::new(path).with_extension("txt");
+    std::fs::write(&txt, report::render(path, note))?;
+    Ok(txt)
 }
 
 /// Write a render target's texture to `path` as an opaque PNG: the way to
