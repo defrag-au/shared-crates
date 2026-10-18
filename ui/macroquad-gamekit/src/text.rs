@@ -149,6 +149,29 @@ fn raster(size: f32, k: f32) -> (u16, f32) {
     (px as u16, size.max(0.0) / px)
 }
 
+/// Cache every printable ASCII glyph `style` will draw at `pixel_scale`.
+///
+/// macroquad's atlas is one texture and re-uploads the whole image the first
+/// time text is drawn after a glyph is cached. `draw_text_ex` caches while it
+/// draws, so a text-heavy first frame uploads the atlas once per new glyph and
+/// changes its texture when it grows, which splits the frame into a batch per
+/// run. Caching the draw sizes first leaves one upload and one texture.
+///
+/// This is deliberately per style rather than per frame: the caller can pace
+/// it, so a large screen does not block the first frame for seconds.
+pub fn warm_font_cache(style: &TextStyle, pixel_scale: f32) {
+    let Some(font) = style.font.as_ref() else {
+        return;
+    };
+    let (px, _) = raster(style.size, pixel_scale);
+    let size = (px as f32 * screen_dpi_scale())
+        .ceil()
+        .clamp(1.0, u16::MAX as f32) as u16;
+    let characters: Vec<char> = (0x20u8..=0x7e).map(char::from).collect();
+    font.populate_font_cache(&characters, size);
+}
+
+
 /// One positioned piece of a laid-out [`RichText`], relative to its top-left.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Placed {

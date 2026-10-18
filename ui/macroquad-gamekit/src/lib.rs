@@ -57,6 +57,6 @@ pub use shape::{RoundedArt, cover_source, fill_rounded, stroke_rounded};
 pub use sprite::{Pose, Sprite, draw_order, topmost};
 pub use text::{
     Align, MacroquadMeasure, Measure, Outline, Placed, RichText, Shadow, StyleId, TextLayout,
-    TextStyle,
+    TextStyle, warm_font_cache,
 };
 pub use tween::{Animated, Lerp};
