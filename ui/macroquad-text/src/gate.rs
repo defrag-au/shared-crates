@@ -95,7 +95,8 @@ pub struct GlyphFlush {
 /// last text is drawn.
 ///
 /// `sizes` limits how many new sizes are warmed this call. Warming a size
-/// rasterises all of printable ASCII in every registered font: a few
+/// rasterises a set of characters — all of printable ASCII for body text,
+/// the digits for a large size — in every registered font: a few
 /// milliseconds in a release build, several times that in debug, and on the
 /// web it happens on the one thread that also draws. With a limit, the rest
 /// wait for the next frame, so a screen that suddenly needs many sizes fills
@@ -110,15 +111,20 @@ pub fn flush_glyphs(sizes: Option<usize>) -> GlyphFlush {
         let default_font = gate.default_font.then(Font::default);
         let mut cached = 0;
         let mut warmed = 0;
+        let numeric: Vec<char> = NUMERIC.chars().collect();
         while let Some(job) = gate.state.next_job() {
             let fonts = gate.fonts.iter().chain(default_font.as_ref());
             match job {
-                Job::Size(size) => {
+                Job::Set(size, set) => {
                     if sizes.is_some_and(|limit| warmed >= limit) {
                         break;
                     }
                     warmed += 1;
-                    fonts.for_each(|font| font.populate_font_cache(&ascii, size));
+                    let chars = match set {
+                        Set::Ascii => &ascii,
+                        Set::Numeric => &numeric,
+                    };
+                    fonts.for_each(|font| font.populate_font_cache(chars, size));
                 }
                 Job::Char(size, ch) => fonts.for_each(|font| font.populate_font_cache(&[ch], size)),
             }
@@ -167,37 +173,85 @@ struct Gate {
     state: GateState,
 }
 
+/// A set of characters warmed at a size in one go.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Set {
+    /// All of printable ASCII: what a small size is warmed with.
+    Ascii,
+    /// Digits and the punctuation numbers are written with: what a large
+    /// size is warmed with, so a score or a total that changes every frame
+    /// never waits for a glyph.
+    Numeric,
+}
+
+/// The characters [`Set::Numeric`] holds.
+const NUMERIC: &str = "0123456789.,:;+-–%$/()x";
+
 /// One unit of caching work.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Job {
-    /// All of printable ASCII at an atlas size.
-    Size(u16),
+    /// A set of characters at an atlas size.
+    Set(u16, Set),
     /// One other character at an atlas size.
     Char(u16, char),
 }
 
 #[derive(Debug, Default)]
 struct GateState {
-    /// Atlas sizes whose printable ASCII is cached in every font.
-    warm: HashSet<u16>,
+    /// Sets cached at an atlas size, in every font.
+    warm: HashSet<(u16, Set)>,
     /// Other characters cached at an atlas size.
     extra: HashSet<(u16, char)>,
-    pending_sizes: BTreeSet<u16>,
+    pending_sets: BTreeSet<(u16, Set)>,
     pending_chars: BTreeSet<(u16, char)>,
 }
+
+/// The largest atlas size, in device pixels, warmed with all of printable
+/// ASCII at once. Body text (8–20 points at 2–3 pixels a point) is under it.
+/// Above it — titles, banners, a 96-point countdown — a size holds a few
+/// strings, and warming 95 glyphs of that size in every registered font filled
+/// turbo-turns' atlas with 250 MB of glyphs no one drew and took 1.3 s. So above
+/// it, digits come as a set (a big number changes every frame) and every
+/// other character is cached as it appears.
+const FULL_WARM_MAX: u16 = 64;
+
+/// The largest atlas size warmed with [`Set::Numeric`]. Above it — a
+/// countdown at 190 pixels — even the digits are a few big glyphs each, and
+/// are cached one by one as they appear.
+const NUMERIC_WARM_MAX: u16 = 160;
 
 impl GateState {
     /// Whether every glyph `text` needs at atlas size `size` is cached;
     /// otherwise remember what is missing.
     fn admit(&mut self, text: &str, size: u16) -> bool {
         let mut ready = true;
-        if !self.warm.contains(&size) {
-            self.pending_sizes.insert(size);
-            ready = false;
+        let mut need = |gate: &mut Self, set: Set| {
+            if !gate.warm.contains(&(size, set)) {
+                gate.pending_sets.insert((size, set));
+                ready = false;
+            }
+        };
+        // The set this size is warmed with, if any, and what it covers.
+        let set = if size <= FULL_WARM_MAX {
+            Some(Set::Ascii)
+        } else if size <= NUMERIC_WARM_MAX {
+            Some(Set::Numeric)
+        } else {
+            None
+        };
+        let covers = |ch: char| match set {
+            Some(Set::Ascii) => ch.is_ascii_graphic(),
+            Some(Set::Numeric) => NUMERIC.contains(ch),
+            None => false,
+        };
+        match set {
+            Some(Set::Ascii) => need(self, Set::Ascii),
+            Some(Set::Numeric) if text.chars().any(covers) => need(self, Set::Numeric),
+            _ => {}
         }
         for ch in text.chars() {
             // Layout breaks on whitespace, so it never reaches the atlas.
-            if ch.is_ascii_graphic() || ch.is_whitespace() {
+            if ch.is_whitespace() || covers(ch) {
                 continue;
             }
             if !self.extra.contains(&(size, ch)) {
@@ -213,15 +267,19 @@ impl GateState {
         self.pending_chars
             .first()
             .map(|&(size, ch)| Job::Char(size, ch))
-            .or_else(|| self.pending_sizes.first().map(|&size| Job::Size(size)))
+            .or_else(|| {
+                self.pending_sets
+                    .first()
+                    .map(|&(size, set)| Job::Set(size, set))
+            })
     }
 
     /// Mark a job cached.
     fn done(&mut self, job: Job) {
         match job {
-            Job::Size(size) => {
-                self.pending_sizes.remove(&size);
-                self.warm.insert(size);
+            Job::Set(size, set) => {
+                self.pending_sets.remove(&(size, set));
+                self.warm.insert((size, set));
             }
             Job::Char(size, ch) => {
                 self.pending_chars.remove(&(size, ch));
@@ -231,7 +289,7 @@ impl GateState {
     }
 
     fn len(&self) -> usize {
-        self.pending_sizes.len() + self.pending_chars.len()
+        self.pending_sets.len() + self.pending_chars.len()
     }
 
     fn is_empty(&self) -> bool {
@@ -258,7 +316,7 @@ mod tests {
         let mut gate = GateState::default();
         assert!(!gate.admit("12,345 ADA", 24), "a size never seen");
         assert!(!gate.admit("BUY", 24), "still pending this frame");
-        assert_eq!(drain(&mut gate), vec![Job::Size(24)]);
+        assert_eq!(drain(&mut gate), vec![Job::Set(24, Set::Ascii)]);
         assert!(gate.admit("98,760 ADA", 24), "any ASCII at a warm size");
         assert!(!gate.admit("BUY", 18), "a different size is not warm");
     }
@@ -279,6 +337,44 @@ mod tests {
             gate.admit("tab\tand\u{a0}nbsp", 24),
             "whitespace is never drawn"
         );
+    }
+
+    #[test]
+    fn a_large_size_caches_only_the_characters_it_draws() {
+        let mut gate = GateState::default();
+        assert!(!gate.admit("GO!", 220));
+        let mut jobs = drain(&mut gate);
+        jobs.sort_by_key(|job| format!("{job:?}"));
+        assert_eq!(
+            jobs,
+            vec![
+                Job::Char(220, '!'),
+                Job::Char(220, 'G'),
+                Job::Char(220, 'O')
+            ],
+            "three glyphs, not all of ASCII"
+        );
+        assert!(gate.admit("GO", 220));
+    }
+
+    #[test]
+    fn a_large_number_warms_every_digit_at_once() {
+        let mut gate = GateState::default();
+        assert!(
+            !gate.admit("27,730", 98),
+            "the first number at a large size"
+        );
+        assert_eq!(drain(&mut gate), vec![Job::Set(98, Set::Numeric)]);
+        assert!(gate.admit("31,894", 98), "any other number draws at once");
+        assert!(!gate.admit("ADA", 98), "letters are still one at a time");
+    }
+
+    #[test]
+    fn a_huge_size_caches_even_its_digits_one_by_one() {
+        let mut gate = GateState::default();
+        assert!(!gate.admit("3", 190));
+        assert_eq!(drain(&mut gate), vec![Job::Char(190, '3')]);
+        assert!(!gate.admit("2", 190), "the next digit waits a frame");
     }
 
     #[test]
@@ -303,7 +399,7 @@ mod tests {
         assert_eq!(first, Job::Char(12, 'é'));
         gate.done(first);
         let second = gate.next_job().unwrap();
-        assert_eq!(second, Job::Size(12));
+        assert_eq!(second, Job::Set(12, Set::Ascii));
         gate.done(second);
         assert_eq!(gate.len(), 1, "18 waits for the next frame");
         assert!(!gate.admit("b", 18), "and its text stays held back");
