@@ -10,7 +10,21 @@
 //!      [--hover N | --drag N | --longpress N | --rclick N]  # with a scripted pointer
 //! game --soak 20                                     # the game's own soak loop
 //! game --sheet sheet.png                             # the game's own sheet of faces
+//! game --frame-log                                   # print every frame over 50 ms
 //! ```
+//!
+//! ## Stalls are invisible to captures
+//!
+//! Captures and soaks run on the fixed clock, so a frame that takes two
+//! seconds of wall time looks like any other. Play with `--frame-log` (and
+//! call [`Args::log_slow_frame`] once a frame) to see them: a text size that
+//! animates, a bake each frame, a texture made in the loop.
+//!
+//! ## The window is not always the size asked for
+//!
+//! A tiling window manager resizes the window to its tile, so a capture
+//! sized from the window ignores `--size`. [`Args::viewport`] sizes a
+//! capture from `--size` when one is given.
 //!
 //! ## The report checks what a glance misses
 //!
@@ -172,9 +186,16 @@ pub struct Args {
     pub sheet: Option<String>,
     /// `--hover N`, `--drag N`, `--longpress N` or `--rclick N`.
     pub script: Option<Script>,
-    /// `--size 390x844`: the window, in points.
+    /// `--size 390x844`: the window, in points, and the size a capture is
+    /// drawn at whatever the window became (see [`Args::viewport`]).
     pub size: Option<(i32, i32)>,
+    /// `--frame-log`: print every frame slower than [`SLOW_FRAME`].
+    pub frame_log: bool,
 }
+
+/// A frame slower than this, in seconds of wall time, is a stall worth
+/// printing under `--frame-log`: three frames at 60 Hz.
+pub const SLOW_FRAME: f32 = 0.05;
 
 impl Args {
     pub fn read() -> Self {
@@ -202,6 +223,30 @@ impl Args {
                 let (w, h) = s.split_once('x')?;
                 Some((w.parse().ok()?, h.parse().ok()?))
             }),
+            frame_log: argv.iter().any(|a| a == "--frame-log"),
+        }
+    }
+
+    /// This frame's viewport. Capturing with `--size`, it is that size,
+    /// whatever the window is: a tiling window manager (AeroSpace) resizes
+    /// the window to its tile, and a capture draws into its own target
+    /// anyway. Otherwise it is the window as it is now.
+    pub fn viewport(&self, design: Vec2) -> Viewport {
+        match self.size {
+            Some((w, h)) if self.capturing() => {
+                Viewport::fit(vec2(w as f32, h as f32), screen_dpi_scale(), design)
+            }
+            _ => Viewport::current(design),
+        }
+    }
+
+    /// Under `--frame-log`, print the last frame if it took longer than
+    /// [`SLOW_FRAME`] of wall time. Call once a frame; `frame` is the
+    /// game's own count, `t` its clock, both only for the message.
+    pub fn log_slow_frame(&self, frame: u32, t: f32) {
+        let took = get_frame_time();
+        if self.frame_log && took > SLOW_FRAME {
+            println!("slow frame {frame} at t={t:.2}s: {:.0} ms", took * 1000.0);
         }
     }
 
@@ -322,18 +367,32 @@ impl Capture {
     /// no transparency, so a capture of one should not either.
     pub fn save(self, path: &str, note: &str) -> std::io::Result<PathBuf> {
         set_default_camera();
-        let mut image = self.target.texture.get_texture_data();
-        opaque(&mut image.bytes);
-        image.export_png(path);
+        save_texture_png(&self.target.texture, path);
         let txt = Path::new(path).with_extension("txt");
         std::fs::write(&txt, report::render(path, note))?;
         Ok(txt)
     }
 }
 
+/// Write a render target's texture to `path` as an opaque PNG: the way to
+/// screenshot a game that composes its frame into a target of its own (a
+/// pixel-art canvas scaled to the window) without adopting [`Capture`].
+///
+/// Never `get_screen_data` for this: on macOS it returns black when the
+/// window is unfocused or not yet composited, so a bot run in the
+/// background saves black frames. A target reads back the same anywhere.
+/// It comes out upright for a target drawn through a
+/// `Camera2D::from_display_rect` camera ([`target_camera`]), and opaque for
+/// the reason [`Capture::save`] gives.
+pub fn save_texture_png(texture: &Texture2D, path: &str) {
+    let mut image = texture.get_texture_data();
+    opaque(&mut image.bytes);
+    image.export_png(path);
+}
+
 /// Set every pixel of RGBA `bytes` fully opaque.
 fn opaque(bytes: &mut [u8]) {
-    for px in bytes.chunks_exact_mut(4) {
+    for px in bytes.as_chunks_mut::<4>().0 {
         px[3] = 255;
     }
 }
@@ -704,6 +763,8 @@ mod tests {
         assert_eq!(a.script, Some(Script::Drag(2)));
         assert_eq!(a.size, Some((1280, 800)));
         assert!(a.capturing());
+        assert!(!a.frame_log);
+        assert!(Args::parse(&["game".into(), "--frame-log".into()]).frame_log);
         assert_eq!(flag_in(&argv, "--seed").as_deref(), Some("7"));
         assert_eq!(Args::parse(&["game".into()]), Args::default());
     }
