@@ -62,6 +62,21 @@ pub fn register_font(font: &Font) {
     GATE.with_borrow_mut(|gate| gate.fonts.push(font.clone()));
 }
 
+/// Run `draw` with the gate open: text in it caches its glyphs as it draws and
+/// is never held back.
+///
+/// For drawing that happens once and is kept — a card face baked into a
+/// texture. Held back, its text would be missing from the bake for good, not
+/// for a frame. The cost is what the gate otherwise saves: an atlas upload
+/// mid-frame when the bake brings new glyphs, which a bake, done once per face,
+/// can afford. `macroquad_gamekit`'s bakes run inside this.
+pub fn ungated<R>(draw: impl FnOnce() -> R) -> R {
+    GATE.with_borrow_mut(|gate| gate.ungated += 1);
+    let out = draw();
+    GATE.with_borrow_mut(|gate| gate.ungated -= 1);
+    out
+}
+
 /// Whether the gate is holding text back for glyphs it has not cached yet.
 pub fn glyphs_pending() -> bool {
     GATE.with_borrow(|gate| !gate.state.is_empty())
@@ -126,7 +141,7 @@ pub(crate) fn printable_ascii() -> impl Iterator<Item = char> {
 /// missing when it does not.
 pub(crate) fn admits(text: &str, font: Option<&Font>, size: u16) -> bool {
     GATE.with_borrow_mut(|gate| {
-        if !gate.on {
+        if !gate.on || gate.ungated > 0 {
             return true;
         }
         if font.is_none() {
@@ -144,6 +159,8 @@ thread_local! {
 #[derive(Default)]
 struct Gate {
     on: bool,
+    /// Depth of [`ungated`] scopes: inside one, everything is admitted.
+    ungated: u32,
     fonts: Vec<Font>,
     /// A style without a font was seen: warm macroquad's own too.
     default_font: bool,
@@ -262,6 +279,17 @@ mod tests {
             gate.admit("tab\tand\u{a0}nbsp", 24),
             "whitespace is never drawn"
         );
+    }
+
+    #[test]
+    fn a_bake_is_never_held_back_even_with_the_gate_on() {
+        enable_glyph_gate();
+        assert!(!admits("label", None, 31), "held back on the screen");
+        assert!(
+            ungated(|| admits("face text", None, 33)),
+            "admitted inside a bake"
+        );
+        assert!(!admits("label", None, 35), "and the gate is back after it");
     }
 
     #[test]

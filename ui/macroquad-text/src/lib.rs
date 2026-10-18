@@ -30,7 +30,7 @@ mod run;
 mod style;
 
 pub use gate::{
-    GlyphFlush, enable_glyph_gate, flush_glyphs, glyphs_pending, load_font, register_font,
+    GlyphFlush, enable_glyph_gate, flush_glyphs, glyphs_pending, load_font, register_font, ungated,
 };
 pub use layout::{Align, Placed, RichText, StyleId, TextLayout};
 pub use measure::{MacroquadMeasure, Measure, MeasureAt, measure_run, warm_font_cache};

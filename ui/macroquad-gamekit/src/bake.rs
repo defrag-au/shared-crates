@@ -47,7 +47,9 @@ fn bake_into(size: Vec2, k: f32, draw: impl FnOnce()) -> RenderTarget {
     set_camera(&target_camera(size, Vec2::ZERO, &target));
     clear_background(Color::new(0.0, 0.0, 0.0, 0.0));
     report::begin_bake(size);
-    draw();
+    // A bake is kept, so its text must be in it: the glyph gate would hold
+    // uncached text back for a frame, and the face would lack it for good.
+    crate::text::ungated(draw);
     report::end_bake();
     pop_camera_state();
     target
