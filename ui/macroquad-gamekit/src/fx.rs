@@ -10,7 +10,7 @@ use std::f32::consts::TAU;
 use macroquad::prelude::*;
 
 use crate::ease::Ease;
-use crate::text::{Align, MacroquadMeasure, RichText, TextStyle};
+use crate::text::{Align, MeasureAt, RichText, TextStyle};
 
 /// Trauma-based shake: add trauma on a hit, read an offset every frame, and it
 /// dies away. The offset grows with trauma squared, so small hits stay small.
@@ -127,15 +127,15 @@ impl Popups {
     pub fn draw(&self, pixel_scale: f32) {
         for p in &self.items {
             let (lift, scale, alpha) = self.pose(p.age);
+            // Laid out and rasterised at the popup's own size, then scaled:
+            // a size that changes every frame would cache glyphs every frame.
             let mut text = RichText::new();
-            let style = text.style(TextStyle {
-                size: p.style.size * scale,
-                ..p.style.clone()
-            });
+            let style = text.style(p.style.clone());
             text.text(&p.text, style);
-            let l = text.layout(&MacroquadMeasure, f32::INFINITY, Align::Start, 0.0);
-            let origin = p.at + vec2(-l.size.x / 2.0, lift - l.size.y / 2.0);
-            l.draw(&text, origin, pixel_scale, alpha, |_, _| {});
+            let l = text.layout(&MeasureAt(pixel_scale), f32::INFINITY, Align::Start, 0.0);
+            let half = l.size * scale / 2.0;
+            let origin = p.at + vec2(-half.x, lift - half.y);
+            l.draw_scaled(&text, origin, pixel_scale, scale, alpha, |_, _| {});
         }
     }
 }

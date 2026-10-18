@@ -9,7 +9,14 @@
 //! The companion to `macroquad-widgets`: those widgets are stateless by
 //! charter, and everything here is state that lives across frames. Every
 //! module takes time as an argument and never reads the clock, so animations
-//! are unit-tested, paused, stepped and captured at exact moments.
+//! are unit-tested, paused, stepped and captured at exact moments. The one
+//! exception is [`flush_glyphs`]'s work budget, which is wall-clock time by
+//! nature and changes only when text appears, never what an animation shows.
+//!
+//! Text-heavy screens should turn on the glyph gate ([`enable_glyph_gate`]):
+//! without it, macroquad re-uploads a font's whole atlas every time a run
+//! brings a new glyph, which is a stall on the web and gigabytes of graphics
+//! memory on macOS.
 //!
 //! Stories for each module are in `macroquad-storybook`, under "gamekit".
 //! Read `CATALOG.md` before adding a module, and `CARD-FACES.md` before
@@ -31,9 +38,11 @@ pub mod light;
 pub mod pads;
 pub mod paint;
 pub mod pointer;
+pub mod preload;
 pub mod sequence;
 pub mod shape;
 pub mod sprite;
+pub mod startup;
 pub mod text;
 pub mod tween;
 pub mod web;
@@ -52,11 +61,14 @@ pub use paint::{
     noise_texture,
 };
 pub use pointer::{HoverGrace, Pointer, PointerConfig, PointerEvent};
+pub use preload::Preloader;
 pub use sequence::{Sequencer, stagger};
 pub use shape::{RoundedArt, cover_source, fill_rounded, stroke_rounded};
 pub use sprite::{Pose, Sprite, draw_order, topmost};
+pub use startup::{Finished, Phase, Startup};
 pub use text::{
-    Align, MacroquadMeasure, Measure, Outline, Placed, RichText, Shadow, StyleId, TextLayout,
-    TextStyle, warm_font_cache,
+    Align, GlyphFlush, MacroquadMeasure, Measure, MeasureAt, Outline, Placed, RichText, Shadow,
+    StyleId, TextLayout, TextStyle, enable_glyph_gate, flush_glyphs, glyphs_pending, load_font,
+    register_font, warm_font_cache,
 };
 pub use tween::{Animated, Lerp};

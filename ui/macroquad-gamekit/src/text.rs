@@ -23,6 +23,9 @@
 //! through the theme's ramp (`Theme::text_size(TextSize::…)`); this module
 //! never writes one down.
 
+use std::cell::RefCell;
+use std::collections::{BTreeSet, HashSet};
+
 use macroquad::prelude::*;
 
 /// A line drawn around each glyph, for text over art.
@@ -129,7 +132,28 @@ impl Measure for MacroquadMeasure {
 /// is drawn at, whatever the pixel scale.
 fn measure(text: &str, style: &TextStyle) -> TextDimensions {
     let (px, scale) = raster(style.size, MEASURE_SCALE);
-    measure_text(text, style.font.as_ref(), px, scale)
+    gated_measure(text, style, px, scale)
+}
+
+/// Measure through macroquad, unless the glyph gate is holding these glyphs
+/// back: then an estimate, so measuring never caches mid-frame.
+fn gated_measure(text: &str, style: &TextStyle, font_size: u16, scale: f32) -> TextDimensions {
+    let size = atlas_size(font_size, screen_dpi_scale());
+    if gate_admits(text, style.font.as_ref(), size) {
+        measure_text(text, style.font.as_ref(), font_size, scale)
+    } else {
+        estimate(text, style)
+    }
+}
+
+/// A plausible box for text whose glyphs are not cached yet. It is only used
+/// for a frame in which the text itself is not drawn.
+fn estimate(text: &str, style: &TextStyle) -> TextDimensions {
+    TextDimensions {
+        width: text.chars().count() as f32 * style.size * 0.55,
+        height: style.size,
+        offset_y: style.size * 0.8,
+    }
 }
 
 /// Pixels per point measurements rasterise at: fine enough that rounding the
@@ -149,28 +173,276 @@ fn raster(size: f32, k: f32) -> (u16, f32) {
     (px as u16, size.max(0.0) / px)
 }
 
+/// The font size and scale to hand macroquad so `size` points rasterise at
+/// `pixel_scale` device pixels per point, on a window whose DPI scale is `dpi`.
+///
+/// macroquad multiplies the font size it is given by the window's DPI scale
+/// before it rasterises (`ceil(font_size * dpi)`). `pixel_scale` already
+/// includes that scale, so it comes out here: passing `size * pixel_scale`
+/// straight through rasterised every glyph at `dpi` times the size it lands
+/// at, four times the atlas area on a 2x display, and downsampled it.
+fn draw_raster(size: f32, pixel_scale: f32, dpi: f32) -> (u16, f32) {
+    raster(size, pixel_scale.max(0.01) / dpi.max(0.01))
+}
+
+/// The size macroquad caches a glyph under for a font size it was given: the
+/// key its atlas is filled by.
+fn atlas_size(font_size: u16, dpi: f32) -> u16 {
+    (font_size as f32 * dpi).ceil().clamp(1.0, u16::MAX as f32) as u16
+}
+
+/// Measures at the size text will be drawn at, `pixel_scale` device pixels per
+/// point: the same glyphs [`TextLayout::draw`] rasterises, so layout and drawing
+/// share one set of atlas entries and agree to the pixel.
+///
+/// [`MacroquadMeasure`] measures at a fixed fine raster instead, which is
+/// independent of the screen but caches a second, much larger, copy of every
+/// glyph. Prefer this one when the pixel scale is known.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MeasureAt(pub f32);
+
+impl MeasureAt {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextDimensions {
+        let (px, scale) = draw_raster(style.size, self.0, screen_dpi_scale());
+        gated_measure(text, style, px, scale)
+    }
+}
+
+impl Measure for MeasureAt {
+    fn width(&self, text: &str, style: &TextStyle) -> f32 {
+        self.measure(text, style).width
+    }
+
+    fn ascent(&self, style: &TextStyle) -> f32 {
+        self.measure("Mg", style).offset_y
+    }
+
+    fn descent(&self, style: &TextStyle) -> f32 {
+        let d = self.measure("Mg", style);
+        (d.height - d.offset_y).max(0.0)
+    }
+}
+
+/// The characters a size is warmed with in one go.
+fn printable_ascii() -> impl Iterator<Item = char> {
+    (0x20u8..=0x7e).map(char::from)
+}
+
 /// Cache every printable ASCII glyph `style` will draw at `pixel_scale`.
 ///
-/// macroquad's atlas is one texture and re-uploads the whole image the first
-/// time text is drawn after a glyph is cached. `draw_text_ex` caches while it
-/// draws, so a text-heavy first frame uploads the atlas once per new glyph and
-/// changes its texture when it grows, which splits the frame into a batch per
-/// run. Caching the draw sizes first leaves one upload and one texture.
-///
-/// This is deliberately per style rather than per frame: the caller can pace
-/// it, so a large screen does not block the first frame for seconds.
+/// See [`enable_glyph_gate`] for why caching ahead of drawing matters, and for
+/// a way to do it without listing the styles up front.
 pub fn warm_font_cache(style: &TextStyle, pixel_scale: f32) {
     let Some(font) = style.font.as_ref() else {
         return;
     };
-    let (px, _) = raster(style.size, pixel_scale);
-    let size = (px as f32 * screen_dpi_scale())
-        .ceil()
-        .clamp(1.0, u16::MAX as f32) as u16;
-    let characters: Vec<char> = (0x20u8..=0x7e).map(char::from).collect();
-    font.populate_font_cache(&characters, size);
+    let dpi = screen_dpi_scale();
+    let (px, _) = draw_raster(style.size, pixel_scale, dpi);
+    let characters: Vec<char> = printable_ascii().collect();
+    font.populate_font_cache(&characters, atlas_size(px, dpi));
 }
 
+/// Turn on the glyph gate: from now on, text whose glyphs are not cached yet is
+/// held back for a frame, and [`flush_glyphs`] caches it all at the end of the
+/// frame, so each font atlas uploads at most once per frame.
+///
+/// ## Why
+///
+/// macroquad keeps each font's glyphs in one CPU image and one texture. Caching
+/// a glyph marks the image dirty, and the next `draw_text_ex` uploads the
+/// *whole* image again (`Atlas::texture`). Draws are batched to the end of the
+/// frame, but uploads are not: a frame that lays out and draws a hundred runs,
+/// each bringing a new glyph or size, uploads the atlas a hundred times. On
+/// macOS's OpenGL each upload is staged in its own buffer until the frame is
+/// submitted, and the driver keeps the buffers afterwards; on the web each one
+/// is a stall. A 2048² atlas is 16 MB, so one text-heavy first frame left
+/// gigabytes of graphics memory behind (measured in solada-ledger: 166 uploads
+/// in one frame, 129 retained 16 MB regions).
+///
+/// ## How
+///
+/// Call this once, before the first frame, and load fonts with [`load_font`]
+/// (or pass them to [`register_font`]). Then call [`flush_glyphs`] once per
+/// frame, after the last text is drawn. Everything else is automatic: the
+/// measures and [`TextLayout::draw`] consult the gate, so a layout whose
+/// glyphs are missing is measured with an estimate and not drawn, and appears
+/// the next frame from one upload.
+///
+/// A new size is warmed with all of printable ASCII, so numbers that change
+/// every frame never miss; other characters are cached as they appear. The
+/// cost is that text at a size or character never seen before appears one
+/// frame late. A [`Preloader`](crate::Preloader) hides the first of those.
+///
+/// Until this is called the gate admits everything and text caches as it
+/// draws, as macroquad does on its own.
+///
+/// The gate keys on raster sizes, not fonts: [`flush_glyphs`] warms every
+/// registered font at each held-back size. A font that is used without being
+/// registered still draws, but caches its glyphs mid-frame.
+pub fn enable_glyph_gate() {
+    GATE.with_borrow_mut(|gate| gate.on = true);
+}
+
+/// Load a TTF font and register it with the glyph gate.
+pub fn load_font(bytes: &[u8]) -> Result<Font, macroquad::Error> {
+    let font = load_ttf_font_from_bytes(bytes)?;
+    register_font(&font);
+    Ok(font)
+}
+
+/// Tell the glyph gate about a font loaded some other way. Register each font
+/// once: the gate cannot tell two handles to one font apart.
+pub fn register_font(font: &Font) {
+    GATE.with_borrow_mut(|gate| gate.fonts.push(font.clone()));
+}
+
+/// Whether the gate is holding text back for glyphs it has not cached yet.
+pub fn glyphs_pending() -> bool {
+    GATE.with_borrow(|gate| !gate.state.is_empty())
+}
+
+/// What one [`flush_glyphs`] did.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GlyphFlush {
+    /// Sizes and characters cached this call.
+    pub cached: usize,
+    /// Left for the next call because the budget ran out.
+    pub remaining: usize,
+}
+
+/// Cache what the gate held back this frame. Call once per frame, after the
+/// last text is drawn.
+///
+/// `budget` is seconds of work to allow: rasterising a new size is a few
+/// milliseconds per font in a release build, several times that in debug, and
+/// on the web it all happens on the one thread that also draws. With a budget,
+/// at least one size is cached and the rest wait for the next frame, so a
+/// screen that suddenly needs many sizes fills in over a few frames rather
+/// than pausing. `None` caches everything now: right behind a preloader.
+pub fn flush_glyphs(budget: Option<f64>) -> GlyphFlush {
+    let start = get_time();
+    GATE.with_borrow_mut(|gate| {
+        let ascii: Vec<char> = printable_ascii().collect();
+        let default_font = gate.default_font.then(Font::default);
+        let mut cached = 0;
+        while let Some(job) = gate.state.next_job() {
+            let fonts = gate.fonts.iter().chain(default_font.as_ref());
+            match job {
+                Job::Size(size) => fonts.for_each(|font| font.populate_font_cache(&ascii, size)),
+                Job::Char(size, ch) => fonts.for_each(|font| font.populate_font_cache(&[ch], size)),
+            }
+            gate.state.done(job);
+            cached += 1;
+            if budget.is_some_and(|budget| get_time() - start >= budget) {
+                break;
+            }
+        }
+        GlyphFlush {
+            cached,
+            remaining: gate.state.len(),
+        }
+    })
+}
+
+/// Whether the gate lets `text` through at atlas size `size`; records what is
+/// missing when it does not.
+fn gate_admits(text: &str, font: Option<&Font>, size: u16) -> bool {
+    GATE.with_borrow_mut(|gate| {
+        if !gate.on {
+            return true;
+        }
+        if font.is_none() {
+            gate.default_font = true;
+        }
+        gate.state.admit(text, size)
+    })
+}
+
+thread_local! {
+    /// macroquad draws from one thread, so the gate is per thread.
+    static GATE: RefCell<Gate> = RefCell::new(Gate::default());
+}
+
+#[derive(Default)]
+struct Gate {
+    on: bool,
+    fonts: Vec<Font>,
+    /// A style without a font was seen: warm macroquad's own too.
+    default_font: bool,
+    state: GateState,
+}
+
+/// One unit of caching work.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Job {
+    /// All of printable ASCII at an atlas size.
+    Size(u16),
+    /// One other character at an atlas size.
+    Char(u16, char),
+}
+
+#[derive(Debug, Default)]
+struct GateState {
+    /// Atlas sizes whose printable ASCII is cached in every font.
+    warm: HashSet<u16>,
+    /// Other characters cached at an atlas size.
+    extra: HashSet<(u16, char)>,
+    pending_sizes: BTreeSet<u16>,
+    pending_chars: BTreeSet<(u16, char)>,
+}
+
+impl GateState {
+    /// Whether every glyph `text` needs at atlas size `size` is cached;
+    /// otherwise remember what is missing.
+    fn admit(&mut self, text: &str, size: u16) -> bool {
+        let mut ready = true;
+        if !self.warm.contains(&size) {
+            self.pending_sizes.insert(size);
+            ready = false;
+        }
+        for ch in text.chars() {
+            // Layout breaks on whitespace, so it never reaches the atlas.
+            if ch.is_ascii_graphic() || ch.is_whitespace() {
+                continue;
+            }
+            if !self.extra.contains(&(size, ch)) {
+                self.pending_chars.insert((size, ch));
+                ready = false;
+            }
+        }
+        ready
+    }
+
+    /// The next thing to cache: odd characters first, as they are cheap.
+    fn next_job(&self) -> Option<Job> {
+        self.pending_chars
+            .first()
+            .map(|&(size, ch)| Job::Char(size, ch))
+            .or_else(|| self.pending_sizes.first().map(|&size| Job::Size(size)))
+    }
+
+    /// Mark a job cached.
+    fn done(&mut self, job: Job) {
+        match job {
+            Job::Size(size) => {
+                self.pending_sizes.remove(&size);
+                self.warm.insert(size);
+            }
+            Job::Char(size, ch) => {
+                self.pending_chars.remove(&(size, ch));
+                self.extra.insert((size, ch));
+            }
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.pending_sizes.len() + self.pending_chars.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
 
 /// One positioned piece of a laid-out [`RichText`], relative to its top-left.
 #[derive(Clone, Debug, PartialEq)]
@@ -454,15 +726,48 @@ impl TextLayout {
     /// point covers where this lands (the screen's DPI scale, times any
     /// camera zoom or bake scale): glyphs rasterise at that size, so text stays
     /// sharp rather than being stretched. `icon` draws each inline box.
+    ///
+    /// With the [glyph gate](enable_glyph_gate) on, a layout whose glyphs are
+    /// not all cached draws nothing this frame, icons included, rather than
+    /// appearing piece by piece.
     pub fn draw(
         &self,
         text: &RichText,
         origin: Vec2,
         pixel_scale: f32,
         alpha: f32,
+        icon: impl FnMut(u32, Rect),
+    ) {
+        self.draw_scaled(text, origin, pixel_scale, 1.0, alpha, icon);
+    }
+
+    /// Draw scaled by `scale` about `origin`, for text that pops, pulses or
+    /// zooms. Glyphs are rasterised once, at the laid-out size, and the quads
+    /// are scaled: animating the style's size instead would cache a new set
+    /// of glyphs every frame of the animation.
+    pub fn draw_scaled(
+        &self,
+        text: &RichText,
+        origin: Vec2,
+        pixel_scale: f32,
+        scale: f32,
+        alpha: f32,
         mut icon: impl FnMut(u32, Rect),
     ) {
         let k = pixel_scale.max(0.01);
+        let dpi = screen_dpi_scale();
+        // Every run is checked, so a frame records all that is missing.
+        let mut ready = true;
+        for item in &self.items {
+            if let Placed::Text { text: s, style, .. } = item {
+                let st = &text.styles[style.0];
+                let (px, _) = draw_raster(st.size, k, dpi);
+                ready &= gate_admits(s, st.font.as_ref(), atlas_size(px, dpi));
+            }
+        }
+        if !ready {
+            return;
+        }
         let fade = |c: Color| Color::new(c.r, c.g, c.b, c.a * alpha);
         for item in &self.items {
             match item {
@@ -472,41 +777,53 @@ impl TextLayout {
                     pos,
                 } => {
                     let st = &text.styles[style.0];
-                    let at = origin + *pos;
-                    let raster = raster(st.size, k);
+                    let at = origin + *pos * scale;
+                    let raster = draw_raster(st.size, k, dpi);
                     let params = |color: Color| TextParams {
                         font: st.font.as_ref(),
                         font_size: raster.0,
-                        font_scale: raster.1,
+                        font_scale: raster.1 * scale,
                         color: fade(color),
                         ..Default::default()
                     };
                     if let Some(sh) = st.shadow {
-                        draw_text_ex(s, at.x + sh.offset.x, at.y + sh.offset.y, params(sh.color));
+                        let off = sh.offset * scale;
+                        draw_text_ex(s, at.x + off.x, at.y + off.y, params(sh.color));
                     }
                     if let Some(o) = st.outline {
                         for (dx, dy) in OUTLINE_DIRS {
                             draw_text_ex(
                                 s,
-                                at.x + dx * o.width,
-                                at.y + dy * o.width,
+                                at.x + dx * o.width * scale,
+                                at.y + dy * o.width * scale,
                                 params(o.color),
                             );
                         }
                     }
                     draw_text_ex(s, at.x, at.y, params(st.color));
                     if crate::harness::report::on() {
-                        let m = MacroquadMeasure;
-                        let ascent = m.ascent(st);
-                        let rect =
-                            Rect::new(at.x, at.y - ascent, m.width(s, st), ascent + m.descent(st));
-                        crate::harness::report::line(s, rect, st.size, alpha);
+                        // At the draw raster: the box of what was drawn, and
+                        // no second set of glyphs cached mid-frame to get it.
+                        let m = MeasureAt(k);
+                        let ascent = m.ascent(st) * scale;
+                        let rect = Rect::new(
+                            at.x,
+                            at.y - ascent,
+                            m.width(s, st) * scale,
+                            ascent + m.descent(st) * scale,
+                        );
+                        crate::harness::report::line(s, rect, st.size * scale, alpha);
                     }
                 }
                 Placed::Icon { id, rect } => {
                     icon(
                         *id,
-                        Rect::new(origin.x + rect.x, origin.y + rect.y, rect.w, rect.h),
+                        Rect::new(
+                            origin.x + rect.x * scale,
+                            origin.y + rect.y * scale,
+                            rect.w * scale,
+                            rect.h * scale,
+                        ),
                     );
                 }
             }
@@ -542,6 +859,77 @@ mod tests {
             }
         }
         assert_eq!(raster(0.0, 2.0).0, 1, "never a zero-pixel raster");
+    }
+
+    #[test]
+    fn a_draw_rasterises_at_the_device_pixels_it_lands_on_not_dpi_times_more() {
+        // 10 points at 2.31 device px per point on a 2x display: about 23
+        // device pixels, not the 46 the DPI-blind raster asked for.
+        let (font_size, scale) = draw_raster(10.0, 2.31, 2.0);
+        let atlas = atlas_size(font_size, 2.0);
+        assert_eq!(font_size, 12);
+        assert_eq!(atlas, 24);
+        // What macroquad draws: the atlas raster back in points, scaled.
+        let drawn = atlas as f32 / 2.0 * scale;
+        assert!((drawn - 10.0).abs() < 1e-4, "drew {drawn}");
+        // On a 1x display nothing changes.
+        assert_eq!(draw_raster(10.0, 1.5, 1.0), raster(10.0, 1.5));
+    }
+
+    #[test]
+    fn the_gate_holds_back_new_sizes_until_flushed_then_admits_them() {
+        let mut gate = GateState::default();
+        assert!(!gate.admit("12,345 ADA", 24), "a size never seen");
+        assert!(!gate.admit("BUY", 24), "still pending this frame");
+        assert_eq!(drain(&mut gate), vec![Job::Size(24)]);
+        assert!(gate.admit("98,760 ADA", 24), "any ASCII at a warm size");
+        assert!(!gate.admit("BUY", 18), "a different size is not warm");
+    }
+
+    /// Run every pending job, as an unbudgeted flush does.
+    fn drain(gate: &mut GateState) -> Vec<Job> {
+        let mut jobs = Vec::new();
+        while let Some(job) = gate.next_job() {
+            gate.done(job);
+            jobs.push(job);
+        }
+        jobs
+    }
+
+    #[test]
+    fn the_gate_caches_other_characters_one_by_one_at_a_warm_size() {
+        let mut gate = GateState::default();
+        gate.admit("x", 24);
+        drain(&mut gate);
+        assert!(!gate.admit("A → B", 24));
+        assert_eq!(
+            drain(&mut gate),
+            vec![Job::Char(24, '→')],
+            "the size was already warm"
+        );
+        assert!(gate.admit("C → D", 24));
+        assert!(
+            gate.admit("tab\tand\u{a0}nbsp", 24),
+            "whitespace is never drawn"
+        );
+    }
+
+    #[test]
+    fn a_budgeted_flush_leaves_the_rest_held_back_until_it_is_cached() {
+        let mut gate = GateState::default();
+        gate.admit("a", 12);
+        gate.admit("b", 18);
+        gate.admit("é", 12);
+        // Characters first, then sizes, smallest first.
+        let first = gate.next_job().unwrap();
+        assert_eq!(first, Job::Char(12, 'é'));
+        gate.done(first);
+        let second = gate.next_job().unwrap();
+        assert_eq!(second, Job::Size(12));
+        gate.done(second);
+        assert_eq!(gate.len(), 1, "18 waits for the next frame");
+        assert!(!gate.admit("b", 18), "and its text stays held back");
+        assert!(gate.admit("é a", 12));
     }
 
     /// Every character is `size / 2` wide; ascent is 0.8 of the size and
