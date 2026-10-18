@@ -112,7 +112,7 @@ pub fn wallet_connect(
             }
         }
         WalletState::Connecting => {
-            let pulse = (get_time() * 2.0).sin() as f32 * 0.5 + 0.5;
+            let pulse = (p.time() * 2.0).sin() as f32 * 0.5 + 0.5;
             draw_circle(
                 x + 6.0,
                 y + 9.0,

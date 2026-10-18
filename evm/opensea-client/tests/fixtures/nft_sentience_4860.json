@@ -1,0 +1,94 @@
+{
+  "nft" : {
+    "identifier" : "4860",
+    "collection" : "t-a-s",
+    "contract" : "0xf08acc2f16ddf2f5d047fcc4d39a6c528a9645af",
+    "token_standard" : "erc721",
+    "name" : "Amsden Taylor",
+    "description" : "A distinguished member of the Taylor family",
+    "image_url" : "https://i2c.seadn.io/ethereum/0xf08acc2f16ddf2f5d047fcc4d39a6c528a9645af/c13c8f9269379c2922e802c2ae301e/9ac13c8f9269379c2922e802c2ae301e.jpeg",
+    "display_image_url" : "https://i2c.seadn.io/ethereum/0xf08acc2f16ddf2f5d047fcc4d39a6c528a9645af/c13c8f9269379c2922e802c2ae301e/9ac13c8f9269379c2922e802c2ae301e.jpeg",
+    "display_animation_url" : null,
+    "metadata_url" : null,
+    "opensea_url" : "https://opensea.io/assets/ethereum/0xf08acc2f16ddf2f5d047fcc4d39a6c528a9645af/4860",
+    "updated_at" : "2026-10-17T23:06:44.407036",
+    "is_disabled" : false,
+    "is_nsfw" : false,
+    "original_image_url" : "ipfs://bafybeiczgve33eflcmnqch74o5aobheaxodgboimqxxaqni674paxhhb4a/4860.jpg",
+    "original_animation_url" : null,
+    "traits" : [ {
+      "trait_type" : "Hat",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "None"
+    }, {
+      "trait_type" : "Body",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Suit"
+    }, {
+      "trait_type" : "Ears",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Earphones"
+    }, {
+      "trait_type" : "Eyes",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Normal"
+    }, {
+      "trait_type" : "Head",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Ape"
+    }, {
+      "trait_type" : "Class",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Craftsmen"
+    }, {
+      "trait_type" : "Family",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Taylor"
+    }, {
+      "trait_type" : "Weapon",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "None"
+    }, {
+      "trait_type" : "Accessory",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Wheat"
+    }, {
+      "trait_type" : "Background",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Cold"
+    }, {
+      "trait_type" : "Facial Hair",
+      "display_type" : null,
+      "max_value" : null,
+      "value" : "Normal"
+    } ],
+    "estimated_value_usd" : null,
+    "decimals" : null,
+    "animation_url" : null,
+    "is_suspicious" : false,
+    "creator" : "",
+    "owners" : [ {
+      "address" : "0x443575ac1114d1166e57dd16cc10cee38575f9f9",
+      "quantity" : 1,
+      "quantity_string" : "1"
+    } ],
+    "rarity" : {
+      "strategy_id" : "openrarity",
+      "strategy_version" : "1.0",
+      "rank" : 4866
+    },
+    "subscription" : null,
+    "agent_binding" : null,
+    "agent_metadata" : null
+  }
+}

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<!--
+  THE macroquad web shell, rendered for every bundle `macroquad-bundle` makes
+  (shared-crates/ui/macroquad-bundle). Moved here from augminted-bots'
+  scripts/macroquad-shell.html so every repo's pages share it.
+
+  Generated from, not edited into place: edit this; never edit a rendered
+  copy under a `dist/`, `web/` or `static/` directory. A bundle that needs a
+  different page passes `--shell <file>` with the same tokens.
+
+  Tokens:
+    __TITLE__    document title (HTML-escaped)
+    __SCRIPTS__  every <script src> tag in load order: gl.js, sapp_jsutils.js,
+                 quad-net.js when imported, then the crate's own plugins
+    __WASM__     wasm path, with its cache-busting query already appended
+
+  Everything here was learned the hard way in an embedded iframe. Before
+  removing any of it, read the comment saying why it exists.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>__TITLE__</title>
+  <!-- `viewport-fit=cover`: a wallet's in-app browser on iOS otherwise letterboxes
+       the canvas inside the safe area. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+  <style>
+    /* Reset + viewport-fill — macroquad's recommended shell. */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #050510; }
+
+    /* The canvas takes the whole iframe. Discord sizes the iframe; the conf
+       framebuffer is scaled by the browser to fit.
+
+       Without the width/height rules the canvas renders at its intrinsic
+       framebuffer size and sits centred in whatever space it was given — a
+       small picture marooned in a large black rectangle. `touch-action: none`
+       stops the browser treating a drag on the canvas as a scroll or a
+       double-tap as a zoom, which on mobile eats the input the game wanted. */
+    canvas { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
+
+    /* Boot status. Shown until load() is called, and again — permanently —
+       if the runtime cannot come up, so a failed boot says why instead of
+       leaving a black rectangle. */
+    #boot {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px; text-align: center;
+      background: #050510; color: #8b93a1;
+      font-family: ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.5;
+      z-index: 1000; pointer-events: none;
+    }
+    #boot.hidden { display: none; }
+    #boot.failed { color: #fb7185; }
+  </style>
+</head>
+<body>
+  <div id="boot">loading…</div>
+  <canvas id="glcanvas" tabindex="1"></canvas>
+
+  <script>
+    // Acquire the WebGL context BEFORE gl.js loads, and say so if it fails.
+    //
+    // miniquad's gl.js does a bare `canvas.getContext("webgl")` with no
+    // options and no null-check, then dereferences the result — so a context
+    // the embedder declines is an uncaught TypeError at boot and the canvas
+    // stays background-coloured forever. That is exactly "black screen".
+    //
+    // A canvas returns its existing context on later getContext calls of the
+    // same type, so creating it here with embed-friendly options is what
+    // gl.js then receives. If even this fails, the boot panel says why.
+    (function () {
+      var canvas = document.getElementById("glcanvas");
+      var opts = {
+        // Discord's iframe may run on integrated/software GL; don't demand
+        // the discrete GPU or fail-on-low-perf.
+        powerPreference: "default",
+        failIfMajorPerformanceCaveat: false,
+        // Not needed for a game loop that redraws every frame, and off is
+        // the cheaper default in most embedders.
+        preserveDrawingBuffer: false,
+        alpha: false,
+        antialias: true,
+      };
+      var gl = canvas.getContext("webgl", opts) || canvas.getContext("experimental-webgl", opts);
+      if (!gl) {
+        var boot = document.getElementById("boot");
+        boot.textContent = "WebGL is unavailable in this view — this app can't render here.";
+        boot.className = "failed";
+        console.error("shell: WebGL context unavailable");
+        window.__mq_no_gl = true;
+      }
+    })();
+  </script>
+
+  <!--
+    Script load order, per miniquad + sapp_jsutils conventions:
+      1. gl.js            — defines load() + miniquad_add_plugin
+      2. sapp_jsutils.js  — defines js_object() / consume_js_object()
+      3. plugins          — quad-net, then each crate's own (stamped by build.rs)
+      4. load(<wasm>)     — instantiate
+
+    Paths are relative unless the bundle was made with `--base`: Discord's
+    proxy serves a bundle at its mapped path, so `gl.js` resolves beside the
+    page without the app knowing its own subpath. A page served at a bare path
+    with no trailing slash (`/pump`) resolves relative paths against the
+    parent, so it needs `--base /pump/`.
+  -->
+__SCRIPTS__
+  <script>
+    // Surface Rust panics on the canvas.
+    //
+    // The release profile is `panic = "abort"`, so a Rust panic reaches JS
+    // only as `RuntimeError: unreachable` — no message, no location. But
+    // miniquad installs a panic hook that writes the FULL PanicInfo (message,
+    // file, line) to `console_log` *before* the abort. In a browser tab that's
+    // devtools; in Discord's iframe there is no devtools. So: mirror any
+    // console line that looks like a panic onto the boot panel, where the
+    // `unreachable` handler below would otherwise land with nothing to say.
+    //
+    // Kept as a ring of the last few lines, because the panic message is
+    // sometimes preceded by the useful context (which command, which poll).
+    (function () {
+      var recent = [];
+      var showPanel = function (text) {
+        var boot = document.getElementById("boot");
+        boot.textContent = text;
+        boot.className = "failed";
+        boot.style.whiteSpace = "pre-wrap";
+        boot.style.fontFamily = "ui-monospace, Menlo, monospace";
+        boot.style.fontSize = "12px";
+        boot.style.textAlign = "left";
+        boot.style.alignItems = "flex-start";
+      };
+      var wrap = function (name) {
+        var orig = console[name].bind(console);
+        console[name] = function () {
+          var line = Array.prototype.map.call(arguments, function (a) {
+            return typeof a === "string" ? a : (a && a.message) || String(a);
+          }).join(" ");
+          recent.push(line);
+          if (recent.length > 8) recent.shift();
+          // miniquad formats the hook as `PanicInfo { ... }` / `panicked at`;
+          // Rust's default hook says `panicked at`. Either is the signal.
+          if (/panicked at|PanicInfo|PanicHookInfo/.test(line)) {
+            window.__mq_panic = line;
+            showPanel("rust panic:\n\n" + recent.join("\n"));
+          }
+          orig.apply(console, arguments);
+        };
+      };
+      ["log", "warn", "error"].forEach(wrap);
+      window.__mq_recent_console = recent;
+    })();
+
+    if (!window.__mq_no_gl) {
+      document.getElementById("boot").classList.add("hidden");
+      // Surface a failed instantiate on the boot panel too — otherwise a
+      // missing import or a bad wasm is only visible in devtools, which an
+      // embedded iframe doesn't readily offer.
+      window.addEventListener("error", function (e) {
+        // A panic already wrote its message; `unreachable` is just the abort
+        // that follows it, and would overwrite the useful line with a useless one.
+        if (window.__mq_panic) return;
+        var boot = document.getElementById("boot");
+        var tail = (window.__mq_recent_console || []).slice(-4).join("\n");
+        boot.textContent = "boot error: " + (e.message || e.error || "unknown") +
+          (tail ? "\n\nlast console lines:\n" + tail : "");
+        boot.className = "failed";
+        boot.style.whiteSpace = "pre-wrap";
+      });
+      window.addEventListener("unhandledrejection", function (e) {
+        var boot = document.getElementById("boot");
+        boot.textContent = "boot error: " + (e.reason && e.reason.message ? e.reason.message : String(e.reason));
+        boot.className = "failed";
+      });
+      load("__WASM__");
+    }
+  </script>
+</body>
+</html>

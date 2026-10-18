@@ -4,6 +4,7 @@
 //! hit-test). Deliberately tiny — a widget toolkit, not a UI framework.
 
 use macroquad::prelude::*;
+use macroquad_text::{TextStyle, draw_run, measure_run};
 use ui_theme::{TextRole, TextSize};
 
 use crate::theme::{self, Theme};
@@ -17,6 +18,10 @@ pub struct Painter<'a> {
     pub theme: Theme,
     /// Where the user tapped/clicked this frame, if anywhere (see [`frame_tap`]).
     pub tap: Option<Vec2>,
+    /// Device pixels per unit where widgets land; see [`Painter::pixel_scale`].
+    px: f32,
+    /// Seconds on the host's clock; see [`Painter::at_time`].
+    now: f64,
 }
 
 /// Per-frame interaction state for a rect — for building custom interactive
@@ -39,7 +44,32 @@ impl<'a> Painter<'a> {
             mono,
             theme,
             tap,
+            px: screen_dpi_scale(),
+            now: get_time(),
         }
+    }
+
+    /// Device pixels per unit where these widgets are drawn: the screen's DPI
+    /// scale (the default) for widgets drawn in screen points, times the
+    /// camera's zoom for widgets drawn in a game's design units. Text
+    /// rasterises at that size, so it stays sharp under any camera.
+    pub fn pixel_scale(mut self, px: f32) -> Self {
+        self.px = px;
+        self
+    }
+
+    /// The time animated widgets (a pending pulse, a spinner) read, in
+    /// seconds. Defaults to macroquad's clock; a host on a fixed clock — a
+    /// capture at an exact moment — passes its own, so the pulse is the same
+    /// in every run.
+    pub fn at_time(mut self, seconds: f64) -> Self {
+        self.now = seconds;
+        self
+    }
+
+    /// The time animated widgets read: see [`Painter::at_time`].
+    pub fn time(&self) -> f64 {
+        self.now
     }
 
     /// Point size for a step of the type ramp — **the one way a widget gets a
@@ -80,18 +110,17 @@ impl<'a> Painter<'a> {
         self.text(s, x, self.top_baseline(top, size), size, color);
     }
 
+    /// Through `macroquad-text`: drawn at exactly `size` (macroquad alone
+    /// would truncate 10.5 to 10), rasterised at [`Painter::pixel_scale`],
+    /// held back a frame by a host's glyph gate, and recorded for capture
+    /// reports.
     fn draw_in(&self, font: Option<&Font>, s: &str, x: f32, y: f32, size: f32, color: Color) {
-        draw_text_ex(
-            s,
-            x,
-            y,
-            TextParams {
-                font,
-                font_size: size as u16,
-                color,
-                ..Default::default()
-            },
-        );
+        let style = TextStyle::new(font.cloned(), size, color);
+        draw_run(s, &style, vec2(x, y), self.px, 1.0);
+    }
+
+    fn measure_in(&self, font: Option<&Font>, s: &str, size: f32) -> TextDimensions {
+        measure_run(s, &TextStyle::new(font.cloned(), size, WHITE), self.px)
     }
 
     /// Measure in the PROPORTIONAL face — what [`Painter::text`] draws.
@@ -102,7 +131,7 @@ impl<'a> Painter<'a> {
     /// measuring it here under-reports, and two independently placed strings
     /// quietly overlap instead of erroring.
     pub fn measure(&self, s: &str, size: f32) -> TextDimensions {
-        measure_text(s, self.font, size as u16, 1.0)
+        self.measure_in(self.font, s, size)
     }
 
     /// Measure in the MONOSPACE face — what [`Painter::mono`] draws.
@@ -111,7 +140,7 @@ impl<'a> Painter<'a> {
     /// makes right-aligning or fitting a hash, a price or any fixed-width
     /// figure a guess. See [`Painter::measure`] for why the guess is silent.
     pub fn measure_mono(&self, s: &str, size: f32) -> TextDimensions {
-        measure_text(s, self.mono, size as u16, 1.0)
+        self.measure_in(self.mono, s, size)
     }
 
     /// Baseline `y` that vertically centres text (at `size`) within a band of

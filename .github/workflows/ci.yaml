@@ -128,9 +128,17 @@ jobs:
         # that cannot build for wasm32 at all — at the crate that introduced it,
         # rather than in the consuming repo a rev later. `--all-features` so the
         # `chain` feature (and `chain-heartbeat` behind it) is covered too.
+        #
+        # macroquad-gamekit with `--all-features` for the same reason, and one
+        # more: its `audio` and `gamepads` features are off by default (natively
+        # on Linux they need ALSA and libudev, which this runner lacks), so no
+        # other job compiles them. On wasm32 both go through miniquad plugins and
+        # need no system library — this is where they are kept building.
         run: |
           cargo check --target wasm32-unknown-unknown \
             -p macroquad-widgets --all-features
+          cargo check --target wasm32-unknown-unknown \
+            -p macroquad-gamekit --all-features
           cargo check --target wasm32-unknown-unknown \
             -p arcade-core \
             -p asset-intents \

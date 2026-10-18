@@ -1,0 +1,21 @@
+[package]
+name = "macroquad-bundle"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+description = "Build and stage a macroquad client as a static web bundle: wasm, the matching miniquad JS, plugins, page, and a check that every import is provided"
+
+# A LIBRARY with a one-line binary per consuming repo, not a binary here alone:
+# cargo only runs binaries of the workspace it is in, so each repo carries a
+# `tools/mq-bundle` crate whose main is `macroquad_bundle::main()`. That keeps
+# the bundler pinned by the same shared-crates rev as everything else the
+# game links, and runnable in CI with nothing but cargo (`cargo run -p
+# mq-bundle -- …`).
+#
+# Native only: it shells out to cargo and writes files. Deliberately small
+# dependencies (serde for `cargo metadata`, sha2 for the cache key).
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = "0.10"

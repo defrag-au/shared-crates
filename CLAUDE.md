@@ -536,6 +536,98 @@ nix develop -c cargo tree --target wasm32-unknown-unknown -p <crate>
   tree, not the direct dependency.
 
 
+## A game's rules crate reports what happened; the client animates it and decides nothing
+<!-- rule: rules/org/defrag/rules-emit-events -->
+
+**The rules crate returns what happened as data, and the client only animates it.** A client never
+re-derives a rule — not damage, not which card was drawn, not where a stripped card went.
+
+- Each step returns typed events (a card moved from pile to pile, an effect resolved with an
+  amount) beside the new view. The client queues animations from the events, then shows the view.
+- Anything the screen shows as a number or an icon arrives as data, not only as a sentence:
+  `effects: Vec<EffectView>` beside `text: Vec<String>`, so the face draws icons without parsing
+  prose.
+- The client checks itself against the engine: after each step it compares what it shows (the
+  hand, the pile counts) with the view, and the soak fails on any mismatch.
+- The rules crate is pure (see `defrag-runtime-pairs`): one crate serves the macroquad client, a web
+  bridge and a replay verifier.
+
+
+## macroquad's silent traps — each fails with no error and a wrong picture
+<!-- rule: rules/org/defrag/macroquad-traps -->
+
+Before drawing with macroquad directly, check the pieces of `macroquad-gamekit` that already handle
+these (`shared-crates/ui/macroquad-gamekit/CATALOG.md`). Each trap compiles, runs, and shows a wrong
+picture with no error.
+
+- **The window is upside down under `Camera2D::from_display_rect`.** It runs y down into a render
+  target and up on the window. Use `harness::window_camera` for the window and
+  `harness::target_camera` for a target. A capture draws into a target, so **a capture that looks
+  right says nothing about the window.**
+- **Dropping a `RenderTarget` frees its texture**, and the next texture reuses the id, so a kept
+  `Texture2D` silently becomes something else. Hold the `RenderTarget` (`Baked` does).
+- **A render target's texture is upside down** when drawn: draw it with `flip_y: true`.
+- **Translucent layers wear down a target's alpha**, because the default pipeline blends alpha like
+  colour. A layered face comes out see-through. Bake layered art with `Baker`, which seals it.
+- **Text queued before the glyph atlas grows vanishes.** The atlas doubles and deletes its old
+  texture mid-batch, typically on the first large text at a new size. `Baker` draws twice for this.
+- **Fractional text sizes must measure and draw at the same size.** Use the kit's `RichText` and
+  `MacroquadMeasure` rather than `draw_text_ex` with a rounded `font_size`, or words overlap and
+  spaces disappear.
+- **Images decode from PNG and TGA only.** Convert art to PNG at build time, not JPEG.
+- **With `high_dpi`, touches arrive in device pixels and the mouse in points.** Read the mouse
+  (macroquad turns touches into mouse events) and convert once, through `Viewport::to_design`.
+- **`get_screen_data` returns black on macOS** when the window is unfocused or not yet composited,
+  and works when it is: so it passes at the desk and fails in a background run. Capture through a
+  render target (`harness::Capture`).
+- **`draw_arc` thickness grows outward from the radius**, not centred on it.
+
+Two more pass every native run and capture, and fail only in the browser:
+
+- **`render_target()` kills the web build.** In macroquad 0.4 it defaults to `sample_count: 1`,
+  which `render_target_ex` treats as multisampled, so every pass ends in a `glReadBuffer` blit.
+  WebGL 1, miniquad's default in the browser, lacks it: "gl.readBuffer is not a function" on the
+  first frame, then a panic at miniquad's `wasm.rs:34` on every later event. Use
+  `harness::plain_target` (sample count 0). The kit's `tests/plain_targets.rs` scan fails on a
+  bare call.
+- **A missing miniquad plugin never stops the page loading.** `gl.js` stubs each import nothing
+  provides and logs "No <name> function in gl.js" when it is called: no quad-snd `audio.js` is a
+  silent game, no gamepads plugin is deaf pads, no `quad-net.js` a dead socket. Take audio and
+  gamepads from the kit's `audio` and `gamepads` features, and stamp their JS from `build.rs` with
+  `macroquad_gamekit::web::stamp` — never a CDN copy.
+- **A copied `gl.js` drifts from the miniquad it runs beside**, and a mismatch is a blank canvas
+  with no error (cnft.dev-workers committed 0.4.10's beside a 0.4.11 wasm). Never commit or
+  hand-copy miniquad's JS, or write a bundle's `index.html` by hand. Bundle with shared-crates'
+  `macroquad-bundle`, run in each repo as `cargo run -p mq-bundle` (`tools/mq-bundle`): it takes
+  the JS from the versions the package links, renders the shared shell, and fails the build if the
+  wasm imports a function no staged script provides. `--base /path/` for a page served at a bare
+  path.
+
+
+## Capture the exact moment, read its report, then check the real window
+<!-- rule: rules/org/defrag/look-at-the-game -->
+
+A macroquad screen is not done until a capture of each changed state has been looked at, its
+report's problems dealt with, and the real window checked once after any camera or input change.
+
+```sh
+nix develop -c cargo build -p <game>
+./target/debug/<game> --shot .tmp/x.png [--at 1.25] [--hover N | --drag N | --rclick N]
+./target/debug/<game> --sheet .tmp/sheet.png     # every face at once, where the game has one
+```
+
+- Each capture writes `x.png` and `x.txt`. **The image is the review.** The report is the second
+  check: it leads with what a glance misses (text cut short, too small, off its surface,
+  overlapping), then lists every line of text with its box and size.
+- Capture **the moment**, not the end state: `--at` on the fixed clock catches a card mid-lift or a
+  sheen mid-sweep. An animation is reviewed at three moments, not one.
+- Problems listed in the report are fixed or explained before the work is reported done.
+- **The window is not a capture.** After touching the camera, input or window setup, run the game
+  without `--shot` and screenshot the real window (the `game-spike` skill has the command) before
+  calling it done.
+- Not evidence: it compiles · the soak passes · a capture from before the change.
+
+
 ## Render it and look at it before reporting it done
 <!-- rule: rules/org/defrag/look-at-what-you-built -->
 
@@ -729,6 +821,20 @@ nix develop ../.. -c trunk serve      # http://127.0.0.1:8095 (see Trunk.toml)
 
 See the `widget-screenshot` skill for the full
 screenshot loop.
+
+
+## macroquad-gamekit never reads the clock, and every module has a catalogue line
+<!-- rule: projects/shared-crates/rules/gamekit-takes-time-as-an-argument -->
+
+**Nothing in `ui/macroquad-gamekit` calls `get_time`, `get_frame_time` or `Instant`.** Time is a
+parameter (`update(dt)`, `value(t)`, `phase`), owned by the game. The one exception is
+`harness::frame_dt`, which exists to choose between the fixed capture clock and the real one.
+
+- A new module gets a `//!` header whose first line is its catalogue line, then
+  `UPDATE_CATALOG=1 nix develop -c cargo test -p macroquad-gamekit --test catalog`.
+- A visual module gets a story in `macroquad-storybook` under "gamekit".
+- Text goes through `TextLayout::draw`, so the harness report sees it. A module that draws text
+  another way is invisible to every reviewer that reads the report.
 
 
 ## A story has three registration sites plus a module declaration

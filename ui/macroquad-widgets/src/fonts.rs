@@ -134,6 +134,9 @@ impl Fonts {
         self.pending.retain(|(slot, co)| match co.retrieve() {
             None => true,
             Some(Ok(font)) => {
+                // So a host's glyph gate warms this face too; a no-op for a
+                // host that never turns the gate on.
+                macroquad_text::register_font(&font);
                 match slot {
                     Slot::Regular => self.regular = Some(font),
                     Slot::Bold => self.bold = Some(font),

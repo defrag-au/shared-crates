@@ -104,8 +104,9 @@ pub struct CollectionSummary {
     /// The slug — `"heritage-hood"` — which is the key every other endpoint takes.
     pub collection: String,
     pub name: String,
-    /// Empty string in the captures, never absent.
-    pub description: String,
+    /// Empty string in the September captures, `null` on a collection OpenSea
+    /// has only partially indexed (observed 2026-10-18). `Option` covers both.
+    pub description: Option<String>,
     pub image_url: Option<String>,
     /// `null` in every list entry captured, while the detail response for the
     /// same collection carries a URL — the two endpoints genuinely differ here,
@@ -312,6 +313,89 @@ pub struct NftPage {
     pub nfts: Vec<Nft>,
     /// The cursor for the following page, or `None` on the last one.
     pub next: Option<String>,
+}
+
+// ============================================================================
+// GET /chain/{chain}/contract/{address}/nfts/{identifier}
+// ============================================================================
+
+/// The `nft` object of `GET /chain/{chain}/contract/{address}/nfts/{identifier}`.
+///
+/// The single-NFT endpoint is **not** the list shape:
+///
+/// - the body is enveloped — `{"nft": { … }}`, see [`NftResponse`] — where a page
+///   entry is bare;
+/// - every image field is nullable, including `image_url`, which is a plain
+///   `String` on a list entry;
+/// - it carries ownership, rarity and agent fields the list does not.
+///
+/// The field set here is the subset this crate's consumers read. It is typed
+/// from the published `NftDetailed` schema (OpenAPI 2.0.0) rather than a capture:
+/// the list capture predates this endpoint, and a live lookup on 2026-10-18
+/// confirmed the envelope and a resolvable image. A capture should replace this
+/// as the fixture when one is taken.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NftDetails {
+    /// A string, not an integer: token ids here are big and not always numeric.
+    pub identifier: String,
+    pub collection: String,
+    pub contract: String,
+    pub token_standard: String,
+    /// `required` by the schema; the value may be `null`.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// `required` by the schema; the value may be `null`.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// The cached image. Nullable here even though the list capture always has it.
+    #[serde(default)]
+    pub image_url: Option<String>,
+    #[serde(default)]
+    pub display_image_url: Option<String>,
+    #[serde(default)]
+    pub original_image_url: Option<String>,
+    #[serde(default)]
+    pub display_animation_url: Option<String>,
+    #[serde(default)]
+    pub metadata_url: Option<String>,
+    pub opensea_url: String,
+    pub updated_at: String,
+    pub is_disabled: bool,
+    pub is_nsfw: bool,
+    /// The complete trait set. Absent and empty mean the same thing.
+    #[serde(default)]
+    pub traits: Vec<Trait>,
+}
+
+impl NftDetails {
+    /// The image to render: `original_image_url`, then `display_image_url`, then
+    /// `image_url`.
+    ///
+    /// IIIF wants the largest source, and the marketplace's original is it. The
+    /// same fallback the list shape uses, applied here because the single
+    /// endpoint is the one that can answer for a token whose cached variants
+    /// OpenSea has not filled in. A blank string is not an image.
+    pub fn image(&self) -> Option<&str> {
+        [
+            self.original_image_url.as_deref(),
+            self.display_image_url.as_deref(),
+            self.image_url.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|uri| !uri.trim().is_empty())
+    }
+}
+
+/// The 200 body of `GET …/nfts/{identifier}`.
+///
+/// The envelope is **required**, not defaulted: a bare NFT object deserialises
+/// into `NftDetails` with every optional field empty, which would report "no
+/// image" for a token that has one. Requiring `nft` makes the wrong shape a
+/// decode failure, and a decode failure is an upstream error, never a miss.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NftResponse {
+    pub nft: NftDetails,
 }
 
 // ============================================================================

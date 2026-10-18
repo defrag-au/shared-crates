@@ -21,6 +21,11 @@ use opensea_client::{ChainSlug, OpenseaClient};
 /// tokens that is fully minted, so the address is stable even as the market moves.
 const STONKBROKERS: &str = "0x539cdd042c2f3d93ebc5be7dfff0c79f3b4fabf0";
 
+/// A Sentience token on Ethereum mainnet — the first EVM asset the IIIF worker
+/// resolved (2026-10-18). Its image is content-addressed on IPFS, so the token
+/// is a stable probe for the single-NFT endpoint.
+const SENTIENCE: &str = "0xf08acc2f16ddf2f5d047fcc4d39a6c528a9645af";
+
 fn client() -> OpenseaClient {
     let key = std::env::var("OPENSEA_API_KEY")
         .expect("OPENSEA_API_KEY must be set when the `live` feature is enabled");
@@ -66,6 +71,22 @@ async fn a_known_contract_resolves_to_its_collection() {
     assert_eq!(contract.address, STONKBROKERS);
     assert_eq!(contract.chain.as_str(), ChainSlug::ROBINHOOD);
     assert!(contract.contract_standard.starts_with("erc"));
+}
+
+#[tokio::test]
+async fn a_known_token_resolves_to_an_image() {
+    let nft = client()
+        .get_nft(&ChainSlug::new(ChainSlug::ETHEREUM), SENTIENCE, "4860")
+        .await
+        .expect("the Sentience token should resolve");
+
+    assert_eq!(nft.identifier, "4860");
+    assert_eq!(nft.token_standard, "erc721");
+    assert!(
+        nft.image().is_some_and(|uri| !uri.trim().is_empty()),
+        "the token states an image: {}",
+        nft.image().unwrap_or("none")
+    );
 }
 
 #[tokio::test]

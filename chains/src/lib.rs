@@ -62,17 +62,30 @@ pub use asset::{AssetNamespace, AssetRefError, AssetType, TokenRef};
 pub enum ChainFamily {
     Cardano,
     Evm,
+    Solana,
+    Tezos,
+    Xrpl,
     Midnight,
 }
 
 impl ChainFamily {
-    pub const ALL: [Self; 3] = [Self::Cardano, Self::Evm, Self::Midnight];
+    pub const ALL: [Self; 6] = [
+        Self::Cardano,
+        Self::Evm,
+        Self::Solana,
+        Self::Tezos,
+        Self::Xrpl,
+        Self::Midnight,
+    ];
 
     /// The CAIP-2 namespace this family's chains are written under.
     pub const fn namespace(self) -> &'static str {
         match self {
             Self::Cardano => "cardano",
             Self::Evm => "eip155",
+            Self::Solana => "solana",
+            Self::Tezos => "tezos",
+            Self::Xrpl => "xrpl",
             Self::Midnight => "midnight",
         }
     }
@@ -87,6 +100,9 @@ impl ChainFamily {
         match self {
             Self::Cardano => "Cardano",
             Self::Evm => "EVM",
+            Self::Solana => "Solana",
+            Self::Tezos => "Tezos",
+            Self::Xrpl => "XRPL",
             Self::Midnight => "Midnight",
         }
     }
@@ -331,6 +347,239 @@ impl fmt::Display for MidnightNetwork {
     }
 }
 
+/// The Solana clusters this workspace names.
+///
+/// CAIP-2 identifies a Solana chain by the **first 32 characters of its genesis
+/// hash**, not by a friendly network name. The three references below are the
+/// ones the CAIP namespace registry publishes; a cluster that is not one of them
+/// is refused rather than given an invented reference.
+///
+/// The bare names (`mainnet`, `devnet`, `testnet`) are accepted on read because
+/// they are what an operator types, and normalised out on write so the CAIP-2
+/// form stays the only spelling that round-trips.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SolanaNetwork {
+    Mainnet,
+    Devnet,
+    Testnet,
+}
+
+impl SolanaNetwork {
+    /// The bare cluster name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Mainnet => "mainnet",
+            Self::Devnet => "devnet",
+            Self::Testnet => "testnet",
+        }
+    }
+
+    /// The CAIP-2 reference — the first 32 characters of the genesis hash.
+    pub const fn reference(self) -> &'static str {
+        match self {
+            Self::Mainnet => "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            Self::Devnet => "EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+            Self::Testnet => "4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z",
+        }
+    }
+
+    /// The `chain:reference` form.
+    pub const fn as_chain_str(self) -> &'static str {
+        match self {
+            Self::Mainnet => "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            Self::Devnet => "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+            Self::Testnet => "solana:4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z",
+        }
+    }
+
+    /// Parses a bare name or a `solana:`-prefixed reference.
+    ///
+    /// The namespace is matched case-insensitively; the reference is not,
+    /// because a Solana genesis hash is Base58 and case is part of the value.
+    pub fn from_chain_str(s: &str) -> Option<Self> {
+        let bare = s
+            .split_once(':')
+            .filter(|(namespace, _)| namespace.eq_ignore_ascii_case("solana"))
+            .map(|(_, reference)| reference)
+            .unwrap_or(s);
+
+        match bare {
+            "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" => Some(Self::Mainnet),
+            "EtWTRABZaYq6iMfeYKouRu166VU2xqa1" => Some(Self::Devnet),
+            "4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z" => Some(Self::Testnet),
+            _ if bare.eq_ignore_ascii_case("mainnet") => Some(Self::Mainnet),
+            _ if bare.eq_ignore_ascii_case("devnet") => Some(Self::Devnet),
+            _ if bare.eq_ignore_ascii_case("testnet") => Some(Self::Testnet),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for SolanaNetwork {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+// ============================================================================
+// Tezos
+// ============================================================================
+
+/// The Tezos networks this workspace names.
+///
+/// CAIP-2 identifies a Tezos chain by a `Net…` chain id derived from its genesis
+/// block hash, not by the friendly network name. The two references below are the
+/// ones the CAIP namespace registry publishes; anything else is refused rather
+/// than given an invented reference.
+///
+/// The aliases (`mainnet`, `ghostnet`) are accepted on read because they are what
+/// an operator types, and normalised out on write so the `Net…` form is the only
+/// spelling that round-trips.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TezosNetwork {
+    Mainnet,
+    Ghostnet,
+}
+
+impl TezosNetwork {
+    /// The bare network name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Mainnet => "mainnet",
+            Self::Ghostnet => "ghostnet",
+        }
+    }
+
+    /// The CAIP-2 reference — the chain id, not the genesis hash itself.
+    pub const fn reference(self) -> &'static str {
+        match self {
+            Self::Mainnet => "NetXdQprcVkpaWU",
+            Self::Ghostnet => "NetXnHfVqm9iesp",
+        }
+    }
+
+    /// The `tezos:reference` form.
+    pub const fn as_chain_str(self) -> &'static str {
+        match self {
+            Self::Mainnet => "tezos:NetXdQprcVkpaWU",
+            Self::Ghostnet => "tezos:NetXnHfVqm9iesp",
+        }
+    }
+
+    /// Parses a bare alias or a `tezos:`-prefixed reference.
+    ///
+    /// The namespace is matched case-insensitively; the reference is not, because
+    /// a Tezos chain id is Base58 and case is part of the value.
+    pub fn from_chain_str(s: &str) -> Option<Self> {
+        let bare = s
+            .split_once(':')
+            .filter(|(namespace, _)| namespace.eq_ignore_ascii_case("tezos"))
+            .map(|(_, reference)| reference)
+            .unwrap_or(s);
+
+        match bare {
+            "NetXdQprcVkpaWU" => Some(Self::Mainnet),
+            "NetXnHfVqm9iesp" => Some(Self::Ghostnet),
+            _ if bare.eq_ignore_ascii_case("mainnet") => Some(Self::Mainnet),
+            _ if bare.eq_ignore_ascii_case("ghostnet") => Some(Self::Ghostnet),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for TezosNetwork {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+// ============================================================================
+// XRPL
+// ============================================================================
+
+/// The XRPL networks this workspace names.
+///
+/// CAIP-2 identifies an XRPL chain by its numeric **network id**, not by a
+/// friendly name: `xrpl:0` is Livenet, `xrpl:1` Testnet and `xrpl:2` Devnet —
+/// the ids the CAIP namespace registry publishes. The aliases are accepted on
+/// read because they are what an operator types, and normalised out on write so
+/// the numeric form is the only spelling that round-trips. `livenet` is the
+/// ledger's own name for mainnet, so both read as [`Self::Mainnet`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum XrplNetwork {
+    Mainnet,
+    Testnet,
+    Devnet,
+}
+
+impl XrplNetwork {
+    /// The bare network name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Mainnet => "mainnet",
+            Self::Testnet => "testnet",
+            Self::Devnet => "devnet",
+        }
+    }
+
+    /// The CAIP-2 reference — the ledger's numeric network id.
+    pub const fn reference(self) -> &'static str {
+        match self {
+            Self::Mainnet => "0",
+            Self::Testnet => "1",
+            Self::Devnet => "2",
+        }
+    }
+
+    /// The `xrpl:reference` form.
+    pub const fn as_chain_str(self) -> &'static str {
+        match self {
+            Self::Mainnet => "xrpl:0",
+            Self::Testnet => "xrpl:1",
+            Self::Devnet => "xrpl:2",
+        }
+    }
+
+    /// Parses a bare alias, a numeric id, or an `xrpl:`-prefixed reference.
+    ///
+    /// The namespace is matched case-insensitively; the reference is numeric, so
+    /// there is no case to preserve.
+    pub fn from_chain_str(s: &str) -> Option<Self> {
+        let bare = s
+            .split_once(':')
+            .filter(|(namespace, _)| namespace.eq_ignore_ascii_case("xrpl"))
+            .map(|(_, reference)| reference)
+            .unwrap_or(s);
+
+        match bare {
+            "0" => Some(Self::Mainnet),
+            "1" => Some(Self::Testnet),
+            "2" => Some(Self::Devnet),
+            _ if bare.eq_ignore_ascii_case("mainnet") || bare.eq_ignore_ascii_case("livenet") => {
+                Some(Self::Mainnet)
+            }
+            _ if bare.eq_ignore_ascii_case("testnet") => Some(Self::Testnet),
+            _ if bare.eq_ignore_ascii_case("devnet") => Some(Self::Devnet),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for XrplNetwork {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// Whether `value` is an XLS-20 NFTokenID: 64 hexadecimal characters.
+///
+/// The CAIP-19 XRPL profile writes the id upper-case. Reading is case-insensitive
+/// because explorers and wallet exports disagree; identity normalises it, so two
+/// spellings of one token cannot become two keys.
+pub fn is_xrpl_nftoken_id(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 // ============================================================================
 // ChainRef
 // ============================================================================
@@ -347,6 +596,9 @@ impl fmt::Display for MidnightNetwork {
 pub enum ChainRef {
     Cardano(CardanoNetwork),
     Evm(EvmChain),
+    Solana(SolanaNetwork),
+    Tezos(TezosNetwork),
+    Xrpl(XrplNetwork),
     Midnight(MidnightNetwork),
 }
 
@@ -356,6 +608,9 @@ impl ChainRef {
         match self {
             Self::Cardano(_) => ChainFamily::Cardano,
             Self::Evm(_) => ChainFamily::Evm,
+            Self::Solana(_) => ChainFamily::Solana,
+            Self::Tezos(_) => ChainFamily::Tezos,
+            Self::Xrpl(_) => ChainFamily::Xrpl,
             Self::Midnight(_) => ChainFamily::Midnight,
         }
     }
@@ -373,6 +628,9 @@ impl ChainRef {
         match self {
             Self::Cardano(n) => n.as_chain_str().trim_start_matches("cardano:").to_string(),
             Self::Evm(c) => c.chain_id().to_string(),
+            Self::Solana(n) => n.reference().to_string(),
+            Self::Tezos(n) => n.reference().to_string(),
+            Self::Xrpl(n) => n.reference().to_string(),
             Self::Midnight(n) => n.as_str().to_string(),
         }
     }
@@ -400,25 +658,27 @@ impl ChainRef {
     /// Whether this is Cardano **mainnet**.
     ///
     /// The question the estate actually asks — "mainnet or testnet" to pick an
-    /// address registry or a queue binding — is a Cardano one, so an EVM or
-    /// Midnight chain answers `false` rather than being given a network notion it
-    /// does not have. Cost of being wrong: a non-Cardano chain would be handed the
-    /// mainnet registry.
+    /// address registry or a queue binding — is a Cardano one, so an EVM, Solana,
+    /// Tezos, XRPL or Midnight chain answers `false` rather than being given a
+    /// network notion it does not have. Cost of being wrong: a non-Cardano chain
+    /// would be handed the mainnet registry.
     pub const fn is_mainnet(self) -> bool {
         matches!(self, Self::Cardano(CardanoNetwork::Mainnet))
     }
 
     /// This chain as a Cardano network, where it is one.
     ///
-    /// `None` for an EVM chain rather than an invented network — and it keeps all
-    /// three Cardano networks, which the `shared_types::ChainNetwork` this replaces
-    /// could not: its `Testnet` collapsed preprod and preview together, so nothing
-    /// downstream could tell them apart.
+    /// `None` for an EVM, Solana, Tezos, XRPL or Midnight chain rather than an
+    /// invented network — and it keeps all three Cardano networks, which the
+    /// `shared_types::ChainNetwork` this replaces could not: its `Testnet`
+    /// collapsed preprod and preview together, so nothing downstream could tell
+    /// them apart.
     pub const fn cardano_network(self) -> Option<CardanoNetwork> {
         match self {
             Self::Cardano(network) => Some(network),
-            Self::Evm(_) => None,
-            Self::Midnight(_) => None,
+            Self::Evm(_) | Self::Solana(_) | Self::Tezos(_) | Self::Xrpl(_) | Self::Midnight(_) => {
+                None
+            }
         }
     }
 
@@ -453,6 +713,9 @@ impl ChainRef {
             Self::Cardano(_) => "ADA",
             Self::Evm(EvmChain::Robinhood) => "RH",
             Self::Evm(EvmChain::Id(_)) => "EVM",
+            Self::Solana(_) => "SOL",
+            Self::Tezos(_) => "XTZ",
+            Self::Xrpl(_) => "XRP",
             // A placeholder label for a chain nothing here has verified; see
             // `MidnightNetwork`.
             Self::Midnight(_) => "MNT",
@@ -477,8 +740,7 @@ impl FromStr for ChainRef {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let trimmed = s.trim();
-        let lower = trimmed.to_ascii_lowercase();
-        let Some((namespace, reference)) = lower.split_once(':') else {
+        let Some((namespace, reference)) = trimmed.split_once(':') else {
             return Err(ChainRefError::NotCaip2(trimmed.to_string()));
         };
         // A third component is CAIP-10 (`namespace:reference:account`), not
@@ -487,27 +749,58 @@ impl FromStr for ChainRef {
         if reference.contains(':') {
             return Err(ChainRefError::NotCaip2(trimmed.to_string()));
         }
-        match namespace {
-            "cardano" => CardanoNetwork::from_chain_str(reference)
+        // The namespace is matched case-insensitively, but the reference is not:
+        // Solana's CAIP-2 reference is Base58, where case is part of the value.
+        // The per-family parsers below apply their own tolerance.
+        if namespace.eq_ignore_ascii_case("cardano") {
+            CardanoNetwork::from_chain_str(reference)
                 .map(Self::Cardano)
                 .ok_or_else(|| ChainRefError::UnknownReference {
                     namespace: "cardano",
                     reference: reference.to_string(),
-                }),
-            "eip155" => reference
+                })
+        } else if namespace.eq_ignore_ascii_case("eip155") {
+            reference
                 .parse::<u64>()
                 .map(|id| Self::Evm(EvmChain::from_chain_id(id)))
                 .map_err(|_| ChainRefError::UnknownReference {
                     namespace: "eip155",
                     reference: reference.to_string(),
-                }),
-            "midnight" => MidnightNetwork::from_chain_str(reference)
+                })
+        } else if namespace.eq_ignore_ascii_case("solana") {
+            SolanaNetwork::from_chain_str(reference)
+                .map(Self::Solana)
+                .ok_or_else(|| ChainRefError::UnknownReference {
+                    namespace: "solana",
+                    reference: reference.to_string(),
+                })
+        } else if namespace.eq_ignore_ascii_case("tezos") {
+            TezosNetwork::from_chain_str(reference)
+                .map(Self::Tezos)
+                .ok_or_else(|| ChainRefError::UnknownReference {
+                    namespace: "tezos",
+                    reference: reference.to_string(),
+                })
+        } else if namespace.eq_ignore_ascii_case("xrpl") {
+            XrplNetwork::from_chain_str(reference)
+                .map(Self::Xrpl)
+                .ok_or_else(|| ChainRefError::UnknownReference {
+                    namespace: "xrpl",
+                    reference: reference.to_string(),
+                })
+        } else if namespace.eq_ignore_ascii_case("midnight") {
+            MidnightNetwork::from_chain_str(reference)
                 .map(Self::Midnight)
                 .ok_or_else(|| ChainRefError::UnknownReference {
                     namespace: "midnight",
                     reference: reference.to_string(),
-                }),
-            other => Err(ChainRefError::UnknownNamespace(other.to_string())),
+                })
+        } else {
+            // One spelling on the way out; the error names the namespace as the
+            // caller wrote it, lower-cased, so it cannot become a second identity.
+            Err(ChainRefError::UnknownNamespace(
+                namespace.to_ascii_lowercase(),
+            ))
         }
     }
 }
@@ -688,6 +981,14 @@ mod tests {
             ChainRef::Cardano(CardanoNetwork::Preview),
             ChainRef::Evm(EvmChain::Robinhood),
             ChainRef::Evm(EvmChain::Id(8453)),
+            ChainRef::Solana(SolanaNetwork::Mainnet),
+            ChainRef::Solana(SolanaNetwork::Devnet),
+            ChainRef::Solana(SolanaNetwork::Testnet),
+            ChainRef::Tezos(TezosNetwork::Mainnet),
+            ChainRef::Tezos(TezosNetwork::Ghostnet),
+            ChainRef::Xrpl(XrplNetwork::Mainnet),
+            ChainRef::Xrpl(XrplNetwork::Testnet),
+            ChainRef::Xrpl(XrplNetwork::Devnet),
             ChainRef::Midnight(MidnightNetwork::Mainnet),
             ChainRef::Midnight(MidnightNetwork::Testnet),
         ] {
@@ -715,7 +1016,29 @@ mod tests {
         assert!(!ChainRef::cardano_preprod().is_mainnet());
         assert!(!ChainRef::cardano_preview().is_mainnet());
         assert!(!ChainRef::Evm(EvmChain::Robinhood).is_mainnet());
+        assert!(!ChainRef::Solana(SolanaNetwork::Mainnet).is_mainnet());
+        assert!(!ChainRef::Tezos(TezosNetwork::Mainnet).is_mainnet());
+        assert!(!ChainRef::Xrpl(XrplNetwork::Mainnet).is_mainnet());
         assert!(!ChainRef::Midnight(MidnightNetwork::Mainnet).is_mainnet());
+    }
+
+    #[test]
+    fn tezos_uses_its_net_chain_id_and_accepts_the_alias() {
+        let mainnet: ChainRef = "tezos:NetXdQprcVkpaWU".parse().expect("parses");
+        assert_eq!(mainnet, ChainRef::Tezos(TezosNetwork::Mainnet));
+        assert_eq!(mainnet.as_caip2(), "tezos:NetXdQprcVkpaWU");
+        assert_eq!(mainnet.family(), ChainFamily::Tezos);
+        assert_eq!(mainnet.monogram(), "XTZ");
+
+        // The alias is a read convenience; the write form stays the chain id.
+        let alias: ChainRef = "tezos:mainnet".parse().expect("the alias reads");
+        assert_eq!(alias.as_caip2(), "tezos:NetXdQprcVkpaWU");
+
+        assert_eq!(
+            "tezos:NetXnHfVqm9iesp".parse::<ChainRef>().unwrap(),
+            ChainRef::Tezos(TezosNetwork::Ghostnet)
+        );
+        assert!("tezos:NetXunknown".parse::<ChainRef>().is_err());
     }
 
     #[test]
@@ -812,6 +1135,62 @@ mod tests {
     }
 
     #[test]
+    fn xrpl_uses_its_network_id_and_accepts_the_alias() {
+        for network in [
+            XrplNetwork::Mainnet,
+            XrplNetwork::Testnet,
+            XrplNetwork::Devnet,
+        ] {
+            let chain = ChainRef::Xrpl(network);
+            assert_eq!(chain.family(), ChainFamily::Xrpl);
+            assert_eq!(chain.namespace(), "xrpl");
+            assert_eq!(chain.monogram(), "XRP");
+            assert_eq!(chain.as_caip2(), network.as_chain_str());
+            assert_eq!(ChainRef::from_str(&chain.as_caip2()), Ok(chain));
+        }
+
+        // The aliases are a read convenience; the write form stays the network id.
+        for (alias, network) in [
+            ("xrpl:mainnet", XrplNetwork::Mainnet),
+            ("xrpl:livenet", XrplNetwork::Mainnet),
+            ("xrpl:testnet", XrplNetwork::Testnet),
+            ("xrpl:devnet", XrplNetwork::Devnet),
+        ] {
+            let chain: ChainRef = alias.parse().expect("the alias reads");
+            assert_eq!(chain, ChainRef::Xrpl(network));
+            assert_eq!(chain.as_caip2(), network.as_chain_str());
+        }
+
+        assert_eq!(
+            serde_json::to_string(&ChainRef::Xrpl(XrplNetwork::Mainnet)).unwrap(),
+            "\"xrpl:0\""
+        );
+        assert!(matches!(
+            ChainRef::from_str("xrpl:3"),
+            Err(ChainRefError::UnknownReference {
+                namespace: "xrpl",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn an_nftoken_id_is_64_hex_characters_in_either_case() {
+        assert!(is_xrpl_nftoken_id(
+            "000B00004B50699E253C5098DEFE3A0872A79D129172F4965B974D9E00000004"
+        ));
+        assert!(is_xrpl_nftoken_id(
+            "000b00004b50699e253c5098defe3a0872a79d129172f4965b974d9e00000004"
+        ));
+        assert!(!is_xrpl_nftoken_id(
+            "000B00004B50699E253C5098DEFE3A0872A79D129172F4965B974D9E0000000"
+        ));
+        assert!(!is_xrpl_nftoken_id(
+            "000B00004B50699E253C5098DEFE3A0872A79D129172F4965B974D9E0000000G"
+        ));
+    }
+
+    #[test]
     fn midnight_is_a_known_namespace_and_round_trips() {
         // Added 2026-09-27 with `MidnightNetwork`: this workspace keeps a `Midnight`
         // chain even though nothing constructs one, so the name is not lost when
@@ -847,13 +1226,50 @@ mod tests {
     }
 
     #[test]
+    fn solana_is_a_known_namespace_and_round_trips() {
+        // CAIP-2 identifies a Solana chain by the first 32 characters of its
+        // genesis hash, so the friendly names are read but never written.
+        for network in [
+            SolanaNetwork::Mainnet,
+            SolanaNetwork::Devnet,
+            SolanaNetwork::Testnet,
+        ] {
+            let chain = ChainRef::Solana(network);
+            assert_eq!(chain.family(), ChainFamily::Solana);
+            assert_eq!(chain.namespace(), "solana");
+            assert_eq!(chain.monogram(), "SOL");
+            assert_eq!(chain.as_caip2(), network.as_chain_str());
+            assert_eq!(ChainRef::from_str(&chain.as_caip2()), Ok(chain));
+        }
+
+        // The friendly name is accepted on read and normalises to the reference.
+        assert_eq!(
+            ChainRef::from_str("solana:mainnet").unwrap().as_caip2(),
+            "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+        );
+        assert_eq!(
+            serde_json::to_string(&ChainRef::Solana(SolanaNetwork::Mainnet)).unwrap(),
+            "\"solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp\""
+        );
+
+        // The reference is Base58: case is part of the value, so a lower-cased
+        // reference is a different (unknown) chain rather than the same one.
+        assert!(matches!(
+            ChainRef::from_str("solana:5eykt4usfv8p8njdtrepy1vzqkqzkvdp"),
+            Err(ChainRefError::UnknownReference {
+                namespace: "solana",
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn an_unknown_namespace_is_an_error_and_never_cardano() {
         // The dangerous default, in its other form: an unrecognised namespace
         // must not fall back to the one chain this workspace knows best.
-        // `midnight` was in this list until 2026-09-27, when the namespace was
-        // deliberately added alongside `MidnightNetwork` — see
-        // `midnight_is_a_known_namespace_and_round_trips` for its own coverage.
-        for (input, namespace) in [("solana:mainnet", "solana"), ("sui:mainnet", "sui")] {
+        // `midnight` was in this list until 2026-09-27, and `solana` until
+        // 2026-10-17 — each removed when its namespace was deliberately added.
+        for (input, namespace) in [("aptos:mainnet", "aptos"), ("sui:mainnet", "sui")] {
             assert!(
                 matches!(
                     ChainRef::from_str(input),
@@ -884,6 +1300,11 @@ mod tests {
             "cardano:sanchonet",
             "eip155:abc",
             "eip155:-1",
+            "solana:",
+            "solana:stagenet",
+            "xrpl:",
+            "xrpl:stagenet",
+            "xrpl:-1",
             // CAIP-10, not CAIP-2 — an account is not a chain.
             "eip155:4663:0xe638f58c87258ece6c0eddc46f70327663635c69",
             "cardano:mainnet:stake1u8boef",
@@ -927,6 +1348,10 @@ mod tests {
             ChainRef::Evm(EvmChain::Robinhood).family(),
             ChainFamily::Evm
         );
+        assert_eq!(
+            ChainRef::Xrpl(XrplNetwork::Mainnet).family(),
+            ChainFamily::Xrpl
+        );
 
         // Two chains far apart still share a family; two networks on one chain
         // do too. That is the point of the axis.
@@ -947,6 +1372,7 @@ mod tests {
             "cardano"
         );
         assert_eq!(ChainRef::Evm(EvmChain::Id(1)).namespace(), "eip155");
+        assert_eq!(ChainRef::Xrpl(XrplNetwork::Devnet).namespace(), "xrpl");
         for family in ChainFamily::ALL {
             assert!(!family.namespace().is_empty());
         }

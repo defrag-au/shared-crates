@@ -7,25 +7,30 @@
 //! the VM (minted ticks up, txs land, then confirm). The **buttons** atom story
 //! shows the variant × state matrix — hover and press them to feel the states.
 //!
-//! Scroll is intentionally deferred until the story list overflows.
+//! The story list scrolls with the mouse wheel or trackpad over the sidebar,
+//! and a story chosen by key or `--story` is scrolled into view.
 
 mod chain_fixture;
+mod gamekit_stories;
 
 use chain_fixture::{ChainSim, Scenario};
+use gamekit_stories::{KitStory, KitView};
 use macroquad::prelude::*;
 use macroquad_widgets::{
     BlockPulseVm, BlockTrainVm, Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility,
-    FloatingStick, FulfilmentAction, FulfilmentStatus, FulfilmentTx, Gestures, MintCheckoutVm,
-    OrderFulfilmentVm, OrderStatus, Painter, PulseDetail, PulseTicker, QuantityStepperVm,
-    RiderState, SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerVm, StepperAction,
-    StickView, SwipeDir, Theme, TrainRider, TrainState, WalletAction, WalletConnectVm, WalletItem,
-    WalletListAction, WalletListState, WalletListVm, WalletRow, WalletState, block_pulse,
-    block_train, floating_stick, mint_checkout, order_fulfilment, quantity_stepper, squad_picker,
-    theme, wallet_connect, wallet_list,
+    FloatingStick, FulfilmentAction, FulfilmentStatus, FulfilmentTx, Gesture, Gestures,
+    MintCheckoutVm, OrderFulfilmentVm, OrderStatus, Painter, PulseDetail, PulseTicker,
+    QuantityStepperVm, RiderState, SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerVm,
+    StepperAction, StickView, SwipeDir, Theme, TrainRider, TrainState, WalletAction,
+    WalletConnectVm, WalletItem, WalletListAction, WalletListState, WalletListVm, WalletRow,
+    WalletState, block_pulse, block_train, floating_stick, mint_checkout, order_fulfilment,
+    quantity_stepper, squad_picker, theme, wallet_connect, wallet_list,
 };
 use ui_theme::{TextSize, Token};
 
 const SIDEBAR_W: f32 = 210.0;
+/// The sidebar's fixed title band; the story list scrolls beneath it.
+const SIDEBAR_TITLE_H: f32 = 58.0;
 /// The stick story's well radius: roughly a thumb's reach at desktop scale.
 const STICK_RADIUS: f32 = 64.0;
 const SIM_INTERVAL: f64 = 1.2;
@@ -115,6 +120,8 @@ enum Body {
     SquadPicker(SquadPickerVm),
     /// The live stick and the last thing it reported, for the readout.
     Stick(Box<StickStory>),
+    /// A `macroquad-gamekit` story, driven by the storybook clock.
+    Kit(Box<KitStory>),
 }
 
 /// A floating stick the reader can drag with the mouse, beside fixed samples
@@ -137,6 +144,7 @@ enum Kind {
     Fulfilment,
     SquadPicker,
     Stick,
+    Kit,
 }
 
 struct Story {
@@ -239,6 +247,18 @@ impl Story {
             Body::Fulfilment(_) => Kind::Fulfilment,
             Body::SquadPicker(_) => Kind::SquadPicker,
             Body::Stick(_) => Kind::Stick,
+            Body::Kit(_) => Kind::Kit,
+        }
+    }
+
+    fn kit(name: &'static str, view: KitView) -> Self {
+        Self {
+            category: "gamekit",
+            name,
+            body: Body::Kit(Box::new(KitStory::new(
+                view,
+                (0..6).map(placeholder_art).collect(),
+            ))),
         }
     }
 
@@ -642,7 +662,69 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
                 .chosen(vec!["tool0000".into()])
                 .commit(SquadCommit::Failed("that asset is not yours".into())),
         ),
+        Story::kit("easing", KitView::Easing),
+        Story::kit("card hand", KitView::Hand),
+        Story::kit("rich text", KitView::Text),
+        Story::kit("hit effects", KitView::Fx),
+        Story::kit("rounded art", KitView::Art),
+        Story::kit("preloader", KitView::Preload),
     ]
+}
+
+/// The stories' time. Paused, stepped and slowed from the keyboard, so an
+/// animation can be judged frame by frame; fixed at 1/60 s for `--shot`, so a
+/// capture is the same every run.
+struct Clock {
+    paused: bool,
+    speed: usize,
+    step: bool,
+    fixed: bool,
+    /// Story time, seconds.
+    t: f64,
+}
+
+const SPEEDS: [f32; 3] = [1.0, 0.25, 0.1];
+const FIXED_DT: f32 = 1.0 / 60.0;
+
+impl Clock {
+    fn new() -> Self {
+        Self {
+            paused: false,
+            speed: 0,
+            step: false,
+            fixed: false,
+            t: 0.0,
+        }
+    }
+
+    /// This frame's story `dt`.
+    fn tick(&mut self, frame_dt: f32) -> f32 {
+        let base = if self.fixed {
+            FIXED_DT
+        } else {
+            frame_dt.min(0.1)
+        };
+        let dt = if self.paused {
+            if std::mem::take(&mut self.step) {
+                FIXED_DT
+            } else {
+                0.0
+            }
+        } else {
+            base * SPEEDS[self.speed]
+        };
+        self.t += f64::from(dt);
+        dt
+    }
+
+    fn label(&self) -> String {
+        let state = if self.paused {
+            "paused".to_string()
+        } else {
+            format!("{}×", SPEEDS[self.speed])
+        };
+        format!("t {:.2}s · {state}", self.t)
+    }
 }
 
 fn next_status(s: OrderStatus) -> OrderStatus {
@@ -719,6 +801,16 @@ struct Storybook {
     /// A swipe recognised this frame, for whichever story consumes gestures.
     /// Set by the main loop before `frame`, cleared by the story that uses it.
     pending_swipe: Option<SwipeDir>,
+    /// This frame's whole gesture, for the gamekit stories.
+    gesture: Gesture,
+    clock: Clock,
+    /// This frame's story `dt`, from the clock.
+    dt: f32,
+    /// How far the sidebar list is scrolled, in points.
+    scroll: f32,
+    /// Scroll the selected story into view on the next sidebar draw: set when
+    /// a story is chosen by key or `--story`, which may be off-screen.
+    reveal: bool,
 }
 
 impl Storybook {
@@ -733,6 +825,11 @@ impl Storybook {
             theme_idx: 0,
             last_action: None,
             pending_swipe: None,
+            gesture: Gesture::default(),
+            clock: Clock::new(),
+            dt: 0.0,
+            scroll: 0.0,
+            reveal: false,
         }
     }
 
@@ -758,6 +855,17 @@ impl Storybook {
         if is_key_pressed(KeyCode::T) {
             self.theme_idx = (self.theme_idx + 1) % Theme::PRESETS.len();
         }
+        // Story time: P pauses, `.` steps one frame, S cycles slow motion.
+        if is_key_pressed(KeyCode::P) {
+            self.clock.paused = !self.clock.paused;
+        }
+        if is_key_pressed(KeyCode::Period) {
+            self.clock.paused = true;
+            self.clock.step = true;
+        }
+        if is_key_pressed(KeyCode::S) {
+            self.clock.speed = (self.clock.speed + 1) % SPEEDS.len();
+        }
         for (i, key) in NUM_KEYS.iter().enumerate() {
             if i < n && is_key_pressed(*key) {
                 self.select(i);
@@ -768,6 +876,7 @@ impl Storybook {
     fn select(&mut self, i: usize) {
         self.selected = i;
         self.last_action = None;
+        self.reveal = true;
     }
 
     fn draw_sidebar(&mut self, p: &Painter) {
@@ -789,20 +898,62 @@ impl Storybook {
         let (mx, my) = mouse_position();
         let mouse = vec2(mx, my);
 
-        let mut y = 40.0;
-        p.text("STORYBOOK", 16.0, y, 16.0, p.theme.color.accent);
-        y += 30.0;
-
+        // The list scrolls under a fixed title band. Rows are laid out in list
+        // coordinates first, so the content height is known before drawing.
+        let list_top = SIDEBAR_TITLE_H;
+        let visible = (screen_height() - list_top).max(0.0);
+        let mut rows = Vec::with_capacity(self.stories.len());
+        let mut headings = Vec::new();
+        let mut y = 12.0;
         let mut last_cat = "";
-        let mut clicked = None;
-        for (i, s) in self.stories.iter().enumerate() {
+        for s in &self.stories {
             if s.category != last_cat {
                 last_cat = s.category;
                 y += 6.0;
-                p.text(s.category, 16.0, y, 11.0, p.theme.color.text_muted);
+                headings.push((y, s.category));
                 y += 18.0;
             }
+            rows.push(y);
+            y += 26.0;
+        }
+        let content = y;
+
+        if mouse.x < SIDEBAR_W {
+            let (_, wheel) = mouse_wheel();
+            // A wheel reports notches (about ±1); a trackpad reports points.
+            let step = if wheel.abs() <= 1.5 {
+                wheel * 36.0
+            } else {
+                wheel
+            };
+            self.scroll -= step;
+        }
+        if std::mem::take(&mut self.reveal)
+            && let Some(&row_y) = rows.get(self.selected)
+        {
+            let (top, bottom) = (row_y - 13.0, row_y + 13.0);
+            if top < self.scroll {
+                self.scroll = top - 8.0;
+            } else if bottom > self.scroll + visible {
+                self.scroll = bottom - visible + 8.0;
+            }
+        }
+        let max_scroll = (content - visible).max(0.0);
+        self.scroll = self.scroll.clamp(0.0, max_scroll);
+        let off = list_top - self.scroll;
+
+        for (hy, cat) in &headings {
+            p.text(cat, 16.0, hy + off, 11.0, p.theme.color.text_muted);
+        }
+        let mut clicked = None;
+        for (i, s) in self.stories.iter().enumerate() {
+            let y = rows[i] + off;
             let row = Rect::new(6.0, y - 13.0, SIDEBAR_W - 12.0, 24.0);
+            // Off-screen rows are neither drawn nor tappable; a row half under
+            // the title band is drawn (the band covers it) but not tappable.
+            if row.y + row.h < list_top || row.y > screen_height() {
+                continue;
+            }
             let selected = i == self.selected;
             if selected {
                 draw_rectangle(
@@ -835,13 +986,44 @@ impl Storybook {
                     p.theme.color.text_primary
                 },
             );
-            if p.tapped(row) {
+            if row.y >= list_top - 1.0 && p.tapped(row) {
                 clicked = Some(i);
             }
-            y += 26.0;
         }
+
+        // Title band, drawn last so scrolled rows pass beneath it.
+        draw_rectangle(0.0, 0.0, SIDEBAR_W, list_top, p.theme.color.bg_secondary);
+        p.text("STORYBOOK", 16.0, 40.0, 16.0, p.theme.color.accent);
+        draw_line(
+            0.0,
+            list_top,
+            SIDEBAR_W,
+            list_top,
+            1.0,
+            theme::with_alpha(
+                p.theme.color.bg_highlight,
+                if self.scroll > 0.0 { 1.0 } else { 0.0 },
+            ),
+        );
+
+        // Scrollbar, only when the list overflows.
+        if max_scroll > 0.0 {
+            let track = visible - 8.0;
+            let thumb = (track * visible / content).max(24.0);
+            let ty = list_top + 4.0 + (track - thumb) * (self.scroll / max_scroll);
+            draw_rectangle(
+                SIDEBAR_W - 5.0,
+                ty,
+                3.0,
+                thumb,
+                theme::with_alpha(p.theme.color.text_muted, 0.6),
+            );
+        }
+
         if let Some(i) = clicked {
+            // Clicked rows are already in view; don't jump.
             self.select(i);
+            self.reveal = false;
         }
     }
 
@@ -862,13 +1044,15 @@ impl Storybook {
             p.theme.color.text_primary,
         );
         y += 20.0;
-        p.text(
-            &format!("arrows / click to switch  ·  t = theme: {}", p.theme.name),
-            x0,
-            y,
-            12.0,
-            p.theme.color.text_muted,
-        );
+        let help = match self.stories[sel].kind() {
+            Kind::Kit => format!(
+                "arrows / click to switch  ·  t = theme: {}  ·  p pause · . step · s slow  ·  {}",
+                p.theme.name,
+                self.clock.label()
+            ),
+            _ => format!("arrows / click to switch  ·  t = theme: {}", p.theme.name),
+        };
+        p.text(&help, x0, y, 12.0, p.theme.color.text_muted);
         y += 30.0;
 
         match self.stories[sel].kind() {
@@ -886,6 +1070,18 @@ impl Storybook {
             Kind::Fulfilment => self.draw_fulfilment(p, sel, x0, y, col_w),
             Kind::SquadPicker => self.draw_squad_picker(p, sel, x0, y, col_w),
             Kind::Stick => self.draw_stick(p, sel, x0, y),
+            Kind::Kit => {
+                let (dt, t, g) = (self.dt, self.clock.t, self.gesture);
+                if let Body::Kit(story) = &mut self.stories[sel].body {
+                    let area = Rect::new(
+                        x0,
+                        y,
+                        screen_width() - x0 - 20.0,
+                        screen_height() - y - 20.0,
+                    );
+                    story.draw(p, area, &g, dt, t);
+                }
+            }
         }
     }
 
@@ -1413,6 +1609,9 @@ fn window_conf() -> Conf {
 struct Args {
     story: Option<String>,
     shot: Option<String>,
+    /// With `--shot`: capture once story time reaches this many seconds. The
+    /// clock is fixed at 1/60 s per frame in shot mode, so it is exact.
+    at: Option<f64>,
 }
 
 fn args() -> Args {
@@ -1426,6 +1625,7 @@ fn args() -> Args {
     Args {
         story: value("--story"),
         shot: value("--shot"),
+        at: value("--at").and_then(|s| s.parse().ok()),
     }
 }
 
@@ -1461,11 +1661,14 @@ async fn main() {
     // one frame stale, and the first frame has no layout from a previous pass.
     const SETTLE_FRAMES: u32 = 3;
     let mut frames = 0;
+    book.clock.fixed = args.shot.is_some();
     loop {
         let theme = book.current_theme();
         let gesture = gestures.update();
         let p = Painter::new(font.as_ref(), mono.as_ref(), theme, gesture.tap);
         book.pending_swipe = gesture.swipe;
+        book.gesture = gesture;
+        book.dt = book.clock.tick(get_frame_time());
 
         // Snapshot mode draws into an offscreen target and reads *that*, not
         // the window. `get_screen_data` reads the front buffer, which an
@@ -1473,7 +1676,8 @@ async fn main() {
         // returns solid black, indistinguishable from a widget that drew
         // nothing. Rendering to a texture we own sidesteps the window server
         // entirely, so a capture works headless and in CI.
-        let shot = args.shot.as_ref().filter(|_| frames >= SETTLE_FRAMES);
+        let due = frames >= SETTLE_FRAMES && args.at.is_none_or(|at| book.clock.t >= at);
+        let shot = args.shot.as_ref().filter(|_| due);
         let target = shot.map(|_| {
             let t = render_target(screen_width() as u32, screen_height() as u32);
             t.texture.set_filter(FilterMode::Linear);

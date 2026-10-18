@@ -175,6 +175,22 @@ impl OpenseaClient {
         self.get_json(&path).await
     }
 
+    /// `GET /chain/{chain}/contract/{address}/nfts/{identifier}` — one token.
+    ///
+    /// Returns the `nft` object: the endpoint's `{"nft": …}` envelope is
+    /// unwrapped here, the same way [`Self::chains`] unwraps its list.
+    pub async fn get_nft(
+        &self,
+        chain: &ChainSlug,
+        address: &str,
+        identifier: &str,
+    ) -> Result<NftDetails, OpenseaError> {
+        let response: NftResponse = self
+            .get_json(&nft_path(chain.as_str(), address, identifier))
+            .await?;
+        Ok(response.nft)
+    }
+
     /// The escape hatch: any `/api/v2` path, with your own type, using this
     /// client's key, timeouts and error handling.
     ///
@@ -203,6 +219,17 @@ impl OpenseaClient {
 
         Ok(serde_json::from_str(&response.data)?)
     }
+}
+
+/// The path of one token. Percent-encoded per segment: an ERC-1155 id is not
+/// required to be numeric, and an id carrying `/` must stay one segment.
+fn nft_path(chain: &str, address: &str, identifier: &str) -> String {
+    format!(
+        "/chain/{}/contract/{}/nfts/{}",
+        encode_query_value(chain),
+        encode_query_value(address),
+        encode_query_value(identifier)
+    )
 }
 
 /// The reason a request was refused: OpenSea's `{"errors":[…]}` when the body is
@@ -259,6 +286,24 @@ mod tests {
     fn base64_padding_and_plus_are_encoded() {
         // `+` would decode as a space and `=` would end the value early.
         assert_eq!(encode_query_value("a+b/c=="), "a%2Bb%2Fc%3D%3D");
+    }
+
+    #[test]
+    fn an_nft_path_is_encoded_per_segment() {
+        assert_eq!(
+            nft_path(
+                "ethereum",
+                "0xf08acc2f16ddf2f5d047fcc4d39a6c528a9645af",
+                "4860"
+            ),
+            "/chain/ethereum/contract/0xf08acc2f16ddf2f5d047fcc4d39a6c528a9645af/nfts/4860"
+        );
+
+        // A slash in an identifier must not become a path separator.
+        assert_eq!(
+            nft_path("base", "0xabc", "a/b+c"),
+            "/chain/base/contract/0xabc/nfts/a%2Fb%2Bc"
+        );
     }
 
     #[test]
