@@ -314,12 +314,27 @@ impl Capture {
 
     /// Write `path` (PNG) and the report beside it (`.txt`), headed by
     /// `note` (the seed, the moment). Returns the report's path.
+    ///
+    /// The PNG is written opaque. macroquad blends alpha like colour, so
+    /// every translucent layer (grain, a shadow, a skid mark) wears the
+    /// target's alpha down, and the image shows paler than the window
+    /// against a viewer's white, though its colours are right. A window has
+    /// no transparency, so a capture of one should not either.
     pub fn save(self, path: &str, note: &str) -> std::io::Result<PathBuf> {
         set_default_camera();
-        self.target.texture.get_texture_data().export_png(path);
+        let mut image = self.target.texture.get_texture_data();
+        opaque(&mut image.bytes);
+        image.export_png(path);
         let txt = Path::new(path).with_extension("txt");
         std::fs::write(&txt, report::render(path, note))?;
         Ok(txt)
+    }
+}
+
+/// Set every pixel of RGBA `bytes` fully opaque.
+fn opaque(bytes: &mut [u8]) {
+    for px in bytes.chunks_exact_mut(4) {
+        px[3] = 255;
     }
 }
 
@@ -644,6 +659,13 @@ mod tests {
         // Unflipped, the window is upside down: the bug this exists for.
         let raw = Camera2D::from_display_rect(Rect::new(0.0, 0.0, size.x, size.y));
         assert!(ndc(&raw, Vec2::ZERO).abs_diff_eq(vec2(-1.0, -1.0), 1e-5));
+    }
+
+    #[test]
+    fn a_capture_is_written_opaque_and_its_colours_kept() {
+        let mut bytes = vec![159, 101, 52, 204, 10, 20, 30, 0];
+        opaque(&mut bytes);
+        assert_eq!(bytes, [159, 101, 52, 255, 10, 20, 30, 255]);
     }
 
     #[test]
