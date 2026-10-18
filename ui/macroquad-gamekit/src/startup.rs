@@ -32,8 +32,9 @@ use crate::text::{GlyphFlush, flush_glyphs};
 pub const SETTLE_FRAMES: u32 = 30;
 pub const SETTLE_SECONDS: f32 = 1.2;
 
-/// Seconds a live frame may spend caching glyphs.
-pub const GLYPH_BUDGET: f64 = 0.004;
+/// New text sizes a live frame warms: one size is a few milliseconds in a
+/// release build, so a view needing several fills in over as many frames.
+pub const LIVE_SIZES_PER_FRAME: usize = 1;
 
 /// Where a screen is between opening and drawing whole.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,8 +45,8 @@ pub enum Phase {
     /// Text is on and the glyph gate holds back what it has not cached; each
     /// frame caches everything it was asked for.
     Warming,
-    /// The screen draws whole. Glyphs a new view needs are cached within a
-    /// budget, so it fills in over a few frames rather than pausing.
+    /// The screen draws whole. Sizes a new view needs are warmed
+    /// [`LIVE_SIZES_PER_FRAME`] at a time, so it fills in rather than pausing.
     Live,
 }
 
@@ -59,9 +60,9 @@ impl Phase {
         self == Self::Live
     }
 
-    /// The budget to hand [`flush_glyphs`]: everything unless live.
-    pub fn glyph_budget(self) -> Option<f64> {
-        self.live().then_some(GLYPH_BUDGET)
+    /// The size limit to hand [`flush_glyphs`]: none unless live.
+    pub fn glyph_sizes(self) -> Option<usize> {
+        self.live().then_some(LIVE_SIZES_PER_FRAME)
     }
 
     /// Before drawing: whether the pixel scale changed, and how long the
@@ -163,7 +164,7 @@ impl Startup {
     /// its data is in. Draw the cover with [`draw_cover`](Self::draw_cover)
     /// after this.
     pub fn finish(&mut self, dt: f32, ready: bool) -> Finished {
-        let flushed = flush_glyphs(self.phase.glyph_budget());
+        let flushed = flush_glyphs(self.phase.glyph_sizes());
         let went_live = self.phase.observe_flush(flushed, ready);
         self.preloader.update(dt, self.phase.live());
         Finished { flushed, went_live }
@@ -216,7 +217,7 @@ mod tests {
         );
         assert!(phase.observe_flush(GlyphFlush::default(), true));
         assert!(phase.live());
-        assert_eq!(phase.glyph_budget(), Some(GLYPH_BUDGET));
+        assert_eq!(phase.glyph_sizes(), Some(LIVE_SIZES_PER_FRAME));
         assert!(!phase.observe_flush(GlyphFlush::default(), true), "once");
     }
 
@@ -225,7 +226,7 @@ mod tests {
         let mut phase = Phase::Live;
         phase.observe_scale(true, 30.0);
         assert!(!phase.text());
-        assert_eq!(phase.glyph_budget(), None);
+        assert_eq!(phase.glyph_sizes(), None);
         phase.observe_scale(false, 30.1);
         assert_eq!(phase, Phase::Settling { stable_frames: 1 });
     }

@@ -19,6 +19,10 @@ chain = ["dep:chain-heartbeat"]
 
 [dependencies]
 macroquad = "0.4"
+# How every label is drawn and measured: exact sizes, rasterised at the device
+# pixels they land on, held back by the glyph gate when a host turns it on, and
+# recorded for capture reports. Shared with macroquad-gamekit.
+macroquad-text = { path = "../macroquad-text" }
 # The shared design vocabulary. This crate takes only the PALETTE and the colour
 # science from it today — `Theme` keeps its own flat ten fields, so the ~191
 # `p.theme.muted` call sites across four crates are untouched. What changes is

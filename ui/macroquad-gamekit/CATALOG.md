@@ -10,10 +10,11 @@ across frames and takes time as an argument. Stories are in `macroquad-storybook
 under "gamekit". MACROQUAD only: no wasm-bindgen, see the shared-crates CLAUDE.md on
 runtime pairs.
 
-17 modules.
+18 modules.
 
 | module | what it is |
 |---|---|
+| `app` | `run` — the frame loop every gamekit client runs, written once: the clock, the viewport, startup and the preloader, the glyph gate, captures, the frame log and the native frame cap, around a [`Game`]'s update and draw |
 | `audio` | `Audio` — sound effects and one looping music track behind a single mute, plus `wav`, which wraps synthesised samples so macroquad can load them (feature `audio`) |
 | `bake` | `Baked` — draw something once into a texture, then move, turn and fade the texture: how a card face is drawn every frame without laying out its text every frame |
 | `ease` | `Ease` — named easing curves, so an animation says how it moves rather than writing the maths at each call site |

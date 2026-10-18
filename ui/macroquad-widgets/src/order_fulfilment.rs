@@ -170,7 +170,7 @@ pub fn order_fulfilment(
     // ── Heartbeat: a pulsing dot for active orders, solid for terminal ──
     let status_ink = vm.status.token().get(c);
     if vm.status.is_active() {
-        let pulse = (get_time() * 2.0).sin() as f32 * 0.5 + 0.5;
+        let pulse = (p.time() * 2.0).sin() as f32 * 0.5 + 0.5;
         draw_circle(
             x + 6.0,
             y - 6.0,

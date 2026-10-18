@@ -667,6 +667,7 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::kit("rich text", KitView::Text),
         Story::kit("hit effects", KitView::Fx),
         Story::kit("rounded art", KitView::Art),
+        Story::kit("preloader", KitView::Preload),
     ]
 }
 

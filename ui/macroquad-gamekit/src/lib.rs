@@ -9,14 +9,15 @@
 //! The companion to `macroquad-widgets`: those widgets are stateless by
 //! charter, and everything here is state that lives across frames. Every
 //! module takes time as an argument and never reads the clock, so animations
-//! are unit-tested, paused, stepped and captured at exact moments. The one
-//! exception is [`flush_glyphs`]'s work budget, which is wall-clock time by
-//! nature and changes only when text appears, never what an animation shows.
+//! are unit-tested, paused, stepped and captured at exact moments. The wall
+//! clock is read in one place, the [`harness`]: the frame time, and the timer
+//! and frame cap the loop in [`app`] uses.
 //!
-//! Text-heavy screens should turn on the glyph gate ([`enable_glyph_gate`]):
-//! without it, macroquad re-uploads a font's whole atlas every time a run
-//! brings a new glyph, which is a stall on the web and gigabytes of graphics
-//! memory on macOS.
+//! A client's frame loop is [`app::run`]: implement [`Game`] and the loop
+//! brings startup, the preloader, the glyph gate, captures and the frame log.
+//! The gate matters for any screen with much text: without it, macroquad
+//! re-uploads a font's whole atlas every time a run brings a new glyph, which
+//! is a stall on the web and gigabytes of graphics memory on macOS.
 //!
 //! Stories for each module are in `macroquad-storybook`, under "gamekit".
 //! Read `CATALOG.md` before adding a module, and `CARD-FACES.md` before
@@ -27,6 +28,7 @@
 //! `gamepads` (pads by player slot — [`pads`]). In the browser both run
 //! through miniquad plugins the page must load; [`web`] ships them.
 
+pub mod app;
 #[cfg(feature = "audio")]
 pub mod audio;
 pub mod bake;
@@ -47,6 +49,7 @@ pub mod text;
 pub mod tween;
 pub mod web;
 
+pub use app::{Backdrop, Frame, Game};
 #[cfg(feature = "audio")]
 pub use audio::{Audio, load_pcm, wav};
 pub use bake::{Baked, Baker};

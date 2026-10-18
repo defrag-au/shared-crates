@@ -1,6 +1,6 @@
 //! Stories for `macroquad-gamekit`: easing curves, a fanned card hand you can
-//! hover, drag and long-press, rich text with inline icons, hit effects, and
-//! rounded art.
+//! hover, drag and long-press, rich text with inline icons, hit effects,
+//! rounded art, and the preloader's cover lifting off a screen.
 //!
 //! Every story is driven by the storybook's clock (`dt` and `t`), so P pauses,
 //! `.` steps a frame and S slows time: the way to judge a 150 ms settle. With
@@ -13,8 +13,8 @@
 use macroquad::prelude::*;
 use macroquad_gamekit::{
     Align, Animated, Baked, Ease, HoverGrace, MacroquadMeasure, Particles, Pointer, PointerConfig,
-    PointerEvent, Popups, Pose, RichText, RoundedArt, Sequencer, Shake, Sprite, TextStyle,
-    draw_order, fill_rounded, stroke_rounded, topmost,
+    PointerEvent, Popups, Pose, Preloader, RichText, RoundedArt, Sequencer, Shake, Sprite,
+    TextStyle, draw_order, fill_rounded, stroke_rounded, topmost,
 };
 use macroquad_widgets::{Gesture, Painter};
 use ui_theme::TextSize;
@@ -27,6 +27,7 @@ pub enum KitView {
     Text,
     Fx,
     Art,
+    Preload,
 }
 
 /// Card size in points. // theme-exempt: geometry, not text
@@ -143,12 +144,23 @@ struct FxStage {
     last_fire: f64,
 }
 
+/// A preloader over a stand-in screen, restarted every few seconds.
+struct PreloadStage {
+    preloader: Preloader,
+    started: f64,
+}
+
+/// Seconds the stand-in screen takes to be ready, and between restarts.
+const PRELOAD_READY: f64 = 1.6;
+const PRELOAD_CYCLE: f64 = 4.0;
+
 pub struct KitStory {
     pub view: KitView,
     art: RoundedArt,
     textures: Vec<Texture2D>,
     hand: Option<Hand>,
     fx: FxStage,
+    preload: PreloadStage,
 }
 
 impl KitStory {
@@ -165,6 +177,10 @@ impl KitStory {
                 pulse: Animated::new(1.0),
                 last_fire: -10.0,
             },
+            preload: PreloadStage {
+                preloader: Preloader::new(),
+                started: 0.0,
+            },
         }
     }
 
@@ -176,7 +192,46 @@ impl KitStory {
             KitView::Text => text_story(p, area),
             KitView::Fx => self.fx(p, area, g, dt, t),
             KitView::Art => self.art_story(p, area),
+            KitView::Preload => self.preload_story(p, area, g, dt, t),
         }
+    }
+
+    // ── preload ─────────────────────────────────────────────────────────
+
+    /// The cover and spinner while a stand-in screen "loads", then the lift.
+    fn preload_story(&mut self, p: &Painter, area: Rect, g: &Gesture, dt: f32, t: f64) {
+        let stage = &mut self.preload;
+        if g.tap.is_some_and(|at| area.contains(at)) || t - stage.started >= PRELOAD_CYCLE {
+            stage.preloader = Preloader::new();
+            stage.started = t;
+        }
+        let ready = t - stage.started >= PRELOAD_READY;
+        stage.preloader.update(dt, ready);
+
+        // The screen underneath, drawn whole.
+        fill_rounded(area, 12.0, p.theme.color.bg_secondary);
+        p.text(
+            "the screen, drawn whole (tap to load again)",
+            area.x + 16.0,
+            area.y + 24.0,
+            p.size(TextSize::Sm),
+            p.theme.color.text_muted,
+        );
+        for (i, width) in [0.72, 0.55, 0.64].into_iter().enumerate() {
+            let bar = Rect::new(
+                area.x + 16.0,
+                area.y + 52.0 + i as f32 * 34.0,
+                (area.w - 32.0) * width,
+                20.0,
+            );
+            fill_rounded(bar, 6.0, p.theme.color.bg_highlight);
+        }
+        stage.preloader.draw(
+            area,
+            p.theme.color.bg_secondary,
+            p.theme.color.bg_primary,
+            p.theme.color.accent,
+        );
     }
 
     // ── hand ────────────────────────────────────────────────────────────

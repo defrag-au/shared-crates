@@ -62,6 +62,7 @@ members = [
     "ui/arcade-harness",
     "ui/macroquad-tui",
     "ui/macroquad-wallet-flow",
+    "ui/macroquad-text",
     "ui/macroquad-widgets",
     "ui/macroquad-gamekit",
     "ui/macroquad-bundle",
@@ -244,3 +245,13 @@ datum-parsing = { path = "pipeline/datum-parsing" }
 maestro = { path = "indexers/maestro" }
 http-client = { path = "http-client" }
 wasm_safe_serde = { path = "wasm-safe-serde" }
+
+# macroquad's glyph-atlas packing fix (upstream 8d602d3, "text: avoid spurious
+# font atlas growth"), which landed after 0.4.16. A glyph landing within 2 px of
+# a row's end doubled the whole atlas, at random: one solada board run in twelve
+# reached an 8192² atlas (256 MB). The rev is 0.4.16 plus a docs change plus the
+# fix, nothing else. A [patch] only applies in the workspace that builds, so
+# every consumer of macroquad-gamekit carries this line too.
+# Drop it, here and in each consumer, once a release after 0.4.16 is out.
+[patch.crates-io]
+macroquad = { git = "https://github.com/not-fl3/macroquad", rev = "8d602d3f8ebb8a3a582ee15d92983bbb81ee3ef6" }

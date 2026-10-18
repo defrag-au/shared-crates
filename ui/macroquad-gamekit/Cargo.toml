@@ -35,6 +35,10 @@ macroquad = "0.4"
 # `Gesture` — the pointer facts the kit's `Pointer` tracker builds on, so a game
 # and the widgets read one recogniser rather than two.
 macroquad-widgets = { path = "../macroquad-widgets" }
+# Text — styles, rich text layout, the glyph gate and the capture report —
+# shared with the widgets, so both draw text one way. Re-exported as `text`
+# and `harness::report`.
+macroquad-text = { path = "../macroquad-text" }
 # Gamepads: gilrs on desktop, the browser Gamepad API through a miniquad plugin
 # on the web. `default-features = false` drops its wasm-bindgen backend, which
 # cannot run under miniquad's gl.js.
