@@ -84,6 +84,13 @@ impl AssetNamespace {
     /// the estate's namespace; it names the standard rather than the chain.
     pub const FA2: &'static str = "fa2";
 
+    /// An XRPL NFToken (XLS-20).
+    ///
+    /// The reference is the 64-character NFTokenID — the token is the asset, as
+    /// with Solana's `nft`, so there is no token half. The namespace is the one
+    /// the registered CAIP-19 XRPL profile publishes.
+    pub const XLS20: &'static str = "xls20";
+
     /// A Midnight non-fungible token.
     ///
     /// There is no registered CAIP-19 profile for Midnight, so this is the
@@ -504,6 +511,8 @@ mod tests {
             "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769",
             "eip155:1/erc20:0x6b175474e89094c44da98b954eedeac495271d0f",
             "eip155:1/slip44:60",
+            // From the registered CAIP-19 XRPL profile's test cases.
+            "xrpl:0/xls20:000B013A95F14B0044F78A264E41713C64B5F89242540EE208C3098E00000D65",
         ] {
             let parsed: TokenRef = example.parse().expect("should parse");
             assert_eq!(parsed.to_string(), example);
@@ -650,6 +659,12 @@ mod tests {
             (
                 format!("solana:{SOLANA_MAINNET}/nft:{solana_mint}"),
                 format!("solana:{SOLANA_MAINNET}:nft:{solana_mint}"),
+            ),
+            (
+                "xrpl:0/xls20:000B013A95F14B0044F78A264E41713C64B5F89242540EE208C3098E00000D65"
+                    .to_string(),
+                "xrpl:0:xls20:000B013A95F14B0044F78A264E41713C64B5F89242540EE208C3098E00000D65"
+                    .to_string(),
             ),
             (
                 "midnight:mainnet/mnft:0xabcdef/1".to_string(),
