@@ -2,6 +2,7 @@
 name = "macroquad-widgets"
 version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 publish = false
 
 # VM-driven, immediate-mode widgets for macroquad buyer-facing surfaces (the

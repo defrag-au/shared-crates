@@ -9,8 +9,10 @@
 //! Keep it free of game logic and of I/O beyond the wallet bridge.
 
 use macroquad::prelude::Vec2;
+/// Re-exported for hosts that read [`WalletFlow::state`].
+pub use macroquad_widgets::WalletState;
 use macroquad_widgets::{
-    Painter, Theme, WalletAction, WalletConnectVm, WalletItem, WalletState, wallet_connect,
+    Painter, Theme, WalletAction, WalletConnectVm, WalletItem, wallet_connect,
 };
 use wallet_miniquad::{self as wallet, PollResult, ReqId};
 
@@ -59,6 +61,40 @@ impl WalletFlow {
         self.stake_address.as_deref()
     }
 
+    /// Where the flow is, for a host that draws its own UI rather than
+    /// [`Self::draw`]'s panel — a game screen with its own type ramp and
+    /// buttons. Drive it with [`Self::connect`], [`Self::disconnect`] and
+    /// [`Self::retry`]; [`Self::update`] still advances it.
+    pub fn state(&self) -> &WalletState {
+        &self.vm.state
+    }
+
+    /// Start connecting the wallet with this CIP-30 key (`window.cardano.<key>`).
+    pub fn connect(&mut self, key: &str) {
+        let name = match &self.vm.state {
+            WalletState::Disconnected(items) => items
+                .iter()
+                .find(|i| i.key == key)
+                .map(|i| i.name.clone())
+                .unwrap_or_else(|| key.to_string()),
+            _ => key.to_string(),
+        };
+        self.connecting = Some((wallet::connect(key), name));
+        self.vm.state = WalletState::Connecting;
+    }
+
+    /// Forget the connection and list the wallets again.
+    pub fn disconnect(&mut self) {
+        wallet::disconnect();
+        self.stake_address = None;
+        self.vm.state = WalletState::Disconnected(Self::providers());
+    }
+
+    /// After an error: list the wallets again.
+    pub fn retry(&mut self) {
+        self.vm.state = WalletState::Disconnected(Self::providers());
+    }
+
     /// Poll in-flight requests. Call once per frame.
     pub fn update(&mut self) {
         if let Some((id, name)) = &self.connecting {
@@ -105,26 +141,9 @@ impl WalletFlow {
         let painter = Painter::new(None, None, Theme::tokyo_night(), tap);
         let resp = wallet_connect(&painter, &self.vm, x, y, w);
         match resp.action {
-            Some(WalletAction::Connect(key)) => {
-                let name = match &self.vm.state {
-                    WalletState::Disconnected(items) => items
-                        .iter()
-                        .find(|i| i.key == key)
-                        .map(|i| i.name.clone())
-                        .unwrap_or_else(|| key.clone()),
-                    _ => key.clone(),
-                };
-                self.connecting = Some((wallet::connect(&key), name));
-                self.vm.state = WalletState::Connecting;
-            }
-            Some(WalletAction::Disconnect) => {
-                wallet::disconnect();
-                self.stake_address = None;
-                self.vm.state = WalletState::Disconnected(Self::providers());
-            }
-            Some(WalletAction::Retry) => {
-                self.vm.state = WalletState::Disconnected(Self::providers());
-            }
+            Some(WalletAction::Connect(key)) => self.connect(&key),
+            Some(WalletAction::Disconnect) => self.disconnect(),
+            Some(WalletAction::Retry) => self.retry(),
             None => {}
         }
     }

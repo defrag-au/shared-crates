@@ -668,6 +668,7 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::kit("hit effects", KitView::Fx),
         Story::kit("rounded art", KitView::Art),
         Story::kit("preloader", KitView::Preload),
+        Story::kit("card face", KitView::Face),
     ]
 }
 

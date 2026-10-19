@@ -1,6 +1,7 @@
 //! `Pointer` — the press, drag, long-press and tap a card game needs, built on
-//! the widgets crate's `Gesture`; and `HoverGrace`, which keeps a hover alive
-//! for a moment between targets.
+//! the widgets crate's `Gesture`; `Swipes`, the four-way swipe an arcade game
+//! needs; and `HoverGrace`, which keeps a hover alive for a moment between
+//! targets.
 //!
 //! `macroquad_widgets::Gestures` resolves a tap or a swipe when the pointer
 //! lifts, and reports where it is while down. A card needs more, while the
@@ -18,6 +19,8 @@
 
 use macroquad::prelude::Vec2;
 use macroquad_widgets::Gesture;
+
+use crate::dir::Dir4;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PointerConfig {
@@ -143,6 +146,63 @@ impl Pointer {
             }
         }
         out
+    }
+}
+
+/// A finished four-way swipe: where the pointer went down, where it last was
+/// before lifting, and which way it mostly went.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Swipe {
+    pub from: Vec2,
+    pub to: Vec2,
+    pub dir: Dir4,
+}
+
+/// Four-way swipes, for games: a hop in Frogger, a turn in Snake.
+///
+/// The widgets' `Gesture::swipe` is a page turn — sideways only, and only when
+/// clearly horizontal — and stays that way. This reads the same `Gesture` and
+/// resolves any press that travelled at least `min` (in the gesture's units:
+/// stage units for [`Frame::gesture`](crate::Frame::gesture)) into its
+/// dominant direction when it lifts. A shorter press resolves to nothing, and
+/// the gesture's own tap still fires for it.
+#[derive(Clone, Copy, Debug)]
+pub struct Swipes {
+    pub min: f32,
+    press: Option<(Vec2, Vec2)>,
+}
+
+impl Swipes {
+    pub fn new(min: f32) -> Self {
+        Self { min, press: None }
+    }
+
+    /// Feed this frame's gesture; a swipe comes back on the frame it lifts.
+    pub fn update(&mut self, g: &Gesture) -> Option<Swipe> {
+        match (g.drag, &mut self.press) {
+            (Some(at), Some((_, last))) => {
+                *last = at;
+                None
+            }
+            (Some(at), None) => {
+                self.press = Some((at, at));
+                None
+            }
+            (None, Some((from, to))) => {
+                let (from, to) = (*from, *to);
+                self.press = None;
+                (from.distance(to) >= self.min)
+                    .then(|| Dir4::of(to - from))
+                    .flatten()
+                    .map(|dir| Swipe { from, to, dir })
+            }
+            (None, None) => None,
+        }
+    }
+
+    /// Forget a press in progress (a scene change mid-swipe).
+    pub fn cancel(&mut self) {
+        self.press = None;
     }
 }
 
@@ -289,6 +349,48 @@ mod tests {
         let at = vec2(1.0, 2.0);
         let ev = p.update(&up(Some(at)), DT);
         assert_eq!(ev.last(), Some(&PointerEvent::Tap { at }));
+    }
+
+    fn swipe_over(s: &mut Swipes, path: &[Vec2]) -> Option<Swipe> {
+        for &at in path {
+            assert_eq!(s.update(&down(at)), None, "nothing resolves while down");
+        }
+        s.update(&up(None))
+    }
+
+    #[test]
+    fn a_swipe_resolves_four_ways_on_release() {
+        let mut s = Swipes::new(20.0);
+        let o = vec2(100.0, 100.0);
+        for (to, dir) in [
+            (vec2(104.0, 60.0), Dir4::Up),
+            (vec2(96.0, 140.0), Dir4::Down),
+            (vec2(60.0, 108.0), Dir4::Left),
+            (vec2(140.0, 92.0), Dir4::Right),
+        ] {
+            assert_eq!(
+                swipe_over(&mut s, &[o, (o + to) / 2.0, to]),
+                Some(Swipe { from: o, to, dir })
+            );
+        }
+    }
+
+    #[test]
+    fn a_press_shorter_than_min_is_not_a_swipe() {
+        let mut s = Swipes::new(20.0);
+        let o = vec2(0.0, 0.0);
+        assert_eq!(swipe_over(&mut s, &[o, vec2(0.0, -19.0)]), None);
+        // A one-frame click: no press was seen down, so nothing to resolve.
+        assert_eq!(s.update(&up(Some(o))), None);
+    }
+
+    #[test]
+    fn a_cancelled_press_does_not_resolve() {
+        let mut s = Swipes::new(20.0);
+        s.update(&down(Vec2::ZERO));
+        s.update(&down(vec2(0.0, 80.0)));
+        s.cancel();
+        assert_eq!(s.update(&up(None)), None);
     }
 
     #[test]

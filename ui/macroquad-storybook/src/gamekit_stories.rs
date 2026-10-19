@@ -12,9 +12,10 @@
 
 use macroquad::prelude::*;
 use macroquad_gamekit::{
-    Align, Animated, Baked, Ease, HoverGrace, MacroquadMeasure, Particles, Pointer, PointerConfig,
-    PointerEvent, Popups, Pose, Preloader, RichText, RoundedArt, Sequencer, Shake, Sprite,
-    TextStyle, draw_order, fill_rounded, stroke_rounded, topmost,
+    Align, Animated, Baked, Ease, HoverGrace, Icon, MacroquadMeasure, Particles, Pointer,
+    PointerConfig, PointerEvent, Popups, Pose, Preloader, RichText, RoundedArt, Sequencer, Shake,
+    Sprite, TextStyle, draw_icon, draw_order, emblem, fill_rounded, gem, line, plate,
+    shrink_to_fit, stroke_rounded, topmost,
 };
 use macroquad_widgets::{Gesture, Painter};
 use ui_theme::TextSize;
@@ -28,6 +29,7 @@ pub enum KitView {
     Fx,
     Art,
     Preload,
+    Face,
 }
 
 /// Card size in points. // theme-exempt: geometry, not text
@@ -193,6 +195,7 @@ impl KitStory {
             KitView::Fx => self.fx(p, area, g, dt, t),
             KitView::Art => self.art_story(p, area),
             KitView::Preload => self.preload_story(p, area, g, dt, t),
+            KitView::Face => face_story(p, area),
         }
     }
 
@@ -677,6 +680,102 @@ fn easing(p: &Painter, area: Rect, t: f64) {
             7.0,
             p.theme.color.accent_cyan,
         );
+    }
+}
+
+// ── card face ───────────────────────────────────────────────────────────
+
+/// The `icon` set and the `face` parts: every icon, gems in each tier hue,
+/// stat emblems with one to three digits, and title plates whose names shrink
+/// and then cut.
+fn face_story(p: &Painter, area: Rect) {
+    let c = p.theme.color;
+    let px = screen_dpi_scale();
+    let label = |s: &str, x: f32, y: f32| p.text(s, x, y, p.size(TextSize::Xs), c.text_muted);
+    let mut y = area.y + 16.0;
+
+    label("icon", area.x + 16.0, y);
+    y += 12.0;
+    for (i, icon) in Icon::ALL.iter().enumerate() {
+        let r = Rect::new(area.x + 16.0 + i as f32 * 40.0, y, 26.0, 26.0);
+        draw_icon(*icon, r, c.text_primary);
+    }
+    y += 52.0;
+
+    label("gem · the tier hues", area.x + 16.0, y);
+    y += 30.0;
+    for (i, hue) in [
+        c.text_muted,
+        c.accent_green,
+        c.accent_blue,
+        c.accent_magenta,
+        c.accent_orange,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let body = (
+            Color::new(
+                hue.r + (1.0 - hue.r) * 0.55,
+                hue.g + (1.0 - hue.g) * 0.55,
+                hue.b + (1.0 - hue.b) * 0.55,
+                1.0,
+            ),
+            Color::new(hue.r * 0.7, hue.g * 0.7, hue.b * 0.7, 1.0),
+        );
+        let n = (i * 17 + 3).to_string();
+        let style = TextStyle::new(p.font.cloned(), 14.0, c.bg_primary);
+        gem(
+            vec2(area.x + 36.0 + i as f32 * 52.0, y),
+            15.0,
+            body,
+            Some((n.as_str(), style)),
+            px,
+        );
+    }
+    y += 40.0;
+
+    label("emblem", area.x + 16.0, y);
+    y += 12.0;
+    for (i, (icon, hue, n)) in [
+        (Icon::Sword, c.accent_red, "7"),
+        (Icon::Shield, c.accent_blue, "12"),
+        (Icon::Bolt, c.accent_yellow, "100"),
+        (Icon::Heart, c.accent_green, "26"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        emblem(
+            vec2(area.x + 16.0 + i as f32 * 92.0, y),
+            22.0,
+            icon,
+            hue,
+            (n, p.font),
+            true,
+            px,
+        );
+    }
+    y += 44.0;
+
+    label("plate · a name that shrinks, then cuts", area.x + 16.0, y);
+    y += 12.0;
+    for name in [
+        "Short",
+        "A Somewhat Longer Name",
+        "A Name Far Too Long For Any Plate At All",
+    ] {
+        let r = Rect::new(area.x + 16.0, y, 200.0, 26.0);
+        plate(r, 6.0, (c.bg_highlight, c.bg_primary));
+        let (s, size) = shrink_to_fit(p.font, name, (16.0, 11.0), r.w - 20.0, px);
+        line(
+            &s,
+            TextStyle::new(p.font.cloned(), size, c.text_primary),
+            vec2(r.x + 10.0, r.center().y),
+            vec2(0.0, 0.5),
+            px,
+        );
+        y += 34.0;
     }
 }
 

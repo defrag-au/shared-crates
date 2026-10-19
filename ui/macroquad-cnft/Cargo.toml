@@ -1,0 +1,35 @@
+[package]
+name = "macroquad-cnft"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Cardano NFTs in a macroquad game: a player's holdings and their art as textures. The macroquad edge of cnft-holdings and a companion to macroquad-gamekit. JS plugin on the web, threads natively; no wasm-bindgen."
+
+[dependencies]
+# Direct, not a workspace dep — matches the sibling macroquad crates, which
+# all pin 0.4 the same way.
+macroquad = "0.4"
+# `ArtTile` draws through the kit: `RoundedArt` for the art, `Ease` for the
+# fade, `fill_rounded` for the flat states.
+macroquad-gamekit = { path = "../macroquad-gamekit" }
+# The theme a card's palette is read from. Already under the kit.
+macroquad-widgets = { workspace = true }
+# Colour science — contrast-picked ink, Oklab mixing. Already under
+# macroquad-widgets with the same feature, so it adds no crates.
+ui-theme = { workspace = true, features = ["macroquad"] }
+cnft-holdings = { workspace = true }
+# The fetch queue and texture cache policy (dependency-free).
+image-core = { path = "../image-core" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Plugin bridge — JsObject transport between Rust and js/cnft.js.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+sapp-jsutils = "0.1"
+
+# Native HTTP. Already in the tree through quad-net (arcade-harness), at the
+# same major version and default features, so it adds no crates.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ureq = "2"

@@ -14,6 +14,11 @@
 //!
 //! Every step exists because skipping it once cost a debugging round:
 //!
+//! 0. **Check the macroquad `[patch]`** before building. A gamekit client on
+//!    a crates.io macroquad ≤ 0.4.16 fails, naming the lines to copy
+//!    ([`MACROQUAD_PATCH`]); any other macroquad client gets a warning. A
+//!    `[patch]` applies only in the workspace that builds, and without it one
+//!    run in twelve grew a 256 MB glyph atlas.
 //! 1. **Build** for wasm32 in release with `-C link-arg=--allow-undefined`
 //!    appended to `RUSTFLAGS`. rustc 1.96 stopped passing it to wasm-ld, and
 //!    miniquad and sapp-jsutils still declare bare `extern "C"` imports that
@@ -186,9 +191,35 @@ pub fn check(dir: &Path, wasm: &str) -> Result<usize, String> {
     }
 }
 
+/// The `[patch]` every consumer of the gamekit must carry, as it is written.
+pub const MACROQUAD_PATCH: &str = r#"[patch.crates-io]
+macroquad = { git = "https://github.com/not-fl3/macroquad", rev = "8d602d3f8ebb8a3a582ee15d92983bbb81ee3ef6" }"#;
+
+/// Fail a gamekit client built on a crates.io macroquad that still has the
+/// glyph-atlas bug, and warn any other client that is. A `[patch]` applies
+/// only in the workspace that builds, so forgetting to copy it is silent:
+/// the game works, and one run in twelve grows a 256 MB font atlas.
+fn check_macroquad_patch(package: &str, linked: &metadata::Linked) -> Result<(), String> {
+    let metadata::PatchCheck::Unpatched { version, gamekit } = linked.macroquad_patch() else {
+        return Ok(());
+    };
+    let msg = format!(
+        "{package} links macroquad {version} from crates.io, which doubles its glyph atlas at \
+         random (256 MB on a bad run). Add this to the root Cargo.toml of the workspace that \
+         builds it:\n\n{MACROQUAD_PATCH}\n"
+    );
+    if gamekit {
+        Err(msg)
+    } else {
+        eprintln!("⚠ {msg}");
+        Ok(())
+    }
+}
+
 /// Build (unless told not to), stage and check one bundle.
 pub fn bundle(opts: &Options) -> Result<Bundle, String> {
     let linked = metadata::linked(&opts.cwd, &opts.package)?;
+    check_macroquad_patch(&opts.package, &linked)?;
     if opts.build {
         build(opts)?;
     }

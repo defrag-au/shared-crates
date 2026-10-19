@@ -39,7 +39,7 @@ pub enum SwipeDir {
 }
 
 /// What the user did this frame.
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug, PartialEq)]
 pub struct Gesture {
     /// A completed tap, at the release point. Feed to [`crate::Painter::new`].
     pub tap: Option<Vec2>,

@@ -52,12 +52,14 @@
 //! and captured like everything else in the kit.
 
 use macroquad::prelude::*;
+use macroquad_widgets::{Gesture, Gestures};
 
 use crate::harness::{
     self, Args, Capture, FrameMark, FrameTimer, Viewport, frame_dt, plain_target, target_camera,
     window_camera,
 };
 use crate::startup::Startup;
+use crate::step::{FixedStep, Tick};
 use crate::text::enable_glyph_gate;
 
 /// Where a game draws.
@@ -70,6 +72,28 @@ pub enum Stage {
     /// scaled to the window by the largest whole number that fits (or shrunk,
     /// if the window is smaller), centred, letterboxed in black.
     Pixel { width: u32, height: u32 },
+    /// A fixed play field of `size` design units, drawn at the window's device
+    /// pixels like [`Stage::Design`], but fitted whole and placed by `align`
+    /// in the window's spare room: `(0.5, 0.5)` centres it, `(0.5, 1.0)` sits
+    /// it on the bottom edge. For an arcade board, which must not grow.
+    ///
+    /// The game still draws from (0, 0) to `size`, and anything it draws past
+    /// the board (a car entering its lane) is hidden: after [`Game::draw`] the
+    /// loop paints the margins in [`Backdrop::bottom`]. To put something in
+    /// them (a frame, a score down the side) draw it in
+    /// [`Game::draw_margin`], over [`Frame::bounds`], which reaches past the
+    /// board to the window's edges (negative on the top and left).
+    Board { size: Vec2, align: Vec2 },
+}
+
+impl Stage {
+    /// A [`Stage::Board`] of `size`, centred.
+    pub fn board(size: Vec2) -> Self {
+        Stage::Board {
+            size,
+            align: vec2(0.5, 0.5),
+        }
+    }
 }
 
 /// What a [`Game`] sees each frame.
@@ -90,8 +114,20 @@ pub struct Frame<'a> {
     /// text rasterises at the canvas's own pixels.
     pub px: f32,
     /// Where the stage's top-left sits in the window, in points: non-zero on
-    /// a letterboxed pixel stage.
+    /// a letterboxed pixel stage and a placed board.
     pub origin: Vec2,
+    /// Everything the game can draw on, in stage units: the stage itself on
+    /// a design or pixel stage; a board plus its margins.
+    pub bounds: Rect,
+    /// This frame's taps, drags and page-turn swipes, in stage units. The loop
+    /// owns the one recogniser; feed this to a [`Pointer`](crate::Pointer) or
+    /// [`Swipes`](crate::Swipes). Its tap and drag thresholds stay in window
+    /// points, because a finger's wobble is the same size at any scale.
+    pub gesture: Gesture,
+    /// How far into the next simulation tick the clock is, 0 to 1, for a game
+    /// with a [`Game::tick_rate`]: draw moving things at
+    /// `prev.lerp(now, alpha)`. 1 for a game without one.
+    pub alpha: f32,
     /// Whether to draw text: false while the window settles.
     pub text: bool,
     /// A pixel stage's canvas. Finished only in [`Game::presented`]: draws into
@@ -102,7 +138,22 @@ pub struct Frame<'a> {
 impl Frame<'_> {
     /// The mouse, in stage units.
     pub fn pointer(&self) -> Vec2 {
-        (Vec2::from(mouse_position()) - self.origin) / self.viewport.u
+        self.to_stage(Vec2::from(mouse_position()))
+    }
+
+    /// A window point (as macroquad reports the mouse and touches) in stage
+    /// units.
+    pub fn to_stage(&self, p: Vec2) -> Vec2 {
+        (p - self.origin) / self.viewport.u
+    }
+}
+
+/// `g`, its points mapped by `to`.
+fn gesture_in(g: Gesture, to: impl Fn(Vec2) -> Vec2) -> Gesture {
+    Gesture {
+        tap: g.tap.map(&to),
+        drag: g.drag.map(&to),
+        ..g
     }
 }
 
@@ -118,8 +169,27 @@ pub struct Backdrop {
 
 /// A screen the loop drives.
 pub trait Game {
-    /// Advance by `frame.dt` and read input.
+    /// Advance by `frame.dt` and read input. Runs once a frame, before any
+    /// [`Game::tick`]: read input here, and leave it for the ticks to act on.
     fn update(&mut self, frame: &Frame);
+
+    /// The simulation's fixed rate, in ticks a second, or `None` (the
+    /// default) for a game that steps everything in [`Game::update`]. Asked
+    /// once, before the first frame.
+    ///
+    /// With a rate, the loop calls [`Game::tick`] as many times as are due
+    /// each frame, after `update` and before `draw`: 0 or 1 at 60 Hz on a
+    /// 60 Hz display, more after a slow frame. On the capture clock a 60 Hz
+    /// game ticks exactly once a frame, so a capture is the same moment every
+    /// run.
+    fn tick_rate(&self) -> Option<f32> {
+        None
+    }
+
+    /// Advance the simulation by one tick of `tick.dt` seconds. Physics,
+    /// collisions, spawns and rules belong here; tweens and effects stay in
+    /// `update`.
+    fn tick(&mut self, _tick: &Tick, _frame: &Frame) {}
 
     /// Draw the frame, background included, in stage units: the camera is
     /// already set, to the window or to the canvas. Draw text only when
@@ -127,6 +197,11 @@ pub trait Game {
     /// of its own saves and restores the camera around them
     /// (`push_camera_state`), so it ends where it began.
     fn draw(&mut self, frame: &Frame);
+
+    /// On a [`Stage::Board`], draw in the margins around the board, after the
+    /// loop has painted them over whatever [`Game::draw`] left there. The
+    /// camera is the one `draw` had. By default, nothing: plain margins.
+    fn draw_margin(&mut self, _frame: &Frame) {}
 
     /// The preloader's colours.
     fn backdrop(&self) -> Backdrop;
@@ -189,7 +264,7 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
             target.texture.set_filter(FilterMode::Nearest);
             Some(target)
         }
-        Stage::Design(_) => None,
+        Stage::Design(_) | Stage::Board { .. } => None,
     };
     let mut startup = match (capturing, &canvas) {
         (true, _) => Startup::capture(),
@@ -200,24 +275,20 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
     let exit_after = harness::flag_num::<f32>("--seconds");
     let mut clock = 0.0f32;
     let mut frames = 0u32;
+    let mut step = game.tick_rate().map(FixedStep::new);
+    let mut gestures = Gestures::new();
 
     loop {
         let mut timer = FrameTimer::start();
         let dt = frame_dt(capturing);
         clock += dt;
-        let (viewport, px, origin) = match stage {
-            Stage::Design(design) => {
-                let vp = args.viewport(design);
-                (vp, vp.px(), Vec2::ZERO)
-            }
-            Stage::Pixel { width, height } => {
-                let size = vec2(width as f32, height as f32);
-                let screen = vec2(screen_width(), screen_height());
-                let dpi = screen_dpi_scale();
-                let (u, origin) = pixel_fit(size, screen, dpi);
-                (Viewport { u, size, dpi }, 1.0, origin)
-            }
-        };
+        let placed = place(stage, &args);
+        let Placed {
+            viewport,
+            px,
+            origin,
+            ..
+        } = placed;
         let log = |line: &str| {
             if args.frame_log {
                 eprintln!("t={clock:.2} {line}");
@@ -231,6 +302,11 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
                 viewport.u * viewport.dpi
             ));
         }
+        // The ticks due this frame are counted before the frame is built, so
+        // `alpha` is where drawing falls after them.
+        let ticks = step.as_mut().map(|s| s.advance(dt));
+        let alpha = step.as_ref().map_or(1.0, FixedStep::alpha);
+        let gesture = gesture_in(gestures.update(), |p| (p - origin) / viewport.u);
         let frame = Frame {
             args: &args,
             dt,
@@ -239,15 +315,22 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
             viewport,
             px,
             origin,
+            bounds: placed.bounds,
+            gesture,
+            alpha,
             text: startup.text(),
             canvas: canvas.as_ref().map(|target| &target.texture),
         };
 
         game.update(&frame);
+        for tick in ticks.into_iter().flatten() {
+            game.tick(&tick, &frame);
+        }
         timer.mark(FrameMark::Update);
 
         let due = args.shot.is_some() && frames >= 2 && game.capture_due(&frame);
-        let shake = game.shake();
+        // A board's offset into the window rides on the camera, with the shake.
+        let shake = game.shake() + placed.offset;
         // The design stage's capture draws into its own target; the pixel
         // stage's is the canvas.
         let mut capture = None;
@@ -258,10 +341,21 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
                 }
                 set_camera(&target_camera(viewport.size, shake, target));
             }
-            None if due => capture = Some(Capture::window(&viewport, shake)),
-            None => set_camera(&window_camera(viewport.size, shake)),
+            None if due => capture = Some(Capture::new(placed.window, px, shake)),
+            None => set_camera(&window_camera(placed.window, shake)),
+        }
+        let board = matches!(stage, Stage::Board { .. });
+        if board {
+            clear_background(game.backdrop().bottom);
         }
         game.draw(&frame);
+        if board {
+            let fill = game.backdrop().bottom;
+            for m in margins(placed.bounds, viewport.size) {
+                draw_rectangle(m.x, m.y, m.w, m.h, fill);
+            }
+            game.draw_margin(&frame);
+        }
         timer.mark(FrameMark::Draw);
 
         let finished = startup.finish(dt, game.ready());
@@ -278,7 +372,7 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
         }
         let backdrop = game.backdrop();
         startup.draw_cover(
-            Rect::new(0.0, 0.0, viewport.size.x, viewport.size.y),
+            placed.bounds,
             backdrop.top,
             backdrop.bottom,
             backdrop.accent,
@@ -308,6 +402,92 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
         }
         frames += 1;
     }
+}
+
+/// Where a stage sits in the window this frame.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Placed {
+    /// What the game sees: the stage's own size, and points per unit.
+    viewport: Viewport,
+    px: f32,
+    /// The stage's top-left in the window, in points.
+    origin: Vec2,
+    /// Everything drawable, in stage units.
+    bounds: Rect,
+    /// The window camera's extent, in stage units: the whole window.
+    window: Vec2,
+    /// The stage's top-left inside that extent, in stage units.
+    offset: Vec2,
+}
+
+fn place(stage: Stage, args: &Args) -> Placed {
+    match stage {
+        Stage::Design(design) => {
+            let vp = args.viewport(design);
+            Placed {
+                viewport: vp,
+                px: vp.px(),
+                origin: Vec2::ZERO,
+                bounds: Rect::new(0.0, 0.0, vp.size.x, vp.size.y),
+                window: vp.size,
+                offset: Vec2::ZERO,
+            }
+        }
+        Stage::Pixel { width, height } => {
+            let size = vec2(width as f32, height as f32);
+            let screen = vec2(screen_width(), screen_height());
+            let dpi = screen_dpi_scale();
+            let (u, origin) = pixel_fit(size, screen, dpi);
+            Placed {
+                viewport: Viewport { u, size, dpi },
+                px: 1.0,
+                origin,
+                bounds: Rect::new(0.0, 0.0, size.x, size.y),
+                window: size,
+                offset: Vec2::ZERO,
+            }
+        }
+        Stage::Board { size, align } => board_fit(args.viewport(size), size, align),
+    }
+}
+
+/// A board of `size` design units in a window that `full` fits the design
+/// into (the roomier side grown), placed by `align` in the spare room, its
+/// top-left on a whole device pixel so its edges stay crisp.
+fn board_fit(full: Viewport, size: Vec2, align: Vec2) -> Placed {
+    let px = full.px();
+    let spare = (full.size - size).max(Vec2::ZERO);
+    let offset = (spare * align.clamp(Vec2::ZERO, Vec2::ONE) * px).floor() / px;
+    Placed {
+        viewport: Viewport {
+            u: full.u,
+            size,
+            dpi: full.dpi,
+        },
+        px,
+        origin: offset * full.u,
+        bounds: Rect::new(-offset.x, -offset.y, full.size.x, full.size.y),
+        window: full.size,
+        offset,
+    }
+}
+
+/// The parts of `bounds` outside a board of `size` at the origin: left and
+/// right full height, top and bottom between them. Empty where there is no
+/// margin. Padded by a unit outward, so nothing drawn past the board's edge
+/// shows through a rounding seam.
+fn margins(bounds: Rect, size: Vec2) -> Vec<Rect> {
+    const PAD: f32 = 1.0;
+    let (top, bottom) = (bounds.y - PAD, bounds.bottom() + PAD);
+    [
+        Rect::new(bounds.x - PAD, top, -bounds.x + PAD, bottom - top),
+        Rect::new(size.x, top, bounds.right() - size.x + PAD, bottom - top),
+        Rect::new(0.0, top, size.x, -bounds.y + PAD),
+        Rect::new(0.0, size.y, size.x, bottom - size.y),
+    ]
+    .into_iter()
+    .filter(|r| r.w > PAD && r.h > PAD)
+    .collect()
 }
 
 /// Window points per canvas pixel, and where the canvas's top-left lands, for
@@ -386,5 +566,80 @@ mod tests {
     fn a_window_smaller_than_the_canvas_shrinks_it_rather_than_cropping() {
         let (u, _) = pixel_fit(vec2(320.0, 224.0), vec2(160.0, 112.0), 1.0);
         assert_eq!(u, 0.5);
+    }
+
+    const BOARD: Vec2 = vec2(448.0, 512.0);
+
+    #[test]
+    fn a_board_is_fitted_whole_and_centred_in_a_wide_window() {
+        // 1280x800 at 1x: 800/512 = 1.5625 points a unit; the window is
+        // 819.2 units wide, so 371.2 spare, 185.6 each side.
+        let full = Viewport::fit(vec2(1280.0, 800.0), 1.0, BOARD);
+        let p = board_fit(full, BOARD, vec2(0.5, 0.5));
+        assert_eq!(p.viewport.size, BOARD, "the game sees its board");
+        assert_eq!(p.viewport.u, 1.5625);
+        assert_eq!(p.origin.y, 0.0);
+        assert!((p.origin.x - 290.0).abs() < 1.6, "{:?}", p.origin);
+        // The origin is on a whole device pixel.
+        assert_eq!(p.origin.x * full.dpi, (p.origin.x * full.dpi).round());
+        // Bounds reach the window's edges either side of the board.
+        assert!((p.bounds.x + p.offset.x).abs() < 1e-4);
+        assert_eq!(p.bounds.w, full.size.x);
+        assert!(p.bounds.x < 0.0 && p.bounds.right() > BOARD.x);
+    }
+
+    #[test]
+    fn align_places_a_board_in_the_spare_room() {
+        let full = Viewport::fit(vec2(400.0, 1000.0), 2.0, BOARD);
+        let top = board_fit(full, BOARD, vec2(0.5, 0.0));
+        let bottom = board_fit(full, BOARD, vec2(0.5, 1.0));
+        assert_eq!(top.offset, Vec2::ZERO, "a narrow window has no spare width");
+        assert!(bottom.offset.y > 0.0);
+        let spare = full.size.y - BOARD.y;
+        assert!((bottom.offset.y - spare).abs() <= 1.0 / full.px());
+    }
+
+    #[test]
+    fn a_window_exactly_the_boards_shape_has_no_margin() {
+        let full = Viewport::fit(BOARD * 2.0, 1.0, BOARD);
+        let p = board_fit(full, BOARD, vec2(0.5, 0.5));
+        assert_eq!(p.offset, Vec2::ZERO);
+        assert_eq!(p.bounds, Rect::new(0.0, 0.0, BOARD.x, BOARD.y));
+    }
+
+    #[test]
+    fn the_margins_cover_everything_outside_the_board_and_nothing_inside() {
+        let full = Viewport::fit(vec2(1280.0, 800.0), 1.0, BOARD);
+        let p = board_fit(full, BOARD, vec2(0.5, 0.5));
+        let m = margins(p.bounds, BOARD);
+        assert_eq!(m.len(), 2, "a wide window has side margins only: {m:?}");
+        let board = Rect::new(0.0, 0.0, BOARD.x, BOARD.y);
+        for r in &m {
+            assert!(r.intersect(board).is_none_or(|i| i.w * i.h == 0.0), "{r:?}");
+        }
+        let covered = |p: Vec2| m.iter().any(|r| r.contains(p));
+        assert!(covered(vec2(-1.0, 10.0)) && covered(vec2(BOARD.x + 1.0, BOARD.y - 1.0)));
+        assert!(covered(p.bounds.point()) && covered(p.bounds.point() + p.bounds.size() - 0.5));
+
+        let full = Viewport::fit(vec2(400.0, 1000.0), 1.0, BOARD);
+        let p = board_fit(full, BOARD, vec2(0.5, 0.5));
+        assert_eq!(
+            margins(p.bounds, BOARD).len(),
+            2,
+            "a tall window: top and bottom"
+        );
+        assert!(margins(Rect::new(0.0, 0.0, BOARD.x, BOARD.y), BOARD).is_empty());
+    }
+
+    #[test]
+    fn a_gesture_is_mapped_into_stage_units() {
+        let g = Gesture {
+            tap: Some(vec2(110.0, 20.0)),
+            drag: Some(vec2(30.0, 40.0)),
+            swipe: None,
+        };
+        let m = gesture_in(g, |p| (p - vec2(10.0, 0.0)) / 2.0);
+        assert_eq!(m.tap, Some(vec2(50.0, 10.0)));
+        assert_eq!(m.drag, Some(vec2(10.0, 20.0)));
     }
 }

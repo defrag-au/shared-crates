@@ -32,9 +32,12 @@ pub mod app;
 #[cfg(feature = "audio")]
 pub mod audio;
 pub mod bake;
+pub mod dir;
 pub mod ease;
+pub mod face;
 pub mod fx;
 pub mod harness;
+pub mod icon;
 pub mod light;
 #[cfg(feature = "gamepads")]
 pub mod pads;
@@ -45,6 +48,7 @@ pub mod sequence;
 pub mod shape;
 pub mod sprite;
 pub mod startup;
+pub mod step;
 pub mod text;
 pub mod tween;
 pub mod web;
@@ -53,9 +57,12 @@ pub use app::{Backdrop, Frame, Game, Stage};
 #[cfg(feature = "audio")]
 pub use audio::{Audio, load_pcm, wav};
 pub use bake::{Baked, Baker};
+pub use dir::Dir4;
 pub use ease::Ease;
+pub use face::{emblem, gem, line, plate, shrink_to_fit, tab, tab_width};
 pub use fx::{Particles, Popups, Shake};
 pub use harness::{Args, Capture, Script, Scripted, Viewport, plain_target, window_camera};
+pub use icon::{Icon, draw_icon};
 pub use light::Lighting;
 #[cfg(feature = "gamepads")]
 pub use pads::{Pad, Pads};
@@ -63,12 +70,13 @@ pub use paint::{
     Gradient, bevel, fill_circle_gradient, fill_gradient, grain, inner_shadow, noise_pixels,
     noise_texture,
 };
-pub use pointer::{HoverGrace, Pointer, PointerConfig, PointerEvent};
+pub use pointer::{HoverGrace, Pointer, PointerConfig, PointerEvent, Swipe, Swipes};
 pub use preload::Preloader;
 pub use sequence::{Sequencer, stagger};
 pub use shape::{RoundedArt, cover_source, fill_rounded, stroke_rounded};
 pub use sprite::{Pose, Sprite, draw_order, topmost};
 pub use startup::{Finished, Phase, Startup};
+pub use step::{FixedStep, Tick};
 pub use text::{
     Align, GlyphFlush, MacroquadMeasure, Measure, MeasureAt, Outline, Placed, RichText, Shadow,
     StyleId, TextLayout, TextStyle, draw_run, enable_glyph_gate, flush_glyphs, glyphs_pending,

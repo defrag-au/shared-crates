@@ -13,6 +13,7 @@ members = [
     "discord-auth",
     "cardano-tx",
     "cardano-assets",
+    "cnft-holdings",
     "mint-manifest",
     "ocfl",
     "cnft-tools",
@@ -62,6 +63,7 @@ members = [
     "ui/arcade-harness",
     "ui/macroquad-tui",
     "ui/macroquad-wallet-flow",
+    "ui/macroquad-cnft",
     "ui/macroquad-text",
     "ui/macroquad-widgets",
     "ui/macroquad-gamekit",
@@ -87,6 +89,10 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+# Inherited by the macroquad kit (gamekit, widgets, text) so a consumer on an
+# older rustc gets cargo's clear "requires rustc 1.88" rather than an error deep
+# in a dependency: let-chains and `as_chunks` are 1.88, fontdue 0.9 needs 1.87.
+rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/defrag-au/shared-crates"
 authors = ["Damon Oehlman <damon@defrag.au>"]
@@ -193,6 +199,9 @@ address-registry = { path = "address-registry" }
 asset-intents = { path = "asset-intents" }
 authorizations = { path = "authorizations" }
 cardano-assets = { path = "cardano-assets" }
+# What a player holds of a CNFT collection, as a game sees it. Pure: the
+# macroquad edge is `ui/macroquad-cnft`.
+cnft-holdings = { path = "cnft-holdings" }
 # Chain identity — which chain, and which network on it, as a CAIP-2 string on
 # the wire. Pure serde, no runtime, so a widget, a worker and a macroquad game
 # can all name a chain without any of them dragging the others in.
@@ -232,6 +241,7 @@ wallet-pallas = { path = "ui/wallet-pallas" }
 arcade-core = { path = "arcade-core" }
 arcade-harness = { path = "ui/arcade-harness" }
 macroquad-wallet-flow = { path = "ui/macroquad-wallet-flow" }
+macroquad-cnft = { path = "ui/macroquad-cnft" }
 macroquad-widgets = { path = "ui/macroquad-widgets" }
 wallet-miniquad = { path = "ui/wallet-miniquad" }
 tx_insights = { path = "tx-insights" }

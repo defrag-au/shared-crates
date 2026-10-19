@@ -29,6 +29,10 @@ struct Package {
     version: String,
     id: String,
     manifest_path: PathBuf,
+    /// `registry+…` for crates.io, `git+…` for a git dependency or `[patch]`,
+    /// absent for a path dependency.
+    #[serde(default)]
+    source: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -61,9 +65,50 @@ pub struct Linked {
     pub target_dir: PathBuf,
     /// Crate name → every (version, source directory) the package reaches.
     crates: BTreeMap<String, Vec<(String, PathBuf)>>,
+    /// Crate name → the version of each copy that comes from crates.io.
+    registry: BTreeMap<String, Vec<String>>,
+}
+
+/// The last macroquad release with the glyph-atlas doubling bug; the fix
+/// (`8d602d3`) landed after it. See the `[patch.crates-io]` in shared-crates'
+/// root `Cargo.toml`.
+pub const LAST_UNFIXED_MACROQUAD: (u64, u64, u64) = (0, 4, 16);
+
+/// What [`Linked::macroquad_patch`] found.
+#[derive(Debug, PartialEq, Eq)]
+pub enum PatchCheck {
+    /// macroquad comes from git (the `[patch]`), a path, or a fixed release.
+    Fine,
+    /// macroquad comes from a crates.io release that still has the bug.
+    Unpatched {
+        version: String,
+        /// The package links `macroquad-gamekit`, which requires the patch.
+        gamekit: bool,
+    },
 }
 
 impl Linked {
+    /// Whether the macroquad this package links has the glyph-atlas fix.
+    ///
+    /// A `[patch]` only applies in the workspace that builds, so a game in its
+    /// own workspace that forgets to copy it silently gets the bug back: one
+    /// run in twelve ended with a 256 MB font atlas.
+    pub fn macroquad_patch(&self) -> PatchCheck {
+        let gamekit = self.crates.contains_key("macroquad-gamekit");
+        let unfixed = self
+            .registry
+            .get("macroquad")
+            .into_iter()
+            .flatten()
+            .find(|v| semver(v).is_some_and(|v| v <= LAST_UNFIXED_MACROQUAD));
+        match unfixed {
+            Some(version) => PatchCheck::Unpatched {
+                version: version.clone(),
+                gamekit,
+            },
+            None => PatchCheck::Fine,
+        }
+    }
     /// The source directory of `name`, if the package links it at all.
     pub fn crate_dir(&self, name: &str) -> Result<Option<&Path>, String> {
         match self.crates.get(name).map(Vec::as_slice) {
@@ -135,8 +180,18 @@ fn walk(meta: &Metadata, package: &str) -> Result<Linked, String> {
     }
 
     let mut crates: BTreeMap<String, Vec<(String, PathBuf)>> = BTreeMap::new();
+    let mut registry: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for id in seen {
         let Some(p) = by_id.get(id) else { continue };
+        if p.source
+            .as_deref()
+            .is_some_and(|s| s.starts_with("registry+"))
+        {
+            registry
+                .entry(p.name.clone())
+                .or_default()
+                .push(p.version.clone());
+        }
         let dir = p
             .manifest_path
             .parent()
@@ -150,10 +205,22 @@ fn walk(meta: &Metadata, package: &str) -> Result<Linked, String> {
     for versions in crates.values_mut() {
         versions.sort();
     }
+    for versions in registry.values_mut() {
+        versions.sort();
+    }
     Ok(Linked {
         target_dir: meta.target_directory.clone(),
         crates,
+        registry,
     })
+}
+
+/// `major.minor.patch` of a version string, ignoring any pre-release or
+/// build suffix.
+fn semver(v: &str) -> Option<(u64, u64, u64)> {
+    let core = v.split(['-', '+']).next()?;
+    let mut parts = core.split('.').map(|p| p.parse::<u64>().ok());
+    Some((parts.next()??, parts.next()??, parts.next()??))
 }
 
 #[cfg(test)]
@@ -230,5 +297,78 @@ mod tests {
     #[test]
     fn an_unknown_package_is_an_error() {
         assert!(walk(&fixture(), "nope").is_err());
+    }
+
+    /// game → (gamekit) → macroquad `version`, from `source`.
+    fn macroquad_from(version: &str, source: &str, gamekit: bool) -> Linked {
+        let mq = format!(
+            r#"{{"name":"macroquad","version":"{version}","id":"macroquad {version}","manifest_path":"/src/mq/Cargo.toml","source":{source}}}"#
+        );
+        let mq_id = format!("macroquad {version}");
+        let (kit_pkg, kit_node, game_dep) = if gamekit {
+            (
+                format!(",{}", pkg("macroquad-gamekit", "0.1.0")),
+                format!(
+                    r#",{{"id":"macroquad-gamekit 0.1.0","deps":[{}]}}"#,
+                    dep(&mq_id, "null")
+                ),
+                dep("macroquad-gamekit 0.1.0", "null"),
+            )
+        } else {
+            (String::new(), String::new(), dep(&mq_id, "null"))
+        };
+        let json = format!(
+            r#"{{"packages":[{},{mq}{kit_pkg}],
+                "workspace_members":["game 0.1.0"],
+                "target_directory":"/t",
+                "resolve":{{"nodes":[
+                  {{"id":"game 0.1.0","deps":[{game_dep}]}},
+                  {{"id":"{mq_id}","deps":[]}}{kit_node}
+                ]}}}}"#,
+            pkg("game", "0.1.0"),
+        );
+        let meta: Metadata = serde_json::from_str(&json).expect("fixture parses");
+        walk(&meta, "game").expect("walk")
+    }
+
+    const CRATES_IO: &str = r#""registry+https://github.com/rust-lang/crates.io-index""#;
+    const PATCHED: &str = r#""git+https://github.com/not-fl3/macroquad?rev=8d602d3f8ebb8a3a582ee15d92983bbb81ee3ef6#8d602d3f""#;
+
+    #[test]
+    fn a_gamekit_on_macroquad_0_4_16_from_crates_io_is_unpatched() {
+        assert_eq!(
+            macroquad_from("0.4.16", CRATES_IO, true).macroquad_patch(),
+            PatchCheck::Unpatched {
+                version: "0.4.16".into(),
+                gamekit: true
+            }
+        );
+        assert_eq!(
+            macroquad_from("0.4.14", CRATES_IO, false).macroquad_patch(),
+            PatchCheck::Unpatched {
+                version: "0.4.14".into(),
+                gamekit: false
+            }
+        );
+    }
+
+    #[test]
+    fn the_git_patch_a_path_or_a_fixed_release_is_fine() {
+        assert_eq!(
+            macroquad_from("0.4.16", PATCHED, true).macroquad_patch(),
+            PatchCheck::Fine
+        );
+        assert_eq!(
+            macroquad_from("0.4.16", "null", true).macroquad_patch(),
+            PatchCheck::Fine
+        );
+        assert_eq!(
+            macroquad_from("0.4.17", CRATES_IO, true).macroquad_patch(),
+            PatchCheck::Fine
+        );
+        assert_eq!(
+            macroquad_from("0.5.0-alpha.1", CRATES_IO, true).macroquad_patch(),
+            PatchCheck::Fine
+        );
     }
 }

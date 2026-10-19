@@ -991,6 +991,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cnft-holdings"
+version = "0.1.0"
+dependencies = [
+ "cardano-assets",
+ "hex",
+ "image-core",
+ "ownership-client",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cnft_tools"
 version = "0.1.0"
 dependencies = [
@@ -3659,6 +3671,22 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "macroquad-cnft"
+version = "0.1.0"
+dependencies = [
+ "cnft-holdings",
+ "image-core",
+ "macroquad",
+ "macroquad-gamekit",
+ "macroquad-widgets",
+ "sapp-jsutils",
+ "serde",
+ "serde_json",
+ "ui-theme",
+ "ureq 2.12.1",
 ]
 
 [[package]]
