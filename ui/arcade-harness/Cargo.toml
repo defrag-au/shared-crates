@@ -21,6 +21,9 @@ arcade-core = { workspace = true }
 # Direct, not a workspace dep — matches the sibling macroquad crates
 # (macroquad-tui, macroquad-widgets), which all pin 0.4 the same way.
 macroquad = "0.4"
+# The frame loop, stages, input actions and captures the `shell` module runs
+# on. The older `run_game` loop does not use it.
+macroquad-gamekit = { path = "../macroquad-gamekit" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

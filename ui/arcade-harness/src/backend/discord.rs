@@ -180,7 +180,7 @@ impl DiscordBackend {
                 Phase::Connecting => {
                     if macroquad::time::get_time() - self.started_at > HANDSHAKE_TIMEOUT_SECS {
                         Step::Offline(
-                            "Discord did not answer the handshake — playing without a leaderboard"
+                            "Discord did not answer the handshake - playing without a leaderboard"
                                 .to_string(),
                         )
                     } else {

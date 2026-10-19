@@ -65,7 +65,7 @@ where
             // not distinguish a protocol change from an HTML error page served
             // by a proxy, and those need opposite fixes.
             Err(e) => Resolved::Err(format!(
-                "unexpected reply: {e} — {}",
+                "unexpected reply: {e} - {}",
                 body.chars().take(120).collect::<String>()
             )),
         },

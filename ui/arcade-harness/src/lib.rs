@@ -45,6 +45,9 @@ use session::{Pending, Resolved};
 
 pub mod backend;
 pub mod session;
+pub mod shell;
+
+pub use shell::{Arcade, ArcadeView, run_arcade};
 
 /// Maps keyboard/pointer state to game input.
 pub trait InputMapper<G: ArcadeGame> {
@@ -89,7 +92,7 @@ impl TitleStatus<'_> {
             // already gone wrong. A game that loads a real font can render
             // whatever it likes in its own screens.
             BackendState::Connecting(what) => format!("{what}..."),
-            BackendState::Offline(why) => format!("offline — {why}"),
+            BackendState::Offline(why) => format!("offline - {why}"),
             BackendState::Ready => match self.player_name {
                 Some(name) => format!("playing as {name}"),
                 None => "connected".to_string(),
@@ -120,7 +123,7 @@ impl SubmissionState {
     /// One line describing the outcome, suitable for a game-over screen.
     pub fn line(&self) -> String {
         match self {
-            Self::Offline(why) => format!("not submitted — {why}"),
+            Self::Offline(why) => format!("not submitted - {why}"),
             Self::Submitting => "submitting...".to_string(),
             Self::Verified {
                 rank,
@@ -128,11 +131,11 @@ impl SubmissionState {
                 ..
             } => {
                 let rank = match rank {
-                    Some(rank) => format!("verified — rank #{rank}"),
+                    Some(rank) => format!("verified - rank #{rank}"),
                     // A verified score with no rank means the per-epoch
                     // submission cap was hit. Say so, rather than showing a
                     // blank where a rank should be.
-                    None => "verified — no ranked slots left this epoch".to_string(),
+                    None => "verified - no ranked slots left this epoch".to_string(),
                 };
                 if *reward_eligible {
                     format!("{rank} * playing for rewards")
@@ -140,7 +143,7 @@ impl SubmissionState {
                     rank
                 }
             }
-            Self::Rejected(why) => format!("not counted — {why}"),
+            Self::Rejected(why) => format!("not counted - {why}"),
         }
     }
 }

@@ -163,7 +163,7 @@ pub struct Swipe {
 /// The widgets' `Gesture::swipe` is a page turn — sideways only, and only when
 /// clearly horizontal — and stays that way. This reads the same `Gesture` and
 /// resolves any press that travelled at least `min` (in the gesture's units:
-/// stage units for [`Frame::gesture`](crate::Frame::gesture)) into its
+/// stage units for [`Frame::input`](crate::Frame::input)'s) into its
 /// dominant direction when it lifts. A shorter press resolves to nothing, and
 /// the gesture's own tap still fires for it.
 #[derive(Clone, Copy, Debug)]

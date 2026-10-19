@@ -79,7 +79,7 @@ impl ArcadeBackend for WebBackend {
         match self.token {
             Some(_) => BackendState::Ready,
             None => BackendState::Offline(
-                "no session token in the page URL — scores will not be submitted".to_string(),
+                "no session token in the page URL - scores will not be submitted".to_string(),
             ),
         }
     }

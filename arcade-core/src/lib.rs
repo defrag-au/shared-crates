@@ -16,6 +16,9 @@
 use serde::{Deserialize, Serialize};
 
 pub mod api;
+pub mod rng;
+
+pub use rng::Rng;
 
 /// The core trait every replay-verified game must implement.
 ///

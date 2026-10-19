@@ -7,14 +7,21 @@
 //! cargo run -p macroquad-gamekit --example board -- --shot .tmp/board.png --size 1280x800 --at 1
 //! ```
 //!
-//! Arrow keys or a swipe hop the marker one cell. A press during a hop is
-//! kept until the hop lands, so quick taps are never lost. The bar along the
-//! top slides at 240 units a second on the 60 Hz tick and is drawn between
-//! ticks with `Frame::alpha`.
+//! Arrow keys, WASD or a swipe hop the marker one cell, and holding a key
+//! keeps hopping. A press during a hop is buffered by `Actions` and taken when
+//! the hop lands, so quick taps are never lost. The bar along the top slides
+//! at 240 units a second on the 60 Hz tick and is drawn between ticks with
+//! `Frame::alpha`.
+//!
+//! A scripted run hops without a keyboard, for a capture mid-game:
+//!
+//! ```sh
+//! cargo run -p macroquad-gamekit --example board -- --shot .tmp/hops.png --keys "5:Up,7:Up,9:Left" --at 1
+//! ```
 
 use macroquad::prelude::*;
 use macroquad_gamekit::harness::Args;
-use macroquad_gamekit::{Backdrop, Dir4, Frame, Game, Stage, Swipes, Tick, app};
+use macroquad_gamekit::{Actions, Backdrop, Binding, Dir4, Frame, Game, Stage, Tick, app};
 
 const CELL: f32 = 32.0;
 const COLS: i32 = 7;
@@ -24,36 +31,40 @@ const BOARD: Vec2 = vec2(CELL * COLS as f32, CELL * ROWS as f32);
 const HOP: f32 = 0.12;
 
 struct Board {
-    swipes: Swipes,
+    /// The hops, one action per direction.
+    hops: Actions<Dir4>,
     cell: IVec2,
     hop: Option<(IVec2, f32)>,
-    queued: Option<Dir4>,
     bar: f32,
     bar_prev: f32,
 }
 
 impl Board {
     fn new() -> Self {
+        let mut bindings = Vec::new();
+        for (d, arrow, letter) in [
+            (Dir4::Up, KeyCode::Up, KeyCode::W),
+            (Dir4::Down, KeyCode::Down, KeyCode::S),
+            (Dir4::Left, KeyCode::Left, KeyCode::A),
+            (Dir4::Right, KeyCode::Right, KeyCode::D),
+        ] {
+            bindings.extend([
+                (d, Binding::Key(arrow)),
+                (d, Binding::Key(letter)),
+                (d, Binding::Swipe(d)),
+            ]);
+        }
+        let mut hops = Actions::new(&bindings).swipe_min(CELL * 0.6);
+        for d in Dir4::ALL {
+            hops = hops.repeat(d, 0.2, 0.15);
+        }
         Self {
-            swipes: Swipes::new(CELL * 0.6),
+            hops,
             cell: ivec2(COLS / 2, ROWS - 1),
             hop: None,
-            queued: None,
             bar: 0.0,
             bar_prev: 0.0,
         }
-    }
-
-    fn pressed() -> Option<Dir4> {
-        [
-            (KeyCode::Up, Dir4::Up),
-            (KeyCode::Down, Dir4::Down),
-            (KeyCode::Left, Dir4::Left),
-            (KeyCode::Right, Dir4::Right),
-        ]
-        .into_iter()
-        .find(|(k, _)| is_key_pressed(*k))
-        .map(|(_, d)| d)
     }
 
     /// Where the marker is drawn: part way through a hop, or on its cell.
@@ -68,9 +79,7 @@ impl Board {
 
 impl Game for Board {
     fn update(&mut self, frame: &Frame) {
-        if let Some(d) = Self::pressed().or(self.swipes.update(&frame.gesture).map(|s| s.dir)) {
-            self.queued = Some(d);
-        }
+        self.hops.update(frame.input, frame.dt);
     }
 
     fn tick_rate(&self) -> Option<f32> {
@@ -90,7 +99,7 @@ impl Game for Board {
             }
         }
         if self.hop.is_none()
-            && let Some(d) = self.queued.take()
+            && let Some(d) = Dir4::ALL.into_iter().find(|d| self.hops.take(*d))
         {
             let next =
                 (self.cell + d.vec().as_ivec2()).clamp(IVec2::ZERO, ivec2(COLS - 1, ROWS - 1));

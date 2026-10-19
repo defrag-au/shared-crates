@@ -8,6 +8,7 @@
 //! ```sh
 //! game --shot out.png [--at 1.5] [--size 390x844]     # capture a moment
 //!      [--hover N | --drag N | --longpress N | --rclick N]  # with a scripted pointer
+//!      [--keys "10:Up,20-40:Right"]                  # with scripted keys, by frame
 //! game --soak 20                                     # the game's own soak loop
 //! game --sheet sheet.png                             # the game's own sheet of faces
 //! game --frame-log                                   # print every frame over 50 ms
@@ -223,6 +224,16 @@ pub fn flag_num<T: std::str::FromStr>(name: &str) -> Option<T> {
     flag(name).and_then(|v| v.parse().ok())
 }
 
+/// Whether a native flag that takes no value (`--play`, `--debug`) was given;
+/// false on the web. [`flag`] reads the argument *after* a name, so it cannot
+/// see a bare switch.
+pub fn switch(name: &str) -> bool {
+    if cfg!(target_arch = "wasm32") {
+        return false;
+    }
+    std::env::args().any(|a| a == name)
+}
+
 fn flag_in(argv: &[String], name: &str) -> Option<String> {
     argv.iter()
         .position(|a| a == name)
@@ -249,6 +260,119 @@ pub struct Args {
     pub size: Option<(i32, i32)>,
     /// `--frame-log`: print every frame slower than [`SLOW_FRAME`].
     pub frame_log: bool,
+    /// `--keys "10:Up,20-40:Right"`: keys the loop presses for the game, by
+    /// frame, merged into [`Frame::input`](crate::Frame::input) so the game
+    /// cannot tell them from a player's. See [`KeyScript`].
+    pub keys: Vec<KeyScript>,
+}
+
+/// One key in a `--keys` script: held from frame `from` until before frame
+/// `to`, and pressed on frame `from`. `10:Up` is `Up` tapped on frame 10
+/// (held for that frame only); `20-40:Right` holds `Right` for frames 20 to
+/// 39. Frames count from 0, as [`Frame::frames`](crate::Frame::frames) does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeyScript {
+    pub key: KeyCode,
+    pub from: u32,
+    pub to: u32,
+}
+
+impl KeyScript {
+    /// Parse a whole `--keys` value: comma-separated `FRAME:Key` or
+    /// `FROM-TO:Key`. Key names are macroquad's `KeyCode` names (`Up`,
+    /// `Space`, `A`, `Key1`, `LeftShift`), matched without regard to case.
+    pub fn parse_all(s: &str) -> Result<Vec<KeyScript>, String> {
+        s.split(',')
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+            .map(|part| {
+                let (frames, name) = part
+                    .split_once(':')
+                    .ok_or_else(|| format!("`{part}`: expected FRAME:Key or FROM-TO:Key"))?;
+                let key = key_named(name.trim())
+                    .ok_or_else(|| format!("`{part}`: no key named `{}`", name.trim()))?;
+                let num = |n: &str| {
+                    n.trim()
+                        .parse::<u32>()
+                        .map_err(|_| format!("`{part}`: `{n}` is not a frame number"))
+                };
+                let (from, to) = match frames.split_once('-') {
+                    Some((a, b)) => (num(a)?, num(b)?),
+                    None => {
+                        let f = num(frames)?;
+                        (f, f + 1)
+                    }
+                };
+                if to <= from {
+                    return Err(format!("`{part}`: the range ends before it starts"));
+                }
+                Ok(KeyScript { key, from, to })
+            })
+            .collect()
+    }
+
+    /// Whether the key is held on `frame`.
+    pub fn down(&self, frame: u32) -> bool {
+        (self.from..self.to).contains(&frame)
+    }
+
+    /// Whether the key goes down on `frame`.
+    pub fn pressed(&self, frame: u32) -> bool {
+        frame == self.from
+    }
+}
+
+/// The `KeyCode` called `name` (any case): letters, digits as `Key0`..`Key9`
+/// or bare `0`..`9`, arrows, `F1`..`F12`, and the common named keys.
+pub fn key_named(name: &str) -> Option<KeyCode> {
+    use KeyCode::*;
+    const KEYS: &[(&str, KeyCode)] = &[
+        ("space", Space),
+        ("enter", Enter),
+        ("return", Enter),
+        ("escape", Escape),
+        ("esc", Escape),
+        ("tab", Tab),
+        ("backspace", Backspace),
+        ("up", Up),
+        ("down", Down),
+        ("left", Left),
+        ("right", Right),
+        ("leftshift", LeftShift),
+        ("rightshift", RightShift),
+        ("leftcontrol", LeftControl),
+        ("rightcontrol", RightControl),
+        ("leftalt", LeftAlt),
+        ("rightalt", RightAlt),
+        ("f1", F1),
+        ("f2", F2),
+        ("f3", F3),
+        ("f4", F4),
+        ("f5", F5),
+        ("f6", F6),
+        ("f7", F7),
+        ("f8", F8),
+        ("f9", F9),
+        ("f10", F10),
+        ("f11", F11),
+        ("f12", F12),
+    ];
+    const LETTERS: [KeyCode; 26] = [
+        A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+    ];
+    const DIGITS: [KeyCode; 10] = [Key0, Key1, Key2, Key3, Key4, Key5, Key6, Key7, Key8, Key9];
+    let lower = name.to_ascii_lowercase();
+    if let Some((_, k)) = KEYS.iter().find(|(n, _)| *n == lower) {
+        return Some(*k);
+    }
+    let bytes = lower.as_bytes();
+    match bytes {
+        [c @ b'a'..=b'z'] => Some(LETTERS[usize::from(c - b'a')]),
+        [d @ b'0'..=b'9'] | [b'k', b'e', b'y', d @ b'0'..=b'9'] => {
+            Some(DIGITS[usize::from(d - b'0')])
+        }
+        _ => None,
+    }
 }
 
 /// A frame slower than this, in seconds of wall time, is a stall worth
@@ -282,6 +406,14 @@ impl Args {
                 Some((w.parse().ok()?, h.parse().ok()?))
             }),
             frame_log: argv.iter().any(|a| a == "--frame-log"),
+            keys: flag_in(argv, "--keys")
+                .map(|s| {
+                    KeyScript::parse_all(&s).unwrap_or_else(|e| {
+                        eprintln!("--keys {e}");
+                        std::process::exit(2)
+                    })
+                })
+                .unwrap_or_default(),
         }
     }
 
@@ -543,6 +675,43 @@ mod tests {
         assert!(Args::parse(&["game".into(), "--frame-log".into()]).frame_log);
         assert_eq!(flag_in(&argv, "--seed").as_deref(), Some("7"));
         assert_eq!(Args::parse(&["game".into()]), Args::default());
+    }
+
+    #[test]
+    fn a_key_script_taps_and_holds_by_frame() {
+        let keys = KeyScript::parse_all("10:Up, 20-23:right,5:space,7:key3,8:z").expect("parses");
+        assert_eq!(
+            keys[0],
+            KeyScript {
+                key: KeyCode::Up,
+                from: 10,
+                to: 11
+            }
+        );
+        assert_eq!(keys[1].key, KeyCode::Right);
+        assert_eq!(
+            (19..25).map(|f| keys[1].down(f)).collect::<Vec<_>>(),
+            [false, true, true, true, false, false]
+        );
+        assert!(keys[1].pressed(20) && !keys[1].pressed(21));
+        assert_eq!(keys[2].key, KeyCode::Space);
+        assert_eq!(keys[3].key, KeyCode::Key3);
+        assert_eq!(keys[4].key, KeyCode::Z);
+        let argv: Vec<String> = ["game", "--keys", "3:Left"].map(String::from).into();
+        assert_eq!(Args::parse(&argv).keys[0].key, KeyCode::Left);
+    }
+
+    #[test]
+    fn a_bad_key_script_says_which_part() {
+        for (bad, says) in [
+            ("10:Upp", "no key named `Upp`"),
+            ("Up", "expected FRAME:Key"),
+            ("x:Up", "not a frame number"),
+            ("9-3:Up", "ends before it starts"),
+        ] {
+            let e = KeyScript::parse_all(bad).expect_err(bad);
+            assert!(e.contains(says), "{bad}: {e}");
+        }
     }
 
     #[test]

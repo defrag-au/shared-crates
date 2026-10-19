@@ -43,6 +43,8 @@
 //!   CVDisplayLink; if that link is missing, `next_frame` returns at once and
 //!   spins the machine. The loop is capped at 60 frames a second natively;
 //!   the browser's requestAnimationFrame already paces the web build.
+//!   Captures and scripted runs are not capped: on the fixed clock they come
+//!   out the same at any speed, so `--at 90` takes seconds, not 90 of them.
 //!
 //! Modes that are not the game loop (a soak, a sheet of faces) stay in the
 //! game's `main`, before it calls [`run`].
@@ -58,6 +60,7 @@ use crate::harness::{
     self, Args, Capture, FrameMark, FrameTimer, Viewport, frame_dt, plain_target, target_camera,
     window_camera,
 };
+use crate::input::InputSnapshot;
 use crate::startup::Startup;
 use crate::step::{FixedStep, Tick};
 use crate::text::enable_glyph_gate;
@@ -119,11 +122,13 @@ pub struct Frame<'a> {
     /// Everything the game can draw on, in stage units: the stage itself on
     /// a design or pixel stage; a board plus its margins.
     pub bounds: Rect,
-    /// This frame's taps, drags and page-turn swipes, in stage units. The loop
-    /// owns the one recogniser; feed this to a [`Pointer`](crate::Pointer) or
-    /// [`Swipes`](crate::Swipes). Its tap and drag thresholds stay in window
+    /// This frame's input: keys held and pressed (with any `--keys` script
+    /// merged in), and taps, drags and page-turn swipes in stage units. Feed
+    /// it to [`Actions`](crate::Actions); feed `input.gesture` to a
+    /// [`Pointer`](crate::Pointer) or [`Swipes`](crate::Swipes). The loop owns
+    /// the one gesture recogniser. Its tap and drag thresholds stay in window
     /// points, because a finger's wobble is the same size at any scale.
-    pub gesture: Gesture,
+    pub input: &'a InputSnapshot,
     /// How far into the next simulation tick the clock is, 0 to 1, for a game
     /// with a [`Game::tick_rate`]: draw moving things at
     /// `prev.lerp(now, alpha)`. 1 for a game without one.
@@ -273,15 +278,30 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
         (false, None) => Startup::new(),
     };
     let exit_after = harness::flag_num::<f32>("--seconds");
-    let mut clock = 0.0f32;
-    let mut frames = 0u32;
-    let mut step = game.tick_rate().map(FixedStep::new);
-    let mut gestures = Gestures::new();
+    let mut sim = Sim {
+        clock: 0.0,
+        frames: 0,
+        step: game.tick_rate().map(FixedStep::new),
+        gestures: Gestures::new(),
+    };
+    // A `--shot --at T` capture skips drawing on its way to T: see
+    // `fast_forward_to`.
+    let fast_forward = fast_forward_to(&args, scripted);
 
     loop {
+        if let Some(at) = fast_forward {
+            while sim.frames >= SETTLE_FRAMES
+                && sim.clock + harness::FIXED_DT * (DRAWN_BEFORE_AT as f32) < at
+            {
+                let placed = place(stage, &args);
+                let text = startup.text();
+                simulate(&mut game, &mut sim, &args, placed, harness::FIXED_DT, text);
+                sim.frames += 1;
+            }
+        }
+
         let mut timer = FrameTimer::start();
         let dt = frame_dt(capturing);
-        clock += dt;
         let placed = place(stage, &args);
         let Placed {
             viewport,
@@ -289,6 +309,7 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
             origin,
             ..
         } = placed;
+        let clock = sim.clock + dt;
         let log = |line: &str| {
             if args.frame_log {
                 eprintln!("t={clock:.2} {line}");
@@ -302,11 +323,9 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
                 viewport.u * viewport.dpi
             ));
         }
-        // The ticks due this frame are counted before the frame is built, so
-        // `alpha` is where drawing falls after them.
-        let ticks = step.as_mut().map(|s| s.advance(dt));
-        let alpha = step.as_ref().map_or(1.0, FixedStep::alpha);
-        let gesture = gesture_in(gestures.update(), |p| (p - origin) / viewport.u);
+        let text = startup.text();
+        let (input, alpha) = simulate(&mut game, &mut sim, &args, placed, dt, text);
+        let frames = sim.frames;
         let frame = Frame {
             args: &args,
             dt,
@@ -316,16 +335,11 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
             px,
             origin,
             bounds: placed.bounds,
-            gesture,
+            input: &input,
             alpha,
-            text: startup.text(),
+            text,
             canvas: canvas.as_ref().map(|target| &target.texture),
         };
-
-        game.update(&frame);
-        for tick in ticks.into_iter().flatten() {
-            game.tick(&tick, &frame);
-        }
         timer.mark(FrameMark::Update);
 
         let due = args.shot.is_some() && frames >= 2 && game.capture_due(&frame);
@@ -394,14 +408,99 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
         if let Some(line) = timer.slow() {
             log(&line);
         }
+        // A capture or scripted run is on the fixed clock, so it comes out the
+        // same at any speed: no cap. (`next_frame` may still wait for the
+        // display; a `--at` capture skips most frames instead.)
         #[cfg(not(target_arch = "wasm32"))]
-        timer.pace();
+        if !capturing {
+            timer.pace();
+        }
 
         if exit_after.is_some_and(|seconds| clock >= seconds) {
             std::process::exit(0);
         }
-        frames += 1;
+        sim.frames += 1;
     }
+}
+
+/// Frames drawn before a capture fast-forwards: the start of the run, where
+/// the preloader lifts and fonts warm.
+const SETTLE_FRAMES: u32 = 3;
+
+/// Frames drawn, not skipped, before a `--at` moment: enough for glyphs that
+/// first appear late in the run to pass the glyph gate before the capture.
+const DRAWN_BEFORE_AT: u32 = 30;
+
+/// When a run skips drawing on its way to a moment: a `--shot` capture with
+/// `--at`, which is not a scripted run (a scripted run saves frames as it
+/// goes, so every one must be drawn).
+///
+/// The skipped frames are simulated exactly as drawn ones are, on the fixed
+/// clock, with the same input and the same ticks: only `draw` is left out. A
+/// game keeps its state in `update` and `tick`, never `draw`, so the moment
+/// captured is the same one, reached in seconds instead of in real time.
+/// That matters more than it looks: on macOS `next_frame` waits for the
+/// display, so a drawn frame costs a sixtieth of a second however little it
+/// draws.
+fn fast_forward_to(args: &Args, scripted: bool) -> Option<f32> {
+    if scripted || args.shot.is_none() {
+        return None;
+    }
+    args.at
+}
+
+/// The loop's own state across frames, drawn and skipped alike.
+struct Sim {
+    clock: f32,
+    frames: u32,
+    step: Option<FixedStep>,
+    gestures: Gestures,
+}
+
+/// One frame of simulation: read the input, run `update` and the ticks due.
+/// Returns the input and `alpha`, for the frame that is drawn after it.
+fn simulate(
+    game: &mut impl Game,
+    sim: &mut Sim,
+    args: &Args,
+    placed: Placed,
+    dt: f32,
+    text: bool,
+) -> (InputSnapshot, f32) {
+    sim.clock += dt;
+    // The ticks due are counted before the frame is built, so `alpha` is where
+    // drawing falls after them.
+    let ticks = sim.step.as_mut().map(|s| s.advance(dt));
+    let alpha = sim.step.as_ref().map_or(1.0, FixedStep::alpha);
+    let Placed {
+        viewport, origin, ..
+    } = placed;
+    let to_stage = |p: Vec2| (p - origin) / viewport.u;
+    let input = InputSnapshot::capture(
+        gesture_in(sim.gestures.update(), to_stage),
+        to_stage,
+        &args.keys,
+        sim.frames,
+    );
+    let frame = Frame {
+        args,
+        dt,
+        clock: sim.clock,
+        frames: sim.frames,
+        viewport,
+        px: placed.px,
+        origin,
+        bounds: placed.bounds,
+        input: &input,
+        alpha,
+        text,
+        canvas: None,
+    };
+    game.update(&frame);
+    for tick in ticks.into_iter().flatten() {
+        game.tick(&tick, &frame);
+    }
+    (input, alpha)
 }
 
 /// Where a stage sits in the window this frame.

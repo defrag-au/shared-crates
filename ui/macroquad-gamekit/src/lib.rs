@@ -38,6 +38,7 @@ pub mod face;
 pub mod fx;
 pub mod harness;
 pub mod icon;
+pub mod input;
 pub mod light;
 #[cfg(feature = "gamepads")]
 pub mod pads;
@@ -61,8 +62,11 @@ pub use dir::Dir4;
 pub use ease::Ease;
 pub use face::{emblem, gem, line, plate, shrink_to_fit, tab, tab_width};
 pub use fx::{Particles, Popups, Shake};
-pub use harness::{Args, Capture, Script, Scripted, Viewport, plain_target, window_camera};
+pub use harness::{
+    Args, Capture, KeyScript, Script, Scripted, Viewport, plain_target, switch, window_camera,
+};
 pub use icon::{Icon, draw_icon};
+pub use input::{Actions, Binding, InputSnapshot, PadState};
 pub use light::Lighting;
 #[cfg(feature = "gamepads")]
 pub use pads::{Pad, Pads};

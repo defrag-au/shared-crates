@@ -10,7 +10,7 @@ across frames and takes time as an argument. Stories are in `macroquad-storybook
 under "gamekit". MACROQUAD only: no wasm-bindgen, see the shared-crates CLAUDE.md on
 runtime pairs.
 
-22 modules.
+23 modules.
 
 | module | what it is |
 |---|---|
@@ -23,6 +23,7 @@ runtime pairs.
 | `fx` | `Shake`, `Popups` and `Particles` — the effects that make a hit land: screen shake that decays, numbers that pop and drift, and bursts of bits |
 | `harness` | `harness` — the review loop a game client is built around: a fixed clock, an exact moment captured to a PNG *and* a text report of every line drawn, scripted pointers, and a window camera that is the right way up |
 | `icon` | `Icon` — small icons drawn with shapes (a sword, a shield, a heart, a coin), so a stat or an effect shows without an icon font |
+| `input` | `Actions` — a game's verbs (hop, fire, pause) bound to keys, swipes, taps and pad buttons, with key repeat and press buffering |
 | `light` | `Lighting` — soft shadows, glows and a foil sheen, drawn by shader on a quad that turns with the thing it lights |
 | `pads` | `Pads` — gamepads by player slot, with sticks deadzoned and running y-down like the screen (feature `gamepads`) |
 | `paint` | `fill_gradient` and friends — the depth a printed card has and flat fills do not: gradient plates, bevels, inner shadows and a seeded grain texture |
