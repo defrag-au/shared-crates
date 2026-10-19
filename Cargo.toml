@@ -36,6 +36,8 @@ members = [
     "worker-utils",
     "asset-rarity",
     "arcade-core",
+    "arcade-room",
+    "arcade-room-worker",
     "chains",
     "chain-ledger",
     "chain-ledger-koios",
@@ -239,6 +241,13 @@ wallet-pallas = { path = "ui/wallet-pallas" }
 # a pure serde primitive and sits at the top level; the macroquad glue is
 # under ui/ with its siblings.
 arcade-core = { path = "arcade-core" }
+# Lockstep rooms: the pure room and client state machines, the sim trait a
+# game implements, and the wire format. No dependencies, so the same crate runs
+# in a Durable Object, a macroquad client and a native load test.
+arcade-room = { path = "arcade-room" }
+# The Durable Object that hosts an arcade-room world, for a game's worker to
+# compose. Not deployed from here.
+arcade-room-worker = { path = "arcade-room-worker" }
 arcade-harness = { path = "ui/arcade-harness" }
 macroquad-wallet-flow = { path = "ui/macroquad-wallet-flow" }
 macroquad-cnft = { path = "ui/macroquad-cnft" }

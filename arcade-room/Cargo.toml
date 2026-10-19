@@ -1,0 +1,21 @@
+[package]
+name = "arcade-room"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Lockstep rooms for deterministic games: the sim trait, a clock-paced room that confirms every seat's inputs tick by tick, the client that predicts ahead of it, and their binary wire format. Pure: no I/O, no clock, no dependencies."
+
+# No dependencies, deliberately: this runs inside a Durable Object (wasm32), a
+# macroquad client (wasm32 under miniquad, where wasm-bindgen cannot run) and
+# native tests and tools, and must behave identically in all three. Time is
+# always an argument.
+
+[features]
+# A simulated network (latency, jitter, drops) for driving a room and many
+# clients in one process. A test tool, but public, so a game's own crate can
+# load-test its sim through a real room.
+testkit = []
+
+[dependencies]

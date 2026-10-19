@@ -1,0 +1,16 @@
+[package]
+name = "arcade-room-worker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "A Cloudflare Durable Object that hosts an arcade-room world: WebSockets in, the confirmed stream out, saves to storage. Generic over the game's RoomSim; a game's worker composes it in a few lines."
+
+# A library, not a deployed worker: each game's worker (in augminted-bots)
+# plugs its sim in with `world_object!` and routes with `connect`.
+
+[dependencies]
+arcade-room = { workspace = true }
+# Pinned to the version worker-stack pins, so a game's worker resolves one.
+worker = { version = "=0.7.4" }
