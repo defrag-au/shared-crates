@@ -1,4 +1,4 @@
-//! `web` — the miniquad JS plugins the kit's `audio` and `gamepads` features need in the page, shipped with the kit and stamped by a game's `build.rs`.
+//! `web` — the miniquad JS plugins the kit's `audio` and `gamepads` features need in the page, and the kit's own page scripts (fullscreen on a phone), shipped with the kit and stamped by a game's `build.rs`.
 //!
 //! macroquad reaches the browser only through miniquad's plugin protocol: the
 //! wasm imports plain functions, and a JS file loaded before `load(...)`
@@ -108,15 +108,48 @@ pub fn stamp(dir: &Path, plugins: &[Plugin]) -> std::io::Result<Vec<PathBuf>> {
     std::fs::create_dir_all(dir)?;
     plugins
         .iter()
-        .map(|p| {
-            let path = dir.join(p.file_name());
-            let js = p.js();
-            if std::fs::read_to_string(&path).ok().as_deref() != Some(js.as_str()) {
-                std::fs::write(&path, js)?;
-            }
-            Ok(path)
-        })
+        .map(|p| write_if_changed(&dir.join(p.file_name()), &p.js()))
         .collect()
+}
+
+/// A page script the kit itself owns: plain JS for the page, not a miniquad
+/// plugin, so nothing in the wasm imports it and no crate version pins it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PageScript {
+    /// Fullscreen on a phone's or tablet's first tap, where the browser
+    /// allows it (`js/fullscreen.js` says where it does not).
+    Fullscreen,
+}
+
+impl PageScript {
+    /// The file name it is stamped as.
+    pub fn file_name(self) -> &'static str {
+        match self {
+            PageScript::Fullscreen => "gamekit-fullscreen.js",
+        }
+    }
+
+    pub fn js(self) -> &'static str {
+        match self {
+            PageScript::Fullscreen => include_str!("../js/fullscreen.js"),
+        }
+    }
+}
+
+/// Write each page script into `dir`, as [`stamp`] does plugins.
+pub fn stamp_scripts(dir: &Path, scripts: &[PageScript]) -> std::io::Result<Vec<PathBuf>> {
+    std::fs::create_dir_all(dir)?;
+    scripts
+        .iter()
+        .map(|s| write_if_changed(&dir.join(s.file_name()), s.js()))
+        .collect()
+}
+
+fn write_if_changed(path: &Path, js: &str) -> std::io::Result<PathBuf> {
+    if std::fs::read_to_string(path).ok().as_deref() != Some(js) {
+        std::fs::write(path, js)?;
+    }
+    Ok(path.to_path_buf())
 }
 
 #[cfg(test)]

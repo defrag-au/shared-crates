@@ -257,6 +257,14 @@ impl<S: RoomSim> Room<S> {
         {
             s.conn = None;
             s.gone_since = Some(now);
+            // Inputs are held until changed, and nobody will change this
+            // seat's now. Idle it, so a player who dropped mid-stride stands
+            // still through their grace instead of walking on as a ghost (off
+            // an edge, over and over).
+            let at = self.sim.tick();
+            let changes = self.pending.entry(at).or_default();
+            changes.retain(|c| !matches!(c, Change::Input(s, _) if *s == seat));
+            changes.push(Change::Input(seat, vec![0; S::INPUT_BYTES]));
         }
         self.poll(now);
     }
@@ -504,6 +512,14 @@ impl<S: RoomSim> Room<S> {
             rest = r;
         }
         let mut room = Self::around(S::restore(rest)?, cfg);
+        // Everyone is disconnected now, and the world holds each seat's last
+        // input: idle them all, as a drop would, so nobody walks on as a
+        // ghost while their grace runs.
+        let at = room.sim.tick();
+        let idle = seats
+            .keys()
+            .map(|seat| Change::Input(*seat, vec![0; S::INPUT_BYTES]));
+        room.pending.entry(at).or_default().extend(idle);
         room.seats = seats;
         Ok(room)
     }

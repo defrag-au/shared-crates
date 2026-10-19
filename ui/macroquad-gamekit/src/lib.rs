@@ -57,7 +57,7 @@ pub mod web;
 
 pub use app::{Backdrop, Frame, Game, Stage};
 #[cfg(feature = "audio")]
-pub use audio::{Audio, load_pcm, wav};
+pub use audio::{Audio, Panned, Voices, load_pcm, pan_gains, pan_mono, wav, wav_stereo};
 pub use bake::{Baked, Baker};
 pub use dir::Dir4;
 pub use ease::Ease;

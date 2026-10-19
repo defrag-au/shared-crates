@@ -37,4 +37,4 @@ runtime pairs.
 | `text` | `RichText` — wrapped text in several styles with inline icon boxes, laid out once and drawn crisp at any pixel scale |
 | `thumbs` | `Thumbs` — touch controls for a phone game: the first finger down anywhere is a stick, any other tap is an activation, and a few reserved areas (a map button) take their own taps |
 | `tween` | `Animated` — a value that moves towards a target over time: the tween, held by whatever owns the value |
-| `web` | `web` — the miniquad JS plugins the kit's `audio` and `gamepads` features need in the page, shipped with the kit and stamped by a game's `build.rs` |
+| `web` | `web` — the miniquad JS plugins the kit's `audio` and `gamepads` features need in the page, and the kit's own page scripts (fullscreen on a phone), shipped with the kit and stamped by a game's `build.rs` |

@@ -282,6 +282,23 @@ fn a_reconnect_within_the_grace_keeps_the_seat_and_after_it_frees_it() {
 }
 
 #[test]
+fn a_dropped_player_stands_still_through_their_grace() {
+    let mut h = Harness::<Walkers>::new(10, cfg());
+    h.connect("anchor", true, 20, 0);
+    let walker = h.connect("walker", true, 20, 0);
+    // Steer right and keep holding it.
+    h.run(2_000, |i, _, _| (i == walker).then(|| vec![1, 0]));
+    let seat = h.client(walker).expect("playing").seat();
+    h.disconnect(walker);
+    h.run(500, |_, _, _| None);
+    let stopped = h.room.sim().dots[&seat].0;
+    h.run(10_000, |_, _, _| None);
+    let dot = h.room.sim().dots[&seat];
+    assert_eq!(dot.0, stopped, "no ghost walking during the grace");
+    assert_eq!(dot.2, [0, 0], "its input idled");
+}
+
+#[test]
 fn a_full_world_and_another_version_are_refused() {
     let mut h = Harness::<Walkers>::new(7, cfg());
     for i in 0..64 {
@@ -344,6 +361,34 @@ fn a_saved_room_loads_and_its_players_get_their_seats_back() {
         ToClient::decode(&welcome.bytes),
         Ok(ToClient::Welcome { seat: s, .. }) if s == seat
     ));
+}
+
+/// A saved room comes back with nobody connected yet, so nobody's held input
+/// carries on: a player walking when the room was saved stands still once it
+/// loads, until they rejoin and steer again.
+#[test]
+fn a_loaded_room_idles_everyone_until_they_rejoin() {
+    let mut h = Harness::<Walkers>::new(11, cfg());
+    h.connect("anchor", true, 20, 0);
+    let walker = h.connect("walker", true, 20, 0);
+    h.run(2_000, |i, _, _| (i == walker).then(|| vec![1, 0]));
+    let seat = h.client(walker).expect("playing").seat();
+    assert_eq!(h.room.sim().dots[&seat].2, [1, 0], "walking when saved");
+    let saved = h.room.save();
+
+    let mut room = Room::<Walkers>::load(&saved, cfg(), 0).expect("loads");
+    let before = room.sim().dots[&seat].0;
+    room.open(9);
+    room.message(9, &crate::client::hello::<Walkers>("anchor", true), 100);
+    let start = room.sim().tick();
+    for now in (100..5_000).step_by(50) {
+        room.poll(now);
+        room.drain();
+    }
+    assert!(room.sim().tick() > start + 100, "the room ran");
+    let dot = room.sim().dots[&seat];
+    assert_eq!(dot.0, before, "no ghost walking after a load");
+    assert_eq!(dot.2, [0, 0], "its input idled");
 }
 
 /// The player's own prediction is what the room later confirms: on a phone's

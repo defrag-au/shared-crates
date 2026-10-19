@@ -65,8 +65,9 @@ use crate::startup::Startup;
 use crate::step::{FixedStep, Tick};
 use crate::text::enable_glyph_gate;
 
-/// Where a game draws.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Where a game draws. Not `PartialEq`: [`Stage::PixelFit`] holds a function,
+/// and function pointers do not compare reliably.
+#[derive(Clone, Copy, Debug)]
 pub enum Stage {
     /// Design units, scaled uniformly to fit the window (the roomier side
     /// grows) and drawn at its device pixels.
@@ -75,6 +76,16 @@ pub enum Stage {
     /// scaled to the window by the largest whole number that fits (or shrunk,
     /// if the window is smaller), centred, letterboxed in black.
     Pixel { width: u32, height: u32 },
+    /// A pixel canvas sized by the game: the function is given the window in
+    /// points and its DPI scale, and returns the canvas size, every frame.
+    /// When the answer changes (a phone rotated, a window resized) the loop
+    /// makes a new canvas of that size; [`Frame::viewport`]'s `size` is the
+    /// canvas a frame draws on, so a game reads its size from there.
+    ///
+    /// Return the screen in device pixels divided by a whole number, and the
+    /// canvas fills the window edge to edge with no letterbox (Island Funk's
+    /// `canvas_for`).
+    PixelFit(fn(Vec2, f32) -> Vec2),
     /// A fixed play field of `size` design units, drawn at the window's device
     /// pixels like [`Stage::Design`], but fitted whole and placed by `align`
     /// in the window's spare room: `(0.5, 0.5)` centres it, `(0.5, 1.0)` sits
@@ -263,13 +274,9 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
         harness::report::enable();
     }
     enable_glyph_gate();
-    let canvas = match stage {
-        Stage::Pixel { width, height } => {
-            let target = plain_target(width, height);
-            target.texture.set_filter(FilterMode::Nearest);
-            Some(target)
-        }
-        Stage::Design(_) | Stage::Board { .. } => None,
+    let mut canvas = match fitted(stage, &args) {
+        Stage::Pixel { width, height } => Some(pixel_canvas(width, height)),
+        _ => None,
     };
     let mut startup = match (capturing, &canvas) {
         (true, _) => Startup::capture(),
@@ -289,6 +296,16 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
     let fast_forward = fast_forward_to(&args, scripted);
 
     loop {
+        // A fitted stage resolves to a plain pixel stage each frame, and gets
+        // a new canvas when its size changes.
+        let stage = fitted(stage, &args);
+        if let Stage::Pixel { width, height } = stage
+            && canvas
+                .as_ref()
+                .is_none_or(|c| c.texture.size() != vec2(width as f32, height as f32))
+        {
+            canvas = Some(pixel_canvas(width, height));
+        }
         if let Some(at) = fast_forward {
             while sim.frames >= SETTLE_FRAMES
                 && sim.clock + harness::FIXED_DT * (DRAWN_BEFORE_AT as f32) < at
@@ -519,6 +536,31 @@ struct Placed {
     offset: Vec2,
 }
 
+/// A pixel stage's canvas: a plain target, drawn nearest-neighbour.
+fn pixel_canvas(width: u32, height: u32) -> RenderTarget {
+    let target = plain_target(width.max(1), height.max(1));
+    target.texture.set_filter(FilterMode::Nearest);
+    target
+}
+
+/// `stage` as it draws this frame: a [`Stage::PixelFit`] resolved to the
+/// pixel stage its function asks for, every other stage as it is. A capture
+/// with `--size` fits that size, whatever the window became.
+fn fitted(stage: Stage, args: &Args) -> Stage {
+    let Stage::PixelFit(fit) = stage else {
+        return stage;
+    };
+    let points = match args.size {
+        Some((w, h)) if args.capturing() => vec2(w as f32, h as f32),
+        _ => vec2(screen_width(), screen_height()),
+    };
+    let size = fit(points, screen_dpi_scale()).max(Vec2::ONE);
+    Stage::Pixel {
+        width: size.x as u32,
+        height: size.y as u32,
+    }
+}
+
 fn place(stage: Stage, args: &Args) -> Placed {
     match stage {
         Stage::Design(design) => {
@@ -547,6 +589,8 @@ fn place(stage: Stage, args: &Args) -> Placed {
             }
         }
         Stage::Board { size, align } => board_fit(args.viewport(size), size, align),
+        // Resolved by `fitted` before it gets here; placed as its pixel stage.
+        Stage::PixelFit(_) => place(fitted(stage, args), args),
     }
 }
 

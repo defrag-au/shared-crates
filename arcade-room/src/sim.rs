@@ -36,6 +36,11 @@ pub trait RoomSim: Clone + Sized {
     /// The most players one world holds.
     const MAX_SEATS: usize;
     /// The size of one seat's input. Inputs of any other size are dropped.
+    ///
+    /// All zeros must mean *idle*: nothing pressed, nothing steering. The
+    /// room sets a seat's input to zeros when its connection drops, so a
+    /// player who lost signal mid-stride stands still through their grace
+    /// period instead of walking on as a ghost.
     const INPUT_BYTES: usize;
 
     /// A fresh world.

@@ -306,9 +306,12 @@ pub fn bundle(opts: &Options) -> Result<Bundle, String> {
         .map(|(n, _)| format!("{}{n}", opts.base))
         .collect();
     let wasm_src = format!("{}{}?v={cache_key}", opts.base, opts.wasm);
-    let html = page::render(&template, &opts.title, &srcs, &wasm_src)?;
+    let html = page::render(&template, &opts.title, &srcs, &wasm_src, &opts.base)?;
     let index = dest.join("index.html");
     std::fs::write(&index, html).map_err(|e| io("write", &index, e))?;
+    let manifest = dest.join(page::MANIFEST);
+    std::fs::write(&manifest, page::manifest(&opts.title))
+        .map_err(|e| io("write", &manifest, e))?;
 
     // 6. Every import provided.
     let gap = imports::unprovided(&imports, staged.iter().map(|(_, s)| s.as_str()));
