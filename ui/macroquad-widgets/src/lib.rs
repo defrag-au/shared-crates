@@ -44,7 +44,7 @@ pub use floating_stick::{
     response as stick_response,
 };
 pub use fonts::{FontFiles, Fonts, Slot};
-pub use gesture::{Gesture, Gestures, SwipeDir};
+pub use gesture::{Gesture, Gestures, SwipeDir, touch_points};
 pub use mint_checkout::{
     CheckoutAction, CheckoutResponse, CheckoutState, Eligibility, MintCheckoutVm, mint_checkout,
 };

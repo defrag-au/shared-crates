@@ -10,7 +10,7 @@ across frames and takes time as an argument. Stories are in `macroquad-storybook
 under "gamekit". MACROQUAD only: no wasm-bindgen, see the shared-crates CLAUDE.md on
 runtime pairs.
 
-23 modules.
+24 modules.
 
 | module | what it is |
 |---|---|
@@ -35,5 +35,6 @@ runtime pairs.
 | `startup` | `Startup` — the phases a screen goes through between opening and drawing whole: settling while the window finds its size, warming glyphs behind a [`Preloader`], then live |
 | `step` | `FixedStep` — a simulation that steps at a fixed rate, whatever the frame rate |
 | `text` | `RichText` — wrapped text in several styles with inline icon boxes, laid out once and drawn crisp at any pixel scale |
+| `thumbs` | `Thumbs` — touch controls for a phone game: the first finger down anywhere is a stick, any other tap is an activation, and a few reserved areas (a map button) take their own taps |
 | `tween` | `Animated` — a value that moves towards a target over time: the tween, held by whatever owns the value |
 | `web` | `web` — the miniquad JS plugins the kit's `audio` and `gamepads` features need in the page, shipped with the kit and stamped by a game's `build.rs` |

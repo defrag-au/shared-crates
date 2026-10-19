@@ -45,8 +45,13 @@ const BEHIND_TICKS: f64 = 9.0;
 /// A display clock further than this from its target snaps forward to it
 /// rather than gliding: a resume, a resync, the first frames.
 const SNAP_TICKS: f64 = 30.0;
-/// How far a display clock may run fast or slow while it glides.
-const GLIDE: f64 = 0.1;
+/// Within this many ticks of its target a display clock runs at exactly real
+/// time. Chasing every small change in the estimate made the player's own
+/// walking speed wobble, which reads as jank.
+const DEAD_BAND: f64 = 2.0;
+/// How far a display clock may run fast or slow while it glides back into
+/// the dead band.
+const GLIDE: f64 = 0.05;
 /// The behind timeline is rebuilt from the confirmed world when it trails it
 /// by more than this, rather than playing the gap back.
 const MAX_BEHIND: u64 = 300;
@@ -71,8 +76,17 @@ impl Glide {
             return;
         }
         let error = target - (self.tick + nominal);
-        let adjust = (error * 0.1).clamp(-GLIDE * nominal, GLIDE * nominal);
+        let adjust = if error.abs() <= DEAD_BAND {
+            0.0
+        } else {
+            (error * 0.1).clamp(-GLIDE * nominal, GLIDE * nominal)
+        };
         self.tick += nominal + adjust;
+    }
+
+    /// How far into the current tick the clock is, 0 to 1.
+    fn frac(&self) -> f32 {
+        self.tick.fract() as f32
     }
 }
 
@@ -99,6 +113,9 @@ pub struct Client<S: RoomSim> {
     anchor_tick: f64,
     /// The round trip, smoothed, in ms.
     rtt_ms: f64,
+    /// How much the round trip varies, smoothed, in ms: added to the input
+    /// lead so a jittery link's inputs still arrive in time.
+    jitter_ms: f64,
     hash_every: u64,
     last_sent_ms: u64,
     last_ping_ms: u64,
@@ -135,6 +152,7 @@ impl<S: RoomSim> Client<S> {
                     anchor_ms: now,
                     anchor_tick: room_tick as f64,
                     rtt_ms: 100.0,
+                    jitter_ms: 20.0,
                     hash_every: hash_every.max(1),
                     last_sent_ms: now,
                     last_ping_ms: 0,
@@ -184,9 +202,10 @@ impl<S: RoomSim> Client<S> {
     }
 
     /// How far ahead of the room's clock this player's timeline runs, in
-    /// ticks: the one-way trip and a margin.
+    /// ticks: the one-way trip, the link's jitter, and a margin.
     fn lead(&self) -> f64 {
-        self.one_way() + MARGIN_TICKS
+        let jitter = self.jitter_ms * f64::from(S::TICK_HZ) / 1_000.0;
+        self.one_way() + jitter + MARGIN_TICKS
     }
 
     /// How far ahead of the room's clock an input is scheduled, in whole
@@ -296,8 +315,16 @@ impl<S: RoomSim> Client<S> {
                 client_ms,
                 room_tick,
             } => {
-                // Smoothed, so one slow ping does not swing the lead.
+                // Smoothed, so one slow ping does not swing the lead; the
+                // jitter rises at once and falls slowly, so the lead stays
+                // big enough for the worst of a bad patch.
                 let sample = now.saturating_sub(client_ms).max(1) as f64;
+                let spread = (sample - self.rtt_ms).abs();
+                self.jitter_ms = if spread > self.jitter_ms {
+                    spread
+                } else {
+                    self.jitter_ms + (spread - self.jitter_ms) * 0.1
+                };
                 self.rtt_ms += (sample - self.rtt_ms) * 0.25;
                 self.observe(room_tick, now);
             }
@@ -333,16 +360,43 @@ impl<S: RoomSim> Client<S> {
     /// tick this player's newest input lands on, at the ahead clock as of the
     /// last [`display`](Self::display). Draw this player from it.
     pub fn predicted(&self) -> S {
+        self.predicted_pair().1
+    }
+
+    /// The ahead timeline as two worlds a tick apart, and how far between
+    /// them the ahead clock is (0 to 1): draw this player interpolated
+    /// between the two, and they move every frame, however a frame and a
+    /// tick line up.
+    pub fn predicted_pair(&self) -> (S, S, f32) {
         let mut world = self.confirmed.clone();
         let until = (self.ahead.tick.floor() as u64 + 2).min(world.tick() + MAX_PREDICT);
-        while world.tick() < until {
+        let step = |world: &mut S| {
             let changes = match self.own.get(&world.tick()) {
                 Some(bytes) => vec![Change::Input(self.seat, bytes.clone())],
                 None => Vec::new(),
             };
             world.step(&changes);
+        };
+        while world.tick() + 1 < until {
+            step(&mut world);
         }
-        world
+        let earlier = world.clone();
+        if world.tick() < until {
+            step(&mut world);
+        }
+        (earlier, world, self.ahead.frac())
+    }
+
+    /// The behind timeline's next tick, when it has been confirmed, and how
+    /// far towards it the behind clock is (0 to 1): draw everyone else
+    /// interpolated between [`behind`](Self::behind) and this.
+    pub fn behind_next(&self) -> (Option<S>, f32) {
+        let next = self.to_play.front().map(|changes| {
+            let mut world = self.playback.clone();
+            world.step(changes);
+            world
+        });
+        (next, self.behind.frac())
     }
 
     /// Frames to send, in order.

@@ -51,6 +51,7 @@ pub mod sprite;
 pub mod startup;
 pub mod step;
 pub mod text;
+pub mod thumbs;
 pub mod tween;
 pub mod web;
 
@@ -86,4 +87,5 @@ pub use text::{
     StyleId, TextLayout, TextStyle, draw_run, enable_glyph_gate, flush_glyphs, glyphs_pending,
     load_font, measure_run, register_font, ungated, warm_font_cache,
 };
+pub use thumbs::{Finger, StickShown, ThumbFrame, Thumbs};
 pub use tween::{Animated, Lerp};

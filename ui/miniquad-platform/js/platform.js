@@ -1,7 +1,8 @@
 // Platform service plugin — browser-API surfaces that Rust crates need
 // but which the miniquad WASM runtime doesn't provide out of the box.
 //
-// Currently exposes: cryptographically-secure random bytes, backed by
+// Currently exposes: the page's query string, a page reload, and
+// cryptographically-secure random bytes, backed by
 // `crypto.getRandomValues()`. Rust's `getrandom` crate routes through
 // this plugin via `register_custom_getrandom!` so pallas-crypto + bip39
 // + everything else that wants a CSPRNG works on miniquad WASM without
@@ -42,9 +43,16 @@
         return js_object(value === null ? '' : value);
     }
 
+    // Reload the page, query string and all: how a game rejoins after its
+    // connection died while the tab was hidden or the phone locked.
+    function platform_reload() {
+        window.location.reload();
+    }
+
     register_plugin = function (importObject) {
         importObject.env.platform_random_bytes = platform_random_bytes;
         importObject.env.platform_query_param = platform_query_param;
+        importObject.env.platform_reload = platform_reload;
     };
 
     miniquad_add_plugin({ register_plugin, version: 1, name: 'platform' });

@@ -51,7 +51,21 @@ use sapp_jsutils::JsObject;
 unsafe extern "C" {
     fn platform_random_bytes(len: u32) -> JsObject;
     fn platform_query_param(key: JsObject) -> JsObject;
+    fn platform_reload();
 }
+
+/// Reload the page: the way back for a game whose connection died while the
+/// phone was locked or the tab was hidden, when its transport cannot
+/// reconnect in place (quad-net's browser WebSocket cannot). Requires
+/// `platform.js`, like the rest of this crate.
+#[cfg(target_arch = "wasm32")]
+pub fn reload_page() {
+    unsafe { platform_reload() };
+}
+
+/// Native builds have no page to reload: nothing happens.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn reload_page() {}
 
 /// Read one parameter from the page's query string.
 ///

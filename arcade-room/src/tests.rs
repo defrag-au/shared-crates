@@ -345,3 +345,48 @@ fn a_saved_room_loads_and_its_players_get_their_seats_back() {
         Ok(ToClient::Welcome { seat: s, .. }) if s == seat
     ));
 }
+
+/// The player's own prediction is what the room later confirms: on a phone's
+/// connection (120 ms each way, ±60 ms), once the client has measured the
+/// link no input of theirs lands late, so their own character is never
+/// corrected. (Before the first round trip comes back the client assumes
+/// 100 ms, and a few of its first inputs may land late.)
+#[test]
+fn a_players_own_prediction_is_never_corrected_on_a_jittery_link() {
+    use std::collections::BTreeMap;
+    let mut h = Harness::<Walkers>::new(9, cfg());
+    h.connect("steady", true, 30, 0);
+    let phone = h.connect("phone", true, 120, 60);
+    h.run(5_000, |i, _, now| wander(i, now));
+    let late_while_measuring = h.room.stats().late_inputs;
+    // This player's position as predicted, by tick, until confirmed.
+    let mut predicted_x: BTreeMap<u64, i64> = BTreeMap::new();
+    let (mut checked, mut wrong) = (0u32, 0u32);
+    h.run(30_000, |i, c, now| {
+        if i == phone {
+            let seat = c.seat();
+            let (now_world, next_world, _) = c.predicted_pair();
+            for w in [&now_world, &next_world] {
+                if let Some(d) = w.dots.get(&seat) {
+                    predicted_x.insert(w.tick(), d.0);
+                }
+            }
+            let done = c.confirmed().tick();
+            if let (Some(px), Some(d)) = (predicted_x.remove(&done), c.confirmed().dots.get(&seat))
+            {
+                checked += 1;
+                wrong += u32::from(px != d.0);
+            }
+            predicted_x.retain(|t, _| *t > done);
+        }
+        wander(i, now)
+    });
+    assert!(checked > 200, "{checked}");
+    assert_eq!(wrong, 0, "of {checked}");
+    assert_eq!(
+        h.room.stats().late_inputs,
+        late_while_measuring,
+        "late once measured: {:?}",
+        h.room.stats()
+    );
+}

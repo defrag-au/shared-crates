@@ -95,7 +95,8 @@ impl InputSnapshot {
             // An ended touch is still listed on the frame it lifts; counting it
             // would hold a pad button one tick after the finger left, and a
             // replay would reproduce that drift faithfully.
-            touches: touches()
+            // In points, like the mouse: raw touches are device pixels.
+            touches: macroquad_widgets::touch_points()
                 .into_iter()
                 .filter(|t| !matches!(t.phase, TouchPhase::Ended | TouchPhase::Cancelled))
                 .map(|t| to_stage(t.position))
