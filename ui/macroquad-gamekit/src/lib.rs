@@ -43,6 +43,7 @@ pub mod light;
 #[cfg(feature = "gamepads")]
 pub mod pads;
 pub mod paint;
+pub mod pixel;
 pub mod pointer;
 pub mod preload;
 pub mod sequence;
@@ -75,6 +76,7 @@ pub use paint::{
     Gradient, bevel, fill_circle_gradient, fill_gradient, grain, inner_shadow, noise_pixels,
     noise_texture,
 };
+pub use pixel::{Grid, Palette, PixelError, PixelSprite, parse_frames};
 pub use pointer::{HoverGrace, Pointer, PointerConfig, PointerEvent, Swipe, Swipes};
 pub use preload::Preloader;
 pub use sequence::{Sequencer, stagger};
