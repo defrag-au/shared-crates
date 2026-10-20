@@ -13,7 +13,10 @@
 //!   quick tap of the first finger that never pushed, on release, so one
 //!   thumb can play a whole game.
 //! - **Reserved areas** answer only their own taps, and never start the
-//!   stick.
+//!   stick. A landing is reported at once ([`ThumbFrame::reserved`], right
+//!   for a toggle like a map); a lift is reported only if the finger lifts
+//!   inside the area it landed in ([`ThumbFrame::lifted`], right for a choice
+//!   you might slide off to cancel, like a menu item).
 //!
 //! The stick feels like the widgets crate's `FloatingStick`: a dead zone, a
 //! squared response for fine steering near the middle, travel on a disc
@@ -65,6 +68,17 @@ pub struct ThumbFrame {
     pub activated: bool,
     /// The reserved area touched this frame, by index.
     pub reserved: Option<usize>,
+    /// The reserved area a finger lifted from this frame, by index, when it
+    /// lifted inside the area it landed in: a tap released on its target.
+    pub lifted: Option<usize>,
+}
+
+/// A finger on a reserved area: which, and where it is now.
+#[derive(Clone, Copy, Debug)]
+struct Press {
+    id: u64,
+    area: usize,
+    at: Vec2,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -85,6 +99,8 @@ pub struct Thumbs {
     /// Fingers that landed on a reserved area or as a tap, so their moves
     /// and lifts are not mistaken for a new stick.
     others: Vec<u64>,
+    /// Fingers on reserved areas, for [`ThumbFrame::lifted`].
+    presses: Vec<Press>,
     seen: bool,
 }
 
@@ -97,6 +113,7 @@ impl Thumbs {
             radius,
             stick: None,
             others: Vec::new(),
+            presses: Vec::new(),
             seen: false,
         }
     }
@@ -166,6 +183,9 @@ impl Thumbs {
             if !known && f.phase != TouchPhase::Cancelled {
                 self.land(f, reserved, &mut out);
             }
+            if let Some(p) = self.presses.iter_mut().find(|p| p.id == f.id) {
+                p.at = f.at;
+            }
             match f.phase {
                 TouchPhase::Started => {}
                 TouchPhase::Moved | TouchPhase::Stationary => {
@@ -176,6 +196,13 @@ impl Thumbs {
                     }
                 }
                 TouchPhase::Ended | TouchPhase::Cancelled => {
+                    if let Some(at) = self.presses.iter().position(|p| p.id == f.id) {
+                        let p = self.presses.remove(at);
+                        let inside = reserved.get(p.area).is_some_and(|r| r.contains(p.at));
+                        if inside && f.phase == TouchPhase::Ended {
+                            out.lifted = Some(p.area);
+                        }
+                    }
                     if let Some(s) = self.stick.filter(|s| s.id == f.id) {
                         self.stick = None;
                         let still = !s.pushed && self.deflection(s).length() <= DEAD_ZONE;
@@ -210,6 +237,11 @@ impl Thumbs {
         if let Some(i) = reserved.iter().position(|r| r.contains(f.at)) {
             out.reserved = Some(i);
             self.others.push(f.id);
+            self.presses.push(Press {
+                id: f.id,
+                area: i,
+                at: f.at,
+            });
         } else if self.stick.is_none() {
             self.stick = Some(Held {
                 id: f.id,
@@ -258,6 +290,31 @@ mod tests {
         w: 40.0,
         h: 20.0,
     };
+
+    #[test]
+    fn a_reserved_tap_lifts_only_where_it_landed() {
+        let item = Rect::new(0.0, 0.0, 50.0, 50.0);
+        let mut t = Thumbs::new(50.0);
+        let out = t.update(&[f(1, TouchPhase::Started, 10.0, 10.0)], &[MAP, item]);
+        assert_eq!(
+            (out.reserved, out.lifted),
+            (Some(1), None),
+            "landing, not yet a tap"
+        );
+        let out = t.update(&[f(1, TouchPhase::Ended, 12.0, 11.0)], &[MAP, item]);
+        assert_eq!(out.lifted, Some(1));
+        assert!(!out.activated && out.stick.is_none());
+
+        // Slid off before lifting: cancelled.
+        t.update(&[f(2, TouchPhase::Started, 10.0, 10.0)], &[MAP, item]);
+        t.update(&[f(2, TouchPhase::Moved, 120.0, 10.0)], &[MAP, item]);
+        let out = t.update(&[f(2, TouchPhase::Ended, 120.0, 10.0)], &[MAP, item]);
+        assert_eq!(out.lifted, None);
+
+        // A landing and lift in one frame (one phase a frame) still counts.
+        let out = t.update(&[f(3, TouchPhase::Ended, 20.0, 20.0)], &[MAP, item]);
+        assert_eq!((out.reserved, out.lifted), (Some(1), Some(1)));
+    }
 
     #[test]
     fn the_first_finger_anywhere_is_the_stick_and_dragging_steers() {
