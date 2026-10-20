@@ -1,0 +1,10 @@
+[package]
+name = "arcade-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Enum-keyed state for deterministic lockstep sims: timed Effects and capped Counts, fixed arrays in canonical order, cheap to clone every frame, with their own compact wire encoding. No dependencies."
+
+[dependencies]
