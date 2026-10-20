@@ -299,6 +299,15 @@ name = "arcade-room"
 version = "0.1.0"
 
 [[package]]
+name = "arcade-room-quad"
+version = "0.1.0"
+dependencies = [
+ "arcade-room",
+ "miniquad-platform",
+ "quad-net",
+]
+
+[[package]]
 name = "arcade-room-worker"
 version = "0.1.0"
 dependencies = [

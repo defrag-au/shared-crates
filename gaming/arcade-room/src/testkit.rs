@@ -222,3 +222,91 @@ impl<S: RoomSim> Harness<S> {
         }
     }
 }
+
+/// Step a world of `S` from `seed` for `ticks`, each tick's changes chosen by
+/// `crowd` from the world as it stands, and fold its hash every `hash_every`
+/// ticks into one number.
+///
+/// The cross-target determinism check: a game builds this into a small
+/// crate twice, natively and as a wasm library a script runs under Node, and
+/// the two numbers must match. If they do not, the sim steps differently in
+/// a browser or a Durable Object than in a native test, and every shared
+/// world of it will desync. It goes through [`RoomSim::step`], the path the
+/// room and its clients take, input bytes and all.
+///
+/// The crowd should reach every mechanic the game has (not wander), or a
+/// match proves little: hold it to that with a coverage test of its own.
+pub fn crowd_hash<S: RoomSim>(
+    seed: u64,
+    ticks: u64,
+    hash_every: u64,
+    mut crowd: impl FnMut(&S) -> Vec<crate::sim::Change>,
+) -> u64 {
+    let mut world = S::new(seed);
+    let mut folded = 0u64;
+    for _ in 0..ticks {
+        let changes = crowd(&world);
+        world.step(&changes);
+        if hash_every > 0 && world.tick().is_multiple_of(hash_every) {
+            folded = folded.rotate_left(7) ^ world.hash();
+        }
+    }
+    folded.rotate_left(7) ^ world.hash()
+}
+
+#[cfg(test)]
+mod crowd_tests {
+    use super::*;
+    use crate::sim::{Change, Seat};
+
+    /// A counter a seat's held byte adds to each tick.
+    #[derive(Clone)]
+    struct Sum(u64, u64);
+
+    impl RoomSim for Sum {
+        const GAME: &'static str = "sum";
+        const VERSION: u32 = 1;
+        const TICK_HZ: u32 = 60;
+        const MAX_SEATS: usize = 1;
+        const INPUT_BYTES: usize = 1;
+        fn new(seed: u64) -> Self {
+            Sum(0, seed)
+        }
+        fn tick(&self) -> u64 {
+            self.0
+        }
+        fn step(&mut self, changes: &[Change]) {
+            for c in changes {
+                if let Change::Input(_, b) = c {
+                    self.1 = self.1.wrapping_add(u64::from(b[0]));
+                }
+            }
+            self.0 += 1;
+        }
+        fn hash(&self) -> u64 {
+            self.1 ^ (self.0 << 32)
+        }
+        fn snapshot(&self) -> Vec<u8> {
+            Vec::new()
+        }
+        fn restore(_: &[u8]) -> Result<Self, String> {
+            Ok(Sum(0, 0))
+        }
+    }
+
+    #[test]
+    fn the_crowd_sees_the_world_and_its_changes_count() {
+        let seat: Seat = 0;
+        let run = |bump: u8| {
+            crowd_hash::<Sum>(3, 600, 60, |w| {
+                if w.tick() % 7 == 0 {
+                    vec![Change::Input(seat, vec![bump])]
+                } else {
+                    Vec::new()
+                }
+            })
+        };
+        assert_eq!(run(1), run(1), "the same crowd, the same number");
+        assert_ne!(run(1), run(2), "and a different one differs");
+    }
+}

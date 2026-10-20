@@ -13,7 +13,7 @@ description = "Cardano NFTs in a macroquad game: a player's holdings and their a
 macroquad = "0.4"
 # `ArtTile` draws through the kit: `RoundedArt` for the art, `Ease` for the
 # fade, `fill_rounded` for the flat states.
-macroquad-gamekit = { path = "../macroquad-gamekit" }
+macroquad-gamekit = { path = "../../gaming/macroquad-gamekit" }
 # The theme a card's palette is read from. Already under the kit.
 macroquad-widgets = { workspace = true }
 # Colour science — contrast-picked ink, Oklab mixing. Already under

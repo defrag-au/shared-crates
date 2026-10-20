@@ -1,0 +1,17 @@
+[package]
+name = "arcade-room-quad"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "A lockstep room client's connection for macroquad games: arcade-room's Client over quad-net's WebSocket, natively and on the web, with quad-net's traps handled once. No wasm-bindgen."
+
+[dependencies]
+# The client state machine this drives: prediction, the room's clock, the wire.
+arcade-room = { workspace = true }
+# A WebSocket that works under miniquad: natively, and on the web through its
+# own JS plugin rather than wasm-bindgen.
+quad-net = { git = "https://github.com/not-fl3/quad-net", rev = "31796d4e" }
+# Reloading the page to rejoin on the web (`platform.js`).
+miniquad-platform = { path = "../../ui/miniquad-platform" }

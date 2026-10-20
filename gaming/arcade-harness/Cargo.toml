@@ -28,8 +28,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 # ── surface backends ──
-discord-miniquad = { path = "../discord-miniquad", optional = true }
+discord-miniquad = { path = "../../ui/discord-miniquad", optional = true }
 # The browser-tab backend: quad-net for HTTP, miniquad-platform to read the
 # handoff token off the page URL (there is no web-sys under miniquad).
 quad-net = { git = "https://github.com/not-fl3/quad-net", rev = "31796d4e", optional = true }
-miniquad-platform = { path = "../miniquad-platform", optional = true }
+miniquad-platform = { path = "../../ui/miniquad-platform", optional = true }

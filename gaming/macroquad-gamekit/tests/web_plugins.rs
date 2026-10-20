@@ -84,7 +84,7 @@ fn vendored_plugins_match_the_resolved_crates() {
         assert!(
             upstream == plugin.source(),
             "{krate} {version}'s {file} differs from the kit's copy for {plugin:?}.\n\
-             Refresh it: cp {} ui/macroquad-gamekit/js/",
+             Refresh it: cp {} gaming/macroquad-gamekit/js/",
             path.display()
         );
     }

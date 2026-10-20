@@ -107,6 +107,12 @@ impl Rng {
         lo.wrapping_add(self.below(hi.abs_diff(lo)) as i64)
     }
 
+    /// Uniform in `[lo, hi)`; `lo` when the range is empty. The tile and
+    /// grid coordinates most games draw.
+    pub fn range_i32(&mut self, lo: i32, hi: i32) -> i32 {
+        self.range_i64(i64::from(lo), i64::from(hi)) as i32
+    }
+
     /// Uniform in `[lo, hi)`.
     pub fn range_f32(&mut self, lo: f32, hi: f32) -> f32 {
         lo + (hi - lo) * self.f32()
@@ -177,12 +183,17 @@ mod tests {
             assert!((0.0..1.0).contains(&d));
             assert!(r.below(6) < 6);
             assert!((-3..4).contains(&r.range_i64(-3, 4)));
+            assert!((-3..4).contains(&r.range_i32(-3, 4)));
             let x = r.range_f32(2.0, 5.0);
             assert!((2.0..5.0).contains(&x));
         }
         assert_eq!(r.below(0), 0);
         assert_eq!(r.range_i64(5, 5), 5);
         assert!(r.range_i64(i64::MIN, i64::MAX) < i64::MAX, "no overflow");
+        assert!(r.range_i32(i32::MIN, i32::MAX) < i32::MAX, "no overflow");
+        // The same draw as the i64 range: one stream, whichever width asks.
+        let (mut a, mut b) = (Rng::new(4), Rng::new(4));
+        assert_eq!(i64::from(a.range_i32(-50, 50)), b.range_i64(-50, 50));
         assert_eq!(r.pick::<u8>(&[]), None);
     }
 

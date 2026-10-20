@@ -35,9 +35,9 @@ members = [
     "worker-stack",
     "worker-utils",
     "asset-rarity",
-    "arcade-core",
-    "arcade-room",
-    "arcade-room-worker",
+    # Games: replay verification, lockstep rooms, and the macroquad game
+    # layer. Kept together so the game crates read as one family.
+    "gaming/*",
     "chains",
     "chain-ledger",
     "chain-ledger-koios",
@@ -62,13 +62,11 @@ members = [
     "ui/wallet-pallas",
     "ui/wallet-leptos",
     "ui/wallet-miniquad",
-    "ui/arcade-harness",
     "ui/macroquad-tui",
     "ui/macroquad-wallet-flow",
     "ui/macroquad-cnft",
     "ui/macroquad-text",
     "ui/macroquad-widgets",
-    "ui/macroquad-gamekit",
     "ui/macroquad-bundle",
     "ui/macroquad-storybook",
     "ui/miniquad-platform",
@@ -237,18 +235,20 @@ gateway-wiring = { path = "services/gateway-wiring" }
 gateway-admin-protocol = { path = "services/gateway-admin-protocol" }
 wallet-core = { path = "ui/wallet-core" }
 wallet-pallas = { path = "ui/wallet-pallas" }
-# Replay-verified games (ported from the adacade workspace). `arcade-core` is
-# a pure serde primitive and sits at the top level; the macroquad glue is
-# under ui/ with its siblings.
-arcade-core = { path = "arcade-core" }
+# Games, all under gaming/. Replay-verified games (ported from the adacade
+# workspace): `arcade-core` is a pure serde primitive.
+arcade-core = { path = "gaming/arcade-core" }
 # Lockstep rooms: the pure room and client state machines, the sim trait a
 # game implements, and the wire format. No dependencies, so the same crate runs
 # in a Durable Object, a macroquad client and a native load test.
-arcade-room = { path = "arcade-room" }
+arcade-room = { path = "gaming/arcade-room" }
 # The Durable Object that hosts an arcade-room world, for a game's worker to
 # compose. Not deployed from here.
-arcade-room-worker = { path = "arcade-room-worker" }
-arcade-harness = { path = "ui/arcade-harness" }
+arcade-room-worker = { path = "gaming/arcade-room-worker" }
+# A room client's connection for macroquad games: the client over quad-net,
+# with quad-net's traps handled once.
+arcade-room-quad = { path = "gaming/arcade-room-quad" }
+arcade-harness = { path = "gaming/arcade-harness" }
 macroquad-wallet-flow = { path = "ui/macroquad-wallet-flow" }
 macroquad-cnft = { path = "ui/macroquad-cnft" }
 macroquad-widgets = { path = "ui/macroquad-widgets" }
