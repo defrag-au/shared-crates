@@ -18,6 +18,15 @@
 //! leaves a [`WalletFlow::take_notice`] line, because a UI that paints a
 //! refusal in red teaches people not to press the button.
 //!
+//! ## The wallet is remembered
+//!
+//! A connect that reaches [`Stage::Ready`] is written to the host's durable
+//! store through [`Bridge::remember`], and the next page load connects it
+//! before the first frame — silently, because CIP-30 keeps the permission
+//! grant. One attempt per load: a refusal forgets the key and lands back on the
+//! picker, an explicit [`WalletFlow::disconnect`] forgets it too, and a wallet
+//! that is not installed is remembered but not connected.
+//!
 //! ## Drawing
 //!
 //! [`WalletFlow::draw`] takes the host's `Painter`, so the panel uses the
@@ -51,11 +60,31 @@ pub trait Bridge {
     fn poll(&mut self, id: ReqId) -> PollResultDetailed;
     fn cancel(&mut self, id: ReqId);
     fn disconnect(&mut self);
+
+    /// The wallet key this host last connected, if it keeps one between runs.
+    ///
+    /// A host with no durable store answers `None` — which is the right
+    /// answer for a native run, a test, and a page with `localStorage`
+    /// disabled.
+    fn remembered(&self) -> Option<String> {
+        None
+    }
+
+    /// Keep `Some(key)`, or forget (`None`).
+    ///
+    /// Called only when the answer is known: a connect that reached
+    /// [`Stage::Ready`], or an `enable()` that was refused. Never on a mere
+    /// attempt — a remembered wallet should mean "this worked here".
+    fn remember(&mut self, _key: Option<&str>) {}
 }
 
 /// The production bridge: the miniquad plugin over `window.cardano`.
 #[derive(Default)]
 pub struct MiniquadBridge;
+
+/// Where the remembered provider key lives. Namespaced by crate so two
+/// macroquad apps on one origin cannot overwrite each other's choice.
+const PROVIDER_KEY: &str = "macroquad-wallet-flow.provider";
 
 impl Bridge for MiniquadBridge {
     fn list_providers(&self) -> Vec<Provider> {
@@ -81,6 +110,15 @@ impl Bridge for MiniquadBridge {
     }
     fn disconnect(&mut self) {
         wallet::disconnect()
+    }
+    fn remembered(&self) -> Option<String> {
+        miniquad_platform::storage_get(PROVIDER_KEY)
+    }
+    fn remember(&mut self, key: Option<&str>) {
+        match key {
+            Some(key) => miniquad_platform::storage_set(PROVIDER_KEY, key),
+            None => miniquad_platform::storage_remove(PROVIDER_KEY),
+        }
     }
 }
 
@@ -174,6 +212,9 @@ pub struct WalletFlow<B: Bridge = MiniquadBridge> {
     expected_network: Option<u8>,
     /// A short line about the last outcome — currently a cancelled connect.
     notice: Option<String>,
+    /// The key of the connect attempt in flight, so a `Ready` knows what to
+    /// remember and a failed `enable()` knows what to forget.
+    attempt: Option<String>,
 }
 
 impl WalletFlow<MiniquadBridge> {
@@ -201,7 +242,7 @@ impl<B: Bridge> WalletFlow<B> {
         let vm = WalletConnectVm {
             state: state_for(&providers, &stage),
         };
-        Self {
+        let mut flow = Self {
             bridge,
             providers,
             pending: None,
@@ -209,7 +250,33 @@ impl<B: Bridge> WalletFlow<B> {
             vm,
             expected_network: None,
             notice: None,
+            attempt: None,
+        };
+        flow.auto_connect();
+        flow
+    }
+
+    /// Connect the wallet this host last used, if it is still installed.
+    ///
+    /// CIP-30's `enable()` only prompts when it has to — a browser that still
+    /// holds the permission grant answers silently — so a returning reader is
+    /// connected before the first frame. ONE attempt per page load, never a
+    /// loop: if the grant is gone the reader is back at the picker, and the
+    /// key is forgotten rather than retried every visit.
+    fn auto_connect(&mut self) {
+        if !self.bridge.available() {
+            return;
         }
+        let Some(key) = self.bridge.remembered() else {
+            return;
+        };
+        if !self.providers.iter().any(|p| p.key == key) {
+            // Installed last time, not now. Keep the memory: the extension may
+            // be disabled for this session, or the reader may be on another
+            // machine's profile in the same browser.
+            return;
+        }
+        self.connect(&key);
     }
 
     /// Require a CIP-30 network id (1 = mainnet). A mismatch disconnects and
@@ -339,13 +406,20 @@ impl<B: Bridge> WalletFlow<B> {
             .unwrap_or_else(|| key.to_string());
         let req = self.bridge.connect(key);
         self.pending = Some(InFlight::Connecting { req, name });
+        self.attempt = Some(key.to_string());
         self.set_stage(Stage::Connecting);
         self.notice = None;
     }
 
     /// Forget the connection and list the wallets again.
+    ///
+    /// Also forgets the remembered key: a reader who disconnects is saying
+    /// "do not bring me back here", and silently reconnecting them next visit
+    /// is exactly the behaviour that makes a wallet page feel haunted.
     pub fn disconnect(&mut self) {
         self.bridge.disconnect();
+        self.attempt = None;
+        self.bridge.remember(None);
         self.reset();
     }
 
@@ -391,6 +465,7 @@ impl<B: Bridge> WalletFlow<B> {
         if let Some(pending) = self.pending.take() {
             self.bridge.cancel(pending.req());
         }
+        self.attempt = None;
         self.providers = self.bridge.list_providers();
         let stage = if self.bridge.available() {
             Stage::Disconnected
@@ -423,6 +498,9 @@ impl<B: Bridge> WalletFlow<B> {
             }
             InFlight::Network { name, .. } => {
                 let Ok(network_id) = data.trim().parse::<u8>() else {
+                    // The attempt ended without a usable wallet: nothing to
+                    // remember, whether or not this was an auto-connect.
+                    self.attempt = None;
                     self.bridge.disconnect();
                     self.providers = self.bridge.list_providers();
                     self.set_stage(Stage::Failed {
@@ -433,6 +511,7 @@ impl<B: Bridge> WalletFlow<B> {
                 if let Some(expected) = self.expected_network
                     && network_id != expected
                 {
+                    self.attempt = None;
                     self.bridge.disconnect();
                     self.providers = self.bridge.list_providers();
                     self.set_stage(Stage::WrongNetwork {
@@ -524,10 +603,18 @@ impl<B: Bridge> WalletFlow<B> {
             other => {
                 self.bridge.disconnect();
                 self.providers = self.bridge.list_providers();
-                if kind == FailureKind::Declined && matches!(other, InFlight::Connecting { .. }) {
-                    self.set_stage(Stage::Disconnected);
-                    self.notice = Some("Connection cancelled".to_string());
-                    return;
+                if matches!(other, InFlight::Connecting { .. }) {
+                    // The grant is gone, or the wallet would not open. Forget
+                    // it: auto-connecting again next visit would fail again
+                    // without saying so. The picker is the one place that can
+                    // ask.
+                    self.attempt = None;
+                    self.bridge.remember(None);
+                    if kind == FailureKind::Declined {
+                        self.set_stage(Stage::Disconnected);
+                        self.notice = Some("Connection cancelled".to_string());
+                        return;
+                    }
                 }
                 self.set_stage(Stage::Failed {
                     message: short(&data),
@@ -543,6 +630,11 @@ impl<B: Bridge> WalletFlow<B> {
         stake_address: Option<String>,
         network_id: u8,
     ) {
+        // The one place a wallet becomes "the wallet this browser uses": the
+        // connect completed, so the next page load may bring it back.
+        if let Some(key) = self.attempt.take() {
+            self.bridge.remember(Some(&key));
+        }
         let address_bech32 = wallet::hex_to_bech32(&address_hex);
         self.set_stage(Stage::Ready {
             name,
@@ -622,6 +714,10 @@ mod tests {
         calls: Vec<&'static str>,
         disconnected: bool,
         available: bool,
+        /// What the host had stored when the flow was built.
+        remembered: Option<String>,
+        /// Every `remember` the flow asked for, in order.
+        stored: Vec<Option<String>>,
     }
 
     impl FakeBridge {
@@ -636,7 +732,15 @@ mod tests {
                 calls: Vec::new(),
                 disconnected: false,
                 available: true,
+                remembered: None,
+                stored: Vec::new(),
             }
+        }
+
+        /// The same bridge, as if this browser had connected `key` before.
+        fn remembering(mut self, key: &str) -> Self {
+            self.remembered = Some(key.to_string());
+            self
         }
     }
 
@@ -673,6 +777,12 @@ mod tests {
         }
         fn disconnect(&mut self) {
             self.disconnected = true;
+        }
+        fn remembered(&self) -> Option<String> {
+            self.remembered.clone()
+        }
+        fn remember(&mut self, key: Option<&str>) {
+            self.stored.push(key.map(str::to_string));
         }
     }
 
@@ -899,5 +1009,89 @@ mod tests {
         let flow = WalletFlow::with_bridge(bridge);
         assert!(matches!(flow.stage(), Stage::Unavailable));
         assert_eq!(flow.blocker().as_deref(), Some("A wallet needs a browser"));
+    }
+
+    /// A reader who connected once should not have to pick again. The connect
+    /// starts in `with_bridge`, before the first frame, and the key is written
+    /// back once it is READY — not on the attempt.
+    #[test]
+    fn a_remembered_wallet_connects_on_its_own() {
+        let mut flow = WalletFlow::with_bridge(
+            FakeBridge::new(vec![
+                ok("eternl"),
+                ok("1"),
+                ok(&base_address()),
+                ok(&reward_address()),
+            ])
+            .remembering("eternl"),
+        )
+        .expect_network(1);
+
+        assert!(
+            matches!(flow.stage(), Stage::Connecting),
+            "the connect starts before the first frame: {:?}",
+            flow.stage()
+        );
+        for _ in 0..4 {
+            flow.poll();
+        }
+        assert!(matches!(flow.stage(), Stage::Ready { .. }));
+        assert_eq!(flow.bridge.stored, vec![Some("eternl".to_string())]);
+    }
+
+    /// Installed last time, not now: nothing to connect, and the memory is
+    /// kept — the extension may only be disabled for this session.
+    #[test]
+    fn a_remembered_wallet_that_is_not_installed_is_left_alone() {
+        let flow = WalletFlow::with_bridge(FakeBridge::new(Vec::new()).remembering("nami"))
+            .expect_network(1);
+
+        assert!(matches!(flow.stage(), Stage::Disconnected));
+        assert!(flow.bridge.calls.is_empty());
+        assert!(flow.bridge.stored.is_empty(), "nothing to rewrite");
+    }
+
+    /// The grant is gone, or the wallet would not open. One attempt, then back
+    /// to the picker with the key forgotten — never a retry loop.
+    #[test]
+    fn a_refused_auto_connect_forgets_the_wallet() {
+        let mut flow = WalletFlow::with_bridge(
+            FakeBridge::new(vec![err("User declined", FailureKind::Declined)])
+                .remembering("eternl"),
+        )
+        .expect_network(1);
+
+        flow.poll();
+        assert!(matches!(flow.stage(), Stage::Disconnected));
+        assert_eq!(flow.take_notice().as_deref(), Some("Connection cancelled"));
+        assert_eq!(flow.bridge.stored, vec![None]);
+    }
+
+    /// A connect that never reached READY is not remembered — "this worked
+    /// here" is the only thing worth bringing back.
+    #[test]
+    fn a_wrong_network_wallet_is_not_remembered() {
+        let mut flow = flow(vec![ok("eternl"), ok("0")]);
+        flow.connect("eternl");
+        for _ in 0..2 {
+            flow.poll();
+        }
+        assert!(matches!(flow.stage(), Stage::WrongNetwork { .. }));
+        assert!(flow.bridge.stored.is_empty());
+    }
+
+    /// Disconnecting means "do not bring me back here".
+    #[test]
+    fn disconnecting_forgets_the_wallet() {
+        let mut flow = ready_flow();
+        assert_eq!(flow.bridge.stored, vec![Some("eternl".to_string())]);
+
+        flow.disconnect();
+        assert_eq!(
+            flow.bridge.stored.last(),
+            Some(&None),
+            "the remembered key is cleared"
+        );
+        assert!(matches!(flow.stage(), Stage::Disconnected));
     }
 }

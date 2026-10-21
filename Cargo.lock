@@ -3766,6 +3766,7 @@ version = "0.1.0"
 dependencies = [
  "macroquad",
  "macroquad-widgets",
+ "miniquad-platform",
  "wallet-miniquad",
 ]
 
