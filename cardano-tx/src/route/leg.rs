@@ -65,6 +65,19 @@ pub struct LegState {
     /// Conway charges a fee per referenced byte, and guessing it under-funds
     /// the transaction.
     pub ref_script_size: u32,
+    /// The contract output's address, as raw bytes.
+    ///
+    /// Read by LOCAL PHASE-2 EVALUATION only. A resolved input is a whole
+    /// `TransactionOutput`, and an output without its address is not one — but
+    /// the route arithmetic never reads this, because `contract_utxo` already
+    /// names the UTxO and carries its value. So a host that only ever builds
+    /// against an indexer may leave it `None`, and a resolver handed `None`
+    /// declines rather than reconstructing a context it cannot describe.
+    ///
+    /// Wrong-and-believable is the dangerous case here: a context rebuilt
+    /// without a field evaluates clean and comes out LOW, which fails phase-2
+    /// on chain and burns collateral.
+    pub contract_address: Option<Vec<u8>>,
 }
 
 /// One named fee bucket. Enumerated, never summarised: the widget shows the
