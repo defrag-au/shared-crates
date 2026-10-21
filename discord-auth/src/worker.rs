@@ -1,12 +1,19 @@
-//! Worker-side OAuth callback mixin.
+//! Worker-side OAuth routes.
 //!
-//! A consuming worker mounts one route and calls [`handle_callback`]:
+//! A consuming worker mounts two routes: [`begin_login`] where the app's
+//! "Log in with Discord" links, and [`finish_login`] at the redirect URI.
 //!
 //! ```ignore
+//! .get("/auth/discord", |req, ctx| {
+//!     discord_auth::worker::begin_login(&client_id, &redirect_uri, &[scopes::IDENTIFY])
+//! })
 //! .get_async("/auth/discord/callback", |req, ctx| async move {
-//!     discord_auth::worker::handle_callback(&req, &ctx.env, &CONFIG, &settings).await
+//!     discord_auth::worker::finish_login(&req, &CONFIG, &settings).await
 //! })
 //! ```
+//!
+//! [`handle_login`] and [`handle_callback`] are the same without the `state`
+//! check, for workers mounted before it existed.
 //!
 //! The handler:
 //! 1. reads `?code=` (+ `?state=`) from the callback URL,
@@ -128,10 +135,77 @@ pub async fn handle_callback(
     Ok(Response::empty()?.with_status(302).with_headers(headers))
 }
 
+/// The cookie carrying a login's `state` nonce from [`begin_login`] to
+/// [`finish_login`].
+const STATE_COOKIE: &str = "discord_auth_state";
+/// How long a login may take, in seconds, before its `state` is forgotten.
+const STATE_SECS: u32 = 600;
+
+/// Begin login, checked: a fresh random `state` nonce goes to Discord in the
+/// authorize URL and to the browser in a short-lived `HttpOnly` cookie, and
+/// [`finish_login`] accepts the callback only when the two agree. That stops a
+/// forged callback logging a victim into someone else's account (login CSRF).
+///
+/// Mount it on the route the app's "Log in with Discord" links to, and
+/// [`finish_login`] on `redirect_uri`'s path.
+pub fn begin_login(client_id: &str, redirect_uri: &str, scopes: &[&str]) -> Result<Response> {
+    let mut nonce = [0u8; 16];
+    getrandom::fill(&mut nonce).map_err(|e| Error::RustError(format!("state nonce: {e}")))?;
+    let state: String = nonce.iter().map(|b| format!("{b:02x}")).collect();
+    let mut response = handle_login(client_id, redirect_uri, scopes, &state)?;
+    response.headers_mut().set(
+        "Set-Cookie",
+        &format!(
+            "{STATE_COOKIE}={state}; Max-Age={STATE_SECS}; Path=/; HttpOnly; Secure; SameSite=Lax"
+        ),
+    )?;
+    Ok(response)
+}
+
+/// Finish a login [`begin_login`] began: check the callback's `state` against
+/// the cookie, then [`handle_callback`], and forget the cookie either way.
+pub async fn finish_login(
+    req: &Request,
+    config: &GuildRoleConfig,
+    settings: &CallbackSettings<'_>,
+) -> Result<Response> {
+    let state = req
+        .url()?
+        .query_pairs()
+        .find_map(|(k, v)| (k == "state").then(|| v.into_owned()));
+    let cookie = req.headers().get("Cookie")?.unwrap_or_default();
+    let expected = cookie_value(&cookie, STATE_COOKIE);
+    let mut response = match (state, expected) {
+        (Some(state), Some(expected)) if !state.is_empty() && state == expected => {
+            handle_callback(req, config, settings).await?
+        }
+        _ => Response::error(
+            "this login did not start here, or took too long: please log in again",
+            400,
+        )?,
+    };
+    response.headers_mut().set(
+        "Set-Cookie",
+        &format!("{STATE_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax"),
+    )?;
+    Ok(response)
+}
+
+/// A cookie's value from a `Cookie` header.
+fn cookie_value<'a>(header: &'a str, name: &str) -> Option<&'a str> {
+    header.split(';').find_map(|pair| {
+        let (k, v) = pair.trim().split_once('=')?;
+        (k == name).then_some(v)
+    })
+}
+
 /// Begin login: 302-redirect the browser to Discord's authorize URL. The
 /// worker owns all OAuth config (client id, redirect, scopes), so the
 /// frontend's "Login with Discord" affordance is just a link to the route
 /// that calls this — no client id or redirect needs to live in the app.
+///
+/// `state` is passed through unchecked: prefer [`begin_login`] and
+/// [`finish_login`], which set and check a nonce.
 pub fn handle_login(
     client_id: &str,
     redirect_uri: &str,

@@ -47,6 +47,12 @@ impl RoomSim for Walkers {
                         d.2 = [b[0], b[1]];
                     }
                 }
+                // A walker's saved place: where they start from.
+                Change::Profile(s, b) => {
+                    if let (Some(d), [x, ..]) = (self.dots.get_mut(s), b.as_slice()) {
+                        d.0 = i64::from(*x) * 1_000;
+                    }
+                }
             }
         }
         for d in self.dots.values_mut() {
@@ -281,6 +287,90 @@ fn a_reconnect_within_the_grace_keeps_the_seat_and_after_it_frees_it() {
     );
 }
 
+/// A room that accepts `token-<name>` as `<name>`.
+fn verifying(seed: u64) -> Harness<Walkers> {
+    let mut h = Harness::<Walkers>::new(seed, cfg());
+    h.room.identify_with(Box::new(|token: &str| {
+        token.strip_prefix("token-").map(str::to_string)
+    }));
+    h
+}
+
+#[test]
+fn a_verified_player_keeps_their_seat_and_a_guest_cannot_claim_it() {
+    let mut h = verifying(11);
+    h.connect("anchor", true, 20, 0);
+    let a = h.connect_as("tab-1", "token-alice", true, 20, 0);
+    h.run(1_000, |_, _, _| None);
+    let seat = h.client(a).expect("playing").seat();
+    assert_eq!(h.room.player(seat), Some("id:alice"));
+    h.disconnect(a);
+    h.run(1_000, |_, _, _| None);
+    // A guest naming themselves after alice's key is a different player.
+    let spoof = h.connect("id:alice", true, 20, 0);
+    h.run(1_000, |_, _, _| None);
+    let guest_seat = h.client(spoof).expect("playing").seat();
+    assert_ne!(guest_seat, seat);
+    assert_eq!(h.room.player(guest_seat), Some("guest:id:alice"));
+    // Alice, from another device under another name, is still alice.
+    let back = h.connect_as("phone", "token-alice", true, 20, 0);
+    h.run(1_000, |_, _, _| None);
+    assert_eq!(h.client(back).expect("playing").seat(), seat);
+}
+
+#[test]
+fn a_second_connection_of_one_identity_takes_the_seat_over() {
+    let mut h = verifying(12);
+    let first = h.connect_as("tab-1", "token-bob", true, 20, 0);
+    h.run(1_000, |_, _, _| None);
+    let seat = h.client(first).expect("playing").seat();
+    let second = h.connect_as("tab-2", "token-bob", true, 20, 0);
+    h.run(1_000, |_, _, _| None);
+    assert_eq!(h.client(second).expect("playing").seat(), seat);
+    assert!(
+        matches!(h.bots[first].state, BotState::Refused(_)),
+        "the older connection is closed"
+    );
+    assert_eq!(h.room.seated(), 1);
+}
+
+#[test]
+fn a_hosts_profile_reaches_every_client_and_only_new_seats_are_listed() {
+    let mut h = verifying(14);
+    let watcher = h.connect("watcher", true, 30, 5);
+    let a = h.connect_as("tab", "token-dana", true, 20, 0);
+    h.run(1_000, |_, _, _| None);
+    let joined = h.room.take_joined();
+    let seat = h.client(a).expect("playing").seat();
+    assert!(joined.contains(&(seat, "id:dana".to_string())), "{joined:?}");
+    assert!(h.room.take_joined().is_empty(), "listed once");
+
+    // The host loads dana's saved place and tells the world.
+    assert!(h.room.profile("id:dana", vec![7]));
+    assert!(!h.room.profile("id:nobody", vec![1]), "no seat, no profile");
+    h.run(1_000, |_, _, _| None);
+    for client in [a, watcher] {
+        let x = h.client(client).expect("playing").confirmed().dots[&seat].0;
+        assert_eq!(x, 7_000, "every copy applied it");
+    }
+
+    // Back within the grace: the same seat, not a new arrival.
+    h.disconnect(a);
+    h.run(1_000, |_, _, _| None);
+    h.connect_as("phone", "token-dana", true, 20, 0);
+    h.run(1_000, |_, _, _| None);
+    assert!(h.room.take_joined().is_empty());
+}
+
+#[test]
+fn a_session_that_does_not_verify_plays_as_a_guest() {
+    let mut h = verifying(13);
+    let a = h.connect_as("carol", "forged", true, 20, 0);
+    h.run(1_000, |_, _, _| None);
+    let seat = h.client(a).expect("playing").seat();
+    assert_eq!(h.room.player(seat), Some("guest:carol"));
+}
+
 #[test]
 fn a_dropped_player_stands_still_through_their_grace() {
     let mut h = Harness::<Walkers>::new(10, cfg());
@@ -315,6 +405,7 @@ fn a_full_world_and_another_version_are_refused() {
         version: 2,
         player: "x".into(),
         real: true,
+        session: String::new(),
     };
     room.message(1, &hello.encode(), 0);
     let out = room.drain();

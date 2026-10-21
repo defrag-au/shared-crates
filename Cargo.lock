@@ -1462,7 +1462,9 @@ version = "0.1.0"
 dependencies = [
  "authorizations",
  "chrono",
+ "getrandom 0.3.4",
  "js-sys",
+ "sapp-jsutils",
  "serde",
  "serde_json",
  "toml 0.8.23",
@@ -3719,6 +3721,7 @@ dependencies = [
 name = "macroquad-gamekit"
 version = "0.1.0"
 dependencies = [
+ "discord-auth",
  "gamepads",
  "macroquad",
  "macroquad-text",

@@ -16,6 +16,13 @@ pub enum Change {
     /// A seated player's controls from this tick on, in the game's own
     /// encoding of exactly [`RoomSim::INPUT_BYTES`] bytes.
     Input(Seat, Vec<u8>),
+    /// What the room's host knows about a seat's player from outside the
+    /// world, in the game's own encoding: their saved progress, loaded when
+    /// a verified player is seated ([`crate::Room::profile`]). Only the host
+    /// sends it, never a client, and it arrives a moment after the
+    /// [`Change::Join`], once the host has read it. A game that keeps nothing
+    /// ignores it.
+    Profile(Seat, Vec<u8>),
 }
 
 /// A deterministic world a room can host.

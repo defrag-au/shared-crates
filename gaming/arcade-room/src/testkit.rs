@@ -8,7 +8,7 @@
 
 use std::collections::VecDeque;
 
-use crate::client::{Client, hello};
+use crate::client::{Client, hello_as};
 use crate::room::{ConnId, Room, RoomConfig, To};
 use crate::sim::RoomSim;
 
@@ -29,7 +29,7 @@ struct Link {
 pub enum BotState<S: RoomSim> {
     /// Sent its hello, waiting on the reply.
     Joining,
-    Playing(Client<S>),
+    Playing(Box<Client<S>>),
     Refused(String),
     Gone,
 }
@@ -75,6 +75,18 @@ impl<S: RoomSim> Harness<S> {
     /// Connect a player with `latency` ms each way, ± `jitter`. Returns its
     /// index in [`Harness::bots`].
     pub fn connect(&mut self, player: &str, real: bool, latency: u64, jitter: u64) -> usize {
+        self.connect_as(player, "", real, latency, jitter)
+    }
+
+    /// [`connect`](Self::connect), presenting a session token.
+    pub fn connect_as(
+        &mut self,
+        player: &str,
+        session: &str,
+        real: bool,
+        latency: u64,
+        jitter: u64,
+    ) -> usize {
         let conn = self.next_conn;
         self.next_conn += 1;
         self.room.open(conn);
@@ -85,7 +97,8 @@ impl<S: RoomSim> Harness<S> {
             to_client: VecDeque::new(),
         };
         let at = self.now + latency;
-        link.to_room.push_back((at, hello::<S>(player, real)));
+        link.to_room
+            .push_back((at, hello_as::<S>(player, session, real)));
         self.bots.push(Bot {
             player: player.to_string(),
             real,
@@ -208,12 +221,15 @@ impl<S: RoomSim> Harness<S> {
                 let bot = &mut self.bots[i];
                 bot.state = match std::mem::replace(&mut bot.state, BotState::Gone) {
                     BotState::Joining => match Client::welcome(&bytes, now, hash_every) {
-                        Ok(c) => BotState::Playing(c),
+                        Ok(c) => BotState::Playing(Box::new(c)),
                         Err(why) => BotState::Refused(why),
                     },
                     BotState::Playing(mut c) => {
                         c.receive(&bytes, now).expect("the room sends valid frames");
-                        BotState::Playing(c)
+                        match c.refused() {
+                            Some(why) => BotState::Refused(why.to_string()),
+                            None => BotState::Playing(c),
+                        }
                     }
                     other => other,
                 };

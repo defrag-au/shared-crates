@@ -30,6 +30,9 @@ publish = false
 # sound call is a silent stub.
 audio = ["macroquad/audio"]
 gamepads = ["dep:gamepads"]
+# Discord login for a game, as `macroquad_gamekit::auth`: shared-crates
+# `discord-auth`'s miniquad edge. Its page plugin is `web::Plugin::DiscordAuth`.
+discord-auth = ["dep:discord-auth"]
 
 [dependencies]
 macroquad = "0.4"
@@ -44,3 +47,5 @@ macroquad-text = { path = "../../ui/macroquad-text" }
 # on the web. `default-features = false` drops its wasm-bindgen backend, which
 # cannot run under miniquad's gl.js.
 gamepads = { version = "0.1.7", default-features = false, optional = true }
+# The session logic, and its miniquad edge: no wasm-bindgen in its tree.
+discord-auth = { path = "../../discord-auth", features = ["miniquad"], optional = true }

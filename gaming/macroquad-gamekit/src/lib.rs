@@ -27,8 +27,17 @@
 //! natively on Linux: `audio` (sound, music, mute — [`audio`]) and
 //! `gamepads` (pads by player slot — [`pads`]). In the browser both run
 //! through miniquad plugins the page must load; [`web`] ships them.
+//!
+//! A third, `discord-auth`, is Discord login ([`auth`]): shared-crates
+//! `discord-auth`'s miniquad edge, re-exported. The game links to its own
+//! worker's login route, and [`auth::Session::load`] picks the session up
+//! when the browser comes back. Its page plugin is
+//! [`web::Plugin::DiscordAuth`].
 
 pub mod app;
+/// Discord login for a game: see the crate docs.
+#[cfg(feature = "discord-auth")]
+pub use discord_auth::miniquad as auth;
 #[cfg(feature = "audio")]
 pub mod audio;
 pub mod bake;

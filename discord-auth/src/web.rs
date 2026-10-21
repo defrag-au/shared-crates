@@ -1,4 +1,4 @@
-//! Frontend (wasm/browser) half of Discord auth.
+//! Frontend half of Discord auth for wasm-bindgen apps, through web-sys.
 //!
 //! - [`begin_login`] redirects the browser to Discord's authorize URL.
 //! - [`Session::load`] resolves the session from the URL fragment
@@ -6,17 +6,16 @@
 //!   exposes the parsed [`EntitlementSet`] + the auth header to attach to
 //!   gated API calls.
 //!
-//! The JWT is decoded WITHOUT verifying its signature — the frontend has no
-//! secret and doesn't need one; the worker verifies on every gated request.
-//! The frontend only needs the `ent` claim to decide what to render.
+//! The logic is [`crate::session`]'s; this is the web-sys edge of it. A
+//! macroquad game uses [`crate::miniquad`] instead.
 //!
 //! egui-agnostic on purpose: this returns an [`EntitlementSet`], which a UI
 //! layer wraps in its own gate type (e.g. `egui_widgets::gated::GateState`).
 
 use authorizations::EntitlementSet;
 
-const SESSION_KEY: &str = "discord_session_jwt";
-const DEBUG_KEY: &str = "discord_debug_token";
+pub use crate::session::Identity;
+use crate::session::{self, Browser, Held};
 
 /// Resolved session for the frontend.
 #[derive(Clone, Default)]
@@ -38,199 +37,107 @@ pub struct Session {
     pub expires_at: Option<u64>,
 }
 
-/// The Discord identity carried in a session, for display.
-#[derive(Clone, Debug)]
-pub struct Identity {
-    pub user_id: String,
-    pub name: Option<String>,
-    pub avatar_hash: Option<String>,
-}
-
-impl Identity {
-    /// CDN avatar URL, or `None` when the user has no custom avatar (the
-    /// caller can fall back to a default badge).
-    pub fn avatar_url(&self) -> Option<String> {
-        let hash = self.avatar_hash.as_ref()?;
-        let ext = if hash.starts_with("a_") { "gif" } else { "png" };
-        Some(format!(
-            "https://cdn.discordapp.com/avatars/{}/{hash}.{ext}?size=64",
-            self.user_id
-        ))
-    }
-
-    /// Best display label: name, else a short user-id.
-    pub fn label(&self) -> String {
-        self.name
-            .clone()
-            .unwrap_or_else(|| format!("user {}", self.user_id))
-    }
-}
-
 impl Session {
     /// Resolve from URL fragment (`#session=<jwt>` or `#debug=<token>`)
     /// then localStorage. Strips a fragment token after reading so a shared
     /// URL doesn't leak the session. Fragment routes (`#/...`) are left
     /// untouched.
     pub fn load() -> Self {
-        if let Some(frag) = url_fragment() {
-            for part in frag.trim_start_matches('#').split('&') {
-                if let Some(jwt) = part.strip_prefix("session=") {
-                    store(SESSION_KEY, jwt);
-                    clear_fragment();
-                    return Self {
-                        fresh_login: true,
-                        ..Self::from_jwt(jwt)
-                    };
-                }
-                if let Some(tok) = part.strip_prefix("debug=") {
-                    store(DEBUG_KEY, tok);
-                    clear_fragment();
-                    return Self {
-                        fresh_login: true,
-                        ..Self::from_debug(tok)
-                    };
-                }
-            }
-        }
-        if let Some(jwt) = load_stored(SESSION_KEY) {
-            return Self::from_jwt(&jwt);
-        }
-        if let Some(tok) = load_stored(DEBUG_KEY) {
-            return Self::from_debug(&tok);
-        }
-        Self::default()
-    }
-
-    fn from_jwt(jwt: &str) -> Self {
-        let payload = decode_payload(jwt).unwrap_or_default();
-
-        // An expired token would authenticate the UI (unlocking gated
-        // controls) only for every request to bounce off the server's
-        // strict `exp` validation. Treat it as logged-out instead: drop
-        // the stored token and return to anonymous so the app shows the
-        // login gate rather than a wall of 401s.
-        if payload.exp.is_some_and(|exp| now_secs() >= exp) {
-            remove(SESSION_KEY);
-            return Self::default();
-        }
-
-        let identity = (!payload.sub.is_empty()).then_some(Identity {
-            user_id: payload.sub,
-            name: payload.name,
-            avatar_hash: payload.avatar,
-        });
+        let loaded = session::load(&WebSys);
+        let session = match loaded.held {
+            Held::Session { token, claims } => Self {
+                entitlements: EntitlementSet::from_scope_string(&claims.ent),
+                authenticated: true,
+                auth_header: Some(("Authorization".into(), format!("Bearer {token}"))),
+                fresh_login: false,
+                identity: claims.identity(),
+                expires_at: claims.exp,
+            },
+            // Operator/debug bypass — sends `X-Debug-Token` and grants
+            // everything locally (`*`) so gated UI unlocks for testing.
+            Held::Debug { token } => Self {
+                entitlements: EntitlementSet::from_scope_string("*"),
+                authenticated: true,
+                auth_header: Some(("X-Debug-Token".into(), token)),
+                ..Self::default()
+            },
+            Held::Anonymous => Self::default(),
+        };
         Self {
-            entitlements: EntitlementSet::from_scope_string(&payload.ent),
-            authenticated: true,
-            auth_header: Some(("Authorization".into(), format!("Bearer {jwt}"))),
-            fresh_login: false,
-            identity,
-            expires_at: payload.exp,
-        }
-    }
-
-    /// Operator/debug bypass — sends `X-Debug-Token` and grants everything
-    /// locally (`*`) so gated UI unlocks for testing before the bot ships.
-    fn from_debug(token: &str) -> Self {
-        Self {
-            entitlements: EntitlementSet::from_scope_string("*"),
-            authenticated: true,
-            auth_header: Some(("X-Debug-Token".into(), token.to_string())),
-            fresh_login: false,
-            identity: None,
-            expires_at: None,
+            fresh_login: loaded.fresh,
+            ..session
         }
     }
 
     /// Log out — clears stored tokens and returns to anonymous.
     pub fn clear(&mut self) {
-        remove(SESSION_KEY);
-        remove(DEBUG_KEY);
+        session::clear(&WebSys);
         *self = Self::default();
     }
 }
 
 /// Redirect the browser to Discord's authorize URL to begin login.
+///
+/// This carries a constant `state`, so it has no CSRF check. A worker that
+/// mounts [`crate::worker::begin_login`] is the stronger route: link to it
+/// instead, and the worker sets and checks a `state` nonce.
 pub fn begin_login(client_id: &str, redirect_uri: &str, scopes: &[&str]) {
-    // A `state` nonce for CSRF; a timestamp-free constant is acceptable for
-    // a public read-only gate, but callers may pass their own via the
-    // authorize_url builder directly if they want strict CSRF.
-    let url = crate::authorize_url(client_id, redirect_uri, scopes, "login");
-    if let Some(win) = web_sys::window() {
-        let _ = win.location().set_href(&url);
+    WebSys.navigate(&crate::authorize_url(
+        client_id,
+        redirect_uri,
+        scopes,
+        "login",
+    ));
+}
+
+/// The browser, through web-sys.
+struct WebSys;
+
+impl Browser for WebSys {
+    fn fragment(&self) -> Option<String> {
+        let hash = web_sys::window()?.location().hash().ok()?;
+        (!hash.is_empty()).then_some(hash)
     }
-}
 
-/// The display-relevant JWT claims (decoded WITHOUT verifying — the server
-/// verifies; the frontend only needs these to render, and `exp` to avoid
-/// presenting a token the server will reject anyway).
-#[derive(Default, serde::Deserialize)]
-struct Payload {
-    #[serde(default)]
-    sub: String,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    avatar: Option<String>,
-    #[serde(default)]
-    ent: String,
-    /// Standard JWT expiry, unix seconds.
-    #[serde(default)]
-    exp: Option<u64>,
-}
-
-/// Current wall-clock time in unix seconds (browser clock — good enough
-/// for a pre-flight expiry check; the server remains authoritative).
-fn now_secs() -> u64 {
-    (js_sys::Date::now() / 1000.0) as u64
-}
-
-/// Decode a JWT payload without verifying its signature.
-fn decode_payload(jwt: &str) -> Option<Payload> {
-    let payload_b64 = jwt.split('.').nth(1)?;
-    let json = base64url_decode(payload_b64)?;
-    serde_json::from_slice::<Payload>(&json).ok()
-}
-
-fn base64url_decode(s: &str) -> Option<Vec<u8>> {
-    let mut b64: String = s.replace('-', "+").replace('_', "/");
-    while !b64.len().is_multiple_of(4) {
-        b64.push('=');
+    fn clear_fragment(&self) {
+        if let Some(win) = web_sys::window()
+            && let Ok(history) = win.history()
+        {
+            let path = win
+                .location()
+                .pathname()
+                .unwrap_or_else(|_| "/".to_string());
+            let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&path));
+        }
     }
-    let decoded = web_sys::window()?.atob(&b64).ok()?;
-    Some(decoded.chars().map(|c| c as u8).collect())
-}
 
-fn url_fragment() -> Option<String> {
-    let hash = web_sys::window()?.location().hash().ok()?;
-    (!hash.is_empty()).then_some(hash)
-}
+    fn get(&self, key: &str) -> Option<String> {
+        storage()?.get_item(key).ok()?
+    }
 
-fn clear_fragment() {
-    if let Some(win) = web_sys::window()
-        && let Ok(history) = win.history()
-    {
-        let path = win
-            .location()
-            .pathname()
-            .unwrap_or_else(|_| "/".to_string());
-        let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&path));
+    fn set(&self, key: &str, value: &str) {
+        if let Some(s) = storage() {
+            let _ = s.set_item(key, value);
+        }
+    }
+
+    fn remove(&self, key: &str) {
+        if let Some(s) = storage() {
+            let _ = s.remove_item(key);
+        }
+    }
+
+    fn now_secs(&self) -> u64 {
+        (js_sys::Date::now() / 1000.0) as u64
+    }
+
+    fn navigate(&self, url: &str) {
+        if let Some(win) = web_sys::window() {
+            let _ = win.location().set_href(url);
+        }
     }
 }
 
 fn storage() -> Option<web_sys::Storage> {
     web_sys::window()?.local_storage().ok()?
-}
-fn store(key: &str, val: &str) {
-    if let Some(s) = storage() {
-        let _ = s.set_item(key, val);
-    }
-}
-fn load_stored(key: &str) -> Option<String> {
-    storage()?.get_item(key).ok()?
-}
-fn remove(key: &str) {
-    if let Some(s) = storage() {
-        let _ = s.remove_item(key);
-    }
 }

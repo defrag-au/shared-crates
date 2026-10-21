@@ -8,13 +8,18 @@
 //!   grants which feature entitlements — plus the pure resolution logic and
 //!   the OAuth authorize-URL builder. This is the entire control surface:
 //!   a server grants nothing unless it's in the config.
-//! - **`worker`**: [`worker::handle_callback`] — the OAuth callback mixin.
-//!   A worker mounts one route; the handler exchanges the code, reads the
-//!   user's roles in each configured guild, resolves entitlements, mints an
-//!   `authorizations` session JWT, and redirects back to the app.
-//! - **`web`**: [`web::Session`] — the frontend half: begin-login redirect,
-//!   token load from URL fragment / localStorage, and the parsed
-//!   entitlement set for gating UI.
+//! - **`worker`**: [`worker::begin_login`] and [`worker::finish_login`] —
+//!   the OAuth routes a worker mounts. The callback exchanges the code, reads
+//!   the user's roles in each configured guild, resolves entitlements, mints
+//!   an `authorizations` session JWT, and redirects back to the app.
+//! - **`web`**: [`web::Session`] — the frontend half for wasm-bindgen apps:
+//!   begin-login redirect, token load from URL fragment / localStorage, and
+//!   the parsed entitlement set for gating UI.
+//! - **`miniquad`**: the same frontend half for macroquad games, through a
+//!   miniquad plugin, with no wasm-bindgen anywhere in its tree.
+//!
+//! The frontend logic itself is [`session`], always compiled and free of any
+//! browser binding: the `web` and `miniquad` features are thin edges over it.
 //!
 //! The resolved entitlements ride in the session JWT's `ent` claim, which
 //! the `authorizations` crate consumes unchanged — so gating a feature is
@@ -299,11 +304,16 @@ pub(crate) fn percent_encode(s: &str) -> String {
     out
 }
 
+pub mod session;
+
 #[cfg(feature = "worker")]
 pub mod worker;
 
 #[cfg(feature = "web")]
 pub mod web;
+
+#[cfg(feature = "miniquad")]
+pub mod miniquad;
 
 #[cfg(test)]
 mod tests {

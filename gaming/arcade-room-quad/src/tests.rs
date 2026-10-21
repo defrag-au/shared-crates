@@ -48,6 +48,8 @@ impl RoomSim for Tally {
                         seat.1 = b[0];
                     }
                 }
+                // Nothing kept: a tally starts from nothing.
+                Change::Profile(..) => {}
             }
         }
         for seat in self.seats.values_mut() {
@@ -299,6 +301,36 @@ fn a_bot_is_seated_but_keeps_nobody_s_world_awake() {
     run(&mut [&mut b, &mut a], 1, 0, 1_000);
     assert!(b.seat().is_some() && a.seat().is_some());
     assert_eq!(with(|net| net.room.real_connected()), 1, "only ann is real");
+}
+
+#[test]
+fn a_session_joining_elsewhere_stops_the_older_connection_for_good() {
+    setup(0);
+    with(|net| {
+        net.room.identify_with(Box::new(|t: &str| {
+            t.strip_prefix("token-").map(String::from)
+        }))
+    });
+    let web = Config {
+        on_loss: OnLoss::Reload,
+        ..Config::default()
+    };
+    let mut laptop = Conn::with_config("test://room", "a", web).with_session("token-ann");
+    run(&mut [&mut laptop], 1, 0, 1_000);
+    let seat = laptop.seat().expect("seated");
+    let mut phone = Conn::with_config("test://room", "b", web).with_session("token-ann");
+    run(&mut [&mut laptop, &mut phone], 1, 1_000, 2_000);
+    assert_eq!(phone.seat(), Some(seat), "the phone has ann's seat");
+    assert!(laptop.stopped(), "{}", laptop.status());
+    assert!(
+        laptop.status().contains("somewhere else"),
+        "{}",
+        laptop.status()
+    );
+    // And it stays stopped: no reload to take the seat back.
+    run(&mut [&mut laptop, &mut phone], 1, 2_000, 10_000);
+    assert!(laptop.stopped() && !laptop.status().contains("rejoining"));
+    assert_eq!(phone.seat(), Some(seat));
 }
 
 #[test]

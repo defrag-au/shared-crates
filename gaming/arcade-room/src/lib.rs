@@ -24,7 +24,7 @@ pub mod testkit;
 pub mod wire;
 
 pub use client::Client;
-pub use room::{ConnId, Out, Room, RoomConfig, RoomStats, To};
+pub use room::{ConnId, Identify, Out, Room, RoomConfig, RoomStats, To};
 
 #[cfg(test)]
 mod tests;

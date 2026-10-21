@@ -103,7 +103,15 @@ pub struct Room<S: RoomSim> {
     hashes: VecDeque<(u64, u64)>,
     out: Vec<Out>,
     stats: RoomStats,
+    /// Verifies a hello's session token: see [`Room::identify_with`].
+    identify: Option<Identify>,
+    /// Seats newly taken since the host last asked ([`Room::take_joined`]).
+    joined: Vec<(Seat, String)>,
 }
+
+/// Verifies a session token from a hello, returning who it names (a stable
+/// id, such as `discord:<user id>`), or `None` when it does not verify.
+pub type Identify = Box<dyn Fn(&str) -> Option<String>>;
 
 /// What the room has seen, for logs and tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -136,7 +144,65 @@ impl<S: RoomSim> Room<S> {
             hashes: VecDeque::new(),
             out: Vec::new(),
             stats: RoomStats::default(),
+            identify: None,
+            joined: Vec::new(),
         }
+    }
+
+    /// Seats taken by a new arrival since the last call, with the key each
+    /// was seated under: for a host that loads what it keeps about a player
+    /// (see [`profile`](Self::profile)). A player taking their own seat back
+    /// within its grace is not new, and is not listed.
+    pub fn take_joined(&mut self) -> Vec<(Seat, String)> {
+        std::mem::take(&mut self.joined)
+    }
+
+    /// Every held seat and the key it is held under.
+    pub fn players(&self) -> impl Iterator<Item = (Seat, &str)> {
+        self.seats.iter().map(|(seat, s)| (*seat, s.player.as_str()))
+    }
+
+    /// Tell the world what the host knows about `player` (their saved
+    /// progress, in the game's encoding) as a [`Change::Profile`] on their
+    /// seat, at the next tick. `false` if they hold no seat now: they left
+    /// while it was being loaded.
+    pub fn profile(&mut self, player: &str, bytes: Vec<u8>) -> bool {
+        let Some(seat) = self
+            .seats
+            .iter()
+            .find(|(_, s)| s.player == player)
+            .map(|(seat, _)| *seat)
+        else {
+            return false;
+        };
+        let at = self.sim.tick();
+        self.pending
+            .entry(at)
+            .or_default()
+            .push(Change::Profile(seat, bytes));
+        true
+    }
+
+    /// Key seats by verified identity. Without this, a seat belongs to
+    /// whatever name the client says, which is fine for a room nobody
+    /// persists anything from. With it:
+    ///
+    /// - a hello whose session `verify` accepts is seated as `id:<who>`, so a
+    ///   logged-in player gets their seat back however they reconnect;
+    /// - any other hello is a guest, `guest:<name>`, which can never collide
+    ///   with a verified player's key, so a guest cannot take their seat by
+    ///   claiming their name.
+    ///
+    /// A token that fails to verify (expired, or signed with another key)
+    /// plays as a guest rather than being refused: the game stays open.
+    pub fn identify_with(&mut self, verify: Identify) {
+        self.identify = Some(verify);
+    }
+
+    /// Who holds `seat`: the key it was seated under (see
+    /// [`identify_with`](Self::identify_with)).
+    pub fn player(&self, seat: Seat) -> Option<&str> {
+        self.seats.get(&seat).map(|s| s.player.as_str())
     }
 
     pub fn stats(&self) -> RoomStats {
@@ -203,9 +269,13 @@ impl<S: RoomSim> Room<S> {
                     version,
                     player,
                     real,
+                    session,
                 },
                 None,
-            ) => self.hello(conn, &game, version, player, real, now),
+            ) => {
+                let player = self.key(player, &session);
+                self.hello(conn, &game, version, player, real, now)
+            }
             (ToRoom::Inputs(changes), Some(seat)) => {
                 for (tick, bytes) in changes {
                     self.input(seat, tick, bytes, now);
@@ -269,6 +339,17 @@ impl<S: RoomSim> Room<S> {
         self.poll(now);
     }
 
+    /// The seat key for a hello: see [`identify_with`](Self::identify_with).
+    fn key(&self, player: String, session: &str) -> String {
+        let Some(verify) = &self.identify else {
+            return player;
+        };
+        match (!session.is_empty()).then(|| verify(session)).flatten() {
+            Some(who) => format!("id:{who}"),
+            None => format!("guest:{player}"),
+        }
+    }
+
     fn hello(
         &mut self,
         conn: ConnId,
@@ -293,19 +374,27 @@ impl<S: RoomSim> Room<S> {
         // reach this one ahead of its welcome. Its stream starts at the
         // snapshot below.
         self.poll(now);
-        // The same player back within their grace gets their seat back.
+        // The same player back within their grace gets their seat back. A
+        // verified player gets it back even while it is connected (a second
+        // tab, a new phone): one identity, one seat, and the newest
+        // connection wins.
+        let verified = self.identify.is_some() && player.starts_with("id:");
         let returning = self
             .seats
             .iter()
-            .find(|(_, s)| s.player == player && s.conn.is_none())
-            .map(|(seat, _)| *seat);
-        let seat = match returning {
+            .find(|(_, s)| s.player == player && (s.conn.is_none() || verified))
+            .map(|(seat, s)| (*seat, s.conn));
+        if let Some((_, Some(old))) = returning {
+            self.refuse(old, "you joined this world somewhere else".to_string());
+        }
+        let seat = match returning.map(|(seat, _)| seat) {
             Some(seat) => seat,
             None => {
                 let Some(free) = (0..S::MAX_SEATS as Seat).find(|s| !self.seats.contains_key(s))
                 else {
                     return self.refuse(conn, "this world is full".to_string());
                 };
+                self.joined.push((free, player.clone()));
                 self.seats.insert(
                     free,
                     SeatInfo {

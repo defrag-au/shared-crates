@@ -90,13 +90,20 @@ impl Glide {
     }
 }
 
-/// The opening message on a connection.
+/// The opening message on a connection, as a guest.
 pub fn hello<S: RoomSim>(player: &str, real: bool) -> Vec<u8> {
+    hello_as::<S>(player, "", real)
+}
+
+/// The opening message on a connection, presenting `session` (a login
+/// token the room's host verifies; empty for a guest).
+pub fn hello_as<S: RoomSim>(player: &str, session: &str, real: bool) -> Vec<u8> {
     ToRoom::Hello {
         game: S::GAME.to_string(),
         version: S::VERSION,
         player: player.to_string(),
         real,
+        session: session.to_string(),
     }
     .encode()
 }
@@ -127,6 +134,9 @@ pub struct Client<S: RoomSim> {
     /// play: one list per tick from `playback.tick()` to `confirmed.tick()`.
     playback: S,
     to_play: VecDeque<Vec<Change>>,
+    /// Why the room turned this seated client away, once it has: the same
+    /// player joined from somewhere else.
+    refused: Option<String>,
 }
 
 impl<S: RoomSim> Client<S> {
@@ -160,6 +170,7 @@ impl<S: RoomSim> Client<S> {
                     ahead: Glide::at(room_tick as f64, now),
                     behind: Glide::at(start, now),
                     to_play: VecDeque::new(),
+                    refused: None,
                 };
                 client.ahead = Glide::at(room_tick as f64 + client.lead(), now);
                 client.ping(now);
@@ -172,6 +183,13 @@ impl<S: RoomSim> Client<S> {
 
     pub fn seat(&self) -> Seat {
         self.seat
+    }
+
+    /// Why the room turned this client away after seating it, if it has:
+    /// its player joined the world from somewhere else, and the room closes
+    /// this connection. Stop, rather than reconnect and take the seat back.
+    pub fn refused(&self) -> Option<&str> {
+        self.refused.as_deref()
     }
 
     /// The world as confirmed by the room.
@@ -336,7 +354,8 @@ impl<S: RoomSim> Client<S> {
                 let done = self.confirmed.tick();
                 self.own.retain(|t, _| *t >= done);
             }
-            ToClient::Welcome { .. } | ToClient::Refused { .. } => {}
+            ToClient::Refused { reason } => self.refused = Some(reason),
+            ToClient::Welcome { .. } => {}
         }
         Ok(())
     }

@@ -34,7 +34,7 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use arcade_room::client::hello;
+use arcade_room::client::hello_as;
 use arcade_room::{Client, RoomSim, Seat};
 use quad_net::web_socket::WebSocket;
 
@@ -137,6 +137,8 @@ enum Phase<S: RoomSim> {
 pub struct Connection<S: RoomSim, T: Transport = QuadSocket> {
     url: String,
     player: String,
+    /// A login token for the room to verify, or empty for a guest.
+    session: String,
     cfg: Config,
     socket: Option<T>,
     /// Frames waiting for the socket to open.
@@ -160,6 +162,7 @@ impl<S: RoomSim, T: Transport> Connection<S, T> {
         Self {
             url: url.into(),
             player: player.into(),
+            session: String::new(),
             cfg,
             socket: None,
             pending: Vec::new(),
@@ -167,6 +170,15 @@ impl<S: RoomSim, T: Transport> Connection<S, T> {
             heard: 0,
             reload_at: None,
         }
+    }
+
+    /// Present `session` (a login token, such as a Discord session) in every
+    /// hello. A room that verifies it seats this player by who they are, so
+    /// their seat follows them across devices; one that cannot verify it, or
+    /// does not try, seats them as a guest.
+    pub fn with_session(mut self, session: impl Into<String>) -> Self {
+        self.session = session.into();
+        self
     }
 
     /// One line on how the connection is doing, for the screen.
@@ -233,7 +245,7 @@ impl<S: RoomSim, T: Transport> Connection<S, T> {
         match T::connect(&self.url) {
             Ok(socket) => {
                 self.socket = Some(socket);
-                self.pending = vec![hello::<S>(&self.player, self.cfg.real)];
+                self.pending = vec![hello_as::<S>(&self.player, &self.session, self.cfg.real)];
                 self.phase = Phase::Joining;
                 self.heard = now;
             }
@@ -256,7 +268,13 @@ impl<S: RoomSim, T: Transport> Connection<S, T> {
                     if let Err(why) = c.receive(&frame, now) {
                         eprintln!("{}: a bad frame from the room: {why}", S::GAME);
                     }
-                    Phase::Playing(c)
+                    // Turned away while seated (the same player joined from
+                    // somewhere else): stop, with no reload, or the two would
+                    // take the seat from each other for ever.
+                    match c.refused() {
+                        Some(why) => Phase::Stopped(why.to_string()),
+                        None => Phase::Playing(c),
+                    }
                 }
                 other => other,
             };

@@ -6,11 +6,11 @@
 //! and misbehaves. So a bump of either crate fails here until the vendored
 //! copy is refreshed — copy the file named in the failure over `js/`.
 //!
-//! Runs only with both features on (`cargo test -p macroquad-gamekit
-//! --all-features`): that build is what puts both crates' sources on disk,
+//! Runs only with the plugins' features on (`cargo test -p macroquad-gamekit
+//! --all-features`): that build is what puts their crates' sources on disk,
 //! and the test reads them offline. Default-feature CI skips it.
 
-#![cfg(all(feature = "audio", feature = "gamepads"))]
+#![cfg(all(feature = "audio", feature = "gamepads", feature = "discord-auth"))]
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -29,7 +29,7 @@ fn metadata() -> String {
             "--format-version",
             "1",
             "--features",
-            "macroquad-gamekit/audio,macroquad-gamekit/gamepads",
+            "macroquad-gamekit/audio,macroquad-gamekit/gamepads,macroquad-gamekit/discord-auth",
             "--offline",
         ])
         .current_dir(env!("CARGO_MANIFEST_DIR"))

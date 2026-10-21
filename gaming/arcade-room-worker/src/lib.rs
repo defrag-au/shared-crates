@@ -55,6 +55,7 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::rc::Rc;
 use std::time::Duration;
 
 use arcade_room::{ConnId, Room, RoomConfig, RoomSim, To};
@@ -127,7 +128,12 @@ pub struct RoomHost<S: RoomSim> {
     cfg: RoomConfig,
     /// Loaded on the first request after the object starts.
     live: RefCell<Option<Live<S>>>,
+    /// Verifies a hello's session: see [`RoomHost::identify_with`].
+    identify: Option<Verify>,
 }
+
+/// A session verifier, shared with each room the object loads.
+type Verify = Rc<dyn Fn(&str) -> Option<String>>;
 
 impl<S: RoomSim> RoomHost<S> {
     pub fn new(state: State, _env: Env) -> Self {
@@ -135,7 +141,22 @@ impl<S: RoomSim> RoomHost<S> {
             state,
             cfg: RoomConfig::default(),
             live: RefCell::new(None),
+            identify: None,
         }
+    }
+
+    /// Seat players by verified identity: `verify` checks a hello's session
+    /// token and returns who it names (`discord:<user id>`), or `None`. See
+    /// [`Room::identify_with`] for what that changes. A game reads its
+    /// verifying key from `env` when it builds the host:
+    ///
+    /// ```ignore
+    /// let secret = env.secret("SESSION_SECRET")?.to_string();
+    /// RoomHost::new(state, env).identify_with(move |token| verify(token, &secret))
+    /// ```
+    pub fn identify_with(mut self, verify: impl Fn(&str) -> Option<String> + 'static) -> Self {
+        self.identify = Some(Rc::new(verify));
+        self
     }
 
     /// Load the saved room once per object lifetime, or start the world
@@ -166,9 +187,13 @@ impl<S: RoomSim> RoomHost<S> {
         for ws in self.state.get_websockets() {
             let _ = ws.close(Some(RESTARTED), Some("world restarted; reconnect"));
         }
-        let Some(room) = room else {
+        let Some(mut room) = room else {
             return Ok(false);
         };
+        if let Some(verify) = &self.identify {
+            let verify = Rc::clone(verify);
+            room.identify_with(Box::new(move |token| verify(token)));
+        }
         *self.live.borrow_mut() = Some(Live {
             room,
             sockets: BTreeMap::new(),
@@ -220,6 +245,42 @@ impl<S: RoomSim> RoomHost<S> {
         server.serialize_attachment(conn)?;
         self.schedule().await?;
         Response::from_websocket(client)
+    }
+
+    /// Players newly seated since the last call, and the key each holds their
+    /// seat under: see [`Room::take_joined`]. Empty before the room loads.
+    ///
+    /// The hooks below are for a game that keeps something about its players
+    /// outside the world (saved progress): its Durable Object calls the
+    /// host's handlers, then these, around its own storage.
+    pub fn take_joined(&self) -> Vec<(arcade_room::Seat, String)> {
+        self.live
+            .borrow_mut()
+            .as_mut()
+            .map(|l| l.room.take_joined())
+            .unwrap_or_default()
+    }
+
+    /// Tell the world what the game keeps about `player`: a
+    /// [`arcade_room::Change::Profile`] on their seat at the next tick. See
+    /// [`Room::profile`].
+    pub fn profile(&self, player: &str, bytes: Vec<u8>) -> bool {
+        self.live
+            .borrow_mut()
+            .as_mut()
+            .is_some_and(|l| l.room.profile(player, bytes))
+    }
+
+    /// Read the room: its confirmed world and who holds each seat. `None`
+    /// before it loads.
+    pub fn read<R>(&self, f: impl FnOnce(&Room<S>) -> R) -> Option<R> {
+        self.live.borrow().as_ref().map(|l| f(&l.room))
+    }
+
+    /// The object's storage, for what a game keeps beside the room (under
+    /// keys other than the room's own, `"room"`).
+    pub fn storage(&self) -> worker::Storage {
+        self.state.storage()
     }
 
     fn conn_of(ws: &WebSocket) -> Option<ConnId> {

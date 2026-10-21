@@ -20,6 +20,11 @@ pub enum ToRoom {
         /// A person, rather than a bot or a load test. Only people keep a
         /// world running.
         real: bool,
+        /// A login token the room's host can verify (a Discord session),
+        /// or empty for a guest. Optional on the wire: written only when
+        /// present, so a guest's hello is the same bytes as before it
+        /// existed, and an older room still seats them.
+        session: String,
     },
     /// This seat's input changes, each for the tick it should land on.
     /// Sent empty as a heartbeat.
@@ -88,6 +93,9 @@ impl std::error::Error for WireError {}
 
 /// Caps that keep a hostile frame from asking for a huge allocation.
 const MAX_STRING: usize = 256;
+/// A login token's longest: a session JWT with a name and entitlements is a
+/// few hundred bytes.
+const MAX_TOKEN: usize = 4_096;
 const MAX_ITEMS: usize = 4_096;
 const MAX_BLOB: usize = 1 << 20;
 
@@ -100,12 +108,18 @@ impl ToRoom {
                 version,
                 player,
                 real,
+                session,
             } => {
                 w.u8(1);
                 w.str(game);
                 w.u32(*version);
                 w.str(player);
                 w.u8(u8::from(*real));
+                // A token too long to send goes as a guest: a token cut
+                // short would only fail to verify.
+                if !session.is_empty() && session.len() <= MAX_TOKEN {
+                    w.token(session);
+                }
             }
             Self::Inputs(changes) => {
                 w.u8(2);
@@ -136,6 +150,11 @@ impl ToRoom {
                 version: r.u32()?,
                 player: r.str()?,
                 real: r.u8()? != 0,
+                session: if r.at == r.bytes.len() {
+                    String::new()
+                } else {
+                    r.token()?
+                },
             },
             2 => {
                 let n = r.len()?;
@@ -278,6 +297,11 @@ impl Writer {
         self.u16(s.len() as u16);
         self.0.extend_from_slice(s);
     }
+    /// A login token, up to [`MAX_TOKEN`]: longer than [`MAX_STRING`] allows.
+    fn token(&mut self, s: &str) {
+        self.u16(s.len() as u16);
+        self.0.extend_from_slice(s.as_bytes());
+    }
     fn bytes8(&mut self, b: &[u8]) {
         self.u8(b.len().min(255) as u8);
         self.0.extend_from_slice(&b[..b.len().min(255)]);
@@ -298,6 +322,11 @@ impl Writer {
             }
             Change::Input(seat, bytes) => {
                 self.u8(2);
+                self.u16(*seat);
+                self.bytes8(bytes);
+            }
+            Change::Profile(seat, bytes) => {
+                self.u8(3);
                 self.u16(*seat);
                 self.bytes8(bytes);
             }
@@ -343,6 +372,13 @@ impl<'a> Reader<'a> {
         }
         String::from_utf8(self.take(n)?.to_vec()).map_err(|_| WireError::NotUtf8)
     }
+    fn token(&mut self) -> Result<String, WireError> {
+        let n = self.u16()? as usize;
+        if n > MAX_TOKEN {
+            return Err(WireError::TooLong);
+        }
+        String::from_utf8(self.take(n)?.to_vec()).map_err(|_| WireError::NotUtf8)
+    }
     fn bytes8(&mut self) -> Result<Vec<u8>, WireError> {
         let n = self.u8()? as usize;
         Ok(self.take(n)?.to_vec())
@@ -359,6 +395,7 @@ impl<'a> Reader<'a> {
             0 => Change::Join(self.u16()?),
             1 => Change::Leave(self.u16()?),
             2 => Change::Input(self.u16()?, self.bytes8()?),
+            3 => Change::Profile(self.u16()?, self.bytes8()?),
             t => return Err(WireError::UnknownTag(t)),
         })
     }
@@ -383,6 +420,14 @@ mod tests {
                 version: 3,
                 player: "damo".into(),
                 real: true,
+                session: String::new(),
+            },
+            ToRoom::Hello {
+                game: "island-funk".into(),
+                version: 3,
+                player: "damo".into(),
+                real: true,
+                session: "e30.".repeat(150),
             },
             ToRoom::Inputs(vec![(10, vec![1, 2, 3]), (11, vec![])]),
             ToRoom::Inputs(vec![]),
@@ -408,7 +453,7 @@ mod tests {
                 ticks: vec![
                     vec![Change::Join(3), Change::Input(3, vec![1, 2, 3])],
                     vec![],
-                    vec![Change::Leave(9)],
+                    vec![Change::Leave(9), Change::Profile(4, vec![1, 0, 0, 0, 7])],
                 ],
             },
             ToClient::Resync {
@@ -434,5 +479,21 @@ mod tests {
         // A claimed list length past the cap is refused before allocating.
         let huge = [2u8, 0xff, 0xff, 0xff, 0x7f];
         assert_eq!(ToRoom::decode(&huge), Err(WireError::TooLong));
+    }
+
+    #[test]
+    fn a_guests_hello_is_the_same_bytes_as_before_sessions() {
+        let hello = |session: String| ToRoom::Hello {
+            game: "g".into(),
+            version: 1,
+            player: "p".into(),
+            real: true,
+            session,
+        };
+        let guest = hello(String::new()).encode();
+        // tag, "g", version, "p", real: nothing after.
+        assert_eq!(guest, [1, 1, 0, b'g', 1, 0, 0, 0, 1, 0, b'p', 1]);
+        // A token too long to send goes as a guest rather than cut short.
+        assert_eq!(hello("x".repeat(MAX_TOKEN + 1)).encode(), guest);
     }
 }

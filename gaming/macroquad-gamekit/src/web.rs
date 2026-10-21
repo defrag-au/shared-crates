@@ -1,4 +1,4 @@
-//! `web` — the miniquad JS plugins the kit's `audio` and `gamepads` features need in the page, and the kit's own page scripts (fullscreen on a phone), shipped with the kit and stamped by a game's `build.rs`.
+//! `web` — the miniquad JS plugins the kit's `audio`, `gamepads` and `discord-auth` features need in the page, and the kit's own page scripts (fullscreen on a phone), shipped with the kit and stamped by a game's `build.rs`.
 //!
 //! macroquad reaches the browser only through miniquad's plugin protocol: the
 //! wasm imports plain functions, and a JS file loaded before `load(...)`
@@ -35,16 +35,20 @@ pub enum Plugin {
     Audio,
     /// The `gamepads` crate's macroquad plugin, for the `gamepads` feature.
     Gamepads,
+    /// shared-crates `discord-auth`'s plugin, for the `discord-auth` feature
+    /// ([`crate::auth`]): the browser calls a Discord login needs.
+    DiscordAuth,
 }
 
 impl Plugin {
-    pub const ALL: [Plugin; 2] = [Plugin::Audio, Plugin::Gamepads];
+    pub const ALL: [Plugin; 3] = [Plugin::Audio, Plugin::Gamepads, Plugin::DiscordAuth];
 
     /// The file name it is stamped as.
     pub fn file_name(self) -> &'static str {
         match self {
             Plugin::Audio => "gamekit-audio.js",
             Plugin::Gamepads => "gamekit-gamepads.js",
+            Plugin::DiscordAuth => "gamekit-discord-auth.js",
         }
     }
 
@@ -53,6 +57,7 @@ impl Plugin {
         match self {
             Plugin::Audio => ("quad-snd", "js/audio.js"),
             Plugin::Gamepads => ("gamepads", "js/macroquad-gamepads-0.1.js"),
+            Plugin::DiscordAuth => ("discord-auth", "js/discord-auth.js"),
         }
     }
 
@@ -61,6 +66,7 @@ impl Plugin {
         match self {
             Plugin::Audio => include_str!("../js/audio.js"),
             Plugin::Gamepads => include_str!("../js/gamepads.js"),
+            Plugin::DiscordAuth => include_str!("../js/discord-auth.js"),
         }
     }
 
@@ -69,7 +75,7 @@ impl Plugin {
     pub fn js(self) -> String {
         let src = self.source();
         match self {
-            Plugin::Audio => src.to_owned(),
+            Plugin::Audio | Plugin::DiscordAuth => src.to_owned(),
             Plugin::Gamepads => pack_version_field(src),
         }
     }
@@ -186,7 +192,7 @@ mod tests {
     fn stamp_writes_every_plugin_once() {
         let dir = std::env::temp_dir().join(format!("gamekit-web-{}", std::process::id()));
         let paths = stamp(&dir, &Plugin::ALL).expect("stamp");
-        assert_eq!(paths.len(), 2);
+        assert_eq!(paths.len(), Plugin::ALL.len());
         for (p, plugin) in paths.iter().zip(Plugin::ALL) {
             assert_eq!(std::fs::read_to_string(p).expect("read"), plugin.js());
         }
