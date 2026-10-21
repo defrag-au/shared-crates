@@ -271,6 +271,16 @@ impl<S: RoomSim> RoomHost<S> {
             .is_some_and(|l| l.room.profile(player, bytes))
     }
 
+    /// Tell the world something known from outside it: see
+    /// [`Room::world_fact`]. `false` before the room loads.
+    pub fn world_fact(&self, bytes: Vec<u8>) -> bool {
+        self.live
+            .borrow_mut()
+            .as_mut()
+            .map(|l| l.room.world_fact(bytes))
+            .is_some()
+    }
+
     /// Read the room: its confirmed world and who holds each seat. `None`
     /// before it loads.
     pub fn read<R>(&self, f: impl FnOnce(&Room<S>) -> R) -> Option<R> {

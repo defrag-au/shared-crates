@@ -39,17 +39,9 @@ use crate::connection::{FlowConnection, FlowConnectionBuilder, FlowError, Reconn
 use crate::status::ConnectionStatus;
 use ui_flow_protocol::OpId;
 
-/// Unit type for connections that don't use state synchronization
-#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct NoState;
-
-/// Unit type for connections that don't use delta updates
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub struct NoDelta;
-
-/// Unit type for connections that don't send actions
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub struct NoAction;
+// The marker types live at the crate root, where a transport without the
+// web-sys `notify` module can still reach them.
+pub use crate::{NoAction, NoDelta, NoState};
 
 /// Builder for notification-only connections.
 ///

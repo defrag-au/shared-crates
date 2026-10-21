@@ -10,6 +10,7 @@
 //!
 //! - [`list_providers`] / [`Provider`] — `window.cardano.<key>` discovery
 //! - [`connect`] — `enable()` (wallet popup)
+//! - [`network_id`] — `getNetworkId()` (`0` testnet, `1` mainnet)
 //! - [`reward_address`] — `getRewardAddresses()` (hex)
 //! - [`balance`] — `getBalance()` (hex-encoded CBOR Value)
 //! - [`utxos`] — `getUtxos()` (JSON array of hex CBOR UTxOs; see
@@ -22,7 +23,13 @@
 //! - [`poll`] / [`PollResult`] — call each frame on the [`ReqId`] returned
 //!   by the async calls above; promises resolve once and `poll` returns
 //!   the payload once
+//! - [`poll_detailed`] / [`PollResultDetailed`] — the same poll with the
+//!   [`FailureKind`] kept, so a host can tell a reader's refusal from a wallet
+//!   fault
+//! - [`cancel`] — drop an in-flight request the host has abandoned, so the
+//!   JS-side map cannot grow without bound
 //! - [`hex_to_bech32`] — address hex → `stake1…` / `addr1…` via pallas
+//! - [`stake_address_bech32`] — the stake address a payment address delegates to
 //! - [`balance::extract_handle`] — walk the balance CBOR for an ADA Handle
 //!
 //! ## Wiring it into a consumer
@@ -55,6 +62,40 @@ pub mod balance;
 pub mod bridge;
 
 pub use bridge::*;
+
+/// CIP-30 `getNetworkId` for mainnet. The only network the route worker's
+/// Splash and LumpPad venues deploy to.
+pub const MAINNET_NETWORK_ID: u8 = 1;
+
+/// The stake address a payment address delegates to, in bech32, when it has a
+/// stake credential. `None` for an enterprise address, a script-stake address
+/// pallas cannot name, or anything that is not a Shelley address.
+///
+/// The same rule `wallet-pallas`'s wrapper implements; kept here so a
+/// miniquad host can derive the stake identity from the change address it
+/// already fetched, without another wallet round trip or a second crate.
+pub fn stake_address_bech32(hex: &str) -> Option<String> {
+    use pallas_addresses::{Address, ScriptHash, StakeAddress, StakeKeyHash, StakePayload};
+
+    match Address::from_hex(hex).ok()? {
+        Address::Shelley(addr) => {
+            let payload = match addr.delegation() {
+                pallas_addresses::ShelleyDelegationPart::Key(hash) => {
+                    StakePayload::Stake(StakeKeyHash::from(hash.as_ref()))
+                }
+                pallas_addresses::ShelleyDelegationPart::Script(hash) => {
+                    StakePayload::Script(ScriptHash::from(hash.as_ref()))
+                }
+                _ => return None,
+            };
+            StakeAddress::new(addr.network(), payload).to_bech32().ok()
+        }
+        // A bare reward address IS a stake address — see `wallet-pallas`'s
+        // wrapper for why this arm matters to `getRewardAddresses()`.
+        Address::Stake(addr) => addr.to_bech32().ok(),
+        _ => None,
+    }
+}
 
 /// JavaScript source for the wallet plugin. Consumers materialise this
 /// into their HTML shell directory (typically via `build.rs`).
@@ -89,16 +130,84 @@ pub const AVAILABLE: bool = cfg!(target_arch = "wasm32");
 
 /// Plugin version handshake. miniquad's `gl.js` looks for an export
 /// named `<plugin>_crate_version` and compares it to the plugin's JS
-/// `version` field. `wallet.js` declares `version: 2`, so we return 2.
+/// `version` field. `wallet.js` declares `version: 3`, so we return 3.
 ///
 /// Bumped 1 → 2 when the tx-signing surface (`utxos` / `change_address`
-/// / `sign_tx` / `submit_tx`) was added: a consumer carrying a stale
-/// `wallet.js` then fails the handshake loudly rather than link-erroring
-/// on the missing imports. Re-stamp [`PLUGIN_JS`] (build.rs) to clear it.
+/// / `sign_tx` / `submit_tx`) was added; bumped 2 → 3 with `network_id`,
+/// `cancel`, and the typed failure `kind` on poll errors. A consumer carrying
+/// a stale `wallet.js` then fails the handshake loudly rather than
+/// link-erroring on the missing imports. Re-stamp [`PLUGIN_JS`] (build.rs) to
+/// clear it.
 ///
 /// Only emitted on wasm32 — on native the symbol is meaningless.
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn wallet_crate_version() -> u32 {
-    2
+    3
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A mainnet base address (header 0x01) over a key payment hash and a key
+    /// stake hash. Constructed here rather than pasted as a fixture: the
+    /// headers are the spec, and a pasted address would hide a parser drift.
+    fn base_address() -> String {
+        format!("01{}{}", "11".repeat(28), "22".repeat(28))
+    }
+
+    #[test]
+    fn a_base_address_names_its_stake_address() {
+        let hex = base_address();
+        assert!(hex_to_bech32(&hex).starts_with("addr1"));
+        let stake = stake_address_bech32(&hex).expect("a base address has a stake part");
+        assert!(stake.starts_with("stake1"), "{stake}");
+    }
+
+    #[test]
+    fn an_enterprise_address_has_no_stake_address() {
+        let hex = format!("61{}", "11".repeat(28));
+        assert!(stake_address_bech32(&hex).is_none());
+    }
+
+    /// `getRewardAddresses()` hands over a bare reward address, and the
+    /// conversion must treat it as the stake address it is.
+    #[test]
+    fn a_reward_address_converts_to_itself() {
+        let hex = format!("e1{}", "33".repeat(28));
+        let stake = stake_address_bech32(&hex).expect("a reward address is a stake address");
+        assert!(stake.starts_with("stake1"), "{stake}");
+        assert_eq!(hex_to_bech32(&hex), stake);
+    }
+
+    /// The wire adds a `kind` to errors. An older plugin that omits it must
+    /// still parse, as a failure rather than a silent decline.
+    #[test]
+    fn a_poll_error_keeps_its_kind() {
+        let declined: bridge::PollResultDetailed =
+            serde_json::from_str(r#"{"status":"err","data":"User declined","kind":"declined"}"#)
+                .unwrap();
+        assert!(matches!(
+            declined,
+            bridge::PollResultDetailed::Err {
+                kind: bridge::FailureKind::Declined,
+                ..
+            }
+        ));
+
+        let old: bridge::PollResultDetailed =
+            serde_json::from_str(r#"{"status":"err","data":"boom"}"#).unwrap();
+        assert!(matches!(
+            old,
+            bridge::PollResultDetailed::Err {
+                kind: bridge::FailureKind::Failed,
+                ..
+            }
+        ));
+
+        let ok: bridge::PollResultDetailed =
+            serde_json::from_str(r#"{"status":"ok","data":"1"}"#).unwrap();
+        assert!(matches!(ok, bridge::PollResultDetailed::Ok { .. }));
+    }
 }

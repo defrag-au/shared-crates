@@ -122,6 +122,23 @@ mod operation;
 mod state;
 mod status;
 
+/// Unit type for a connection that does not synchronise state.
+///
+/// These three sit at the ROOT rather than inside [`notify`], because a
+/// notification-only connection needs them on every transport — and a macroquad
+/// build does not compile the web-sys `notify` module at all. `notify`
+/// re-exports them, so its own path keeps working.
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct NoState;
+
+/// Unit type for a connection that sends no delta updates.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct NoDelta;
+
+/// Unit type for a connection that sends no actions.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct NoAction;
+
 // Re-export the protocol types from ui_flow_protocol
 pub use ui_flow_protocol::{
     self as protocol,

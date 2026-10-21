@@ -60,6 +60,7 @@ pub mod shape;
 pub mod sprite;
 pub mod startup;
 pub mod step;
+pub mod tech;
 pub mod text;
 pub mod thumbs;
 pub mod tween;
@@ -93,6 +94,7 @@ pub use shape::{RoundedArt, cover_source, fill_rounded, stroke_rounded};
 pub use sprite::{Pose, Sprite, draw_order, topmost};
 pub use startup::{Finished, Phase, Startup};
 pub use step::{FixedStep, Tick};
+pub use tech::{TechHit, TechLayout, TechPanel, TechStyle, TechTile, TileState};
 pub use text::{
     Align, GlyphFlush, MacroquadMeasure, Measure, MeasureAt, Outline, Placed, RichText, Shadow,
     StyleId, TextLayout, TextStyle, draw_run, enable_glyph_gate, flush_glyphs, glyphs_pending,

@@ -1,8 +1,9 @@
 //! `arcade-state` — small, enum-keyed state for deterministic lockstep sims
-//! (`arcade-room`): what is on something for a while ([`Effects`]), and what
-//! it is carrying ([`Counts`]).
+//! (`arcade-room`): what is on something for a while ([`Effects`]), what it is
+//! carrying ([`Counts`]), and what it is holding in wide, signed units
+//! ([`Amounts`]).
 //!
-//! Both are the same shape, chosen for a world every client and the room
+//! All three are the same shape, chosen for a world every client and the room
 //! step identically, clone every frame to predict, and hash to compare:
 //!
 //! - **Canonical.** A fixed array indexed by kind, so the state is *what*
@@ -12,17 +13,19 @@
 //!   cloned.
 //! - **Their own wire format, no serde.** Only what is non-zero is written: a
 //!   count byte, then each one's kind index (a byte) and value (a
-//!   little-endian `u16`), in [`Kind::ALL`] order. So an empty one is one
-//!   byte. Decoding refuses anything the encoder would not have written, so
-//!   a decoded state re-encodes to the same bytes.
+//!   little-endian `u16`, or `i64` for [`Amounts`]), in [`Kind::ALL`] order.
+//!   So an empty one is one byte. Decoding refuses anything the encoder would
+//!   not have written, so a decoded state re-encodes to the same bytes.
 //!
 //! A game supplies its kinds by implementing [`Kind`] on an enum. The array
 //! size `N` has to be spelt out in the type (stable Rust cannot size an
 //! array from a trait's constant); `new` checks it against [`Kind::ALL`].
 
+mod amounts;
 mod counts;
 mod effects;
 
+pub use amounts::Amounts;
 pub use counts::Counts;
 pub use effects::Effects;
 
@@ -66,6 +69,16 @@ fn encode<const N: usize>(values: &[u16; N], out: &mut Vec<u8>) {
     }
 }
 
+/// The non-zero amounts, sparsely: see the crate docs. `Amounts`' counterpart
+/// to [`encode`], whose values are `i64` and carry no per-kind cap.
+fn encode_i64<const N: usize>(values: &[i64; N], out: &mut Vec<u8>) {
+    out.push(values.iter().filter(|v| **v != 0).count() as u8);
+    for (i, v) in values.iter().enumerate().filter(|(_, v)| **v != 0) {
+        out.push(i as u8);
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+}
+
 /// What [`encode`] wrote, from `bytes` at `*at`, moving `*at` past it.
 fn decode<K: Kind, const N: usize>(bytes: &[u8], at: &mut usize) -> Result<[u16; N], DecodeError> {
     let mut take = |n: usize| -> Result<&[u8], DecodeError> {
@@ -84,6 +97,35 @@ fn decode<K: Kind, const N: usize>(bytes: &[u8], at: &mut usize) -> Result<[u16;
         let b = take(3)?;
         let (i, v) = (usize::from(b[0]), u16::from_le_bytes([b[1], b[2]]));
         let ok = i < N && v > 0 && v <= K::ALL[i].cap() && last.is_none_or(|l| i > l);
+        if !ok {
+            return Err(DecodeError::Malformed);
+        }
+        values[i] = v;
+        last = Some(i);
+    }
+    Ok(values)
+}
+
+/// What [`encode_i64`] wrote, from `bytes` at `*at`, moving `*at` past it.
+/// A negative amount is refused, since nothing writes one.
+fn decode_i64<const N: usize>(bytes: &[u8], at: &mut usize) -> Result<[i64; N], DecodeError> {
+    let mut take = |n: usize| -> Result<&[u8], DecodeError> {
+        let end = at.checked_add(n).ok_or(DecodeError::Truncated)?;
+        let out = bytes.get(*at..end).ok_or(DecodeError::Truncated)?;
+        *at = end;
+        Ok(out)
+    };
+    let count = usize::from(take(1)?[0]);
+    if count > N {
+        return Err(DecodeError::Malformed);
+    }
+    let mut values = [0i64; N];
+    let mut last: Option<usize> = None;
+    for _ in 0..count {
+        let b = take(9)?;
+        let i = usize::from(b[0]);
+        let v = i64::from_le_bytes([b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8]]);
+        let ok = i < N && v > 0 && last.is_none_or(|l| i > l);
         if !ok {
             return Err(DecodeError::Malformed);
         }

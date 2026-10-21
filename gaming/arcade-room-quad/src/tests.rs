@@ -49,7 +49,7 @@ impl RoomSim for Tally {
                     }
                 }
                 // Nothing kept: a tally starts from nothing.
-                Change::Profile(..) => {}
+                Change::Profile(..) | Change::World(_) => {}
             }
         }
         for seat in self.seats.values_mut() {

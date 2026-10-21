@@ -330,6 +330,10 @@ impl Writer {
                 self.u16(*seat);
                 self.bytes8(bytes);
             }
+            Change::World(bytes) => {
+                self.u8(4);
+                self.blob(bytes);
+            }
         }
     }
 }
@@ -396,6 +400,7 @@ impl<'a> Reader<'a> {
             1 => Change::Leave(self.u16()?),
             2 => Change::Input(self.u16()?, self.bytes8()?),
             3 => Change::Profile(self.u16()?, self.bytes8()?),
+            4 => Change::World(self.blob()?),
             t => return Err(WireError::UnknownTag(t)),
         })
     }
@@ -453,7 +458,11 @@ mod tests {
                 ticks: vec![
                     vec![Change::Join(3), Change::Input(3, vec![1, 2, 3])],
                     vec![],
-                    vec![Change::Leave(9), Change::Profile(4, vec![1, 0, 0, 0, 7])],
+                    vec![
+                        Change::Leave(9),
+                        Change::Profile(4, vec![1, 0, 0, 0, 7]),
+                        Change::World(vec![2; 600]),
+                    ],
                 ],
             },
             ToClient::Resync {

@@ -251,6 +251,7 @@ arcade-room-quad = { path = "gaming/arcade-room-quad" }
 # Enum-keyed state for deterministic sims (timed effects, capped counts):
 # canonical, cheap to clone, its own wire format.
 arcade-state = { path = "gaming/arcade-state" }
+arcade-tech = { path = "gaming/arcade-tech" }
 arcade-harness = { path = "gaming/arcade-harness" }
 macroquad-wallet-flow = { path = "ui/macroquad-wallet-flow" }
 macroquad-cnft = { path = "ui/macroquad-cnft" }

@@ -11,6 +11,15 @@ default = ["follow"]
 # follow the chain keep this on. Consumers that only render snapshots (egui,
 # macroquad, a Nostr client) turn it off and get the pure types and stats.
 follow = ["dep:ouroboros-mux", "dep:futures-io", "dep:futures-util"]
+# The subscriber-side socket: frames from a heartbeat host's `/heartbeat/flow`,
+# folded into a [`Heartbeat`] and fed through a [`Tracker`]. Renderer-free — the
+# TRANSPORT is chosen by whichever ui-flow feature the consumer enables
+# (`macroquad` under miniquad, the default web-sys transport under egui).
+#
+# This is here rather than in `chain-live` because the socket is the same one a
+# macroquad client opens, and two copies of it is how a dropped connection
+# comes to read differently on two surfaces.
+flow = ["dep:ui-flow"]
 
 # Everything here is pure Rust with no wasm-bindgen, so the crate is safe for
 # miniquad targets as well as wasm-bindgen frontends and Workers.
@@ -28,6 +37,11 @@ wasm_safe_serde = { workspace = true }
 ouroboros-mux = { path = "../ouroboros-mux", optional = true }
 futures-io = { version = "0.3", optional = true }
 futures-util = { workspace = true, optional = true }
+
+# The socket to a heartbeat host, for the `flow` feature. No default features:
+# the consumer's ui-flow feature is what picks the transport, and defaulting to
+# web-sys here would put wasm-bindgen in a miniquad binary.
+ui-flow = { path = "../../ui/ui-flow", default-features = false, optional = true }
 
 [dev-dependencies]
 futures = { workspace = true }

@@ -243,6 +243,15 @@ pub struct BlockTrainVm<'a> {
     /// Height of the bar area, excluding labels.
     pub plot_height: f32,
     pub settled_depth: u64,
+    /// The HOST's clock: seconds since the host started (as `f64`, matching
+    /// macroquad's), and this frame's delta, for arrivals, landing rings and
+    /// the breathing rider.
+    ///
+    /// `None` reads macroquad's clock, which is right for a live surface and
+    /// wrong for a capture: a `--shot --at` run must show the same moment every
+    /// time. A client on a fixed clock passes its own, as this crate's other
+    /// modules already require.
+    pub clock: Option<(f64, f32)>,
 }
 
 impl<'a> BlockTrainVm<'a> {
@@ -254,6 +263,7 @@ impl<'a> BlockTrainVm<'a> {
             span_secs: 20.0 * 60.0,
             plot_height: 56.0,
             settled_depth: DEFAULT_SETTLED_DEPTH,
+            clock: None,
         }
     }
 
@@ -274,6 +284,14 @@ impl<'a> BlockTrainVm<'a> {
 
     pub fn settled_depth(mut self, depth: u64) -> Self {
         self.settled_depth = depth.max(1);
+        self
+    }
+
+    /// Animation time from the HOST's clock, in seconds, with this frame's
+    /// delta. A capture passes its fixed clock so the same `--at` is the same
+    /// picture; a live surface may leave it unset and read macroquad's.
+    pub fn clock(mut self, seconds: f64, dt: f32) -> Self {
+        self.clock = Some((seconds, dt));
         self
     }
 }
@@ -298,8 +316,8 @@ pub fn block_train(
     let snapshot = vm.heartbeat.snapshot(vm.now_ms);
     let feed = PulseState::of(&snapshot);
     let now_secs = vm.now_ms as f64 / 1000.0;
-    let now_t = get_time();
-    let dt = get_frame_time();
+    let now_t = vm.clock.map(|(t, _)| t).unwrap_or_else(get_time);
+    let dt = vm.clock.map(|(_, dt)| dt).unwrap_or_else(get_frame_time);
     let span_secs = vm.span_secs.max(60.0);
 
     let tick = p.size(TextSize::Sm);

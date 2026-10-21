@@ -320,6 +320,10 @@ name = "arcade-state"
 version = "0.1.0"
 
 [[package]]
+name = "arcade-tech"
+version = "0.1.0"
+
+[[package]]
 name = "arrayvec"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -907,6 +911,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "ui-flow",
  "wasm_safe_serde",
 ]
 

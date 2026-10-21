@@ -159,7 +159,19 @@ impl<S: RoomSim> Room<S> {
 
     /// Every held seat and the key it is held under.
     pub fn players(&self) -> impl Iterator<Item = (Seat, &str)> {
-        self.seats.iter().map(|(seat, s)| (*seat, s.player.as_str()))
+        self.seats
+            .iter()
+            .map(|(seat, s)| (*seat, s.player.as_str()))
+    }
+
+    /// Tell the world something the host knows from outside it (a server's
+    /// progress towards its goals) as a [`Change::World`] at the next tick.
+    pub fn world_fact(&mut self, bytes: Vec<u8>) {
+        let at = self.sim.tick();
+        self.pending
+            .entry(at)
+            .or_default()
+            .push(Change::World(bytes));
     }
 
     /// Tell the world what the host knows about `player` (their saved

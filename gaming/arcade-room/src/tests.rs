@@ -53,6 +53,14 @@ impl RoomSim for Walkers {
                         d.0 = i64::from(*x) * 1_000;
                     }
                 }
+                // The host says the world shifts: everyone moves down.
+                Change::World(b) => {
+                    if let [dy, ..] = b.as_slice() {
+                        for d in self.dots.values_mut() {
+                            d.1 += i64::from(*dy);
+                        }
+                    }
+                }
             }
         }
         for d in self.dots.values_mut() {
@@ -342,7 +350,10 @@ fn a_hosts_profile_reaches_every_client_and_only_new_seats_are_listed() {
     h.run(1_000, |_, _, _| None);
     let joined = h.room.take_joined();
     let seat = h.client(a).expect("playing").seat();
-    assert!(joined.contains(&(seat, "id:dana".to_string())), "{joined:?}");
+    assert!(
+        joined.contains(&(seat, "id:dana".to_string())),
+        "{joined:?}"
+    );
     assert!(h.room.take_joined().is_empty(), "listed once");
 
     // The host loads dana's saved place and tells the world.
@@ -352,6 +363,17 @@ fn a_hosts_profile_reaches_every_client_and_only_new_seats_are_listed() {
     for client in [a, watcher] {
         let x = h.client(client).expect("playing").confirmed().dots[&seat].0;
         assert_eq!(x, 7_000, "every copy applied it");
+    }
+
+    // A fact about the whole world reaches every copy at the same tick.
+    let before: Vec<i64> = [a, watcher]
+        .map(|c| h.client(c).expect("playing").confirmed().dots[&seat].1)
+        .to_vec();
+    h.room.world_fact(vec![50]);
+    h.run(1_000, |_, _, _| None);
+    for (client, y0) in [a, watcher].into_iter().zip(before) {
+        let y = h.client(client).expect("playing").confirmed().dots[&seat].1;
+        assert_eq!(y, y0 + 50, "every copy applied it once");
     }
 
     // Back within the grace: the same seat, not a new arrival.

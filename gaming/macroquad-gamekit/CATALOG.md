@@ -10,7 +10,7 @@ across frames and takes time as an argument. Stories are in `macroquad-storybook
 under "gamekit". MACROQUAD only: no wasm-bindgen, see the shared-crates CLAUDE.md on
 runtime pairs.
 
-25 modules.
+26 modules.
 
 | module | what it is |
 |---|---|
@@ -35,6 +35,7 @@ runtime pairs.
 | `sprite` | `Sprite` — a retained, animated display object: where a card is, how it is turned and scaled, how visible, and whether a point is on it |
 | `startup` | `Startup` — the phases a screen goes through between opening and drawing whole: settling while the window finds its size, warming glyphs behind a [`Preloader`], then live |
 | `step` | `FixedStep` — a simulation that steps at a fixed rate, whatever the frame rate |
+| `tech` | `TechPanel` — a workbench's panel for a tech tree, a tier at a time: tiles for the tier's nodes (built, ready, short or locked, and a server goal's fill), arrows between tiers, and a line about the picked one |
 | `text` | `RichText` — wrapped text in several styles with inline icon boxes, laid out once and drawn crisp at any pixel scale |
 | `thumbs` | `Thumbs` — touch controls for a phone game: the first finger down anywhere is a stick, any other tap is an activation, and a few reserved areas (a map button) take their own taps |
 | `tween` | `Animated` — a value that moves towards a target over time: the tween, held by whatever owns the value |

@@ -4,7 +4,9 @@
 //! Everything a surface needs to feel live without lying about the chain:
 //!
 //! - **A feed.** A ui-flow socket to a heartbeat host (the augminted gateway
-//!   today), folded into a [`chain_heartbeat::Heartbeat`]. A dropped socket
+//!   today), folded into a [`chain_heartbeat::Heartbeat`]. The socket lives in
+//!   `chain-heartbeat`'s `flow` feature (it was ported by hand into PUMP THE
+//!   LUMP before), so a macroquad client opens the same one. A dropped socket
 //!   reads as offline, never as a chain that stopped producing.
 //! - **Your transactions.** The host says when it submitted one; the crate
 //!   tracks it until it lands, and places it on the block it landed in.
@@ -50,9 +52,13 @@
 //! [`tracker`]'s and tested natively. The socket, clock and task spawning are
 //! browser-side and only meaningful on `wasm32`.
 
-mod feed;
 mod live;
 mod tracker;
+
+// The feed moved to `chain-heartbeat` (renderer-free, and with the tracker it
+// feeds), so a macroquad client opens the same socket. Re-exported here so
+// every existing `chain_live::FeedEndpoint` path keeps working.
+pub use chain_heartbeat::feed::{ChainFeed, FeedEndpoint, FeedLink};
 
 // The tracker moved to `chain-heartbeat` (renderer-free, so macroquad can host
 // it too). Re-exported under the names consumers already use — `TrackEvent` is
@@ -60,5 +66,4 @@ mod tracker;
 pub use chain_heartbeat::{
     Network, PollTiming, TrackEvent as ChainLiveEvent, TrackedTx, TxLanding, TxProgress,
 };
-pub use feed::{FeedEndpoint, FeedLink};
 pub use live::{CONFIRMATION_TIMING, ChainLive, ChainLiveConfig, Confirmation, TxStatusSource};

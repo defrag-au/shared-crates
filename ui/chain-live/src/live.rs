@@ -3,13 +3,13 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
+use chain_heartbeat::feed::{ChainFeed, FeedEndpoint, FeedLink};
 use chain_heartbeat::{Heartbeat, Network, PollTiming};
 use egui::{Response, Ui};
 use egui_widgets::block_pulse::{BlockPulse, PulseDetail};
 use egui_widgets::block_train::{BlockTrain, BlockTrainResponse};
 use futures::future::LocalBoxFuture;
 
-use crate::feed::{ChainFeed, FeedEndpoint, FeedLink};
 use crate::tracker::{Asking, ChainLiveEvent, PollStep, TrackedTx, Tracker, TxLanding};
 
 /// When a polled host asks about waiting transactions: a few seconds after
@@ -178,7 +178,7 @@ impl ChainLive {
             // and a host that never answers should not cost a repaint twice a
             // second for as long as the page is open.
             FeedLink::Connecting => ctx.request_repaint_after(CONNECTING_PUMP_INTERVAL),
-            FeedLink::Disabled | FeedLink::Unavailable | FeedLink::WrongNetwork => {}
+            FeedLink::Disabled | FeedLink::Unavailable(_) | FeedLink::WrongNetwork => {}
         }
         events
     }
@@ -220,7 +220,7 @@ impl ChainLive {
     }
 
     pub fn link(&self) -> FeedLink {
-        self.feed.link()
+        self.feed.link().clone()
     }
 
     /// The compact pulse, for a header. Nothing until the feed has delivered,

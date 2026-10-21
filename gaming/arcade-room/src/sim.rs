@@ -23,6 +23,12 @@ pub enum Change {
     /// [`Change::Join`], once the host has read it. A game that keeps nothing
     /// ignores it.
     Profile(Seat, Vec<u8>),
+    /// What the room's host knows about the world from outside it, in the
+    /// game's own encoding: a server's progress towards its goals, an event
+    /// from the chain. No seat's. Only the host sends it
+    /// ([`crate::Room::world_fact`]), and every client applies it at the
+    /// same tick, so it is as deterministic as anything a player does.
+    World(Vec<u8>),
 }
 
 /// A deterministic world a room can host.

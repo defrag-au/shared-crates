@@ -545,6 +545,9 @@ impl AccountBar {
             .id_salt(match identity.family {
                 ChainFamily::Cardano => "account_bar",
                 ChainFamily::Evm => "account_bar_evm",
+                ChainFamily::Solana => "account_bar_solana",
+                ChainFamily::Tezos => "account_bar_tezos",
+                ChainFamily::Xrpl => "account_bar_xrpl",
                 ChainFamily::Midnight => "account_bar_midnight",
             });
         if !account.is_empty() {
