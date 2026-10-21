@@ -454,6 +454,23 @@ impl<'de> Deserialize<'de> for AssetId {
     where
         D: Deserializer<'de>,
     {
+        // A binary format holds exactly what `serialize` wrote — the
+        // concatenated string — so read that and nothing else. This branch is
+        // not an optimisation. Postcard REFUSES `deserialize_any`
+        // (`Error::WontImplement`), and that is what the untagged helper below
+        // compiles to: without the split, JSON worked and every binary consumer
+        // failed at DECODE, which surfaced as an `offthread` worker answering
+        // "undecodable request: This is a feature that PostCard will never
+        // implement" for a job this type had encoded a moment earlier.
+        //
+        // Branching on the same question `serialize` does is the whole fix; the
+        // two halves of one codec have to agree about what the format is.
+        if !deserializer.is_human_readable() {
+            let concatenated = String::deserialize(deserializer)?;
+            return AssetId::parse_smart(&concatenated)
+                .map_err(|e| serde::de::Error::custom(format!("Invalid AssetId string: {e}")));
+        }
+
         #[derive(Deserialize)]
         #[serde(untagged)]
         enum AssetIdFormat {

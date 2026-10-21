@@ -4,6 +4,7 @@
 //! and a builder step. It knows nothing about how it was funded or what comes
 //! after it; the [`Route`](super::Route) chains them and adds change once.
 
+use cardano_assets::utxo::AssetQuantity;
 use cardano_assets::{AssetId, UtxoApi};
 use pallas_addresses::Address;
 use pallas_txbuilder::ExUnits;
@@ -47,6 +48,32 @@ impl std::fmt::Display for RouteAsset {
     }
 }
 
+/// The UTxO a leg's reference script sits on, described well enough to be
+/// rebuilt as a resolved input.
+///
+/// Only local phase-2 evaluation reads it. The reference input is part of the
+/// `ScriptContext`, so a context that omits it is smaller than the ledger's —
+/// and a context that is too small evaluates clean and comes out LOW. The
+/// resolver therefore declines when this is absent rather than guessing.
+#[derive(Debug, Clone)]
+pub struct ReferenceOutput {
+    /// The output's address, as raw bytes.
+    pub address: Vec<u8>,
+    pub lovelace: u64,
+    /// Native assets, as the output carries them.
+    pub assets: Vec<AssetQuantity>,
+    /// The script itself, hex-decoded.
+    pub script_bytes: Vec<u8>,
+    /// The output's inline datum, hex-decoded, when it carries one.
+    ///
+    /// The live Splash reference UTxO does: `addr1w98v2…` holds `00` beside its
+    /// script. A `TxOut` in the `ScriptContext` includes its datum, so omitting
+    /// it makes the context smaller than the ledger's — the low-and-plausible
+    /// failure again. An output whose datum is hash-only cannot be described
+    /// at all, and the read that fills this declines instead.
+    pub datum: Option<Vec<u8>>,
+}
+
 /// Everything a leg needs from the chain, resolved by the caller (IO).
 ///
 /// `contract_utxo` rather than `pool_utxo`: the abstraction has to admit an
@@ -78,6 +105,12 @@ pub struct LegState {
     /// without a field evaluates clean and comes out LOW, which fails phase-2
     /// on chain and burns collateral.
     pub contract_address: Option<Vec<u8>>,
+    /// The output carrying the reference script, when this leg uses one.
+    ///
+    /// `None` where the state knows only the script's hash, language and size
+    /// — which is enough to BUILD against an indexer, not enough to eval in
+    /// process.
+    pub reference_output: Option<ReferenceOutput>,
 }
 
 /// One named fee bucket. Enumerated, never summarised: the widget shows the
