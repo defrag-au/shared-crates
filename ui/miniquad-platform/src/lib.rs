@@ -51,6 +51,8 @@ use sapp_jsutils::JsObject;
 unsafe extern "C" {
     fn platform_random_bytes(len: u32) -> JsObject;
     fn platform_query_param(key: JsObject) -> JsObject;
+    fn platform_location_host() -> JsObject;
+    fn platform_location_path() -> JsObject;
     fn platform_reload();
     fn platform_storage_get(key: JsObject) -> JsObject;
     fn platform_storage_set(key: JsObject, value: JsObject);
@@ -90,6 +92,43 @@ pub fn launch_query(key: &str) -> Option<String> {
 /// Native builds have no page and therefore no query string.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn launch_query(_key: &str) -> Option<String> {
+    None
+}
+
+/// The page's hostname, without a port: `buy.example.xyz`.
+///
+/// For a page served under several names that must know which one it was
+/// opened as — one bundle answering for several sites. `None` when there is
+/// none (a `file:` page).
+#[cfg(target_arch = "wasm32")]
+pub fn launch_host() -> Option<String> {
+    let js = unsafe { platform_location_host() };
+    let mut value = String::new();
+    js.to_string(&mut value);
+    (!value.is_empty()).then_some(value)
+}
+
+/// Native builds have no page and therefore no host.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn launch_host() -> Option<String> {
+    None
+}
+
+/// The page's path, from its leading `/`: `/aliens`.
+///
+/// For a page that answers at several paths and must know which one it was
+/// opened at.
+#[cfg(target_arch = "wasm32")]
+pub fn launch_path() -> Option<String> {
+    let js = unsafe { platform_location_path() };
+    let mut value = String::new();
+    js.to_string(&mut value);
+    (!value.is_empty()).then_some(value)
+}
+
+/// Native builds have no page and therefore no path.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn launch_path() -> Option<String> {
     None
 }
 
@@ -158,13 +197,14 @@ getrandom::register_custom_getrandom!(webcrypto_getrandom);
 
 /// Plugin handshake for `gl.js` — silences the
 /// `Plugin platform is present in JS bundle, but is not used in the
-/// rust code` warning. JS-side `version: 2`, must match.
+/// rust code` warning. JS-side `version: 3`, must match.
 ///
-/// Bumped 1 → 2 with the `localStorage` calls: a consumer carrying a v1
-/// `platform.js` then fails the handshake at instantiate rather than calling a
-/// function gl.js would stub out.
+/// Bumped 1 → 2 with the `localStorage` calls, and 2 → 3 with the page's host
+/// and path: a consumer carrying an older `platform.js` then fails the
+/// handshake at instantiate rather than calling a function gl.js would stub
+/// out.
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn platform_crate_version() -> u32 {
-    2
+    3
 }

@@ -1,7 +1,7 @@
 // Platform service plugin — browser-API surfaces that Rust crates need
 // but which the miniquad WASM runtime doesn't provide out of the box.
 //
-// Currently exposes: the page's query string, a page reload,
+// Currently exposes: the page's query string, host and path, a page reload,
 // cryptographically-secure random bytes (backed by
 // `crypto.getRandomValues()`), and small-value persistence over
 // `localStorage`. Rust's `getrandom` crate routes through this plugin via
@@ -41,6 +41,17 @@
         const key = consume_js_object(key_js);
         const value = new URLSearchParams(window.location.search).get(key);
         return js_object(value === null ? '' : value);
+    }
+
+    // The page's host (`buy.example.xyz`, no port) and path (`/aliens`): how a
+    // page served under several names, or at several paths, learns which one
+    // it was opened as. Same convention as the query: '' when there is none.
+    function platform_location_host() {
+        return js_object(window.location.hostname || '');
+    }
+
+    function platform_location_path() {
+        return js_object(window.location.pathname || '');
     }
 
     // Reload the page, query string and all: how a game rejoins after its
@@ -94,15 +105,17 @@
     register_plugin = function (importObject) {
         importObject.env.platform_random_bytes = platform_random_bytes;
         importObject.env.platform_query_param = platform_query_param;
+        importObject.env.platform_location_host = platform_location_host;
+        importObject.env.platform_location_path = platform_location_path;
         importObject.env.platform_reload = platform_reload;
         importObject.env.platform_storage_get = platform_storage_get;
         importObject.env.platform_storage_set = platform_storage_set;
         importObject.env.platform_storage_remove = platform_storage_remove;
     };
 
-    // v2 added the storage calls. A consumer whose committed `platform.js`
-    // predates it fails the handshake at instantiate rather than calling a
-    // stubbed function — which is why the Rust export and this number move
-    // together.
-    miniquad_add_plugin({ register_plugin, version: 2, name: 'platform' });
+    // v2 added the storage calls, v3 the page's host and path. A consumer whose
+    // committed `platform.js` predates it fails the handshake at instantiate
+    // rather than calling a stubbed function — which is why the Rust export and
+    // this number move together.
+    miniquad_add_plugin({ register_plugin, version: 3, name: 'platform' });
 })();
