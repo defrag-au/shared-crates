@@ -93,6 +93,14 @@ pub enum Feature {
     /// than "the DO refuses it". See `ADMIN_SURFACE_CONSOLIDATION_DESIGN.md`
     /// §6.
     GatewayOperator,
+    /// Holder-map notification administration — choosing the Discord channel a
+    /// tracked project's trade feed posts to, and whether it posts at all.
+    ///
+    /// Granted by guild permission (administrator or manage-server) in a
+    /// configured project guild, and then checked again against the project's
+    /// own admin list. The second check is why this is not just the Discord
+    /// gate: being an admin somewhere is not authority over *this* project.
+    HolderMapAdmin,
     /// Authoring the shared meme-template library — uploading templates and
     /// placing the text boxes on them. Write access only: rendering a meme
     /// from an existing template is not gated by this.
@@ -108,6 +116,7 @@ impl Feature {
         Self::Admin,
         Self::GatewayAdmin,
         Self::GatewayOperator,
+        Self::HolderMapAdmin,
         Self::MemesAdmin,
     ];
 
@@ -125,6 +134,7 @@ impl Feature {
             Self::Admin => "admin.access",
             Self::GatewayAdmin => "gateway.admin",
             Self::GatewayOperator => "gateway.operator",
+            Self::HolderMapAdmin => "holders.admin",
             Self::MemesAdmin => "memes.admin",
         }
     }
@@ -138,6 +148,7 @@ impl Feature {
             Self::Admin => "Admin",
             Self::GatewayAdmin => "Gateway Admin",
             Self::GatewayOperator => "Gateway Operator",
+            Self::HolderMapAdmin => "Holder Map Admin",
             Self::MemesAdmin => "Meme Templates",
         }
     }
@@ -157,6 +168,9 @@ impl Feature {
             }
             Self::GatewayOperator => {
                 "Platform-operator access — agent entitlements are set by Augminted"
+            }
+            Self::HolderMapAdmin => {
+                "Holder feed notifications — server admins and managers of this project"
             }
             Self::MemesAdmin => "Meme template authoring — granted to specific Discord accounts",
         }
@@ -482,7 +496,7 @@ mod tests {
     /// of the slice. `from_id` closes the loop the other way.
     #[test]
     fn every_feature_is_listed_and_round_trips_through_its_id() {
-        assert_eq!(Feature::ALL.len(), 7);
+        assert_eq!(Feature::ALL.len(), 8);
         for feature in Feature::ALL {
             assert_eq!(Feature::from_id(feature.id()), Some(*feature));
             assert!(!feature.name().is_empty());

@@ -49,6 +49,12 @@ pub struct Harness<S: RoomSim> {
     cfg: RoomConfig,
     next_conn: ConnId,
     rng: u64,
+    /// Poll the room only when a message reaches it, or every
+    /// [`Harness::backstop_ms`]: how a Durable Object paces it
+    /// (`arcade-room-worker`), rather than every millisecond.
+    pub poll_on_messages: bool,
+    pub backstop_ms: u64,
+    last_poll: u64,
 }
 
 impl<S: RoomSim> Harness<S> {
@@ -60,6 +66,9 @@ impl<S: RoomSim> Harness<S> {
             cfg,
             next_conn: 1,
             rng: seed ^ 0x5DEE_CE66_D1CE_4E5B,
+            poll_on_messages: false,
+            backstop_ms: 1_000,
+            last_poll: 0,
         }
     }
 
@@ -107,6 +116,13 @@ impl<S: RoomSim> Harness<S> {
             link,
         });
         self.bots.len() - 1
+    }
+
+    /// Change player `i`'s link from now on: a real connection's latency
+    /// drifts over seconds, not just jitters about one value.
+    pub fn set_link(&mut self, i: usize, latency: u64, jitter: u64) {
+        self.bots[i].link.latency = latency;
+        self.bots[i].link.jitter = jitter;
     }
 
     /// Drop a player's connection, as a closed tab would.
@@ -184,6 +200,7 @@ impl<S: RoomSim> Harness<S> {
     fn deliver(&mut self) {
         let now = self.now;
         // Client → room.
+        let mut heard = false;
         for i in 0..self.bots.len() {
             while let Some((at, _)) = self.bots[i].link.to_room.front() {
                 if *at > now {
@@ -192,9 +209,13 @@ impl<S: RoomSim> Harness<S> {
                 let (_, bytes) = self.bots[i].link.to_room.pop_front().expect("front");
                 let conn = self.bots[i].conn;
                 self.room.message(conn, &bytes, now);
+                heard = true;
             }
         }
-        self.room.poll(now);
+        if !self.poll_on_messages || heard || now >= self.last_poll + self.backstop_ms {
+            self.room.poll(now);
+            self.last_poll = now;
+        }
         // Room → clients.
         for out in self.room.drain() {
             let conns = match out.to {

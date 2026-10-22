@@ -18,8 +18,9 @@
 //! The handler:
 //! 1. reads `?code=` (+ `?state=`) from the callback URL,
 //! 2. exchanges the code for a user access token (Discord `/oauth2/token`),
-//! 3. reads the user id (`/users/@me`) and, for each configured guild, the
-//!    user's roles (`/users/@me/guilds/{guild}/member`),
+//! 3. reads the user id (`/users/@me`), the user's roles in each configured
+//!    guild (`/users/@me/guilds/{guild}/member`), and the user's computed
+//!    permissions per guild (`/users/@me/guilds`),
 //! 4. resolves entitlements via the [`GuildRoleConfig`],
 //! 5. mints an `authorizations` session JWT (HS256, shared secret), and
 //! 6. 302-redirects to the app with the token in the URL fragment
@@ -106,17 +107,45 @@ pub async fn handle_callback(
         }
     }
 
-    // 4. Resolve entitlements (role grants + direct per-user admin grants).
-    let entitlements = config.resolve(&user_id, &roles_by_guild);
+    // 4. Permissions per guild — one call, and the only source for "is this
+    //    person an administrator/manage-server here". A guild the user is not
+    //    in simply isn't in the list. Failure leaves the role grants working.
+    let mut permissions_by_guild: HashMap<String, u64> = HashMap::new();
+    if let Ok(guilds) = discord_get::<Vec<DiscordGuild>>(
+        &access_token,
+        "https://discord.com/api/v10/users/@me/guilds",
+    )
+    .await
+    {
+        for guild in guilds {
+            let mut permissions = guild
+                .permissions
+                .as_deref()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(0);
+            if guild.owner {
+                permissions |= crate::GuildPermission::Administrator.bit();
+            }
+            permissions_by_guild.insert(guild.id, permissions);
+        }
+    }
+
+    // 5. Resolve entitlements (role grants, permission grants + direct
+    //    per-user admin grants).
+    let entitlements =
+        config.resolve_with_permissions(&user_id, &roles_by_guild, &permissions_by_guild);
     // The guild the session was granted through (first that contributed),
     // for provenance only.
     let granted_via = config
         .servers
         .iter()
-        .find(|s| roles_by_guild.contains_key(&s.guild_id))
+        .find(|s| {
+            roles_by_guild.contains_key(&s.guild_id)
+                || permissions_by_guild.contains_key(&s.guild_id)
+        })
         .map(|s| s.guild_id.clone());
 
-    // 5. Mint session.
+    // 6. Mint session.
     let claims = SessionClaims {
         guild: granted_via,
         name: display_name,
@@ -128,7 +157,7 @@ pub async fn handle_callback(
         Err(e) => return Response::error(format!("session mint failed: {e}"), 500),
     };
 
-    // 6. Redirect to the app with the token in the fragment.
+    // 7. Redirect to the app with the token in the fragment.
     let location = format!("{}#session={token}", settings.app_url.trim_end_matches('#'));
     let headers = Headers::new();
     headers.set("Location", &location)?;
@@ -284,4 +313,18 @@ struct DiscordUser {
 struct GuildMember {
     #[serde(default)]
     roles: Vec<String>,
+}
+
+/// One entry from `GET /users/@me/guilds`.
+#[derive(serde::Deserialize)]
+struct DiscordGuild {
+    id: String,
+    /// The user's computed permissions in the guild, as a decimal string.
+    /// Absent when the `guilds` scope was not granted; read as zero.
+    #[serde(default)]
+    permissions: Option<String>,
+    /// Owners may report a permissions value that does not include the
+    /// administrator bit, so ownership is treated as that bit itself.
+    #[serde(default)]
+    owner: bool,
 }
