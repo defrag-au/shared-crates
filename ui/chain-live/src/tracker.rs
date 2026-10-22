@@ -34,7 +34,7 @@ pub(crate) fn riders(txs: &[TrackedTx]) -> Vec<TrainRider> {
                 },
                 TxProgress::Dropped => return None,
             };
-            Some(TrainRider::new(tracked.label.clone(), state))
+            Some(TrainRider::new(tracked.label.clone(), state).since(tracked.submitted_ms))
         })
         .collect()
 }
@@ -43,12 +43,22 @@ pub(crate) fn riders(txs: &[TrackedTx]) -> Vec<TrainRider> {
 mod tests {
     use super::*;
 
+    /// When every fixture was submitted.
+    const SUBMITTED_MS: u64 = 1_790_000_000_000;
+
     fn tracked(label: &str, progress: TxProgress) -> TrackedTx {
         TrackedTx {
             tx_hash: format!("{label}-hash"),
             label: label.to_string(),
             progress,
+            submitted_ms: SUBMITTED_MS,
         }
+    }
+
+    /// Each rider carries its submit time, so a waiting one is drawn across
+    /// its own wait.
+    fn rider(label: &str, state: RiderState) -> TrainRider {
+        TrainRider::new(label, state).since(SUBMITTED_MS)
     }
 
     /// The mapping the tracker's own tests used to assert before it moved. Each
@@ -74,10 +84,10 @@ mod tests {
         assert_eq!(
             riders(&txs),
             vec![
-                TrainRider::new("Your swap", RiderState::Waiting),
-                TrainRider::new("Your buy", RiderState::InBlock { height: 100 }),
-                TrainRider::new("Your claim", RiderState::Landed),
-                TrainRider::new("Your offer", RiderState::Failed { height: 100 }),
+                rider("Your swap", RiderState::Waiting),
+                rider("Your buy", RiderState::InBlock { height: 100 }),
+                rider("Your claim", RiderState::Landed),
+                rider("Your offer", RiderState::Failed { height: 100 }),
             ]
         );
     }
