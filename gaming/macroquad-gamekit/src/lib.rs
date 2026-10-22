@@ -53,6 +53,7 @@ pub mod light;
 pub mod pads;
 pub mod paint;
 pub mod pixel;
+pub mod plan;
 pub mod pointer;
 pub mod preload;
 pub mod sequence;

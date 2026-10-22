@@ -775,6 +775,15 @@ pub static ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
     // Mechanics, graduation rate and the datum layout:
     // `mitos/docs/design/SNEK_FUN_LAUNCH_LIFECYCLE.md`.
     "addr1xxg94wrfjcdsjncmsxtj0r87zk69e0jfl28n934sznu95tdj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrs2993lw" => AC::Script(SC::Launchpad { label: "snek.fun" }),
+    // Solada's bonding curve. A launchpad curve, not an AMM: the token trades
+    // here before it graduates, and the unsold supply sits here until bought.
+    //
+    // Provenance: `solada-ledger` reads the whole curve stream from this
+    // address (`tools/solada-ledger/src/chain.rs`, CURVE_ADDRESS), and
+    // `docs/CHAIN_LEDGER_INVESTIGATION.md` records that the 224 completed
+    // launches are exactly the set of token policies observed here. The
+    // credential below is this address's own payment credential.
+    "addr1vx9qelnrd87h6u54u6z2kttw3a3rnz3mk5lll0nc3mr8qvc6dqa4y" => AC::Script(SC::Launchpad { label: "Solada" }),
     // Minswap batcher contract (type 7: script payment, no staking)
     "addr1w8p79rpkcdz8x9d6tft0x0dx5mwuzac2sa4gm8cvkw5hcnqst2ctf" => AC::Script(SC::Exchange { label: "Minswap" }),
 
@@ -1061,6 +1070,16 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             category: AC::Script(SC::Launchpad { label: "snek.fun" }),
             derived_from: CredentialSource::Address(
                 "addr1xxg94wrfjcdsjncmsxtj0r87zk69e0jfl28n934sznu95tdj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrs2993lw",
+            ),
+        },
+    ),
+    // Solada's bonding curve, same contract as the ADDRESS_REGISTRY entry above.
+    (
+        "8a0cfe6369fd7d7295e684ab2d6e8f62398a3bb53fffbe788ec67033",
+        CredentialEntry {
+            category: AC::Script(SC::Launchpad { label: "Solada" }),
+            derived_from: CredentialSource::Address(
+                "addr1vx9qelnrd87h6u54u6z2kttw3a3rnz3mk5lll0nc3mr8qvc6dqa4y",
             ),
         },
     ),

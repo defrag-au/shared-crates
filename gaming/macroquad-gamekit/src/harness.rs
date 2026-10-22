@@ -9,6 +9,7 @@
 //! game --shot out.png [--at 1.5] [--size 390x844]     # capture a moment
 //!      [--hover N | --drag N | --longpress N | --rclick N]  # with a scripted pointer
 //!      [--keys "10:Up,20-40:Right"]                  # with scripted keys, by frame
+//! game --plan plan.txt                               # many conditions and captures, one launch
 //! game --soak 20                                     # the game's own soak loop
 //! game --sheet sheet.png                             # the game's own sheet of faces
 //! game --frame-log                                   # print every frame over 50 ms
@@ -264,6 +265,9 @@ pub struct Args {
     /// frame, merged into [`Frame::input`](crate::Frame::input) so the game
     /// cannot tell them from a player's. See [`KeyScript`].
     pub keys: Vec<KeyScript>,
+    /// `--plan plan.txt`: many conditions and captures in one launch; see
+    /// [`plan`](crate::plan).
+    pub plan: Option<String>,
 }
 
 /// One key in a `--keys` script: held from frame `from` until before frame
@@ -414,6 +418,7 @@ impl Args {
                     })
                 })
                 .unwrap_or_default(),
+            plan: flag_in(argv, "--plan"),
         }
     }
 
@@ -442,7 +447,7 @@ impl Args {
 
     /// Whether this run captures, so runs on the fixed clock and records text.
     pub fn capturing(&self) -> bool {
-        self.shot.is_some() || self.sheet.is_some()
+        self.shot.is_some() || self.sheet.is_some() || self.plan.is_some()
     }
 
     /// The window size: `--size`, else `default`.

@@ -10,7 +10,7 @@ across frames and takes time as an argument. Stories are in `macroquad-storybook
 under "gamekit". MACROQUAD only: no wasm-bindgen, see the shared-crates CLAUDE.md on
 runtime pairs.
 
-26 modules.
+27 modules.
 
 | module | what it is |
 |---|---|
@@ -28,6 +28,7 @@ runtime pairs.
 | `pads` | `Pads` — gamepads by player slot, with sticks deadzoned and running y-down like the screen (feature `gamepads`) |
 | `paint` | `fill_gradient` and friends — the depth a printed card has and flat fills do not: gradient plates, bevels, inner shadows and a seeded grain texture |
 | `pixel` | `PixelSprite` — pixel art written as text in code, one character a pixel, baked into nearest-filtered textures: sprites with no asset files, diffable and editable by anyone |
+| `plan` | `plan` — a capture plan (`--plan plan.txt`): many conditions, many captures, one launch |
 | `pointer` | `Pointer` — the press, drag, long-press and tap a card game needs, built on the widgets crate's `Gesture`; `Swipes`, the four-way swipe an arcade game needs; and `HoverGrace`, which keeps a hover alive for a moment between targets |
 | `preload` | `Preloader` — a cover over a screen's first frames, lifted once the screen can draw complete |
 | `sequence` | `Sequencer` — plays queued cues one after another, each holding the stage until its animation is done |

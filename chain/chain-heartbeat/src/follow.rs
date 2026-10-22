@@ -113,14 +113,41 @@ pub enum FollowError {
 pub async fn follow<S, Sleep, Tick, OnEvent>(
     stream: S,
     config: &FollowConfig,
-    mut sleep: Sleep,
-    mut on_event: OnEvent,
+    sleep: Sleep,
+    on_event: OnEvent,
 ) -> Result<Infallible, FollowError>
 where
     S: AsyncRead + AsyncWrite + Unpin,
     Sleep: FnMut(Duration) -> Tick,
     Tick: Future<Output = ()>,
     OnEvent: FnMut(ChainEvent),
+{
+    follow_with_blocks(stream, config, sleep, on_event, |_| {}).await
+}
+
+/// [`follow`], with the bytes of each block body handed to `on_block` before
+/// the events that describe it.
+///
+/// `on_block` receives the exact era-wrapped bytes block-fetch returned — the
+/// shape [`crate::block_transactions`] and a pallas `MultiEraBlock` both take.
+/// It is only called when [`BodyDetail::CountTransactions`] fetches bodies;
+/// a header-only follow has none to hand over.
+///
+/// The observer runs synchronously inside the follower, so it must not block:
+/// it is the same turn of the event loop that builds the block's events.
+pub async fn follow_with_blocks<S, Sleep, Tick, OnEvent, OnBlock>(
+    stream: S,
+    config: &FollowConfig,
+    mut sleep: Sleep,
+    mut on_event: OnEvent,
+    mut on_block: OnBlock,
+) -> Result<Infallible, FollowError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    Sleep: FnMut(Duration) -> Tick,
+    Tick: Future<Output = ()>,
+    OnEvent: FnMut(ChainEvent),
+    OnBlock: FnMut(&[u8]),
 {
     let mut mux = Mux::new(stream);
     let accepted = handshake::handshake(
@@ -187,7 +214,8 @@ where
                 let tx_count = match config.body {
                     BodyDetail::HeaderOnly => None,
                     BodyDetail::CountTransactions => {
-                        let (count, txs) = fetch_transactions(&mut mux, &header).await?;
+                        let (count, txs, block) = fetch_transactions(&mut mux, &header).await?;
+                        on_block(&block);
                         // Just before the block, so a host sends both in one
                         // frame and a subscriber can spot its own transaction
                         // the moment the block arrives.
@@ -243,12 +271,12 @@ async fn intersect<S: AsyncRead + AsyncWrite + Unpin>(
     }
 }
 
-/// Fetch a block's body: how many transactions it holds, and each one's hash
-/// prefix and validity, for [`ChainEvent::BlockTransactions`].
+/// Fetch a block's body: how many transactions it holds, each one's hash
+/// prefix and validity, and the bytes themselves.
 async fn fetch_transactions<S: AsyncRead + AsyncWrite + Unpin>(
     mux: &mut Mux<S>,
     header: &BlockHeader,
-) -> Result<(u32, crate::beat::BlockTxs), FollowError> {
+) -> Result<(u32, crate::beat::BlockTxs, Vec<u8>), FollowError> {
     let point = Point::Specific {
         slot: header.slot,
         hash: header.hash,
@@ -269,7 +297,7 @@ async fn fetch_transactions<S: AsyncRead + AsyncWrite + Unpin>(
         &transactions.hashes(),
         transactions.invalid,
     );
-    Ok((parts.tx_count, txs))
+    Ok((parts.tx_count, txs, block))
 }
 
 enum Wake {
@@ -563,6 +591,78 @@ mod tests {
             other => panic!("expected a block, got {other:?}"),
         }
         assert_eq!(events.len(), 3);
+    }
+
+    /// The body-fetch path hands the exact block bytes to an observer, and the
+    /// block's own events still follow it in order.
+    #[test]
+    fn a_body_fetch_hands_the_block_to_the_observer() {
+        let tip = fixture_tip();
+        let mut stream = opening();
+        stream.extend(segment(
+            protocol::CHAIN_SYNC,
+            &cbor(|e| {
+                e.array(3)
+                    .and_then(|e| e.u8(3))
+                    .and_then(|e| e.encode(&tip.point))
+                    .and_then(|e| e.encode(&tip))
+                    .map(|_| ())
+                    .unwrap()
+            }),
+        ));
+        stream.extend(segment(protocol::CHAIN_SYNC, &[0x81, 0x01]));
+        stream.extend(segment(
+            protocol::CHAIN_SYNC,
+            &cbor(|e| {
+                e.array(3)
+                    .and_then(|e| e.u8(2))
+                    .and_then(|e| e.array(2))
+                    .and_then(|e| e.u8(6))
+                    .and_then(|e| e.tag(Tag::new(24)))
+                    .and_then(|e| e.bytes(&header_bytes()))
+                    .and_then(|e| e.encode(&tip))
+                    .map(|_| ())
+                    .unwrap()
+            }),
+        ));
+        // block-fetch: start batch, the block, batch done.
+        stream.extend(segment(protocol::BLOCK_FETCH, &[0x81, 0x02]));
+        let block = cbor(|e| {
+            e.array(2)
+                .and_then(|e| e.u8(4))
+                .and_then(|e| e.tag(Tag::new(24)))
+                .and_then(|e| e.bytes(BLOCK))
+                .map(|_| ())
+                .unwrap()
+        });
+        stream.extend(segment(protocol::BLOCK_FETCH, &block));
+        stream.extend(segment(protocol::BLOCK_FETCH, &[0x81, 0x05]));
+
+        let peer = Peer {
+            script: [Step::Bytes(stream)].into(),
+            ..Peer::default()
+        };
+        let config = FollowConfig::new(Network::Mainnet);
+        let mut events = Vec::new();
+        let mut observed = Vec::new();
+        let result = block_on(follow_with_blocks(
+            peer,
+            &config,
+            |_| futures::future::pending::<()>(),
+            |event| events.push(event),
+            |block| observed.push(block.to_vec()),
+        ));
+
+        assert!(matches!(result, Err(FollowError::Mux(MuxError::Closed))));
+        assert_eq!(observed, vec![BLOCK.to_vec()]);
+        assert!(matches!(
+            events.last(),
+            Some(ChainEvent::RollForward { beat, .. }) if beat.tx_count.is_some()
+        ));
+        assert!(matches!(
+            events[events.len() - 2],
+            ChainEvent::BlockTransactions { .. }
+        ));
     }
 
     #[test]

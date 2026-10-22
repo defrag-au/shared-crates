@@ -1440,6 +1440,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "dex-activity"
+version = "0.1.0"
+dependencies = [
+ "address-registry",
+ "chain-heartbeat",
+ "hex",
+ "minicbor",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+ "wasm_safe_serde",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -31,6 +31,9 @@
 //! - **Captures.** `--shot out.png [--at T] [--size WxH]` draws on the fixed
 //!   clock and writes the PNG and its report when [`Game::capture_due`] says
 //!   so, then exits. A pixel stage's capture is its canvas, at 1:1.
+//! - **Capture plans.** `--plan plan.txt` runs many conditions in one
+//!   launch: per section, [`Game::reset`], the game's own [`Game::setup`]
+//!   lines, scripted keys, and the frames to capture. See [`crate::plan`].
 //! - **Scripted runs.** A game that reviews itself — bots playing to set
 //!   moments, a screenshot at each — says so through [`Game::scripted`]: the
 //!   loop runs the fixed clock without a cover, records text for reports, and
@@ -57,10 +60,11 @@ use macroquad::prelude::*;
 use macroquad_widgets::{Gesture, Gestures};
 
 use crate::harness::{
-    self, Args, Capture, FrameMark, FrameTimer, Viewport, frame_dt, plain_target, target_camera,
-    window_camera,
+    self, Args, Capture, FrameMark, FrameTimer, KeyScript, Viewport, frame_dt, plain_target,
+    target_camera, window_camera,
 };
 use crate::input::InputSnapshot;
+use crate::plan::{Next, Plan, PlanRun};
 use crate::startup::Startup;
 use crate::step::{FixedStep, Tick};
 use crate::text::enable_glyph_gate;
@@ -257,6 +261,20 @@ pub trait Game {
     /// the finished frame: what a scripted run saves
     /// ([`harness::write_capture`]).
     fn presented(&mut self, _frame: &Frame) {}
+
+    /// A capture plan's `set` line (`--plan`, see [`crate::plan`]), without
+    /// the `set`: put the game in a named condition, say `facing left` or
+    /// `leader DaKing`. The words are the game's own. An `Err` stops the run,
+    /// naming the plan's line. By default every line is refused: a game opts
+    /// in by saying what it understands.
+    fn setup(&mut self, line: &str) -> Result<(), String> {
+        Err(format!("this game takes no `set` lines (`{line}`)"))
+    }
+
+    /// Before each section of a capture plan: back to how the game starts,
+    /// so sections don't depend on one another. By default nothing, and each
+    /// section runs on from where the last left off.
+    fn reset(&mut self) {}
 }
 
 /// Run `game` on a screen designed at `design` units, until the window
@@ -294,6 +312,14 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
     // A `--shot --at T` capture skips drawing on its way to T: see
     // `fast_forward_to`.
     let fast_forward = fast_forward_to(&args, scripted);
+    // A `--plan`: checked whole before anything runs.
+    let mut plan = args.plan.as_deref().map(|path| match Plan::load(path) {
+        Ok(plan) => PlanRun::new(plan),
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(2)
+        }
+    });
 
     loop {
         // A fitted stage resolves to a plain pixel stage each frame, and gets
@@ -312,8 +338,51 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
             {
                 let placed = place(stage, &args);
                 let text = startup.text();
-                simulate(&mut game, &mut sim, &args, placed, harness::FIXED_DT, text);
+                let keys = (&args.keys[..], sim.frames);
+                simulate(
+                    &mut game,
+                    &mut sim,
+                    &args,
+                    keys,
+                    placed,
+                    harness::FIXED_DT,
+                    text,
+                );
                 sim.frames += 1;
+            }
+        }
+        if let Some(run) = plan.as_mut() {
+            // A plan begins once the game can be captured, and sets each
+            // section up as it reaches it: back to the start, then its `set`
+            // lines in order.
+            if !run.started() && sim.frames >= SETTLE_FRAMES && game.ready() {
+                run.start();
+            }
+            if let Some(section) = run.take_setup() {
+                game.reset();
+                for (line, set) in &section.sets {
+                    if let Err(e) = game.setup(set) {
+                        eprintln!("plan line {line}: {e}");
+                        std::process::exit(2);
+                    }
+                }
+            }
+            // As `--at` does: skip drawing on the way to the next capture,
+            // drawing only the last few frames before it.
+            while run.until_next().is_some_and(|n| n > DRAWN_BEFORE_AT) {
+                let placed = place(stage, &args);
+                let text = startup.text();
+                simulate(
+                    &mut game,
+                    &mut sim,
+                    &args,
+                    run.keys(),
+                    placed,
+                    harness::FIXED_DT,
+                    text,
+                );
+                sim.frames += 1;
+                run.advance();
             }
         }
 
@@ -341,8 +410,13 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
             ));
         }
         let text = startup.text();
-        let (input, alpha) = simulate(&mut game, &mut sim, &args, placed, dt, text);
+        let keys = plan
+            .as_ref()
+            .map_or((&args.keys[..], sim.frames), PlanRun::keys);
+        let (input, alpha) = simulate(&mut game, &mut sim, &args, keys, placed, dt, text);
         let frames = sim.frames;
+        // Where a plan's capture of this frame goes, if it takes one.
+        let plan_shot = plan.as_ref().and_then(|run| run.due().map(str::to_string));
         let frame = Frame {
             args: &args,
             dt,
@@ -359,7 +433,8 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
         };
         timer.mark(FrameMark::Update);
 
-        let due = args.shot.is_some() && frames >= 2 && game.capture_due(&frame);
+        let due =
+            plan_shot.is_some() || (args.shot.is_some() && frames >= 2 && game.capture_due(&frame));
         // A board's offset into the window rides on the camera, with the shake.
         let shake = game.shake() + placed.offset;
         // The design stage's capture draws into its own target; the pixel
@@ -409,14 +484,34 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
             backdrop.accent,
         );
 
+        // A plan's capture is written and the run goes on; a `--shot` is
+        // written and the run ends.
+        let plan_note = |run: &PlanRun| {
+            format!(
+                "{} [{}] frame {}",
+                game.capture_note(&frame),
+                run.section_name(),
+                run.frame()
+            )
+        };
         if let Some(target) = &canvas {
             present(target, viewport, origin);
-            if due && let Some(path) = args.shot.as_ref() {
+            if let (Some(path), Some(run)) = (&plan_shot, plan.as_mut()) {
+                let note = plan_note(run);
+                wrote_planned(path, harness::write_capture(&target.texture, path, &note));
+                run.wrote();
+            } else if due && let Some(path) = args.shot.as_ref() {
                 let note = game.capture_note(&frame);
                 finish_capture(path, harness::write_capture(&target.texture, path, &note));
             }
-        } else if let (Some(path), Some(capture)) = (args.shot.as_ref(), capture) {
-            save(capture, path, &game.capture_note(&frame));
+        } else if let Some(capture) = capture {
+            if let (Some(path), Some(run)) = (&plan_shot, plan.as_mut()) {
+                let note = plan_note(run);
+                wrote_planned(path, capture.save(path, &note));
+                run.wrote();
+            } else if let Some(path) = args.shot.as_ref() {
+                save(capture, path, &game.capture_note(&frame));
+            }
         }
         game.presented(&frame);
 
@@ -437,6 +532,24 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
             std::process::exit(0);
         }
         sim.frames += 1;
+        if let Some(run) = plan.as_mut()
+            && run.advance() == Next::Done
+        {
+            println!("plan done: {} of {} captures", run.written(), run.total());
+            std::process::exit(0);
+        }
+    }
+}
+
+/// Report a plan's capture, and stop the run if its report couldn't be
+/// written: a plan's captures are its whole point.
+fn wrote_planned(path: &str, written: std::io::Result<std::path::PathBuf>) {
+    match written {
+        Ok(report) => println!("wrote {path} and {}", report.display()),
+        Err(error) => {
+            eprintln!("wrote {path}, but not its report: {error}");
+            std::process::exit(1);
+        }
     }
 }
 
@@ -475,11 +588,14 @@ struct Sim {
 }
 
 /// One frame of simulation: read the input, run `update` and the ticks due.
-/// Returns the input and `alpha`, for the frame that is drawn after it.
+/// `keys` is the key script and which of its frames this is: `--keys` and
+/// the loop's frame, or a plan section's and its own. Returns the input and
+/// `alpha`, for the frame that is drawn after it.
 fn simulate(
     game: &mut impl Game,
     sim: &mut Sim,
     args: &Args,
+    (keys, key_frame): (&[KeyScript], u32),
     placed: Placed,
     dt: f32,
     text: bool,
@@ -496,8 +612,8 @@ fn simulate(
     let input = InputSnapshot::capture(
         gesture_in(sim.gestures.update(), to_stage),
         to_stage,
-        &args.keys,
-        sim.frames,
+        keys,
+        key_frame,
     );
     let frame = Frame {
         args,
