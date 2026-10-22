@@ -131,7 +131,10 @@ pub async fn handle_callback(
     }
 
     // 5. Resolve entitlements (role grants, permission grants + direct
-    //    per-user admin grants).
+    //    per-user admin grants). Keep the per-guild view too: a multi-project
+    //    surface has to know which guilds granted a feature, not just the union.
+    let entitlements_by_guild =
+        config.resolve_by_guild_with_permissions(&roles_by_guild, &permissions_by_guild);
     let entitlements =
         config.resolve_with_permissions(&user_id, &roles_by_guild, &permissions_by_guild);
     // The guild the session was granted through (first that contributed),
@@ -150,6 +153,10 @@ pub async fn handle_callback(
         guild: granted_via,
         name: display_name,
         avatar: user.avatar.clone(),
+        guild_ent: entitlements_by_guild
+            .into_iter()
+            .map(|(guild, ents)| (guild, ents.into_iter().collect()))
+            .collect(),
         ..SessionClaims::for_discord(user_id, entitlements.join(" "))
     };
     let token = match mint_token(claims, settings.session_secret, settings.ttl) {

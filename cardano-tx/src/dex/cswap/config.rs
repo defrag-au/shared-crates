@@ -17,19 +17,38 @@ pub const ORDER_SCRIPT_HASH: &str = "da5b47aed3955c9132ee087796fa3b58a1ba6173fa3
 pub const ORDER_STAKE_KEY_HASH: &str = "ec39fae09e0835b546eac323f7d1c46d7b7f64fe42f359aae7912b13";
 
 /// Default execution parameter for swap orders.
-/// CSWAP UI uses 10 for standard market swaps.
+///
+/// It is the order's SLIPPAGE TOLERANCE in basis points, as the CSWAP UI
+/// writes it: every one of twelve orders sampled on the $ALIENS pool
+/// (2026-10-22) had `min_receive` exactly this many basis points under what
+/// the batch then delivered — `1000` at 10%, `500` at 5%, `100` at 1%. Pass
+/// the order's own tolerance where it is known.
 pub const DEFAULT_EXECUTION_PARAM: u64 = 10;
 
-/// Fee tier constant — always 15 across all observed orders.
+/// Fee tier — 15 on every order observed. It is a fee, not a label: the
+/// batcher takes this many basis points off the ADA side of every fill (a
+/// buy's ADA before it reaches the pool, a sell's ADA after it leaves).
 pub const DEFAULT_FEE_TIER: u64 = 15;
 
-/// Batcher fee (lovelace). CSWAP currently charges 0 batcher fee.
+/// Batcher fee (lovelace) beyond [`BATCHER_NETWORK_FEE_ESTIMATE`]. None.
 pub const BATCHER_FEE: u64 = 0;
 
-/// Estimated network fee for the batcher fill TX (lovelace).
-/// The batcher TX is a Plutus script execution (~0.31 ADA observed).
-/// CSWAP UI provisions 0.88 ADA — we match to ensure fills.
-pub const BATCHER_NETWORK_FEE_ESTIMATE: u64 = 880_000;
+/// What an order carries for the batcher's fill transaction (lovelace).
+///
+/// Every order sampled on 2026-10-22 was `amount + 2 ADA + 0.69 ADA`, and the
+/// batch kept the 0.69 (it pays its ~0.31 ADA fee from it and keeps the rest).
+/// This was 0.88 ADA when the CSWAP UI provisioned that; it no longer does.
+pub const BATCHER_NETWORK_FEE_ESTIMATE: u64 = 690_000;
+
+/// Lovelace every CSWAP pool UTxO holds outside its curve.
+///
+/// The pool's ADA reserve is its UTxO's lovelace LESS this. Using the whole
+/// balance prices every fill a few hundred units high; with it, the model
+/// reproduces six buys and a sell on the $ALIENS pool to the unit.
+pub const POOL_RESERVED_LOVELACE: u64 = 2_000_000;
+
+/// The pool NFT's asset name: `c`, under each pool's own LP policy.
+pub const POOL_NFT_NAME_HEX: &str = "63";
 
 /// Estimated network fee for our order submission TX (lovelace).
 /// Simple TX with inline datum, observed ~0.175 ADA.

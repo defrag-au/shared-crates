@@ -31,6 +31,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use std::collections::BTreeMap;
+
 // ============================================================================
 // Feature — the closed set of gated capabilities
 // ============================================================================
@@ -276,6 +278,13 @@ pub struct SessionClaims {
     /// Space-delimited entitlement ids (RFC 8693 scope-string style).
     #[serde(default)]
     pub ent: String,
+    /// Entitlement ids granted by guild membership, keyed by Discord guild id.
+    ///
+    /// `ent` is the union and remains the authority for single-tenant
+    /// surfaces; a surface serving several projects checks this against the
+    /// project's own guilds, which a flat set cannot answer.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub guild_ent: BTreeMap<String, Vec<String>>,
 }
 
 impl SessionClaims {
@@ -375,6 +384,25 @@ impl SessionClaims {
     /// what was missing and how to get it).
     pub fn require(&self, feature: Feature) -> Result<Grant, Denied> {
         if self.entitlements().grants(feature) {
+            Ok(Grant { feature })
+        } else {
+            Err(Denied { feature })
+        }
+    }
+
+    /// [`Self::require`], but only for a grant conferred by one of
+    /// `guild_ids`.
+    ///
+    /// Direct `[[admin]]` grants are user-scoped, not guild-scoped, and so do
+    /// not satisfy this: a project gate is about membership in *its* guilds.
+    pub fn require_in_guilds(&self, feature: Feature, guild_ids: &[u64]) -> Result<Grant, Denied> {
+        let id = feature.id();
+        let granted = guild_ids.iter().any(|guild| {
+            self.guild_ent
+                .get(&guild.to_string())
+                .is_some_and(|ents| ents.iter().any(|ent| ent == id || ent == "*"))
+        });
+        if granted {
             Ok(Grant { feature })
         } else {
             Err(Denied { feature })
@@ -489,6 +517,36 @@ mod tests {
             tier: Some("collector".into()),
             ..SessionClaims::for_discord("user123", ent).with_name("tester")
         }
+    }
+
+    #[test]
+    fn a_project_gate_reads_only_its_own_guilds() {
+        let mut session = claims("holders.admin");
+        session.guild_ent = BTreeMap::from([
+            ("1".to_string(), vec!["holders.admin".to_string()]),
+            ("2".to_string(), vec!["tools.visual-search".to_string()]),
+        ]);
+
+        assert!(
+            session
+                .require_in_guilds(Feature::HolderMapAdmin, &[1])
+                .is_ok(),
+            "guild 1 granted holders.admin"
+        );
+        assert!(
+            session
+                .require_in_guilds(Feature::HolderMapAdmin, &[2])
+                .is_err(),
+            "guild 2 granted a different feature"
+        );
+        assert!(
+            session
+                .require_in_guilds(Feature::HolderMapAdmin, &[3])
+                .is_err(),
+            "guild 3 granted nothing"
+        );
+        // The flat claim is untouched: single-tenant consumers still work.
+        assert!(session.require(Feature::HolderMapAdmin).is_ok());
     }
 
     /// Every variant is reachable from `ALL`, which the const-registry shape

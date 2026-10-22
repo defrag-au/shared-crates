@@ -38,7 +38,7 @@
 //! resolution logic is identical either way.
 
 use serde::Deserialize;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 pub mod scopes {
     //! OAuth2 scope constants.
@@ -295,12 +295,33 @@ impl GuildRoleConfig {
         permissions_by_guild: &HashMap<String, u64>,
     ) -> Vec<String> {
         let mut ents: BTreeSet<String> = BTreeSet::new();
-        // Direct per-user (admin) grants.
+        // Direct per-user (admin) grants, which are not guild-scoped.
         for admin in &self.admins {
             if admin.user_id == user_id {
                 ents.extend(admin.features.iter().cloned());
             }
         }
+        for guild_ents in self
+            .resolve_by_guild_with_permissions(roles_by_guild, permissions_by_guild)
+            .into_values()
+        {
+            ents.extend(guild_ents);
+        }
+        ents.into_iter().collect()
+    }
+
+    /// The same resolution, kept per guild.
+    ///
+    /// A multi-project surface asks "did *this* project's guilds grant the
+    /// feature", which a flat entitlement set cannot answer. Direct
+    /// `[[admin]]` grants are deliberately absent: they are user-scoped, not
+    /// membership in any guild, and a project gate is about its own guilds.
+    pub fn resolve_by_guild_with_permissions(
+        &self,
+        roles_by_guild: &HashMap<String, Vec<String>>,
+        permissions_by_guild: &HashMap<String, u64>,
+    ) -> BTreeMap<String, BTreeSet<String>> {
+        let mut by_guild: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         // Server grants. Membership is either source: the member endpoint
         // gives roles, the guilds endpoint gives permissions, and a grant
         // may need only one of them.
@@ -332,11 +353,14 @@ impl GuildRoleConfig {
                         .iter()
                         .any(|required| permissions & required.bit() != 0);
                 if roles_qualify && permissions_qualify {
-                    ents.extend(grant.features.iter().cloned());
+                    by_guild
+                        .entry(server.guild_id.clone())
+                        .or_default()
+                        .extend(grant.features.iter().cloned());
                 }
             }
         }
-        ents.into_iter().collect()
+        by_guild
     }
 }
 
@@ -635,5 +659,50 @@ guild_id = "gp"
             u.contains("redirect_uri=https%3A%2F%2Fownership.cnft.dev%2Fauth%2Fdiscord%2Fcallback")
         );
         assert!(u.contains("state=nonce"));
+    }
+
+    /// A multi-project surface needs to know *which* guild granted the
+    /// feature; the flat set is the union and cannot answer that.
+    #[test]
+    fn per_guild_entitlements_name_only_the_qualifying_guild() {
+        let mut roles = HashMap::new();
+        roles.insert("g1".to_string(), vec!["holder".to_string()]);
+        roles.insert("g2".to_string(), vec!["member".to_string()]);
+
+        let by_guild = config().resolve_by_guild_with_permissions(&roles, &HashMap::new());
+        assert_eq!(
+            by_guild.get("g1").expect("g1 granted"),
+            &BTreeSet::from(["tools.visual-search".to_string()])
+        );
+        assert_eq!(
+            by_guild.get("g2").expect("g2 granted"),
+            &BTreeSet::from(["tools.visual-search".to_string()])
+        );
+        assert!(
+            !by_guild.contains_key("g3"),
+            "g3 was not a member, so it must not appear at all"
+        );
+
+        // The flat view is still the union, unchanged.
+        assert_eq!(
+            config().resolve_with_permissions("u1", &roles, &HashMap::new()),
+            vec!["tools.visual-search".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_permission_grant_is_scoped_to_its_own_guild() {
+        let mut permissions = HashMap::new();
+        permissions.insert("gp".to_string(), GuildPermission::Administrator.bit());
+        let c = GuildRoleConfig::from_toml(PERMISSION_CFG).unwrap();
+        let by_guild = c.resolve_by_guild_with_permissions(&HashMap::new(), &permissions);
+        assert_eq!(
+            by_guild.get("gp").expect("gp granted"),
+            &BTreeSet::from(["holders.admin".to_string()])
+        );
+        assert!(
+            !by_guild.contains_key("g1"),
+            "holding admin in gp says nothing about g1"
+        );
     }
 }

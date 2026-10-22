@@ -80,16 +80,17 @@ pub fn build_cswap_order(req: &CswapOrderRequest) -> Result<CswapOrder, CswapErr
     // Build min_receive entries
     let mut min_receive = Vec::new();
     if is_selling_ada {
-        // Buying tokens: min_receive = [min_tokens, min_utxo_ada]
-        // Token entry first, ADA entry second (matches CSWAP UI ordering)
+        // Buying tokens: min_receive = [min_utxo_ada, min_tokens] — ADA first,
+        // as the CSWAP UI writes it (the real order `759d8fb1…` is pinned in
+        // the tests byte for byte).
+        if req.min_receive_ada > 0 {
+            min_receive.push((vec![], vec![], req.min_receive_ada));
+        }
         min_receive.push((
             req.buy_asset.policy_id.clone(),
             req.buy_asset.asset_name.clone(),
             req.min_receive_amount,
         ));
-        if req.min_receive_ada > 0 {
-            min_receive.push((vec![], vec![], req.min_receive_ada));
-        }
     } else {
         // Selling tokens: min_receive = [min_ada]
         min_receive.push((vec![], vec![], req.min_receive_amount));
@@ -159,6 +160,14 @@ fn build_order_script_address(network: Network) -> Result<Address, CswapError> {
     Ok(Address::Shelley(shelley))
 }
 
+/// The order as a transaction output: the deposit at the order address, with
+/// the datum inline — the shape every order on the $ALIENS pool carried
+/// (2026-10-22).
+pub fn order_output(order: &CswapOrder) -> pallas_txbuilder::Output {
+    crate::helpers::output::create_ada_output(order.script_address.clone(), order.total_lovelace)
+        .set_inline_datum(order.datum_bytes.clone())
+}
+
 /// Calculate total ADA deposit for a CSWAP order.
 ///
 /// For buy orders (ADA -> Token):
@@ -226,8 +235,9 @@ mod tests {
             "expected addr1z prefix, got: {addr_str}"
         );
 
-        // Total lovelace: 50M + 2M + 0 + 880K = 52.88M
-        assert_eq!(order.total_lovelace, 52_880_000);
+        // Total lovelace: 50M + 2M + 0 + 690K = 52.69M — every real order's
+        // amount + 2.69 ADA.
+        assert_eq!(order.total_lovelace, 52_690_000);
     }
 
     #[test]
@@ -260,19 +270,73 @@ mod tests {
         let addr_str = order.script_address.to_string();
         assert!(addr_str.starts_with("addr1z"));
 
-        // 10M + 2M + 0 + 880K = 12.88M
-        assert_eq!(order.total_lovelace, 12_880_000);
+        // 10M + 2M + 0 + 690K = 12.69M
+        assert_eq!(order.total_lovelace, 12_690_000);
+    }
+
+    /// A real CSWAP UI buy order, rebuilt: 35 ADA for at least 919,264
+    /// $ALIENS at 10% tolerance (datum `759d8fb1…`, filled in batch
+    /// `632628a3…`, 2026-10-22). Same bytes, so the same hash — the batcher
+    /// reads exactly what it reads from the UI.
+    #[test]
+    fn a_buy_order_matches_the_cswap_ui_byte_for_byte() {
+        let req = CswapOrderRequest {
+            destination_pkh: hex::decode(
+                "a6140750bcf6592cae9468ed16e890f258f5d5d833f1c69f35897eb6",
+            )
+            .unwrap()
+            .try_into()
+            .unwrap(),
+            destination_stake_key: Some(
+                hex::decode("c62a4c06adc8e9329eeea693fbb0048e08a285570d4831b3a680233b")
+                    .unwrap()
+                    .try_into()
+                    .unwrap(),
+            ),
+            sell_asset: DatumAsset::ada(),
+            sell_amount: 35_000_000,
+            buy_asset: DatumAsset::from_hex(
+                "16657df32ad8eaa8f8c628586ac6b8ba3771226c12bd69b582738fb7",
+                "416c69656e73",
+            )
+            .unwrap(),
+            min_receive_amount: 919_264,
+            min_receive_ada: config::MIN_UTXO_RETURN,
+            execution_param: 1_000,
+            fee_tier: config::DEFAULT_FEE_TIER,
+            network: Network::Mainnet,
+        };
+        let order = build_cswap_order(&req).unwrap();
+        assert_eq!(
+            hex::encode(&order.datum_bytes),
+            "d8799fd8799fd8799f581ca6140750bcf6592cae9468ed16e890f258f5d5d833f1c69f35897eb6ffd8799fd8799fd8799f581cc62a4c06adc8e9329eeea693fbb0048e08a285570d4831b3a680233bffffffff828340401a001e848083581c16657df32ad8eaa8f8c628586ac6b8ba3771226c12bd69b582738fb746416c69656e731a000e06e08183404000d879801903e80fff"
+        );
+        assert_eq!(
+            hex::encode(order.datum_hash),
+            "759d8fb1589b339256f3339b482cc986c6e70956273e6f8b4017f4e688a6e9b5"
+        );
+        // And the deposit the real order carried.
+        assert_eq!(order.total_lovelace, 37_690_000);
+        // At the order address every real order sat at.
+        assert!(
+            order
+                .script_address
+                .to_bech32()
+                .unwrap()
+                .starts_with("addr1z8d9k3aw6w24eyfja")
+        );
     }
 
     #[test]
     fn test_deposit_calculation_buy() {
-        // Buy: 50 ADA + 2 ADA min UTxO + 0.88 ADA network = 52.88 ADA
-        assert_eq!(calculate_order_deposit(50_000_000, true), 52_880_000);
+        // Buy: 50 ADA + 2 ADA min UTxO + 0.69 ADA network = 52.69 ADA
+        assert_eq!(calculate_order_deposit(50_000_000, true), 52_690_000);
     }
 
     #[test]
     fn test_deposit_calculation_sell() {
-        // Sell: 2 ADA min UTxO + 0.88 ADA network = 2.88 ADA
-        assert_eq!(calculate_order_deposit(1_000_000, false), 2_880_000);
+        // Sell: 2 ADA min UTxO + 0.69 ADA network = 2.69 ADA, as every sell
+        // order on the $ALIENS pool carried.
+        assert_eq!(calculate_order_deposit(1_000_000, false), 2_690_000);
     }
 }
