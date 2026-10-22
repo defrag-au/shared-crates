@@ -29,7 +29,10 @@ use crate::error::TxBuildError;
 use crate::helpers::decode::decode_tx_hash;
 use crate::helpers::output::{add_assets_to_output, create_ada_output};
 use crate::metadata::cip25::build_cip25_auxiliary_data;
-use crate::selection::{PER_INPUT_FEE_HEADROOM, estimate_simple_fee, select_collateral};
+use crate::selection::{
+    COLLATERAL_AT_STAKE, CollateralChoice, PER_INPUT_FEE_HEADROOM, choose_collateral,
+    estimate_simple_fee,
+};
 use crate::utxo::{AssetAmount, split_by_value_size, value_size};
 
 /// Extra selection headroom once token-bearing UTxOs are drawn on.
@@ -43,6 +46,10 @@ const TOKEN_SELECTION_HEADROOM: u64 = 1_000_000;
 
 /// The ledger's `maxValueSize` on mainnet, for params that do not carry one.
 const DEFAULT_MAX_VALUE_SIZE: u64 = 5_000;
+
+/// The ledger's `collateralPercentage` on mainnet: collateral must cover this
+/// share of the fee. The params do not carry it.
+const COLLATERAL_PERCENT: u64 = 150;
 
 // ============================================================================
 // TxBuilder
@@ -453,26 +460,43 @@ impl TxBuilder {
     fn prepare(self) -> Result<PreparedTx, TxBuildError> {
         let has_scripts = !self.script_languages.is_empty();
 
-        // Resolve collateral
-        let collateral_input = if has_scripts {
+        // Resolve collateral. A token-bearing pick carries a return output:
+        // the ledger rejects collateral holding tokens without one.
+        let (collateral_input, collateral_return) = if has_scripts {
             match &self.collateral {
-                Some(CollateralConfig::Manual(input)) => Some(input.clone()),
+                Some(CollateralConfig::Manual(input)) => (Some(input.clone()), None),
                 Some(CollateralConfig::Auto) | None => {
-                    let collateral_utxo = select_collateral(&self.deps.utxos).ok_or_else(|| {
-                        TxBuildError::BuildFailed(
-                            "No suitable collateral UTxO found (need pure ADA >= 5 ADA)"
-                                .to_string(),
-                        )
-                    })?;
-                    let tx_hash = decode_tx_hash(&collateral_utxo.tx_hash)?;
-                    Some(Input::new(
-                        Hash::from(tx_hash),
-                        collateral_utxo.output_index as u64,
-                    ))
+                    let choice = choose_collateral(&self.deps.utxos, &self.deps.params)
+                        .ok_or_else(|| {
+                            TxBuildError::BuildFailed(
+                                "No suitable collateral UTxO found: need one without a datum \
+                                 or script, holding 5 ADA beyond any tokens' min-ADA"
+                                    .to_string(),
+                            )
+                        })?;
+                    let utxo = choice.utxo();
+                    let tx_hash = decode_tx_hash(&utxo.tx_hash)?;
+                    let input = Input::new(Hash::from(tx_hash), utxo.output_index as u64);
+                    let returned = match choice {
+                        CollateralChoice::Pure(_) => None,
+                        CollateralChoice::WithReturn(u) => {
+                            let held: Vec<AssetAmount> = u
+                                .assets
+                                .iter()
+                                .map(|a| (a.asset_id.clone(), a.quantity))
+                                .collect();
+                            Some(asset_output(
+                                self.deps.from_address.clone(),
+                                u.lovelace - COLLATERAL_AT_STAKE,
+                                &held,
+                            )?)
+                        }
+                    };
+                    (Some(input), returned)
                 }
             }
         } else {
-            None
+            (None, None)
         };
 
         // ── Coin selection ───────────────────────────────────────────────
@@ -602,6 +626,7 @@ impl TxBuilder {
             validity: self.validity,
             auxiliary_data: self.auxiliary_data,
             collateral_input,
+            collateral_return,
             script_languages: self.script_languages,
             native_scripts: self.native_scripts,
             network_id: self.deps.network_id,
@@ -661,6 +686,9 @@ struct PreparedTx {
     validity: ValidityInterval,
     auxiliary_data: Option<Vec<u8>>,
     collateral_input: Option<Input>,
+    /// Set when the collateral holds tokens: they, and everything above
+    /// [`COLLATERAL_AT_STAKE`], come back if a script fails.
+    collateral_return: Option<Output>,
     script_languages: BTreeSet<PlutusLanguage>,
     native_scripts: Vec<Vec<u8>>,
     network_id: u8,
@@ -689,8 +717,26 @@ impl PreparedTx {
         let output_lovelace = self.output_lovelace;
         let min_change_lovelace = self.min_change_lovelace;
 
+        // `total_collateral` is written at serialisation, after convergence
+        // has measured the staging transaction, so its bytes are paid for here.
+        let total_collateral = self.collateral_return.as_ref().map(|_| COLLATERAL_AT_STAKE);
+        let field_fee = match total_collateral {
+            Some(_) => super::TOTAL_COLLATERAL_FIELD_BYTES * self.params.min_fee_coefficient,
+            None => 0,
+        };
         let mut unsigned = super::converge_fee_with_witnesses(
             |fee| {
+                let fee = fee + field_fee;
+                // A return output fixes what is at stake, so the ledger's
+                // collateral floor (150% of the fee) has to fit inside it.
+                if self.collateral_return.is_some()
+                    && fee.saturating_mul(COLLATERAL_PERCENT).div_ceil(100) > COLLATERAL_AT_STAKE
+                {
+                    return Err(TxBuildError::BuildFailed(format!(
+                        "fee {fee} needs more collateral than the {COLLATERAL_AT_STAKE} lovelace \
+                         a token-bearing collateral input puts at stake"
+                    )));
+                }
                 let change = total_input
                     .checked_sub(output_lovelace)
                     .and_then(|v| v.checked_sub(fee))
@@ -745,6 +791,7 @@ impl PreparedTx {
                     &self.validity,
                     &self.auxiliary_data,
                     &self.collateral_input,
+                    &self.collateral_return,
                     &self.script_languages,
                     &self.native_scripts,
                     self.network_id,
@@ -761,6 +808,7 @@ impl PreparedTx {
         if let Some(staged) = unsigned.staging.fee {
             unsigned.fee = staged;
         }
+        unsigned.total_collateral = total_collateral;
         Ok(unsigned)
     }
 
@@ -853,6 +901,7 @@ fn assemble_tx(
     validity: &ValidityInterval,
     auxiliary_data: &Option<Vec<u8>>,
     collateral_input: &Option<Input>,
+    collateral_return: &Option<Output>,
     script_languages: &BTreeSet<PlutusLanguage>,
     native_scripts: &[Vec<u8>],
     network_id: u8,
@@ -990,6 +1039,9 @@ fn assemble_tx(
     // 8. Collateral
     if let Some(col) = collateral_input {
         tx = tx.collateral_input(col.clone());
+    }
+    if let Some(returned) = collateral_return {
+        tx = tx.collateral_output(returned.clone());
     }
 
     // 9. Language views (cost models) — ONE PER LANGUAGE PRESENT.
@@ -1357,6 +1409,7 @@ mod tests {
             &ValidityInterval::default(),
             &None,
             &None,
+            &None,
             &BTreeSet::from([PlutusLanguage::V2]),
             &[],
             1,
@@ -1392,6 +1445,7 @@ mod tests {
             &[],
             &[owner, owner],
             &ValidityInterval::default(),
+            &None,
             &None,
             &None,
             &BTreeSet::new(),
@@ -1531,6 +1585,161 @@ mod tests {
         let views = unsigned.staging.language_views.expect("language views");
         assert_eq!(views.0.len(), 1);
         assert!(views.0.contains_key(&2), "PlutusV3 view missing");
+    }
+
+    fn v2_script_input() -> ScriptInput {
+        ScriptInput {
+            script: ScriptSource::Reference {
+                utxo: Input::new(Hash::from([0xab; 32]), 0),
+                language: ScriptKind::PlutusV2,
+            },
+            datum_cbor: None,
+            redeemer: RedeemerSource::Fixed(vec![0xd8, 0x79, 0x80]),
+            ex_units: ExUnits {
+                mem: 1_000,
+                steps: 1_000,
+            },
+        }
+    }
+
+    fn script_utxo() -> UtxoApi {
+        UtxoApi {
+            tx_hash: "e".repeat(64),
+            output_index: 0,
+            lovelace: 3_000_000,
+            assets: vec![],
+            tags: vec![],
+        }
+    }
+
+    /// A wallet that keeps every UTxO beside tokens could not run a script:
+    /// "No suitable collateral UTxO found (need pure ADA >= 5 ADA)". Now one
+    /// of those UTxOs is the collateral, and a return output gives back its
+    /// tokens and everything above the 5 ADA at stake.
+    #[test]
+    fn a_token_only_wallet_puts_up_collateral_with_a_return() {
+        use cardano_assets::utxo::AssetQuantity;
+        let mut deps = test_deps();
+        deps.utxos[0].assets = vec![AssetQuantity {
+            asset_id: cardano_assets::AssetId::new_unchecked("ab".repeat(28), "4c554d50".into()),
+            quantity: 1_000_000,
+        }];
+        let wallet = deps.utxos[0].clone();
+        let to_addr = deps.from_address.clone();
+
+        let unsigned = TxBuilder::new(deps)
+            .spend_script_utxo(&script_utxo(), v2_script_input())
+            .unwrap()
+            .pay_to(&to_addr, 10_000_000)
+            .build()
+            .expect("a token-bearing UTxO serves as collateral");
+
+        let staging = &unsigned.staging;
+        let collateral = staging
+            .collateral_inputs
+            .as_ref()
+            .expect("collateral input");
+        assert_eq!(collateral.len(), 1);
+        assert_eq!(collateral[0].tx_hash.0, [0xaa; 32], "the wallet's own UTxO");
+
+        let returned = staging
+            .collateral_output
+            .as_ref()
+            .expect("collateral return");
+        assert_eq!(returned.lovelace, wallet.lovelace - COLLATERAL_AT_STAKE);
+        assert!(returned.assets.is_some(), "the tokens come back on failure");
+
+        // The success path is untouched: the same UTxO also funds the swap and
+        // its tokens return in change.
+        assert_balanced(&unsigned, wallet.lovelace + script_utxo().lovelace);
+
+        // The signed bytes say what is really at stake, and the hash a signer
+        // attests to is the hash of THAT body.
+        assert_eq!(unsigned.total_collateral, Some(COLLATERAL_AT_STAKE));
+        let built = unsigned.build_conway().expect("serialises");
+        let tx: pallas_primitives::conway::Tx =
+            pallas_codec::minicbor::decode(&built.tx_bytes.0).expect("decodes");
+        assert_eq!(
+            tx.transaction_body.total_collateral,
+            Some(COLLATERAL_AT_STAKE)
+        );
+        assert_eq!(
+            built.tx_hash.0,
+            *pallas_crypto::hash::Hasher::<256>::hash(tx.transaction_body.raw_cbor()),
+            "the hash is the hash of the body carrying total collateral"
+        );
+        assert!(tx.transaction_body.collateral_return.is_some());
+
+        // Canonical: hardware wallets refuse a body whose keys are out of order.
+        let mut d = pallas_codec::minicbor::Decoder::new(&built.tx_bytes.0);
+        d.array().unwrap();
+        let n = d.map().unwrap().expect("definite body map");
+        let mut keys = Vec::new();
+        for _ in 0..n {
+            keys.push(d.u64().unwrap());
+            d.skip().unwrap();
+        }
+        assert!(keys.contains(&17), "total collateral is key 17: {keys:?}");
+        assert!(
+            keys.windows(2).all(|w| w[0] < w[1]),
+            "keys in order: {keys:?}"
+        );
+    }
+
+    /// The field adds bytes the converged fee never measured; the fee covers
+    /// them anyway, so the node does not answer `FeeTooSmallUTxO`.
+    #[test]
+    fn the_fee_covers_the_total_collateral_bytes() {
+        use cardano_assets::utxo::AssetQuantity;
+        let mut deps = test_deps();
+        deps.utxos[0].assets = vec![AssetQuantity {
+            asset_id: cardano_assets::AssetId::new_unchecked("ab".repeat(28), "4c554d50".into()),
+            quantity: 1_000_000,
+        }];
+        let params = deps.params.clone();
+        let to_addr = deps.from_address.clone();
+        let unsigned = TxBuilder::new(deps)
+            .spend_script_utxo(&script_utxo(), v2_script_input())
+            .unwrap()
+            .pay_to(&to_addr, 10_000_000)
+            .build()
+            .expect("builds");
+
+        let built = unsigned.build_conway().expect("serialises");
+        // One vkey witness: ~100 bytes. Generous, since the point is the field.
+        let size = built.tx_bytes.0.len() as u64 + 110;
+        let needed = params.min_fee_constant + params.min_fee_coefficient * size;
+        assert!(
+            unsigned.fee >= needed,
+            "fee {} below {needed} for {size} bytes",
+            unsigned.fee
+        );
+    }
+
+    /// No return output, no field: the bytes are exactly pallas's.
+    #[test]
+    fn without_a_return_the_bytes_are_untouched() {
+        use pallas_txbuilder::BuildConway;
+        let unsigned = TxBuilder::new(test_deps())
+            .spend_script_utxo(&script_utxo(), v2_script_input())
+            .unwrap()
+            .build()
+            .expect("build");
+        assert_eq!(unsigned.total_collateral, None);
+        let raw = unsigned.staging.clone().build_conway_raw().unwrap();
+        assert_eq!(unsigned.build_conway().unwrap().tx_bytes.0, raw.tx_bytes.0);
+    }
+
+    /// A pure-ADA collateral needs no return output, and gets none.
+    #[test]
+    fn pure_ada_collateral_has_no_return() {
+        let unsigned = TxBuilder::new(test_deps())
+            .spend_script_utxo(&script_utxo(), v2_script_input())
+            .unwrap()
+            .build()
+            .expect("build");
+        assert!(unsigned.staging.collateral_inputs.is_some());
+        assert!(unsigned.staging.collateral_output.is_none());
     }
 
     /// A transaction with no Plutus script registers no language view at all —
@@ -1904,6 +2113,7 @@ mod tests {
             &[],
             &[],
             &ValidityInterval::default(),
+            &None,
             &None,
             &None,
             &BTreeSet::from([PlutusLanguage::V1]),

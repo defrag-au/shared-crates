@@ -801,15 +801,13 @@ fn find_handoff(
     owner_bech32: &str,
     sub_quote: &RouteQuote,
 ) -> Result<crate::evaluate::PendingUtxo, RouteError> {
-    use pallas_txbuilder::BuildConway;
-
     // The hash is over the BODY, and signing only adds witnesses — so this is
     // the reference the next transaction will spend, known before anyone signs
-    // anything. That is what makes chained building possible at all.
+    // anything. That is what makes chained building possible at all. It MUST
+    // be `build_conway`, the bytes the wallet signs: a body with
+    // `total_collateral` hashes differently from its staging transaction.
     let built = unsigned
-        .staging
-        .clone()
-        .build_conway_raw()
+        .build_conway()
         .map_err(|e| RouteError::Build(format!("serialise a chained transaction: {e}")))?;
     let tx_hash = hex::encode(built.tx_hash.0);
 
