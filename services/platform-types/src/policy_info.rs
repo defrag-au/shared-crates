@@ -34,6 +34,13 @@ pub enum PolicyTag {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolvedPolicy {
     pub name: String,
+    /// The short symbol, when a source publishes one apart from the name: the
+    /// CF Token Registry's `ticker` (`SNEK` beside the name `Snek`), or
+    /// snek.fun's. `None` from a source that has none — never the name copied
+    /// in, so a consumer can tell "no ticker" from "the ticker is the name".
+    /// Absent on cache entries written before it existed, until they refresh.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
     pub token_type: TokenType,
     pub icon_url: Option<String>,
     /// Fungible-token decimal places (CF Token Registry `decimals`).

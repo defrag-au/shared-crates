@@ -8,7 +8,9 @@ description = "The chain's heartbeat and a frontend's own transactions riding it
 [dependencies]
 # Frames folded into a heartbeat, and the poller that decides when to ask
 # whether a transaction has landed. No follower: browsers never open a relay.
-chain-heartbeat = { path = "../../chain/chain-heartbeat", default-features = false }
+chain-heartbeat = { path = "../../chain/chain-heartbeat", default-features = false, features = [
+    "flow",
+] }
 # `BlockPulse` and `BlockTrain`.
 egui-widgets = { path = "../egui-widgets", default-features = false, features = ["chain"] }
 egui = { workspace = true }

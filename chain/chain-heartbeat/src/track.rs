@@ -36,6 +36,11 @@ pub struct TrackedTx {
     /// What it does, in the reader's words: "Your swap".
     pub label: String,
     pub progress: TxProgress,
+    /// When it was handed over, unix milliseconds, on the host's clock. A
+    /// retry restarts it: the wait a reader is in begins at their last submit.
+    /// Lets a renderer draw the wait as its own length, not as "since the last
+    /// block", which began before the reader did anything.
+    pub submitted_ms: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -146,11 +151,13 @@ impl Tracker {
             Some(tracked) => {
                 tracked.label = label;
                 tracked.progress = TxProgress::Waiting;
+                tracked.submitted_ms = now_ms;
             }
             None => self.txs.push(TrackedTx {
                 tx_hash,
                 label,
                 progress: TxProgress::Waiting,
+                submitted_ms: now_ms,
             }),
         }
     }
@@ -492,6 +499,18 @@ mod tests {
         // In flight: no second question, however many blocks arrive.
         tracker.observe_frame(&block_at_tip(101), T0 + 4_000, 0);
         assert_eq!(tracker.next_poll(T0 + 60_000), PollStep::Idle);
+    }
+
+    /// The wait a reader is in starts at their submit, and a retry starts it
+    /// again: the train draws it from there, not from the last block.
+    #[test]
+    fn a_submit_records_when_and_a_retry_restarts_it() {
+        let mut tracker = Tracker::new(TIMING, Asking::BlocksOnly);
+        tracker.submitted("aa".into(), "Your swap".into(), T0);
+        assert_eq!(tracker.txs()[0].submitted_ms, T0);
+        tracker.submitted("aa".into(), "Your swap".into(), T0 + 9_000);
+        assert_eq!(tracker.txs()[0].submitted_ms, T0 + 9_000);
+        assert_eq!(tracker.txs().len(), 1, "a retry is the same tx");
     }
 
     #[test]

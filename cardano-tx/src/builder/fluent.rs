@@ -29,7 +29,20 @@ use crate::error::TxBuildError;
 use crate::helpers::decode::decode_tx_hash;
 use crate::helpers::output::{add_assets_to_output, create_ada_output};
 use crate::metadata::cip25::build_cip25_auxiliary_data;
-use crate::selection::{estimate_simple_fee, select_collateral};
+use crate::selection::{PER_INPUT_FEE_HEADROOM, estimate_simple_fee, select_collateral};
+use crate::utxo::{AssetAmount, split_by_value_size, value_size};
+
+/// Extra selection headroom once token-bearing UTxOs are drawn on.
+///
+/// Their tokens must come back in change, so a leftover can no longer fold
+/// into the fee: change below its floor is a failed build, not a slightly
+/// larger fee. The selector therefore aims past the rough fee estimate, which
+/// is sized for a plain payment and knows nothing of script execution. The
+/// surplus is not spent — the converged fee is exact and the rest is change.
+const TOKEN_SELECTION_HEADROOM: u64 = 1_000_000;
+
+/// The ledger's `maxValueSize` on mainnet, for params that do not carry one.
+const DEFAULT_MAX_VALUE_SIZE: u64 = 5_000;
 
 // ============================================================================
 // TxBuilder
@@ -473,23 +486,28 @@ impl TxBuilder {
 
         let mut inputs = self.inputs;
         let mut total_input = self.input_lovelace;
+        // Tokens carried by token-bearing UTxOs drawn on for ADA. They go
+        // back to the owner in change.
+        let mut change_assets: Vec<AssetAmount> = Vec::new();
 
         if total_input < required {
+            let spendable = |u: &UtxoApi| {
+                !self
+                    .used_input_refs
+                    .contains(&(u.tx_hash.clone(), u.output_index))
+                    && !u.tags.contains(&UtxoTag::HasDatum)
+                    && !u.tags.contains(&UtxoTag::HasScriptRef)
+                    && !u.tags.contains(&UtxoTag::ScriptAddress)
+            };
+
+            // Pass 1: pure ADA, largest first. Unchanged, so every
+            // transaction that built before builds the same way now.
             let mut candidates: Vec<&UtxoApi> = self
                 .deps
                 .utxos
                 .iter()
-                .filter(|u| {
-                    !self
-                        .used_input_refs
-                        .contains(&(u.tx_hash.clone(), u.output_index))
-                        && u.assets.is_empty()
-                        && !u.tags.contains(&UtxoTag::HasDatum)
-                        && !u.tags.contains(&UtxoTag::HasScriptRef)
-                        && !u.tags.contains(&UtxoTag::ScriptAddress)
-                })
+                .filter(|u| spendable(u) && u.assets.is_empty())
                 .collect();
-
             candidates.sort_by_key(|b| std::cmp::Reverse(b.lovelace));
 
             for utxo in candidates {
@@ -502,9 +520,74 @@ impl TxBuilder {
                 total_input += utxo.lovelace;
             }
 
-            if total_input < output_lovelace + estimated_fee {
+            // Pass 2: only when pure ADA falls short, token-bearing UTxOs for
+            // the ADA above what their tokens lock. A wallet that keeps most of
+            // its ADA beside tokens could otherwise never fund a large spend.
+            if total_input < required {
+                let params = &self.deps.params;
+                let amounts = |u: &UtxoApi| -> Vec<AssetAmount> {
+                    u.assets
+                        .iter()
+                        .map(|a| (a.asset_id.clone(), a.quantity))
+                        .collect()
+                };
+                // What a UTxO actually contributes: its ADA less the min-ADA
+                // its own tokens will need in change.
+                let free = |u: &UtxoApi| {
+                    u.lovelace
+                        .saturating_sub(params.min_utxo_for_assets(&amounts(u)))
+                };
+                let mut tokened: Vec<&UtxoApi> = self
+                    .deps
+                    .utxos
+                    .iter()
+                    .filter(|u| spendable(u) && !u.assets.is_empty())
+                    // An input that frees less than a pure-ADA floor costs
+                    // more in bytes than it brings.
+                    .filter(|u| free(u) >= min_change_lovelace)
+                    .collect();
+                // Most free ADA first, so the fewest inputs (and the fewest
+                // tokens riding along in change) cover the target. Ties go to
+                // fewer tokens, then the ref, so the choice is deterministic.
+                tokened.sort_by(|a, b| {
+                    free(b)
+                        .cmp(&free(a))
+                        .then(a.assets.len().cmp(&b.assets.len()))
+                        .then(a.tx_hash.cmp(&b.tx_hash))
+                        .then(a.output_index.cmp(&b.output_index))
+                });
+
+                let mut token_inputs: u64 = 0;
+                let mut target = required;
+                for utxo in tokened {
+                    if total_input >= target {
+                        break;
+                    }
+                    let tx_hash = decode_tx_hash(&utxo.tx_hash)?;
+                    let input = Input::new(Hash::from(tx_hash), utxo.output_index as u64);
+                    inputs.push((input, None));
+                    total_input += utxo.lovelace;
+                    token_inputs += 1;
+                    merge_assets(&mut change_assets, &amounts(utxo));
+                    target = output_lovelace
+                        + estimated_fee
+                        + TOKEN_SELECTION_HEADROOM
+                        + token_inputs * PER_INPUT_FEE_HEADROOM
+                        + params.min_fee_coefficient * value_size(&change_assets)
+                        + change_floor(&change_assets, params);
+                }
+            }
+
+            // With tokens in change the floor is hard: they need their
+            // min-ADA, and a shortfall cannot fold into the fee.
+            let floor = if change_assets.is_empty() {
+                0
+            } else {
+                change_floor(&change_assets, &self.deps.params)
+            };
+            if total_input < output_lovelace + estimated_fee + floor {
                 return Err(TxBuildError::InsufficientFunds {
-                    needed: required,
+                    needed: output_lovelace + estimated_fee + floor.max(min_change_lovelace),
                     available: total_input,
                 });
             }
@@ -527,6 +610,7 @@ impl TxBuilder {
             total_input,
             output_lovelace,
             min_change_lovelace,
+            change_assets,
         })
     }
 
@@ -585,6 +669,8 @@ struct PreparedTx {
     total_input: u64,
     output_lovelace: u64,
     min_change_lovelace: u64,
+    /// Tokens from UTxOs coin selection drew on for ADA, returned in change.
+    change_assets: Vec<AssetAmount>,
 }
 
 impl PreparedTx {
@@ -614,7 +700,32 @@ impl PreparedTx {
                     })?;
 
                 let mut all_outputs = self.outputs.clone();
-                let effective_fee = if change >= min_change_lovelace {
+                let effective_fee = if !self.change_assets.is_empty() {
+                    // Tokens drawn in for their ADA go back to the owner. Each
+                    // bundle under the value cap is its own output at its own
+                    // min-ADA, and the first takes the rest of the change.
+                    let bundles = change_bundles(&self.change_assets, &self.params);
+                    let mins: Vec<u64> = bundles
+                        .iter()
+                        .map(|b| self.params.min_utxo_for_assets(b))
+                        .collect();
+                    let floor: u64 = mins.iter().sum();
+                    if change < floor {
+                        return Err(TxBuildError::InsufficientFunds {
+                            needed: output_lovelace + fee + floor,
+                            available: total_input,
+                        });
+                    }
+                    for (i, (bundle, min)) in bundles.iter().zip(&mins).enumerate() {
+                        let lovelace = if i == 0 { change - (floor - min) } else { *min };
+                        all_outputs.push(asset_output(
+                            self.change_address.clone(),
+                            lovelace,
+                            bundle,
+                        )?);
+                    }
+                    fee
+                } else if change >= min_change_lovelace {
                     all_outputs.push(create_ada_output(self.change_address.clone(), change));
                     fee
                 } else {
@@ -679,6 +790,53 @@ impl PreparedTx {
             .count();
         1 + u32::try_from(extra).unwrap_or(u32::MAX - 1)
     }
+}
+
+// ============================================================================
+// Change carrying tokens
+// ============================================================================
+
+/// Add `incoming` into `into`, summing quantities of the same asset.
+fn merge_assets(into: &mut Vec<AssetAmount>, incoming: &[AssetAmount]) {
+    for (id, quantity) in incoming {
+        match into.iter_mut().find(|(have, _)| have == id) {
+            Some((_, total)) => *total += quantity,
+            None => into.push((id.clone(), *quantity)),
+        }
+    }
+}
+
+/// `assets` split into bundles that each fit one output's value cap.
+fn change_bundles(
+    assets: &[AssetAmount],
+    params: &crate::params::TxBuildParams,
+) -> Vec<Vec<AssetAmount>> {
+    let cap = match params.max_value_size {
+        0 => DEFAULT_MAX_VALUE_SIZE,
+        cap => cap,
+    };
+    split_by_value_size(assets, cap)
+}
+
+/// The lovelace change must hold for `assets`: every bundle's min-ADA.
+fn change_floor(assets: &[AssetAmount], params: &crate::params::TxBuildParams) -> u64 {
+    change_bundles(assets, params)
+        .iter()
+        .map(|b| params.min_utxo_for_assets(b))
+        .sum()
+}
+
+/// An output at `address` holding `lovelace` and `bundle`.
+fn asset_output(
+    address: Address,
+    lovelace: u64,
+    bundle: &[AssetAmount],
+) -> Result<Output, TxBuildError> {
+    let named: Vec<(&str, &str, u64)> = bundle
+        .iter()
+        .map(|(id, quantity)| (id.policy_id(), id.asset_name_hex(), *quantity))
+        .collect();
+    add_assets_to_output(create_ada_output(address, lovelace), &named)
 }
 
 // ============================================================================
@@ -1470,6 +1628,267 @@ mod tests {
             "redeemer must name the ledger's index 1; staged {:?}",
             staged.iter().map(hex::encode).collect::<Vec<_>>()
         );
+    }
+
+    // ── Coin selection across token-bearing UTxOs ────────────────────────
+
+    use cardano_assets::utxo::AssetQuantity;
+    use std::collections::BTreeMap;
+
+    fn token(policy: u32, name: u32, quantity: u64) -> AssetQuantity {
+        AssetQuantity {
+            asset_id: cardano_assets::AssetId::new(format!("{policy:056x}"), format!("{name:08x}"))
+                .unwrap(),
+            quantity,
+        }
+    }
+
+    fn utxo_with(fill: char, lovelace: u64, assets: Vec<AssetQuantity>) -> UtxoApi {
+        UtxoApi {
+            tx_hash: fill.to_string().repeat(64),
+            output_index: 0,
+            lovelace,
+            assets,
+            tags: vec![],
+        }
+    }
+
+    fn wallet_deps(utxos: Vec<UtxoApi>) -> TxDeps {
+        let mut deps = test_deps();
+        deps.utxos = utxos;
+        deps
+    }
+
+    /// Pay `lovelace` to self from `utxos` by coin selection alone.
+    fn pay_from(utxos: Vec<UtxoApi>, lovelace: u64) -> Result<UnsignedTx, TxBuildError> {
+        let deps = wallet_deps(utxos);
+        let to = deps.from_address.clone();
+        TxBuilder::new(deps).pay_to(&to, lovelace).build()
+    }
+
+    /// The wallet UTxOs a built transaction spends.
+    fn spent<'a>(unsigned: &UnsignedTx, wallet: &'a [UtxoApi]) -> Vec<&'a UtxoApi> {
+        let refs: Vec<(String, u64)> = unsigned
+            .staging
+            .inputs
+            .iter()
+            .flatten()
+            .map(|i| (hex::encode(i.tx_hash.0), i.txo_index))
+            .collect();
+        wallet
+            .iter()
+            .filter(|u| refs.contains(&(u.tx_hash.clone(), u64::from(u.output_index))))
+            .collect()
+    }
+
+    type Tokens = BTreeMap<(String, String), u64>;
+
+    fn tokens_in(inputs: &[&UtxoApi]) -> Tokens {
+        let mut out = Tokens::new();
+        for u in inputs {
+            for a in &u.assets {
+                let key = (
+                    a.asset_id.policy_id().to_string(),
+                    a.asset_id.asset_name_hex().to_string(),
+                );
+                *out.entry(key).or_default() += a.quantity;
+            }
+        }
+        out
+    }
+
+    fn tokens_out(unsigned: &UnsignedTx) -> Tokens {
+        let mut out = Tokens::new();
+        for o in unsigned.staging.outputs.iter().flatten() {
+            for (policy, names) in o.assets.iter().flat_map(|a| a.iter()) {
+                for (name, quantity) in names {
+                    let key = (hex::encode(policy.0), hex::encode(&name.0));
+                    *out.entry(key).or_default() += quantity;
+                }
+            }
+        }
+        out
+    }
+
+    /// Lovelace and every token balance: what goes in comes out (plus fee).
+    fn assert_conserved(unsigned: &UnsignedTx, wallet: &[UtxoApi]) {
+        let inputs = spent(unsigned, wallet);
+        let lovelace_in: u64 = inputs.iter().map(|u| u.lovelace).sum();
+        assert_balanced(unsigned, lovelace_in);
+        assert_eq!(
+            tokens_in(&inputs),
+            tokens_out(unsigned),
+            "every token spent must come back in an output"
+        );
+    }
+
+    /// Enough pure ADA: the token-bearing UTxOs are not touched, so a
+    /// transaction that built before this change builds exactly as before.
+    #[test]
+    fn pure_ada_is_still_preferred_when_it_suffices() {
+        let wallet = vec![
+            utxo_with('1', 40_000_000, vec![]),
+            utxo_with('2', 900_000_000, vec![token(1, 1, 5)]),
+        ];
+        let unsigned = pay_from(wallet.clone(), 20_000_000).expect("builds");
+        let inputs = spent(&unsigned, &wallet);
+        assert_eq!(inputs.len(), 1);
+        assert!(inputs[0].assets.is_empty());
+        assert!(tokens_out(&unsigned).is_empty());
+        assert_conserved(&unsigned, &wallet);
+    }
+
+    /// The fastbuy failure: most of the wallet's ADA sits beside tokens. The
+    /// pure ADA alone cannot fund the payment, so selection draws on a
+    /// token-bearing UTxO and returns its tokens in change.
+    #[test]
+    fn token_bearing_utxos_fund_what_pure_ada_cannot() {
+        let wallet = vec![
+            utxo_with('1', 241_000_000, vec![]),
+            utxo_with('2', 300_000_000, vec![token(1, 1, 925_567), token(2, 7, 1)]),
+        ];
+        let unsigned = pay_from(wallet.clone(), 252_000_000).expect("builds");
+        assert_eq!(spent(&unsigned, &wallet).len(), 2);
+        assert_conserved(&unsigned, &wallet);
+
+        // The change carrying the tokens holds at least its min-ADA.
+        let params = test_deps().params;
+        for o in unsigned.staging.outputs.iter().flatten() {
+            if let Some(assets) = &o.assets {
+                let amounts: Vec<AssetAmount> = assets
+                    .iter()
+                    .flat_map(|(policy, names)| {
+                        names.iter().map(move |(name, q)| {
+                            (
+                                cardano_assets::AssetId::new(
+                                    hex::encode(policy.0),
+                                    hex::encode(&name.0),
+                                )
+                                .unwrap(),
+                                *q,
+                            )
+                        })
+                    })
+                    .collect();
+                assert!(o.lovelace >= params.min_utxo_for_assets(&amounts));
+            }
+        }
+    }
+
+    /// Of the token-bearing UTxOs, the one freeing the most ADA goes first,
+    /// so the fewest inputs and tokens ride along.
+    #[test]
+    fn the_most_free_ada_is_drawn_first() {
+        let wallet = vec![
+            utxo_with('1', 10_000_000, vec![]),
+            utxo_with('2', 30_000_000, vec![token(1, 1, 1)]),
+            utxo_with('3', 200_000_000, vec![token(2, 2, 1)]),
+            utxo_with('4', 60_000_000, vec![token(3, 3, 1)]),
+        ];
+        let unsigned = pay_from(wallet.clone(), 150_000_000).expect("builds");
+        let inputs = spent(&unsigned, &wallet);
+        let fills: Vec<char> = inputs
+            .iter()
+            .map(|u| u.tx_hash.chars().next().unwrap())
+            .collect();
+        assert!(fills.contains(&'3'), "the richest token UTxO is drawn on");
+        assert!(
+            !fills.contains(&'2') && !fills.contains(&'4'),
+            "and only it"
+        );
+        assert_conserved(&unsigned, &wallet);
+    }
+
+    /// A UTxO with a datum, a reference script, or at a script address is not
+    /// the owner's to spend with a key, tokens or not.
+    #[test]
+    fn tagged_token_utxos_are_never_drawn_on() {
+        for tag in [
+            UtxoTag::HasDatum,
+            UtxoTag::HasScriptRef,
+            UtxoTag::ScriptAddress,
+        ] {
+            let mut locked = utxo_with('2', 500_000_000, vec![token(1, 1, 1)]);
+            locked.tags = vec![tag];
+            let wallet = vec![utxo_with('1', 10_000_000, vec![]), locked];
+            assert!(
+                matches!(
+                    pay_from(wallet, 100_000_000),
+                    Err(TxBuildError::InsufficientFunds { .. })
+                ),
+                "a {tag:?} UTxO funded a payment"
+            );
+        }
+    }
+
+    /// Tokens locking all of a UTxO's ADA free nothing, so it is not spent:
+    /// the build fails honestly rather than shuffling tokens for no gain.
+    #[test]
+    fn a_token_utxo_at_its_min_ada_frees_nothing() {
+        let wallet = vec![
+            utxo_with('1', 10_000_000, vec![]),
+            utxo_with('2', 1_300_000, vec![token(1, 1, 1)]),
+        ];
+        let result = pay_from(wallet, 10_500_000);
+        assert!(
+            matches!(result, Err(TxBuildError::InsufficientFunds { .. })),
+            "expected InsufficientFunds, got {result:?}"
+        );
+    }
+
+    /// A UTxO carrying hundreds of tokens cannot return them in one output:
+    /// the ledger caps an output's value. Change splits into several outputs,
+    /// each under the cap and each holding its own min-ADA.
+    #[test]
+    fn heavy_token_change_splits_under_the_value_cap() {
+        // Full 32-byte names, as an NFT-heavy wallet has: ~10 KB of value.
+        let crowded: Vec<AssetQuantity> = (0..300u32)
+            .map(|i| AssetQuantity {
+                asset_id: cardano_assets::AssetId::new(
+                    format!("{:056x}", i / 30),
+                    format!("{i:064x}"),
+                )
+                .unwrap(),
+                quantity: 1,
+            })
+            .collect();
+        let wallet = vec![
+            utxo_with('1', 5_000_000, vec![]),
+            utxo_with('2', 400_000_000, crowded),
+        ];
+        let unsigned = pay_from(wallet.clone(), 100_000_000).expect("builds");
+        assert_conserved(&unsigned, &wallet);
+
+        let params = test_deps().params;
+        let carrying: Vec<&Output> = unsigned
+            .staging
+            .outputs
+            .iter()
+            .flatten()
+            .filter(|o| o.assets.is_some())
+            .collect();
+        assert!(carrying.len() > 1, "300 tokens need more than one output");
+        for o in carrying {
+            let amounts: Vec<AssetAmount> = o
+                .assets
+                .iter()
+                .flat_map(|a| a.iter())
+                .flat_map(|(policy, names)| {
+                    names.iter().map(move |(name, q)| {
+                        (
+                            cardano_assets::AssetId::new(
+                                hex::encode(policy.0),
+                                hex::encode(&name.0),
+                            )
+                            .unwrap(),
+                            *q,
+                        )
+                    })
+                })
+                .collect();
+            assert!(value_size(&amounts) <= params.max_value_size);
+            assert!(o.lovelace >= params.min_utxo_for_assets(&amounts));
+        }
     }
 
     /// We have no bundled PlutusV1 cost model and will not invent one: a

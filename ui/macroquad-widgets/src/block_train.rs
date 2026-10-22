@@ -13,8 +13,10 @@
 //!   marks what blocks in the window on screen actually average. Mainnet runs
 //!   around 5% of the cap, so without that datum the bars hug the baseline and
 //!   a quiet chain reads as a broken chart.
-//! - **Emphasis, not categories.** The newest block wears the accent and the
-//!   rest recede, because the story is "that one just landed".
+//! - **Emphasis, not categories.** The newest block is drawn bright and the
+//!   rest recede, because the story is "that one just landed". Bright, not the
+//!   accent: the accent is the READER'S, kept for their own transaction, so a
+//!   block that merely came last never reads as theirs.
 //! - **The gap is the wait.** The band from the newest block to "now" is the
 //!   chain being waited on, and the ticking figure under its end marks "now".
 //!   When the feed is quiet or offline the band says so in its tint.
@@ -26,7 +28,8 @@
 //! A [`TrainRider`] is a transaction the reader is waiting on. Each gets a
 //! left-aligned status row above the plot with a leader from the end of its
 //! words to its block, redrawn every frame so it tracks the block as it drifts.
-//! [`RiderState::Waiting`] rides the gap as a breathing outline; once
+//! [`RiderState::Waiting`] rides the gap as a breathing outline spanning its
+//! own wait, from its submit ([`TrainRider::since_ms`]) to now; once
 //! [`RiderState::InBlock`] its block stands in a full-height column with a cap
 //! on its bar, and a ring spreads from the cap the moment it lands.
 //!
@@ -90,6 +93,9 @@ pub struct TrainRider {
     /// What it does, in the reader's words: "your swap", "your buy".
     pub label: String,
     pub state: RiderState,
+    /// When it was submitted, unix milliseconds. A waiting rider's outline
+    /// runs from here to now; `None` draws it as a thin mark at "now".
+    pub since_ms: Option<u64>,
 }
 
 impl TrainRider {
@@ -97,7 +103,14 @@ impl TrainRider {
         Self {
             label: label.into(),
             state,
+            since_ms: None,
         }
+    }
+
+    /// When it was submitted, so its wait is drawn as its own length.
+    pub fn since(mut self, unix_ms: u64) -> Self {
+        self.since_ms = Some(unix_ms);
+        self
     }
 }
 
@@ -126,7 +139,7 @@ pub fn riders(txs: &[TrackedTx]) -> Vec<TrainRider> {
                 // Given up on: no status worth a row, and no block to sit on.
                 TxProgress::Dropped => return None,
             };
-            Some(TrainRider::new(tracked.label.clone(), state))
+            Some(TrainRider::new(tracked.label.clone(), state).since(tracked.submitted_ms))
         })
         .collect()
 }
@@ -243,6 +256,15 @@ pub struct BlockTrainVm<'a> {
     /// Height of the bar area, excluding labels.
     pub plot_height: f32,
     pub settled_depth: u64,
+    /// The HOST's clock: seconds since the host started (as `f64`, matching
+    /// macroquad's), and this frame's delta, for arrivals, landing rings and
+    /// the breathing rider.
+    ///
+    /// `None` reads macroquad's clock, which is right for a live surface and
+    /// wrong for a capture: a `--shot --at` run must show the same moment every
+    /// time. A client on a fixed clock passes its own, as this crate's other
+    /// modules already require.
+    pub clock: Option<(f64, f32)>,
 }
 
 impl<'a> BlockTrainVm<'a> {
@@ -254,6 +276,7 @@ impl<'a> BlockTrainVm<'a> {
             span_secs: 20.0 * 60.0,
             plot_height: 56.0,
             settled_depth: DEFAULT_SETTLED_DEPTH,
+            clock: None,
         }
     }
 
@@ -274,6 +297,14 @@ impl<'a> BlockTrainVm<'a> {
 
     pub fn settled_depth(mut self, depth: u64) -> Self {
         self.settled_depth = depth.max(1);
+        self
+    }
+
+    /// Animation time from the HOST's clock, in seconds, with this frame's
+    /// delta. A capture passes its fixed clock so the same `--at` is the same
+    /// picture; a live surface may leave it unset and read macroquad's.
+    pub fn clock(mut self, seconds: f64, dt: f32) -> Self {
+        self.clock = Some((seconds, dt));
         self
     }
 }
@@ -298,8 +329,8 @@ pub fn block_train(
     let snapshot = vm.heartbeat.snapshot(vm.now_ms);
     let feed = PulseState::of(&snapshot);
     let now_secs = vm.now_ms as f64 / 1000.0;
-    let now_t = get_time();
-    let dt = get_frame_time();
+    let now_t = vm.clock.map(|(t, _)| t).unwrap_or_else(get_time);
+    let dt = vm.clock.map(|(_, dt)| dt).unwrap_or_else(get_frame_time);
     let span_secs = vm.span_secs.max(60.0);
 
     let tick = p.size(TextSize::Sm);
@@ -421,8 +452,9 @@ pub fn block_train(
     // Bars.
     for pl in &placed {
         let colour = rider_colour(vm.riders, pl.beat.height, t).unwrap_or({
+            // Bright, not the accent: the accent is the reader's own.
             if Some(pl.beat.hash.as_str()) == tip_hash {
-                t.color.accent
+                t.color.text_primary
             } else {
                 theme::with_alpha(t.color.text_muted, 0.6)
             }
@@ -467,15 +499,23 @@ pub fn block_train(
         pop,
     );
 
-    // A waiting rider rides the wait as a breathing outline.
+    // A waiting rider rides its own wait as a breathing outline: from when it
+    // was submitted to now, so the reader sees the wait THEY are in, and any
+    // block that came and went without them sits inside it.
     let breath = breathing(now_t);
     let waiting_x = plot.right() - bar_w / 2.0 - 2.0;
     let waiting_top = plot.bottom() - plot.h * 0.5;
-    if vm.riders.iter().any(|r| r.state == RiderState::Waiting) {
+    let waiting_left = vm
+        .riders
+        .iter()
+        .filter(|r| r.state == RiderState::Waiting)
+        .map(|r| waiting_from(plot, now_secs, span_secs, r.since_ms, bar_w))
+        .reduce(f32::min);
+    if let Some(left) = waiting_left {
         draw_rectangle_lines(
-            waiting_x - bar_w / 2.0,
+            left,
             waiting_top,
-            bar_w,
+            plot.right() - 2.0 - left,
             plot.bottom() - waiting_top,
             1.5,
             theme::with_alpha(t.color.accent, breath),
@@ -761,6 +801,25 @@ fn x_at(plot: Rect, now_secs: f64, span_secs: f32, block_secs: u64) -> Option<f3
     Some(plot.right() - (age.max(0.0) / span_secs) * plot.w)
 }
 
+/// The left edge of a waiting rider's outline: its submit, or the plot's left
+/// edge if that is off the train, and never narrower than a bar.
+fn waiting_from(
+    plot: Rect,
+    now_secs: f64,
+    span_secs: f32,
+    since_ms: Option<u64>,
+    bar_w: f32,
+) -> f32 {
+    let right = plot.right() - 2.0;
+    let thin = right - bar_w;
+    let Some(ms) = since_ms else {
+        return thin;
+    };
+    let age = (now_secs - ms as f64 / 1000.0) as f32;
+    let x = plot.right() - (age.max(0.0) / span_secs) * plot.w;
+    x.max(plot.left()).min(thin)
+}
+
 /// A bar about half the average spacing, within bounds.
 fn bar_width(plot_width: f32, span_secs: f32) -> f32 {
     let expected_blocks = (span_secs / EXPECTED_GAP_SECS).max(1.0);
@@ -926,6 +985,21 @@ mod tests {
         assert_eq!(x_at(plot(), now, 1200.0, 1_000_000 - 1201), None);
         // A block stamped a moment in the future (clock skew) pins to now.
         assert_eq!(x_at(plot(), now, 1200.0, 1_000_005), Some(600.0));
+    }
+
+    /// A waiting rider's outline starts at its submit: half the span ago is
+    /// half way across. Off the train it starts at the left edge; with no
+    /// submit time, or one just now, it is a bar wide at the right.
+    #[test]
+    fn a_waiting_outline_runs_from_its_submit_to_now() {
+        let (now, span, bar) = (10_000.0, 600.0, 6.0);
+        let half = waiting_from(plot(), now, span, Some(9_700_000), bar);
+        assert!((half - 300.0).abs() < 0.01, "{half}");
+        let old = waiting_from(plot(), now, span, Some(1_000_000), bar);
+        assert_eq!(old, 0.0);
+        let thin = plot().right() - 2.0 - bar;
+        assert_eq!(waiting_from(plot(), now, span, None, bar), thin);
+        assert_eq!(waiting_from(plot(), now, span, Some(10_000_000), bar), thin);
     }
 
     #[test]

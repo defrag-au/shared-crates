@@ -11,3 +11,6 @@ description = "Host-owned CIP-30 connect flow for macroquad apps. Drives wallet-
 macroquad = "0.4"
 macroquad-widgets = { workspace = true }
 wallet-miniquad = { workspace = true }
+# Only for the remembered provider: `platform_storage_*` is the miniquad
+# runtime's `localStorage` surface. Native builds stub it out.
+miniquad-platform = { path = "../miniquad-platform" }

@@ -7,6 +7,8 @@
 //! header variant from Shelley on. This is the shape block-fetch returns, the
 //! shape mitos archives, and the shape `pallas_traverse::MultiEraBlock` decodes.
 
+use std::collections::BTreeMap;
+
 use minicbor::Decoder;
 use minicbor::data::Type;
 
@@ -72,6 +74,11 @@ pub struct BlockTransactions<'b> {
     /// They are still in the block and still paid collateral, but did nothing
     /// else. Empty before Alonzo, whose blocks carry no such list.
     pub invalid: Vec<u32>,
+    /// Auxiliary data by transaction index. Sparse: a transaction absent from
+    /// the map carries none. The field is `{ * transaction_index =>
+    /// auxiliary_data }` in the ledger CDDL, not an array — most transactions
+    /// have no memo, so the map is usually empty.
+    pub aux: BTreeMap<u32, &'b [u8]>,
 }
 
 impl BlockTransactions<'_> {
@@ -97,7 +104,7 @@ pub fn block_transactions(block: &[u8]) -> Result<BlockTransactions<'_>, BlockEr
     d.skip()?; // header
     let bodies = item_spans(&mut d, block)?;
     d.skip()?; // witness sets
-    d.skip()?; // auxiliary data
+    let aux = aux_map(&mut d, block)?;
     // Shelley to Mary blocks have four fields; Alonzo added the fifth.
     let has_invalid = match fields {
         Some(len) => len >= 5,
@@ -108,7 +115,46 @@ pub fn block_transactions(block: &[u8]) -> Result<BlockTransactions<'_>, BlockEr
     } else {
         Vec::new()
     };
-    Ok(BlockTransactions { bodies, invalid })
+    Ok(BlockTransactions {
+        bodies,
+        invalid,
+        aux,
+    })
+}
+
+/// Each transaction's auxiliary data, keyed by its index in the block.
+///
+/// The field is `{ * transaction_index => auxiliary_data }` in the ledger
+/// CDDL. A block that puts something else there yields an empty map rather
+/// than failing the whole block, because nothing that reads transactions needs
+/// it.
+fn aux_map<'b>(
+    d: &mut Decoder<'b>,
+    block: &'b [u8],
+) -> Result<BTreeMap<u32, &'b [u8]>, BlockError> {
+    if d.datatype()? != Type::Map {
+        d.skip()?;
+        return Ok(BTreeMap::new());
+    }
+    let len = d.map()?;
+    let mut aux = BTreeMap::new();
+    let mut index = 0u64;
+    loop {
+        match len {
+            Some(n) if index >= n => break,
+            None if d.datatype()? == Type::Break => {
+                skip_break(d);
+                break;
+            }
+            _ => {}
+        }
+        let tx_index = d.u32()?;
+        let start = d.position();
+        d.skip()?;
+        aux.insert(tx_index, &block[start..d.position()]);
+        index += 1;
+    }
+    Ok(aux)
 }
 
 /// The exact bytes of each item of the array at the cursor, definite or
@@ -231,6 +277,23 @@ mod tests {
             split_block(BLOCK).unwrap().tx_count
         );
         assert!(txs.invalid.is_empty());
+    }
+
+    /// Aux data is keyed by transaction index, and a transaction with none is
+    /// absent from the map.
+    #[test]
+    fn reads_the_auxiliary_data_map_beside_the_bodies() {
+        // [7, [header=0, [{0:1}, {0:2}], [], {1: #6.259({0: {}})}, []]]
+        let block = [
+            0x82, 0x07, 0x85, 0x00, 0x82, 0xA1, 0x00, 0x01, 0xA1, 0x00, 0x02, 0x80, 0xA1, 0x01,
+            0xD9, 0x01, 0x03, 0xA1, 0x00, 0xA0, 0x80,
+        ];
+        let txs = block_transactions(&block).unwrap();
+        assert_eq!(txs.bodies.len(), 2);
+        assert_eq!(txs.aux.len(), 1);
+        assert_eq!(txs.aux.get(&0), None);
+        let aux = txs.aux.get(&1).expect("the second transaction has aux");
+        assert_eq!(*aux, &[0xD9, 0x01, 0x03, 0xA1, 0x00, 0xA0]);
     }
 
     #[test]

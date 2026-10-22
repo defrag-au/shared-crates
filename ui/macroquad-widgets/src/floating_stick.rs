@@ -191,7 +191,7 @@ impl FloatingStick {
     pub fn update(&mut self, zone: Rect) -> StickFrame {
         self.update_from(
             zone,
-            &touches(),
+            &crate::gesture::touch_points(),
             is_mouse_button_pressed(MouseButton::Left),
             is_mouse_button_down(MouseButton::Left),
             Vec2::from(mouse_position()),
@@ -223,12 +223,31 @@ impl FloatingStick {
                         pushed: false,
                     });
                 }
+                // macroquad keeps one phase per touch per frame, the last
+                // event's: a thumb that landed and moved before this frame
+                // arrives as `Moved`, never `Started`. A free stick takes it
+                // anyway, from where it is now.
+                TouchPhase::Moved | TouchPhase::Stationary
+                    if self.active.is_none() && zone.contains(t.position) =>
+                {
+                    self.active = Some(Active {
+                        id: t.id,
+                        anchor: t.position,
+                        at: t.position,
+                        pushed: false,
+                    });
+                }
                 TouchPhase::Moved | TouchPhase::Stationary => {
                     if let Some(a) = &mut self.active
                         && a.id == t.id
                     {
                         a.at = t.position;
                     }
+                }
+                // Landed and lifted between frames: a tap, if the stick was
+                // free to take it.
+                TouchPhase::Ended if self.active.is_none() && zone.contains(t.position) => {
+                    released = Some(Release::Tap(t.position));
                 }
                 TouchPhase::Ended => {
                     if let Some(a) = self.active.filter(|a| a.id == t.id) {

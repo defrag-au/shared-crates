@@ -39,7 +39,7 @@ pub enum SwipeDir {
 }
 
 /// What the user did this frame.
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug, PartialEq)]
 pub struct Gesture {
     /// A completed tap, at the release point. Feed to [`crate::Painter::new`].
     pub tap: Option<Vec2>,
@@ -80,6 +80,27 @@ pub struct Gestures {
 /// because `touches()` ids come from the platform's own sequence.
 const MOUSE_ID: u64 = u64::MAX;
 
+/// Every touch this frame, positioned in **points**, the units
+/// `mouse_position()` uses.
+///
+/// macroquad divides the mouse by the DPI scale and leaves touches in device
+/// pixels. With `high_dpi` on a 3x phone, a raw touch lands three times
+/// further from the corner than the finger, so a stick is three times too
+/// sensitive and a button cannot be hit where it is drawn, while a desktop
+/// (and a desktop browser's device emulation, driven by the mouse) looks
+/// fine. Read touches through this, never `touches()`, and they agree with
+/// the mouse and with every viewport mapping built on it.
+pub fn touch_points() -> Vec<Touch> {
+    let dpi = macroquad::miniquad::window::dpi_scale().max(0.01);
+    touches()
+        .into_iter()
+        .map(|t| Touch {
+            position: t.position / dpi,
+            ..t
+        })
+        .collect()
+}
+
 impl Gestures {
     pub fn new() -> Self {
         Self::default()
@@ -87,7 +108,7 @@ impl Gestures {
 
     pub fn update(&mut self) -> Gesture {
         self.update_from(
-            &touches(),
+            &touch_points(),
             is_mouse_button_pressed(MouseButton::Left),
             is_mouse_button_released(MouseButton::Left),
             Vec2::from(mouse_position()),
@@ -118,6 +139,17 @@ impl Gestures {
                         travel: 0.0,
                     });
                 }
+                // macroquad keeps one phase per touch per frame, the last
+                // event's: a finger that landed and moved before this frame
+                // arrives as `Moved`, never `Started`. Take it from here.
+                TouchPhase::Moved | TouchPhase::Stationary if self.active.is_none() => {
+                    self.active = Some(Active {
+                        id: t.id,
+                        start: t.position,
+                        at: t.position,
+                        travel: 0.0,
+                    });
+                }
                 TouchPhase::Moved | TouchPhase::Stationary => {
                     if let Some(a) = &mut self.active
                         && a.id == t.id
@@ -126,10 +158,18 @@ impl Gestures {
                         a.travel = a.travel.max(a.start.distance(t.position));
                     }
                 }
+                // …and one that landed and lifted arrives only as `Ended`: a
+                // tap where it was.
+                TouchPhase::Ended if self.active.is_none() => {
+                    out = resolve(t.position, t.position, 0.0);
+                }
                 TouchPhase::Ended => {
                     if let Some(a) = self.active.filter(|a| a.id == t.id) {
                         self.active = None;
-                        out = resolve(a.start, t.position, a.travel);
+                        // The lift counts as travel too: a fast flick's last
+                        // movement can arrive with it, in the same frame.
+                        let travel = a.travel.max(a.start.distance(t.position));
+                        out = resolve(a.start, t.position, travel);
                     }
                 }
                 TouchPhase::Cancelled => {
@@ -311,6 +351,36 @@ mod tests {
         let g = gesture_over(&[(200.0, 200.0), (320.0, 200.0), (200.0, 200.0)]);
         assert!(g.tap.is_none());
         assert_eq!(g.swipe, None);
+    }
+
+    /// macroquad keeps one phase per touch per frame: a landing that moved
+    /// before the frame is seen first as `Moved`, a quick tap only as
+    /// `Ended`. Both still count.
+    #[test]
+    fn a_landing_seen_only_as_moved_or_ended_still_counts() {
+        let mut g = Gestures::new();
+        g.update_from(
+            &[touch(1, TouchPhase::Moved, 300.0, 200.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
+        let out = g.update_from(
+            &[touch(1, TouchPhase::Ended, 140.0, 204.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
+        assert_eq!(out.swipe, Some(SwipeDir::Left));
+
+        let mut g = Gestures::new();
+        let out = g.update_from(
+            &[touch(2, TouchPhase::Ended, 50.0, 60.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
+        assert_eq!(out.tap, Some(vec2(50.0, 60.0)));
     }
 
     #[test]

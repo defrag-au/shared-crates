@@ -1,13 +1,20 @@
 //! Typed HTTP client for the collection-ownership service.
 //!
 //! Uses reqwest for HTTP — works on both native and WASM targets.
+//!
+//! The client is the `client` feature, on by default. With
+//! `default-features = false` only the wire types remain, for a consumer that
+//! must not link reqwest (a macroquad game, where wasm-bindgen cannot run).
 
 mod types;
 
 pub use types::*;
 
+#[cfg(feature = "client")]
 use reqwest::Client;
+#[cfg(feature = "client")]
 use serde::Serialize;
+#[cfg(feature = "client")]
 use serde::de::DeserializeOwned;
 
 /// Error type for ownership client operations.
@@ -28,6 +35,7 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+#[cfg(feature = "client")]
 impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {
         Error::Request(e.to_string())
@@ -35,12 +43,14 @@ impl From<reqwest::Error> for Error {
 }
 
 /// Client for the collection-ownership service.
+#[cfg(feature = "client")]
 #[derive(Clone)]
 pub struct OwnershipClient {
     base_url: String,
     client: Client,
 }
 
+#[cfg(feature = "client")]
 impl OwnershipClient {
     /// Create a new client targeting the given base URL.
     pub fn new(base_url: impl Into<String>) -> Self {

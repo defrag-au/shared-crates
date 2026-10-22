@@ -1,18 +1,26 @@
-//! Worker-side OAuth callback mixin.
+//! Worker-side OAuth routes.
 //!
-//! A consuming worker mounts one route and calls [`handle_callback`]:
+//! A consuming worker mounts two routes: [`begin_login`] where the app's
+//! "Log in with Discord" links, and [`finish_login`] at the redirect URI.
 //!
 //! ```ignore
+//! .get("/auth/discord", |req, ctx| {
+//!     discord_auth::worker::begin_login(&client_id, &redirect_uri, &[scopes::IDENTIFY])
+//! })
 //! .get_async("/auth/discord/callback", |req, ctx| async move {
-//!     discord_auth::worker::handle_callback(&req, &ctx.env, &CONFIG, &settings).await
+//!     discord_auth::worker::finish_login(&req, &CONFIG, &settings).await
 //! })
 //! ```
+//!
+//! [`handle_login`] and [`handle_callback`] are the same without the `state`
+//! check, for workers mounted before it existed.
 //!
 //! The handler:
 //! 1. reads `?code=` (+ `?state=`) from the callback URL,
 //! 2. exchanges the code for a user access token (Discord `/oauth2/token`),
-//! 3. reads the user id (`/users/@me`) and, for each configured guild, the
-//!    user's roles (`/users/@me/guilds/{guild}/member`),
+//! 3. reads the user id (`/users/@me`), the user's roles in each configured
+//!    guild (`/users/@me/guilds/{guild}/member`), and the user's computed
+//!    permissions per guild (`/users/@me/guilds`),
 //! 4. resolves entitlements via the [`GuildRoleConfig`],
 //! 5. mints an `authorizations` session JWT (HS256, shared secret), and
 //! 6. 302-redirects to the app with the token in the URL fragment
@@ -99,21 +107,56 @@ pub async fn handle_callback(
         }
     }
 
-    // 4. Resolve entitlements (role grants + direct per-user admin grants).
-    let entitlements = config.resolve(&user_id, &roles_by_guild);
+    // 4. Permissions per guild — one call, and the only source for "is this
+    //    person an administrator/manage-server here". A guild the user is not
+    //    in simply isn't in the list. Failure leaves the role grants working.
+    let mut permissions_by_guild: HashMap<String, u64> = HashMap::new();
+    if let Ok(guilds) = discord_get::<Vec<DiscordGuild>>(
+        &access_token,
+        "https://discord.com/api/v10/users/@me/guilds",
+    )
+    .await
+    {
+        for guild in guilds {
+            let mut permissions = guild
+                .permissions
+                .as_deref()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(0);
+            if guild.owner {
+                permissions |= crate::GuildPermission::Administrator.bit();
+            }
+            permissions_by_guild.insert(guild.id, permissions);
+        }
+    }
+
+    // 5. Resolve entitlements (role grants, permission grants + direct
+    //    per-user admin grants). Keep the per-guild view too: a multi-project
+    //    surface has to know which guilds granted a feature, not just the union.
+    let entitlements_by_guild =
+        config.resolve_by_guild_with_permissions(&roles_by_guild, &permissions_by_guild);
+    let entitlements =
+        config.resolve_with_permissions(&user_id, &roles_by_guild, &permissions_by_guild);
     // The guild the session was granted through (first that contributed),
     // for provenance only.
     let granted_via = config
         .servers
         .iter()
-        .find(|s| roles_by_guild.contains_key(&s.guild_id))
+        .find(|s| {
+            roles_by_guild.contains_key(&s.guild_id)
+                || permissions_by_guild.contains_key(&s.guild_id)
+        })
         .map(|s| s.guild_id.clone());
 
-    // 5. Mint session.
+    // 6. Mint session.
     let claims = SessionClaims {
         guild: granted_via,
         name: display_name,
         avatar: user.avatar.clone(),
+        guild_ent: entitlements_by_guild
+            .into_iter()
+            .map(|(guild, ents)| (guild, ents.into_iter().collect()))
+            .collect(),
         ..SessionClaims::for_discord(user_id, entitlements.join(" "))
     };
     let token = match mint_token(claims, settings.session_secret, settings.ttl) {
@@ -121,17 +164,84 @@ pub async fn handle_callback(
         Err(e) => return Response::error(format!("session mint failed: {e}"), 500),
     };
 
-    // 6. Redirect to the app with the token in the fragment.
+    // 7. Redirect to the app with the token in the fragment.
     let location = format!("{}#session={token}", settings.app_url.trim_end_matches('#'));
     let headers = Headers::new();
     headers.set("Location", &location)?;
     Ok(Response::empty()?.with_status(302).with_headers(headers))
 }
 
+/// The cookie carrying a login's `state` nonce from [`begin_login`] to
+/// [`finish_login`].
+const STATE_COOKIE: &str = "discord_auth_state";
+/// How long a login may take, in seconds, before its `state` is forgotten.
+const STATE_SECS: u32 = 600;
+
+/// Begin login, checked: a fresh random `state` nonce goes to Discord in the
+/// authorize URL and to the browser in a short-lived `HttpOnly` cookie, and
+/// [`finish_login`] accepts the callback only when the two agree. That stops a
+/// forged callback logging a victim into someone else's account (login CSRF).
+///
+/// Mount it on the route the app's "Log in with Discord" links to, and
+/// [`finish_login`] on `redirect_uri`'s path.
+pub fn begin_login(client_id: &str, redirect_uri: &str, scopes: &[&str]) -> Result<Response> {
+    let mut nonce = [0u8; 16];
+    getrandom::fill(&mut nonce).map_err(|e| Error::RustError(format!("state nonce: {e}")))?;
+    let state: String = nonce.iter().map(|b| format!("{b:02x}")).collect();
+    let mut response = handle_login(client_id, redirect_uri, scopes, &state)?;
+    response.headers_mut().set(
+        "Set-Cookie",
+        &format!(
+            "{STATE_COOKIE}={state}; Max-Age={STATE_SECS}; Path=/; HttpOnly; Secure; SameSite=Lax"
+        ),
+    )?;
+    Ok(response)
+}
+
+/// Finish a login [`begin_login`] began: check the callback's `state` against
+/// the cookie, then [`handle_callback`], and forget the cookie either way.
+pub async fn finish_login(
+    req: &Request,
+    config: &GuildRoleConfig,
+    settings: &CallbackSettings<'_>,
+) -> Result<Response> {
+    let state = req
+        .url()?
+        .query_pairs()
+        .find_map(|(k, v)| (k == "state").then(|| v.into_owned()));
+    let cookie = req.headers().get("Cookie")?.unwrap_or_default();
+    let expected = cookie_value(&cookie, STATE_COOKIE);
+    let mut response = match (state, expected) {
+        (Some(state), Some(expected)) if !state.is_empty() && state == expected => {
+            handle_callback(req, config, settings).await?
+        }
+        _ => Response::error(
+            "this login did not start here, or took too long: please log in again",
+            400,
+        )?,
+    };
+    response.headers_mut().set(
+        "Set-Cookie",
+        &format!("{STATE_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax"),
+    )?;
+    Ok(response)
+}
+
+/// A cookie's value from a `Cookie` header.
+fn cookie_value<'a>(header: &'a str, name: &str) -> Option<&'a str> {
+    header.split(';').find_map(|pair| {
+        let (k, v) = pair.trim().split_once('=')?;
+        (k == name).then_some(v)
+    })
+}
+
 /// Begin login: 302-redirect the browser to Discord's authorize URL. The
 /// worker owns all OAuth config (client id, redirect, scopes), so the
 /// frontend's "Login with Discord" affordance is just a link to the route
 /// that calls this — no client id or redirect needs to live in the app.
+///
+/// `state` is passed through unchecked: prefer [`begin_login`] and
+/// [`finish_login`], which set and check a nonce.
 pub fn handle_login(
     client_id: &str,
     redirect_uri: &str,
@@ -210,4 +320,18 @@ struct DiscordUser {
 struct GuildMember {
     #[serde(default)]
     roles: Vec<String>,
+}
+
+/// One entry from `GET /users/@me/guilds`.
+#[derive(serde::Deserialize)]
+struct DiscordGuild {
+    id: String,
+    /// The user's computed permissions in the guild, as a decimal string.
+    /// Absent when the `guilds` scope was not granted; read as zero.
+    #[serde(default)]
+    permissions: Option<String>,
+    /// Owners may report a permissions value that does not include the
+    /// administrator bit, so ownership is treated as that bit itself.
+    #[serde(default)]
+    owner: bool,
 }

@@ -1,0 +1,51 @@
+[package]
+name = "macroquad-gamekit"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+# The game-feel layer for macroquad clients: easing, tweens, sequencing of
+# animation cues, retained sprites with rotated hit tests, baked card faces,
+# rich text with inline icons, rounded and cover-cropped art, and the usual
+# effects (shake, number pops, particles).
+#
+# The companion to `macroquad-widgets`, not part of it: that crate's widgets are
+# stateless by charter (the host owns a VM, the widget draws it), while
+# everything here is state that lives across frames. The kit depends on the
+# widgets crate, never the reverse.
+#
+# Time is always an argument: nothing reads the clock, so every animation can
+# be unit-tested, paused, stepped and captured at an exact moment.
+#
+# No wasm-bindgen anywhere in the tree (the miniquad runtime cannot host it);
+# check with `cargo tree --target wasm32-unknown-unknown -p macroquad-gamekit`.
+
+[features]
+# Both off by default: each pulls a native system library on Linux (ALSA for
+# quad-snd, libudev for gilrs), and a card game needs neither. On wasm32 both
+# go through miniquad plugins instead, which `web` ships — see `web.rs`.
+#
+# `audio` turns on macroquad's own `audio` feature; without it every macroquad
+# sound call is a silent stub.
+audio = ["macroquad/audio"]
+gamepads = ["dep:gamepads"]
+# Discord login for a game, as `macroquad_gamekit::auth`: shared-crates
+# `discord-auth`'s miniquad edge. Its page plugin is `web::Plugin::DiscordAuth`.
+discord-auth = ["dep:discord-auth"]
+
+[dependencies]
+macroquad = "0.4"
+# `Gesture` — the pointer facts the kit's `Pointer` tracker builds on, so a game
+# and the widgets read one recogniser rather than two.
+macroquad-widgets = { path = "../../ui/macroquad-widgets" }
+# Text — styles, rich text layout, the glyph gate and the capture report —
+# shared with the widgets, so both draw text one way. Re-exported as `text`
+# and `harness::report`.
+macroquad-text = { path = "../../ui/macroquad-text" }
+# Gamepads: gilrs on desktop, the browser Gamepad API through a miniquad plugin
+# on the web. `default-features = false` drops its wasm-bindgen backend, which
+# cannot run under miniquad's gl.js.
+gamepads = { version = "0.1.7", default-features = false, optional = true }
+# The session logic, and its miniquad edge: no wasm-bindgen in its tree.
+discord-auth = { path = "../../discord-auth", features = ["miniquad"], optional = true }

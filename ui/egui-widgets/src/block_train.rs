@@ -11,8 +11,10 @@
 //!   around 5% of the cap, so without that datum the bars hug the baseline and
 //!   a quiet chain reads as a broken chart. Transaction counts are in the
 //!   tooltip rather than a second colour channel.
-//! - **Emphasis, not categories.** The newest block wears the accent and the
-//!   rest recede, because the story is "that one just landed".
+//! - **Emphasis, not categories.** The newest block is drawn bright and the
+//!   rest recede, because the story is "that one just landed". Bright, not the
+//!   accent: the accent is the READER'S, kept for their own transaction, so a
+//!   block that merely came last never reads as theirs.
 //! - **The gap is the wait.** The band from the newest block to "now" is the
 //!   chain being waited on, and the ticking wait under its end marks "now".
 //!   When the feed is quiet or offline the band says so in its tint.
@@ -28,7 +30,8 @@
 //! The rows are the status on touch, where there is no hover.
 //!
 //! While [`RiderState::Waiting`] it rides the gap as an outline breathing like
-//! `TxWatch`'s active stage. Once [`RiderState::InBlock`] its block stands in a
+//! `TxWatch`'s active stage, spanning its own wait from its submit
+//! ([`TrainRider::since_ms`]) to now. Once [`RiderState::InBlock`] its block stands in a
 //! full-height column of the success colour with a cap on its bar, and a ring
 //! spreads from the cap the moment it lands. [`RiderState::Beaten`] marks the
 //! block where a competing transaction won. Hovering a rider's block, or its
@@ -101,6 +104,9 @@ pub struct TrainRider {
     /// What it does, in the reader's words: "your swap", "your buy".
     pub label: String,
     pub state: RiderState,
+    /// When it was submitted, unix milliseconds. A waiting rider's outline
+    /// runs from here to now; `None` draws it as a thin mark at "now".
+    pub since_ms: Option<u64>,
 }
 
 impl TrainRider {
@@ -108,7 +114,14 @@ impl TrainRider {
         Self {
             label: label.into(),
             state,
+            since_ms: None,
         }
+    }
+
+    /// When it was submitted, so its wait is drawn as its own length.
+    pub fn since(mut self, unix_ms: u64) -> Self {
+        self.since_ms = Some(unix_ms);
+        self
     }
 }
 
@@ -440,8 +453,9 @@ impl<'a> BlockTrain<'a> {
         // Bars.
         for p in &placed {
             let colour = rider_colour(self.riders, p.beat.height, &c).unwrap_or(
+                // Bright, not the accent: the accent is the reader's own.
                 if Some(p.beat.hash.as_str()) == tip_hash {
-                    c.accent
+                    c.text_primary
                 } else {
                     with_alpha(c.text_muted, 150)
                 },
@@ -501,10 +515,18 @@ impl<'a> BlockTrain<'a> {
         let breath = breathing(ui);
         let waiting_x = plot.right() - bar_w / 2.0 - 2.0;
         let waiting_top = plot.bottom() - plot.height() * 0.5;
-        if self.riders.iter().any(|r| r.state == RiderState::Waiting) {
+        // Its own wait, from its submit to now: any block that came and went
+        // without it sits inside the outline.
+        let waiting_left = self
+            .riders
+            .iter()
+            .filter(|r| r.state == RiderState::Waiting)
+            .map(|r| waiting_from(plot, now_secs, span_secs, r.since_ms, bar_w))
+            .reduce(f32::min);
+        if let Some(left) = waiting_left {
             painter.rect_stroke(
                 Rect::from_min_max(
-                    pos2(waiting_x - bar_w / 2.0, waiting_top),
+                    pos2(left, waiting_top),
                     pos2(waiting_x + bar_w / 2.0, plot.bottom()),
                 ),
                 CornerRadius::same(corner),
@@ -980,6 +1002,25 @@ fn x_at(plot: Rect, now_secs: f64, span_secs: f32, block_secs: u64) -> Option<f3
         return None;
     }
     Some(plot.right() - (age.max(0.0) / span_secs) * plot.width())
+}
+
+/// The left edge of a waiting rider's outline: its submit, or the plot's left
+/// edge if that is off the train, and never narrower than a bar. The twin of
+/// the macroquad widget's.
+fn waiting_from(
+    plot: Rect,
+    now_secs: f64,
+    span_secs: f32,
+    since_ms: Option<u64>,
+    bar_w: f32,
+) -> f32 {
+    let thin = plot.right() - 2.0 - bar_w;
+    let Some(ms) = since_ms else {
+        return thin;
+    };
+    let age = (now_secs - ms as f64 / 1000.0) as f32;
+    let x = plot.right() - (age.max(0.0) / span_secs) * plot.width();
+    x.max(plot.left()).min(thin)
 }
 
 /// How far a drifting step may move the bars, in pixels.

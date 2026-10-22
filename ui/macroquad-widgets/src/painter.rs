@@ -268,7 +268,7 @@ pub use theme::{shade, with_alpha};
     note = "fires on touch-down, so dragging off a control still activates it; use `Gestures` and pass `Gesture::tap`"
 )]
 pub fn frame_tap() -> Option<Vec2> {
-    for t in touches() {
+    for t in crate::gesture::touch_points() {
         if matches!(t.phase, TouchPhase::Started) {
             return Some(t.position);
         }

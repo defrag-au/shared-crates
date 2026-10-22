@@ -556,6 +556,11 @@ pub struct RouteBuildOptions {
     pub collateral: CollateralConfig,
     /// Whether to fold the wallet's scraps of each segment's input asset in.
     pub dust_sweep: DustSweep,
+    /// Outputs the LAST transaction carries beside the route's own: a DEX
+    /// order placed in the same signature, say. Funded by coin selection like
+    /// any payment, after the route's outputs, so they never sit at an index a
+    /// leg's validator relies on.
+    pub extra_outputs: Vec<pallas_txbuilder::Output>,
 }
 
 impl Default for RouteBuildOptions {
@@ -563,6 +568,7 @@ impl Default for RouteBuildOptions {
         Self {
             collateral: CollateralConfig::Auto,
             dust_sweep: DustSweep::Off,
+            extra_outputs: Vec::new(),
         }
     }
 }
@@ -742,9 +748,14 @@ where
             .map(|s| u64::from(s.ref_script_size))
             .sum();
 
-        let builder = sub_route
+        let mut builder = sub_route
             .apply(sub_deps, sub_states, &sub_quote, &policy)?
             .with_collateral(options.collateral.clone());
+        if is_last {
+            for output in &options.extra_outputs {
+                builder = builder.output(output.clone());
+            }
+        }
         let unsigned = builder.build_evaluated_pending(evaluator, &pending).await?;
 
         // Read the hand-off back OFF the built body rather than predicting it:

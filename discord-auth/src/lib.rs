@@ -8,13 +8,18 @@
 //!   grants which feature entitlements — plus the pure resolution logic and
 //!   the OAuth authorize-URL builder. This is the entire control surface:
 //!   a server grants nothing unless it's in the config.
-//! - **`worker`**: [`worker::handle_callback`] — the OAuth callback mixin.
-//!   A worker mounts one route; the handler exchanges the code, reads the
-//!   user's roles in each configured guild, resolves entitlements, mints an
-//!   `authorizations` session JWT, and redirects back to the app.
-//! - **`web`**: [`web::Session`] — the frontend half: begin-login redirect,
-//!   token load from URL fragment / localStorage, and the parsed
-//!   entitlement set for gating UI.
+//! - **`worker`**: [`worker::begin_login`] and [`worker::finish_login`] —
+//!   the OAuth routes a worker mounts. The callback exchanges the code, reads
+//!   the user's roles in each configured guild, resolves entitlements, mints
+//!   an `authorizations` session JWT, and redirects back to the app.
+//! - **`web`**: [`web::Session`] — the frontend half for wasm-bindgen apps:
+//!   begin-login redirect, token load from URL fragment / localStorage, and
+//!   the parsed entitlement set for gating UI.
+//! - **`miniquad`**: the same frontend half for macroquad games, through a
+//!   miniquad plugin, with no wasm-bindgen anywhere in its tree.
+//!
+//! The frontend logic itself is [`session`], always compiled and free of any
+//! browser binding: the `web` and `miniquad` features are thin edges over it.
 //!
 //! The resolved entitlements ride in the session JWT's `ent` claim, which
 //! the `authorizations` crate consumes unchanged — so gating a feature is
@@ -33,7 +38,7 @@
 //! resolution logic is identical either way.
 
 use serde::Deserialize;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 pub mod scopes {
     //! OAuth2 scope constants.
@@ -162,7 +167,18 @@ pub struct RoleGrant {
     /// Role ids that satisfy this grant. Matched any-of by default (see
     /// `match_mode`) — a partner typically lists the set of roles it wants
     /// to grant access, growing it over time without touching code.
+    ///
+    /// Empty when the grant matches on guild permissions instead.
+    #[serde(default)]
     pub roles: Vec<String>,
+    /// Discord permissions that satisfy this grant, any-of.
+    ///
+    /// The user's permissions are read once per login from
+    /// `GET /users/@me/guilds`, which is the only endpoint that exposes the
+    /// permissions Discord has computed for them in a guild. A grant with
+    /// both `roles` and `permissions` requires both.
+    #[serde(default)]
+    pub permissions: Vec<GuildPermission>,
     /// Optional human-readable prompt describing what to do to qualify —
     /// shown on the requirements screen (role ids are opaque). Can explain
     /// *how* to earn the role, not just its name, e.g. "Hold the Deckhand
@@ -176,6 +192,30 @@ pub struct RoleGrant {
     /// Entitlement ids this grant confers (must match
     /// `authorizations::Feature` ids, e.g. `"tools.visual-search"`).
     pub features: Vec<String>,
+}
+
+/// A guild permission a grant can require.
+///
+/// Only the two that mean "runs this server": Discord's permission bitfield
+/// has dozens, but a notification admin is somebody who administers the guild,
+/// not somebody who happens to hold a single moderation bit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GuildPermission {
+    /// Discord's `ADMINISTRATOR` (1 << 3).
+    Administrator,
+    /// Discord's `MANAGE_GUILD` (1 << 5) — "Manage Server".
+    ManageGuild,
+}
+
+impl GuildPermission {
+    /// The bit in Discord's permission bitfield.
+    pub fn bit(self) -> u64 {
+        match self {
+            Self::Administrator => 1 << 3,
+            Self::ManageGuild => 1 << 5,
+        }
+    }
 }
 
 impl GuildRoleConfig {
@@ -238,29 +278,89 @@ impl GuildRoleConfig {
         user_id: &str,
         roles_by_guild: &HashMap<String, Vec<String>>,
     ) -> Vec<String> {
+        self.resolve_with_permissions(user_id, roles_by_guild, &HashMap::new())
+    }
+
+    /// [`Self::resolve`], plus each guild's computed permission bitfield as
+    /// returned by `GET /users/@me/guilds`.
+    ///
+    /// A grant is satisfied when every axis it names is satisfied: `roles`
+    /// (any-of, or all with `match = "all"`) and `permissions` (any-of). A
+    /// grant that names neither grants nothing — an empty grant is a config
+    /// accident, not an everyone-grant.
+    pub fn resolve_with_permissions(
+        &self,
+        user_id: &str,
+        roles_by_guild: &HashMap<String, Vec<String>>,
+        permissions_by_guild: &HashMap<String, u64>,
+    ) -> Vec<String> {
         let mut ents: BTreeSet<String> = BTreeSet::new();
-        // Direct per-user (admin) grants.
+        // Direct per-user (admin) grants, which are not guild-scoped.
         for admin in &self.admins {
             if admin.user_id == user_id {
                 ents.extend(admin.features.iter().cloned());
             }
         }
-        // Server role grants.
+        for guild_ents in self
+            .resolve_by_guild_with_permissions(roles_by_guild, permissions_by_guild)
+            .into_values()
+        {
+            ents.extend(guild_ents);
+        }
+        ents.into_iter().collect()
+    }
+
+    /// The same resolution, kept per guild.
+    ///
+    /// A multi-project surface asks "did *this* project's guilds grant the
+    /// feature", which a flat entitlement set cannot answer. Direct
+    /// `[[admin]]` grants are deliberately absent: they are user-scoped, not
+    /// membership in any guild, and a project gate is about its own guilds.
+    pub fn resolve_by_guild_with_permissions(
+        &self,
+        roles_by_guild: &HashMap<String, Vec<String>>,
+        permissions_by_guild: &HashMap<String, u64>,
+    ) -> BTreeMap<String, BTreeSet<String>> {
+        let mut by_guild: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        // Server grants. Membership is either source: the member endpoint
+        // gives roles, the guilds endpoint gives permissions, and a grant
+        // may need only one of them.
         for server in &self.servers {
-            let Some(user_roles) = roles_by_guild.get(&server.guild_id) else {
+            let user_roles = roles_by_guild.get(&server.guild_id);
+            let permissions = permissions_by_guild
+                .get(&server.guild_id)
+                .copied()
+                .unwrap_or(0);
+            if user_roles.is_none() && !permissions_by_guild.contains_key(&server.guild_id) {
                 continue;
-            };
+            }
             for grant in &server.grants {
-                let qualifies = match grant.match_mode {
-                    MatchMode::Any => grant.roles.iter().any(|r| user_roles.contains(r)),
-                    MatchMode::All => grant.roles.iter().all(|r| user_roles.contains(r)),
+                if grant.roles.is_empty() && grant.permissions.is_empty() {
+                    continue;
+                }
+                let roles_qualify = if grant.roles.is_empty() {
+                    true
+                } else {
+                    let held = user_roles.cloned().unwrap_or_default();
+                    match grant.match_mode {
+                        MatchMode::Any => grant.roles.iter().any(|r| held.contains(r)),
+                        MatchMode::All => grant.roles.iter().all(|r| held.contains(r)),
+                    }
                 };
-                if qualifies {
-                    ents.extend(grant.features.iter().cloned());
+                let permissions_qualify = grant.permissions.is_empty()
+                    || grant
+                        .permissions
+                        .iter()
+                        .any(|required| permissions & required.bit() != 0);
+                if roles_qualify && permissions_qualify {
+                    by_guild
+                        .entry(server.guild_id.clone())
+                        .or_default()
+                        .extend(grant.features.iter().cloned());
                 }
             }
         }
-        ents.into_iter().collect()
+        by_guild
     }
 }
 
@@ -299,11 +399,16 @@ pub(crate) fn percent_encode(s: &str) -> String {
     out
 }
 
+pub mod session;
+
 #[cfg(feature = "worker")]
 pub mod worker;
 
 #[cfg(feature = "web")]
 pub mod web;
+
+#[cfg(feature = "miniquad")]
+pub mod miniquad;
 
 #[cfg(test)]
 mod tests {
@@ -451,6 +556,95 @@ features = ["admin.access"]
         assert!(c.resolve("u1", &other).is_empty());
     }
 
+    const PERMISSION_CFG: &str = r#"
+[[server]]
+guild_id = "gp"
+  [[server.grant]]
+  permissions = ["administrator", "manage_guild"]
+  features = ["holders.admin"]
+  [[server.grant]]
+  roles = ["og"]
+  permissions = ["manage_guild"]
+  features = ["holders.both"]
+"#;
+
+    /// Administrator and Manage Server are alternatives, not a pair: either
+    /// bit in the user's computed guild permissions satisfies the grant.
+    #[test]
+    fn administrator_or_manage_server_grants() {
+        let c = GuildRoleConfig::from_toml(PERMISSION_CFG).unwrap();
+        let mut permissions = HashMap::new();
+
+        permissions.insert("gp".to_string(), GuildPermission::Administrator.bit());
+        assert_eq!(
+            c.resolve_with_permissions("u1", &HashMap::new(), &permissions),
+            vec!["holders.admin".to_string()]
+        );
+
+        permissions.insert("gp".to_string(), GuildPermission::ManageGuild.bit());
+        assert_eq!(
+            c.resolve_with_permissions("u1", &HashMap::new(), &permissions),
+            vec!["holders.admin".to_string()]
+        );
+
+        // Some unrelated bit (VIEW_CHANNEL) is not "runs the server".
+        permissions.insert("gp".to_string(), 1 << 10);
+        assert!(
+            c.resolve_with_permissions("u1", &HashMap::new(), &permissions)
+                .is_empty()
+        );
+    }
+
+    /// A grant naming both axes requires both; either alone is not enough.
+    #[test]
+    fn a_grant_with_roles_and_permissions_needs_both() {
+        let c = GuildRoleConfig::from_toml(PERMISSION_CFG).unwrap();
+        let mut roles = HashMap::new();
+        roles.insert("gp".to_string(), vec!["og".to_string()]);
+        let mut permissions = HashMap::new();
+        permissions.insert("gp".to_string(), GuildPermission::ManageGuild.bit());
+
+        let granted = c.resolve_with_permissions("u1", &roles, &permissions);
+        assert_eq!(
+            granted,
+            vec!["holders.admin".to_string(), "holders.both".to_string(),]
+        );
+
+        // Manage Server without the role does not satisfy the both-axes grant.
+        let granted = c.resolve_with_permissions("u1", &HashMap::new(), &permissions);
+        assert_eq!(granted, vec!["holders.admin".to_string()]);
+    }
+
+    /// A guild the user is not in contributes nothing, and an empty grant is
+    /// a config accident rather than an everyone-grant.
+    #[test]
+    fn permission_grants_need_guild_membership() {
+        let c = GuildRoleConfig::from_toml(
+            r#"
+[[server]]
+guild_id = "gp"
+  [[server.grant]]
+  permissions = ["administrator"]
+  features = ["holders.admin"]
+  [[server.grant]]
+  features = ["holders.accident"]
+"#,
+        )
+        .unwrap();
+        assert!(
+            c.resolve_with_permissions("u1", &HashMap::new(), &HashMap::new())
+                .is_empty(),
+            "no guild entry means no grant"
+        );
+        let mut permissions = HashMap::new();
+        permissions.insert("gp".to_string(), GuildPermission::Administrator.bit());
+        assert_eq!(
+            c.resolve_with_permissions("u1", &HashMap::new(), &permissions),
+            vec!["holders.admin".to_string()],
+            "the empty grant must still match nothing"
+        );
+    }
+
     #[test]
     fn authorize_url_encodes_scope_and_redirect() {
         let u = authorize_url(
@@ -465,5 +659,50 @@ features = ["admin.access"]
             u.contains("redirect_uri=https%3A%2F%2Fownership.cnft.dev%2Fauth%2Fdiscord%2Fcallback")
         );
         assert!(u.contains("state=nonce"));
+    }
+
+    /// A multi-project surface needs to know *which* guild granted the
+    /// feature; the flat set is the union and cannot answer that.
+    #[test]
+    fn per_guild_entitlements_name_only_the_qualifying_guild() {
+        let mut roles = HashMap::new();
+        roles.insert("g1".to_string(), vec!["holder".to_string()]);
+        roles.insert("g2".to_string(), vec!["member".to_string()]);
+
+        let by_guild = config().resolve_by_guild_with_permissions(&roles, &HashMap::new());
+        assert_eq!(
+            by_guild.get("g1").expect("g1 granted"),
+            &BTreeSet::from(["tools.visual-search".to_string()])
+        );
+        assert_eq!(
+            by_guild.get("g2").expect("g2 granted"),
+            &BTreeSet::from(["tools.visual-search".to_string()])
+        );
+        assert!(
+            !by_guild.contains_key("g3"),
+            "g3 was not a member, so it must not appear at all"
+        );
+
+        // The flat view is still the union, unchanged.
+        assert_eq!(
+            config().resolve_with_permissions("u1", &roles, &HashMap::new()),
+            vec!["tools.visual-search".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_permission_grant_is_scoped_to_its_own_guild() {
+        let mut permissions = HashMap::new();
+        permissions.insert("gp".to_string(), GuildPermission::Administrator.bit());
+        let c = GuildRoleConfig::from_toml(PERMISSION_CFG).unwrap();
+        let by_guild = c.resolve_by_guild_with_permissions(&HashMap::new(), &permissions);
+        assert_eq!(
+            by_guild.get("gp").expect("gp granted"),
+            &BTreeSet::from(["holders.admin".to_string()])
+        );
+        assert!(
+            !by_guild.contains_key("g1"),
+            "holding admin in gp says nothing about g1"
+        );
     }
 }

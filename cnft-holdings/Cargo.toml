@@ -1,0 +1,25 @@
+[package]
+name = "cnft-holdings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "What a player holds of a Cardano NFT collection, as a game sees it: owned assets with names, traits, rarity and art identity, plus the request plan for fetching them. Pure — no I/O, no runtime, no wasm-bindgen — so a macroquad game, a Leptos frontend and a worker share it."
+
+# Pure on purpose: the pure half of a pure-core / thin-edge pair
+# (`macroquad-cnft` is the macroquad edge). Every dependency below is
+# serde-only or dependency-free, and must stay that way — check
+# `cargo tree --target wasm32-unknown-unknown -p cnft-holdings` for
+# wasm-bindgen before adding one.
+[dependencies]
+# Asset identity: CIP-67 labels, the CIP-68 reference-token swap, policy ids.
+# Default features only — the optional ones pull pallas or HTTP.
+cardano-assets = { workspace = true }
+# The collection-ownership service's wire types, without its reqwest client.
+ownership-client = { path = "../services/ownership", default-features = false }
+# IIIF URL policy (warm sizes, hosts). Dependency-free.
+image-core = { path = "../ui/image-core" }
+hex = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

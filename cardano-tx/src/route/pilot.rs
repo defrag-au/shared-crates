@@ -86,6 +86,15 @@ fn splash_state() -> LegState {
             language: ScriptKind::PlutusV2,
         },
         ref_script_size: 3_529,
+        // Read off the registry record rather than typed out: the fixture
+        // describes the whole output, so a local evaluator can be handed it.
+        contract_address: Some(pool_address(
+            address_registry::dex::SPLASH_ROYALTY_POOL.pool_address,
+        )),
+        // The reference UTxO's own value and script bytes are not in this
+        // fixture: it pins the route arithmetic, which never reads them. A
+        // resolver handed this state therefore declines local evaluation.
+        reference_output: None,
     }
 }
 
@@ -110,7 +119,16 @@ fn lumppad_state() -> LegState {
             language: ScriptKind::PlutusV3,
         },
         ref_script_size: 3_707,
+        contract_address: Some(pool_address(address_registry::dex::LUMPPAD.pool_address)),
+        reference_output: None,
     }
+}
+
+/// A registry pool address, as the raw bytes an output is serialised with.
+fn pool_address(bech32: &str) -> Vec<u8> {
+    Address::from_bech32(bech32)
+        .expect("the registry's pool address parses")
+        .to_vec()
 }
 
 fn reference_input(utxo: address_registry::dex::ReferenceUtxo) -> Input {

@@ -165,8 +165,10 @@ fn offers_on(connector: &WalletConnector, family: ChainFamily) -> Vec<Offer> {
                 hover: Some(wallet.id.as_str().to_string()),
             })
             .collect(),
-        // No bridge to it yet, so there is nothing to offer.
-        ChainFamily::Midnight => Vec::new(),
+        // No bridge to these yet, so there is nothing to offer.
+        ChainFamily::Solana | ChainFamily::Tezos | ChainFamily::Xrpl | ChainFamily::Midnight => {
+            Vec::new()
+        }
     }
 }
 

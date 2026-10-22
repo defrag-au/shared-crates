@@ -67,6 +67,8 @@ mod relay;
 mod track;
 mod vrf;
 
+#[cfg(feature = "flow")]
+pub mod feed;
 #[cfg(feature = "follow")]
 pub mod follow;
 

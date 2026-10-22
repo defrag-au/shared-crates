@@ -13,6 +13,9 @@
     __SCRIPTS__  every <script src> tag in load order: gl.js, sapp_jsutils.js,
                  quad-net.js when imported, then the crate's own plugins
     __WASM__     wasm path, with its cache-busting query already appended
+    __MANIFEST__ (optional) the <link rel="manifest"> for the bundle's
+                 manifest.webmanifest, which makes a home-screen launch
+                 fullscreen
 
   Everything here was learned the hard way in an embedded iframe. Before
   removing any of it, read the comment saying why it exists.
@@ -24,6 +27,16 @@
   <!-- `viewport-fit=cover`: a wallet's in-app browser on iOS otherwise letterboxes
        the canvas inside the safe area. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+  <!-- Fullscreen from a home-screen icon. An iPhone's Safari has no element
+       fullscreen at all (only video gets it), so a game added to the home
+       screen is how it fills an iPhone: these tags and the manifest make it
+       launch without the browser's bars. Android reads the manifest too. -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="__TITLE__">
+  <meta name="theme-color" content="#050510">
+__MANIFEST__
   <style>
     /* Reset + viewport-fill — macroquad's recommended shell. */
     * { margin: 0; padding: 0; box-sizing: border-box; }

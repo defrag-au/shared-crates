@@ -15,6 +15,26 @@ fn bigint(value: u64) -> PlutusData {
     PlutusData::BigInt(BigInt::Int((value as i64).into()))
 }
 
+/// A constructor encoded as the CSWAP UI encodes one: fields as an
+/// INDEFINITE array (`d8799f … ff`), and an empty constructor definite
+/// (`d87980`).
+///
+/// Any encoding decodes to the same data, so a validator would not care — but
+/// the batcher is off-chain code reading datums the UI wrote, and matching the
+/// UI byte for byte is the one encoding certain to be read. The real order
+/// `759d8fb1…` is pinned in the tests.
+fn constr(tag: u64, fields: Vec<PlutusData>) -> PlutusData {
+    PlutusData::Constr(Constr {
+        tag,
+        any_constructor: None,
+        fields: if fields.is_empty() {
+            MaybeIndefArray::Def(fields)
+        } else {
+            MaybeIndefArray::Indef(fields)
+        },
+    })
+}
+
 /// Parameters for building a CSWAP order datum
 pub struct CswapOrderParams {
     /// User's payment public key hash (28 bytes)
@@ -40,47 +60,34 @@ pub struct CswapOrderParams {
 /// stake_cred = Constr 0 { Constr 0 { Constr 0 { pkh } } }  (Some, pub key)
 ///            | Constr 1 {}  (None)
 fn build_address_datum(payment_pkh: &[u8], stake_pkh: Option<&[u8]>) -> PlutusData {
-    let payment_cred = PlutusData::Constr(Constr {
-        tag: 121, // Constr 0
-        any_constructor: None,
-        fields: MaybeIndefArray::Def(vec![PlutusData::BoundedBytes(payment_pkh.to_vec().into())]),
-    });
+    // Constr 0 = a pub key credential.
+    let payment_cred = constr(
+        121,
+        vec![PlutusData::BoundedBytes(payment_pkh.to_vec().into())],
+    );
 
     let stake_cred = match stake_pkh {
-        Some(pkh) => {
-            let inner_key = PlutusData::Constr(Constr {
-                tag: 121,
-                any_constructor: None,
-                fields: MaybeIndefArray::Def(vec![PlutusData::BoundedBytes(pkh.to_vec().into())]),
-            });
-            let staking_hash = PlutusData::Constr(Constr {
-                tag: 121,
-                any_constructor: None,
-                fields: MaybeIndefArray::Def(vec![inner_key]),
-            });
-            PlutusData::Constr(Constr {
-                tag: 121,
-                any_constructor: None,
-                fields: MaybeIndefArray::Def(vec![staking_hash]),
-            })
-        }
-        None => PlutusData::Constr(Constr {
-            tag: 122, // Constr 1 = Nothing
-            any_constructor: None,
-            fields: MaybeIndefArray::Def(vec![]),
-        }),
+        // Some (StakingHash (PubKeyCredential pkh)).
+        Some(pkh) => constr(
+            121,
+            vec![constr(
+                121,
+                vec![constr(
+                    121,
+                    vec![PlutusData::BoundedBytes(pkh.to_vec().into())],
+                )],
+            )],
+        ),
+        // Constr 1 = Nothing.
+        None => constr(122, vec![]),
     };
 
-    PlutusData::Constr(Constr {
-        tag: 121,
-        any_constructor: None,
-        fields: MaybeIndefArray::Def(vec![payment_cred, stake_cred]),
-    })
+    constr(121, vec![payment_cred, stake_cred])
 }
 
 /// Build an asset list entry: [policy_id, asset_name, quantity]
 fn build_asset_entry(policy_id: &[u8], asset_name: &[u8], quantity: u64) -> PlutusData {
-    PlutusData::Array(MaybeIndefArray::Indef(vec![
+    PlutusData::Array(MaybeIndefArray::Def(vec![
         PlutusData::BoundedBytes(policy_id.to_vec().into()),
         PlutusData::BoundedBytes(asset_name.to_vec().into()),
         bigint(quantity),
@@ -106,7 +113,7 @@ pub fn build_cswap_order_datum(params: &CswapOrderParams) -> PlutusData {
         .iter()
         .map(|(policy, name, qty)| build_asset_entry(policy, name, *qty))
         .collect();
-    let min_receive = PlutusData::Array(MaybeIndefArray::Indef(min_receive_entries));
+    let min_receive = PlutusData::Array(MaybeIndefArray::Def(min_receive_entries));
 
     // [2] sell_asset list
     let sell_asset_entries: Vec<PlutusData> = params
@@ -114,27 +121,22 @@ pub fn build_cswap_order_datum(params: &CswapOrderParams) -> PlutusData {
         .iter()
         .map(|(policy, name, remainder)| build_asset_entry(policy, name, *remainder))
         .collect();
-    let sell_asset = PlutusData::Array(MaybeIndefArray::Indef(sell_asset_entries));
+    let sell_asset = PlutusData::Array(MaybeIndefArray::Def(sell_asset_entries));
 
     // [3] order type — Constructor 0 {} (market swap)
-    let order_type = PlutusData::Constr(Constr {
-        tag: 121,
-        any_constructor: None,
-        fields: MaybeIndefArray::Def(vec![]),
-    });
+    let order_type = constr(121, vec![]);
 
-    PlutusData::Constr(Constr {
-        tag: 121, // Constr 0
-        any_constructor: None,
-        fields: MaybeIndefArray::Def(vec![
+    constr(
+        121,
+        vec![
             destination,
             min_receive,
             sell_asset,
             order_type,
             bigint(params.execution_param),
             bigint(params.fee_tier),
-        ]),
-    })
+        ],
+    )
 }
 
 /// Encode a CSWAP order datum to CBOR bytes

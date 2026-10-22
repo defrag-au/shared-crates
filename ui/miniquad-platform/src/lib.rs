@@ -51,7 +51,26 @@ use sapp_jsutils::JsObject;
 unsafe extern "C" {
     fn platform_random_bytes(len: u32) -> JsObject;
     fn platform_query_param(key: JsObject) -> JsObject;
+    fn platform_location_host() -> JsObject;
+    fn platform_location_path() -> JsObject;
+    fn platform_reload();
+    fn platform_storage_get(key: JsObject) -> JsObject;
+    fn platform_storage_set(key: JsObject, value: JsObject);
+    fn platform_storage_remove(key: JsObject);
 }
+
+/// Reload the page: the way back for a game whose connection died while the
+/// phone was locked or the tab was hidden, when its transport cannot
+/// reconnect in place (quad-net's browser WebSocket cannot). Requires
+/// `platform.js`, like the rest of this crate.
+#[cfg(target_arch = "wasm32")]
+pub fn reload_page() {
+    unsafe { platform_reload() };
+}
+
+/// Native builds have no page to reload: nothing happens.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn reload_page() {}
 
 /// Read one parameter from the page's query string.
 ///
@@ -75,6 +94,84 @@ pub fn launch_query(key: &str) -> Option<String> {
 pub fn launch_query(_key: &str) -> Option<String> {
     None
 }
+
+/// The page's hostname, without a port: `buy.example.xyz`.
+///
+/// For a page served under several names that must know which one it was
+/// opened as — one bundle answering for several sites. `None` when there is
+/// none (a `file:` page).
+#[cfg(target_arch = "wasm32")]
+pub fn launch_host() -> Option<String> {
+    let js = unsafe { platform_location_host() };
+    let mut value = String::new();
+    js.to_string(&mut value);
+    (!value.is_empty()).then_some(value)
+}
+
+/// Native builds have no page and therefore no host.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn launch_host() -> Option<String> {
+    None
+}
+
+/// The page's path, from its leading `/`: `/aliens`.
+///
+/// For a page that answers at several paths and must know which one it was
+/// opened at.
+#[cfg(target_arch = "wasm32")]
+pub fn launch_path() -> Option<String> {
+    let js = unsafe { platform_location_path() };
+    let mut value = String::new();
+    js.to_string(&mut value);
+    (!value.is_empty()).then_some(value)
+}
+
+/// Native builds have no page and therefore no path.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn launch_path() -> Option<String> {
+    None
+}
+
+/// Read one value this origin stored on a previous visit.
+///
+/// The only durable, synchronous store a page has. A plugin call, because
+/// miniquad reaches no browser API without one; `localStorage` itself throws
+/// in a private window, under disabled site data, or when the quota is full,
+/// and this reads all three as "nothing stored".
+///
+/// For preference-shaped values only — which wallet the reader picked, a
+/// locale. Not for secrets: any script on this origin can read it.
+#[cfg(target_arch = "wasm32")]
+pub fn storage_get(key: &str) -> Option<String> {
+    let js = unsafe { platform_storage_get(JsObject::string(key)) };
+    let mut value = String::new();
+    js.to_string(&mut value);
+    (!value.is_empty()).then_some(value)
+}
+
+/// Native builds have no origin to remember anything at.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn storage_get(_key: &str) -> Option<String> {
+    None
+}
+
+/// Store `value` under `key` for the next visit.
+#[cfg(target_arch = "wasm32")]
+pub fn storage_set(key: &str, value: &str) {
+    unsafe { platform_storage_set(JsObject::string(key), JsObject::string(value)) }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn storage_set(_key: &str, _value: &str) {}
+
+/// Forget `key`. A no-op when nothing is stored, or when storage is unavailable.
+#[cfg(target_arch = "wasm32")]
+pub fn storage_remove(key: &str) {
+    unsafe { platform_storage_remove(JsObject::string(key)) }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn storage_remove(_key: &str) {}
 
 #[cfg(target_arch = "wasm32")]
 fn webcrypto_getrandom(buf: &mut [u8]) -> Result<(), getrandom::Error> {
@@ -100,9 +197,14 @@ getrandom::register_custom_getrandom!(webcrypto_getrandom);
 
 /// Plugin handshake for `gl.js` — silences the
 /// `Plugin platform is present in JS bundle, but is not used in the
-/// rust code` warning. JS-side `version: 1`, must match.
+/// rust code` warning. JS-side `version: 3`, must match.
+///
+/// Bumped 1 → 2 with the `localStorage` calls, and 2 → 3 with the page's host
+/// and path: a consumer carrying an older `platform.js` then fails the
+/// handshake at instantiate rather than calling a function gl.js would stub
+/// out.
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn platform_crate_version() -> u32 {
-    1
+    3
 }

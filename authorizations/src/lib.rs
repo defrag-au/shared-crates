@@ -31,6 +31,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use std::collections::BTreeMap;
+
 // ============================================================================
 // Feature — the closed set of gated capabilities
 // ============================================================================
@@ -93,6 +95,14 @@ pub enum Feature {
     /// than "the DO refuses it". See `ADMIN_SURFACE_CONSOLIDATION_DESIGN.md`
     /// §6.
     GatewayOperator,
+    /// Holder-map notification administration — choosing the Discord channel a
+    /// tracked project's trade feed posts to, and whether it posts at all.
+    ///
+    /// Granted by guild permission (administrator or manage-server) in a
+    /// configured project guild, and then checked again against the project's
+    /// own admin list. The second check is why this is not just the Discord
+    /// gate: being an admin somewhere is not authority over *this* project.
+    HolderMapAdmin,
     /// Authoring the shared meme-template library — uploading templates and
     /// placing the text boxes on them. Write access only: rendering a meme
     /// from an existing template is not gated by this.
@@ -108,6 +118,7 @@ impl Feature {
         Self::Admin,
         Self::GatewayAdmin,
         Self::GatewayOperator,
+        Self::HolderMapAdmin,
         Self::MemesAdmin,
     ];
 
@@ -125,6 +136,7 @@ impl Feature {
             Self::Admin => "admin.access",
             Self::GatewayAdmin => "gateway.admin",
             Self::GatewayOperator => "gateway.operator",
+            Self::HolderMapAdmin => "holders.admin",
             Self::MemesAdmin => "memes.admin",
         }
     }
@@ -138,6 +150,7 @@ impl Feature {
             Self::Admin => "Admin",
             Self::GatewayAdmin => "Gateway Admin",
             Self::GatewayOperator => "Gateway Operator",
+            Self::HolderMapAdmin => "Holder Map Admin",
             Self::MemesAdmin => "Meme Templates",
         }
     }
@@ -157,6 +170,9 @@ impl Feature {
             }
             Self::GatewayOperator => {
                 "Platform-operator access — agent entitlements are set by Augminted"
+            }
+            Self::HolderMapAdmin => {
+                "Holder feed notifications — server admins and managers of this project"
             }
             Self::MemesAdmin => "Meme template authoring — granted to specific Discord accounts",
         }
@@ -262,6 +278,13 @@ pub struct SessionClaims {
     /// Space-delimited entitlement ids (RFC 8693 scope-string style).
     #[serde(default)]
     pub ent: String,
+    /// Entitlement ids granted by guild membership, keyed by Discord guild id.
+    ///
+    /// `ent` is the union and remains the authority for single-tenant
+    /// surfaces; a surface serving several projects checks this against the
+    /// project's own guilds, which a flat set cannot answer.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub guild_ent: BTreeMap<String, Vec<String>>,
 }
 
 impl SessionClaims {
@@ -361,6 +384,25 @@ impl SessionClaims {
     /// what was missing and how to get it).
     pub fn require(&self, feature: Feature) -> Result<Grant, Denied> {
         if self.entitlements().grants(feature) {
+            Ok(Grant { feature })
+        } else {
+            Err(Denied { feature })
+        }
+    }
+
+    /// [`Self::require`], but only for a grant conferred by one of
+    /// `guild_ids`.
+    ///
+    /// Direct `[[admin]]` grants are user-scoped, not guild-scoped, and so do
+    /// not satisfy this: a project gate is about membership in *its* guilds.
+    pub fn require_in_guilds(&self, feature: Feature, guild_ids: &[u64]) -> Result<Grant, Denied> {
+        let id = feature.id();
+        let granted = guild_ids.iter().any(|guild| {
+            self.guild_ent
+                .get(&guild.to_string())
+                .is_some_and(|ents| ents.iter().any(|ent| ent == id || ent == "*"))
+        });
+        if granted {
             Ok(Grant { feature })
         } else {
             Err(Denied { feature })
@@ -477,12 +519,42 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_project_gate_reads_only_its_own_guilds() {
+        let mut session = claims("holders.admin");
+        session.guild_ent = BTreeMap::from([
+            ("1".to_string(), vec!["holders.admin".to_string()]),
+            ("2".to_string(), vec!["tools.visual-search".to_string()]),
+        ]);
+
+        assert!(
+            session
+                .require_in_guilds(Feature::HolderMapAdmin, &[1])
+                .is_ok(),
+            "guild 1 granted holders.admin"
+        );
+        assert!(
+            session
+                .require_in_guilds(Feature::HolderMapAdmin, &[2])
+                .is_err(),
+            "guild 2 granted a different feature"
+        );
+        assert!(
+            session
+                .require_in_guilds(Feature::HolderMapAdmin, &[3])
+                .is_err(),
+            "guild 3 granted nothing"
+        );
+        // The flat claim is untouched: single-tenant consumers still work.
+        assert!(session.require(Feature::HolderMapAdmin).is_ok());
+    }
+
     /// Every variant is reachable from `ALL`, which the const-registry shape
     /// could not guarantee: a declaration could be written and simply left out
     /// of the slice. `from_id` closes the loop the other way.
     #[test]
     fn every_feature_is_listed_and_round_trips_through_its_id() {
-        assert_eq!(Feature::ALL.len(), 7);
+        assert_eq!(Feature::ALL.len(), 8);
         for feature in Feature::ALL {
             assert_eq!(Feature::from_id(feature.id()), Some(*feature));
             assert!(!feature.name().is_empty());

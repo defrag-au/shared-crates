@@ -229,6 +229,14 @@ mod wasm_tests {
         // Test valid file
         let valid_file = vec![0u8; 1024]; // 1KB
         assert!(WasmDiscordClient::validate_attachment(&valid_file, "test.png").is_ok());
+
+        // Video is allowed: a size-tier media selection can be an MP4
+        assert!(WasmDiscordClient::validate_attachment(&valid_file, "dex-media.mp4").is_ok());
+        assert!(WasmDiscordClient::validate_attachment(&valid_file, "dex-media.webm").is_ok());
+        assert!(WasmDiscordClient::validate_attachment(&valid_file, "DEX-MEDIA.MP4").is_ok());
+
+        // The extension has to be the suffix, not merely present
+        assert!(WasmDiscordClient::validate_attachment(&valid_file, "notpng").is_err());
     }
 
     #[wasm_bindgen_test]
@@ -247,6 +255,12 @@ mod wasm_tests {
             WasmDiscordClient::get_content_type("test.webp"),
             "image/webp"
         );
+        assert_eq!(WasmDiscordClient::get_content_type("test.mp4"), "video/mp4");
+        assert_eq!(
+            WasmDiscordClient::get_content_type("test.webm"),
+            "video/webm"
+        );
+        assert_eq!(WasmDiscordClient::get_content_type("TEST.MP4"), "video/mp4");
         assert_eq!(
             WasmDiscordClient::get_content_type("test.unknown"),
             "application/octet-stream"

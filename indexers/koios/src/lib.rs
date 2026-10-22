@@ -315,6 +315,13 @@ pub struct TxStatusRequest {
     pub hashes: Vec<String>,
 }
 
+/// One row of `GET /asset_txs`: a transaction that moved the asset.
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct KoiosAssetTx {
+    pub tx_hash: String,
+    pub block_height: Option<u64>,
+}
+
 /// One row of `/tx_status`. `num_confirmations` is `null` (→ `None`) until the
 /// tx is in a block, then the depth in blocks.
 #[derive(Deserialize, Debug, Clone)]
@@ -1330,6 +1337,26 @@ impl KoiosApi {
             },
         )
         .await
+    }
+
+    /// The `limit` most recent transactions that moved one asset, newest
+    /// first (`GET /asset_txs`, `_history=true`).
+    ///
+    /// The history of a singleton that follows a contract — a pool's NFT — is
+    /// the contract's own trade tape: every batch that spent the pool is here,
+    /// which is how a DEX order is found in the batch that filled it.
+    pub async fn get_asset_txs(
+        &self,
+        policy_id: &str,
+        asset_name_hex: &str,
+        limit: u32,
+    ) -> Result<Vec<KoiosAssetTx>, KoiosError> {
+        let url = format!(
+            "{}/asset_txs?_asset_policy={policy_id}&_asset_name={asset_name_hex}\
+             &_history=true&order=block_height.desc&limit={limit}",
+            self.base_url
+        );
+        self.get_json(&url).await
     }
 
     pub async fn get_policy_assets(

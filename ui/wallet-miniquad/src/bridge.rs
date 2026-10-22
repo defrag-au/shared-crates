@@ -32,12 +32,47 @@ pub struct Provider {
 }
 
 /// Outcome of polling a request. `Pending` means try again next frame.
+///
+/// The `kind` is dropped here so existing consumers keep their shape. A host
+/// that needs to tell a user's refusal from a wallet fault calls
+/// [`poll_detailed`] instead.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum PollResult {
     Pending,
     Ok { data: String },
     Err { data: String },
+}
+
+/// Whether an error was the reader declining or the wallet failing.
+///
+/// CIP-30 has no single "declined" code (`APIError.Refused` is -3; code 2 is
+/// `UserDeclined` for a signature and `Failure` for a send), so the plugin
+/// classifies on the unambiguous code plus decline wording. The distinction is
+/// the one a UI needs: a decline returns to the picker, a fault is shown.
+#[derive(Debug, Clone, Copy, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum FailureKind {
+    /// The wallet, the node, or the bridge failed. Show it.
+    #[default]
+    Failed,
+    /// The reader closed or refused the prompt. Not an error to shout about.
+    Declined,
+}
+
+/// The typed form of [`PollResult`], with the failure kind kept.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum PollResultDetailed {
+    Pending,
+    Ok {
+        data: String,
+    },
+    Err {
+        data: String,
+        #[serde(default)]
+        kind: FailureKind,
+    },
 }
 
 /// CIP-30 `signData` result — COSE_Sign1 signature + COSE_Key public
@@ -53,7 +88,7 @@ pub struct DataSignature {
 
 #[cfg(target_arch = "wasm32")]
 mod imp {
-    use super::{PollResult, Provider, ReqId};
+    use super::{FailureKind, PollResult, PollResultDetailed, Provider, ReqId};
     use sapp_jsutils::JsObject;
 
     // `unsafe extern` is edition-2024 syntax — the edition made explicit what
@@ -61,6 +96,7 @@ mod imp {
     unsafe extern "C" {
         fn wallet_list_providers() -> JsObject;
         fn wallet_connect(name: JsObject) -> i32;
+        fn wallet_network_id() -> i32;
         fn wallet_reward_address() -> i32;
         fn wallet_balance() -> i32;
         fn wallet_utxos() -> i32;
@@ -69,6 +105,7 @@ mod imp {
         fn wallet_submit_tx(tx_hex: JsObject) -> i32;
         fn wallet_disconnect();
         fn wallet_sign_data(addr: JsObject, payload_hex: JsObject) -> i32;
+        fn wallet_cancel(req_id: i32);
         fn wallet_poll(req_id: i32) -> JsObject;
     }
 
@@ -85,6 +122,11 @@ mod imp {
 
     pub fn connect(name: &str) -> ReqId {
         ReqId(unsafe { wallet_connect(JsObject::string(name)) })
+    }
+
+    /// CIP-30 `getNetworkId`: 0 = testnet, 1 = mainnet.
+    pub fn network_id() -> ReqId {
+        ReqId(unsafe { wallet_network_id() })
     }
 
     pub fn reward_address() -> ReqId {
@@ -143,22 +185,41 @@ mod imp {
         ReqId(unsafe { wallet_sign_data(JsObject::string(addr), JsObject::string(payload_hex)) })
     }
 
+    /// Abandon a request. A promise that resolves later has nowhere to land.
+    pub fn cancel(id: ReqId) {
+        unsafe { wallet_cancel(id.0) }
+    }
+
     pub fn poll(id: ReqId) -> PollResult {
+        match poll_detailed(id) {
+            PollResultDetailed::Pending => PollResult::Pending,
+            PollResultDetailed::Ok { data } => PollResult::Ok { data },
+            PollResultDetailed::Err { data, .. } => PollResult::Err { data },
+        }
+    }
+
+    /// Poll and keep the failure kind. One promise → one result: calling both
+    /// this and [`poll`] for the same id consumes it once.
+    pub fn poll_detailed(id: ReqId) -> PollResultDetailed {
         let s = js_to_string(unsafe { wallet_poll(id.0) });
-        serde_json::from_str(&s).unwrap_or(PollResult::Err {
+        serde_json::from_str(&s).unwrap_or(PollResultDetailed::Err {
             data: format!("malformed poll response: {s}"),
+            kind: FailureKind::Failed,
         })
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 mod imp {
-    use super::{PollResult, Provider, ReqId};
+    use super::{FailureKind, PollResult, PollResultDetailed, Provider, ReqId};
 
     pub fn list_providers() -> Vec<Provider> {
         Vec::new()
     }
     pub fn connect(_name: &str) -> ReqId {
+        ReqId(0)
+    }
+    pub fn network_id() -> ReqId {
         ReqId(0)
     }
     pub fn reward_address() -> ReqId {
@@ -183,9 +244,16 @@ mod imp {
     pub fn sign_data(_addr: &str, _payload_hex: &str) -> ReqId {
         ReqId(0)
     }
+    pub fn cancel(_id: ReqId) {}
     pub fn poll(_id: ReqId) -> PollResult {
         PollResult::Err {
             data: "wallet auth is web-only".into(),
+        }
+    }
+    pub fn poll_detailed(_id: ReqId) -> PollResultDetailed {
+        PollResultDetailed::Err {
+            data: "wallet auth is web-only".into(),
+            kind: FailureKind::Failed,
         }
     }
 }

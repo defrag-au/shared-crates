@@ -1,0 +1,10 @@
+[package]
+name = "arcade-tech"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Tech trees for deterministic lockstep games: recipes, research and server-wide goals with prerequisites, validated once, and what a player can build, contribute or not yet reach. Pure, no dependencies; runs inside a sim."
+
+[dependencies]
