@@ -137,6 +137,29 @@ pub fn sell_output(
     (out - platform_fee(out)) as u64
 }
 
+/// How much ADA an order can swap before the pool's CURVE alone moves the
+/// price by `impact_bps`, with the pool's fee and the batcher's cut on top:
+/// the pool's buy depth at that impact.
+///
+/// A net input `n` into ADA reserve `r` receives `n / (r + n)` less than the
+/// spot price would give, so moving it by `p` takes `n = r·p / (1 − p)`; the
+/// pool fee and the batcher's [`DEFAULT_FEE_TIER`] are grossed back on. Fees
+/// are excluded from the impact on purpose — they are flat costs with their
+/// own lines, and counting them would make every pool "move" on the first
+/// lovelace.
+pub fn buy_depth(pool_lovelace: u64, pool_fee_bps: u64, impact_bps: u32) -> u64 {
+    let p = u128::from(impact_bps.min(9_999));
+    let reserve = pool_lovelace.saturating_sub(POOL_RESERVED_LOVELACE) as u128;
+    let keep_pool = BPS.saturating_sub(pool_fee_bps as u128);
+    let keep_platform = BPS - DEFAULT_FEE_TIER as u128;
+    if keep_pool == 0 {
+        return 0;
+    }
+    let net = reserve * p / (BPS - p);
+    let into_pool = net * BPS / keep_pool;
+    u64::try_from(into_pool * BPS / keep_platform).unwrap_or(u64::MAX)
+}
+
 /// The batcher's cut of an ADA amount, ROUNDED UP: a 26,087,000 lovelace buy
 /// reached the pool 39,131 short (39,130.5 exact), and a sell paying out
 /// 93,491,920 handed over 140,238 less (140,237.88 exact).
@@ -309,6 +332,28 @@ mod tests {
                 "{ada_in} lovelace into {lovelace}/{tokens}"
             );
         }
+    }
+
+    /// Swapping exactly the depth at `p` moves the curve by `p`: the batcher's
+    /// own fill comes out `p` short of the spot price on what reaches the
+    /// curve. A shallow pool's depth is small; a deep one's large.
+    #[test]
+    fn swapping_the_depth_moves_the_curve_by_that_much() {
+        let (lovelace, tokens, fee) = (5_526_003_894u64, 165_843_819u64, 85u64);
+        let reserve = (lovelace - POOL_RESERVED_LOVELACE) as u128;
+        for p in [100u32, 200, 500] {
+            let depth = buy_depth(lovelace, fee, p);
+            let out = buy_output(depth, lovelace, tokens, fee) as u128;
+            // What reached the curve, net of the batcher's cut and the fee.
+            let into_pool = depth as u128 - platform_fee(depth as u128);
+            let net = into_pool * (BPS - fee as u128) / BPS;
+            let spot = net * tokens as u128 / reserve;
+            let moved = (spot - out) * 10_000 / spot;
+            assert!(moved.abs_diff(p as u128) <= 1, "{p} bps: moved {moved}");
+        }
+        // A pool a hundredth the size has a hundredth the depth.
+        let small = buy_depth(POOL_RESERVED_LOVELACE + reserve as u64 / 100, fee, 100);
+        assert!(small.abs_diff(buy_depth(lovelace, fee, 100) / 100) <= 2);
     }
 
     /// A real sell: 2,783,402 $ALIENS paid out 93,351,682 lovelace on top of

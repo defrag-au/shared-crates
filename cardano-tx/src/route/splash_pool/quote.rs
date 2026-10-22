@@ -167,6 +167,31 @@ pub fn quote_swap(
     })
 }
 
+/// How much of the input a swap can put in before the CURVE alone moves the
+/// price by `impact_bps`, with the pool's fees on top: the pool's depth at that
+/// impact.
+///
+/// `reserve_in` is the input side's EFFECTIVE reserve (see
+/// [`effective_reserves`]) and `swap_fee_num` the datum's
+/// [`swap_fee_num`](super::datum::RoyaltyPoolDatum::swap_fee_num). On a
+/// constant-product curve, a net input `n` against reserve `r` receives
+/// `n / (r + n)` less than the spot price would give, so moving it by `p`
+/// takes `n = r·p / (1 − p)`; the fee is then grossed back on. Closed-form, so
+/// a page or an index can say it for every pool at no cost.
+///
+/// Excluding the fee is deliberate: fees are a flat cost, shown on their own
+/// line, and including them would make every pool "move" by its fee on the
+/// first lovelace.
+pub fn depth_in(reserve_in: u64, swap_fee_num: u64, impact_bps: u32) -> u64 {
+    let fee_den = address_registry::dex::SPLASH_ROYALTY_POOL.fee_den as u128;
+    let p = u128::from(impact_bps.min(9_999));
+    if swap_fee_num == 0 {
+        return 0;
+    }
+    let net = reserve_in as u128 * p / (10_000 - p);
+    u64::try_from(net * fee_den / swap_fee_num as u128).unwrap_or(u64::MAX)
+}
+
 /// `amount * rate / feeDen`, floored — the validator's own expression, and
 /// the exact deltas the counters take.
 fn fee_share(amount: u64, rate: u64, fee_den: u64) -> Result<u64, RouteError> {
@@ -188,4 +213,33 @@ pub fn price_impact_bps(reserve_in: u64, reserve_out: u64, amount_in: u64, amoun
         return 0;
     }
     u32::try_from((ideal - amount_out as u128) * 10_000 / ideal).unwrap_or(u32::MAX)
+}
+
+#[cfg(test)]
+mod depth_tests {
+    use super::*;
+
+    /// Buying exactly the depth at `p` moves the curve by `p`: what the net
+    /// input receives falls `p` short of the spot price. The live $ALIENS pool's
+    /// effective reserves (2026-10-22), at its 0.9% swap fee.
+    #[test]
+    fn buying_the_depth_moves_the_curve_by_that_much() {
+        let (rx, ry, f) = (13_725_242_284u64, 412_541_863u64, 99_000u64);
+        for p in [100u32, 200, 500] {
+            let depth = depth_in(rx, f, p);
+            let net = depth as u128 * f as u128 / 100_000;
+            let out = ry as u128 * net / (rx as u128 + net);
+            let spot = net * ry as u128 / rx as u128;
+            let moved = (spot - out) * 10_000 / spot;
+            assert!(moved.abs_diff(p as u128) <= 1, "{p} bps: moved {moved}");
+        }
+        // Twice the reserve is twice the depth: depth is the pool's size, read
+        // as what a buyer can spend.
+        assert!(depth_in(2 * rx, f, 100).abs_diff(2 * depth_in(rx, f, 100)) <= 2);
+        assert_eq!(
+            depth_in(rx, 0, 100),
+            0,
+            "a pool with no swap fee numerator trades nothing"
+        );
+    }
 }

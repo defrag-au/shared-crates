@@ -141,6 +141,14 @@ fn test_attachment_validation() {
     // Test valid file
     let valid_file = vec![0u8; 1024]; // 1KB
     assert!(NativeDiscordClient::validate_attachment(&valid_file, "test.png").is_ok());
+
+    // Video is allowed: a size-tier media selection can be an MP4
+    assert!(NativeDiscordClient::validate_attachment(&valid_file, "dex-media.mp4").is_ok());
+    assert!(NativeDiscordClient::validate_attachment(&valid_file, "dex-media.webm").is_ok());
+    assert!(NativeDiscordClient::validate_attachment(&valid_file, "DEX-MEDIA.MP4").is_ok());
+
+    // The extension has to be the suffix, not merely present
+    assert!(NativeDiscordClient::validate_attachment(&valid_file, "notpng").is_err());
 }
 
 #[test]
@@ -164,6 +172,18 @@ fn test_content_type_detection() {
     assert_eq!(
         NativeDiscordClient::get_content_type("test.webp"),
         "image/webp"
+    );
+    assert_eq!(
+        NativeDiscordClient::get_content_type("test.mp4"),
+        "video/mp4"
+    );
+    assert_eq!(
+        NativeDiscordClient::get_content_type("test.webm"),
+        "video/webm"
+    );
+    assert_eq!(
+        NativeDiscordClient::get_content_type("TEST.MP4"),
+        "video/mp4"
     );
     assert_eq!(
         NativeDiscordClient::get_content_type("test.unknown"),

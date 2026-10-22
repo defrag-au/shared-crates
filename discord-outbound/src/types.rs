@@ -90,8 +90,9 @@ pub trait DiscordClient {
             )));
         }
 
-        let valid_extensions = ["png", "jpg", "jpeg", "gif", "webp"];
-        if !valid_extensions.iter().any(|ext| filename.ends_with(ext)) {
+        let lower = filename.to_ascii_lowercase();
+        let valid_extensions = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".webm"];
+        if !valid_extensions.iter().any(|ext| lower.ends_with(ext)) {
             return Err(crate::DiscordError::InvalidAttachment(format!(
                 "Unsupported file type: {filename}"
             )));
@@ -102,14 +103,19 @@ pub trait DiscordClient {
 
     /// Get content type from filename
     fn get_content_type(filename: &str) -> &'static str {
-        if filename.ends_with(".png") {
+        let lower = filename.to_ascii_lowercase();
+        if lower.ends_with(".png") {
             "image/png"
-        } else if filename.ends_with(".jpg") || filename.ends_with(".jpeg") {
+        } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
             "image/jpeg"
-        } else if filename.ends_with(".gif") {
+        } else if lower.ends_with(".gif") {
             "image/gif"
-        } else if filename.ends_with(".webp") {
+        } else if lower.ends_with(".webp") {
             "image/webp"
+        } else if lower.ends_with(".mp4") {
+            "video/mp4"
+        } else if lower.ends_with(".webm") {
+            "video/webm"
         } else {
             "application/octet-stream"
         }

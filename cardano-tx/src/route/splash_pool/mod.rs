@@ -21,7 +21,7 @@ use pallas_addresses::Address;
 
 pub use datum::{CounterSide, RoyaltyPoolDatum};
 pub use leg::SplashSwapLeg;
-pub use quote::{PoolReserves, SplashDirection, SwapQuote, quote_swap};
+pub use quote::{PoolReserves, SplashDirection, SwapQuote, depth_in, quote_swap};
 
 /// The address every royalty pool UTxO sits at — shared by ~400 pools, which
 /// is why a pool is identified by its NFT and never by its address.
