@@ -226,6 +226,7 @@ pub fn build_cip25_mint(
     Ok(UnsignedTx {
         staging: tx,
         fee: estimated_fee,
+        total_collateral: None,
     })
 }
 
@@ -600,7 +601,14 @@ pub fn build_cip25_mint_multi_with_change_and_refunds(
 
     tx = tx.fee(fee);
 
-    Ok((UnsignedTx { staging: tx, fee }, change))
+    Ok((
+        UnsignedTx {
+            staging: tx,
+            fee,
+            total_collateral: None,
+        },
+        change,
+    ))
 }
 
 // ============================================================================

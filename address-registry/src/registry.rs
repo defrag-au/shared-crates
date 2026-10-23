@@ -1034,12 +1034,107 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             ),
         },
     ),
+    // Splash's ORDER contract — the one measured at 499 addresses on $PERP,
+    // one per trader. Any of them decodes to this credential.
+    (
+        "464eeee89f05aff787d40045af2a40a83fd96c513197d32fbc54ff02",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Splash" }),
+            derived_from: CredentialSource::Address(
+                "addr1z9ryamhgnuz6lau86sqytte2gz5rlktv2yce05e0h3207q3zhe74mrmvmrpvp6wf6h9mrnp55402k87mamfax54th56qawykfv",
+            ),
+        },
+    ),
+    // Minswap V2 pool.
     (
         "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
         CredentialEntry {
             category: AC::Script(SC::Exchange { label: "Minswap" }),
             derived_from: CredentialSource::Address(
                 "addr1z84q0denmyep98ph3tmzwsmw0j7zau9ljmsqx6a4rvaau66j2c79gy9l76sdg0xwhd7r0c0kna0tycz4y5s6mlenh8pq777e2a",
+            ),
+        },
+    ),
+    // Minswap V1 pool.
+    (
+        "e1317b152faac13426e6a83e06ff88a4d62cce3c1634ab0a5ec13309",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Minswap" }),
+            derived_from: CredentialSource::Address(
+                "addr1z8snz7c4974vzdpxu65ruphl3zjdvtxw8strf2c2tmqnxz2j2c79gy9l76sdg0xwhd7r0c0kna0tycz4y5s6mlenh8pq0xmsha",
+            ),
+        },
+    ),
+    // Minswap V2 order — the enterprise form is already in ADDRESS_REGISTRY;
+    // this is the same contract reachable by credential.
+    (
+        "c3e28c36c3447315ba5a56f33da6a6ddc1770a876a8d9f0cb3a97c4c",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Minswap" }),
+            derived_from: CredentialSource::Address(
+                "addr1w8p79rpkcdz8x9d6tft0x0dx5mwuzac2sa4gm8cvkw5hcnqst2ctf",
+            ),
+        },
+    ),
+    // SundaeSwap V3 pool — one address for every pool, but keyed by
+    // credential like the rest (see `mitos_dex_decode::sundae::POOL_ADDR`).
+    (
+        "e0302560ced2fdcbfcb2602697df970cd0d6a38f94b32703f51c312b",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange {
+                label: "SundaeSwap",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1x8srqftqemf0mjlukfszd97ljuxdp44r372txfcr75wrz26rnxqnmtv3hdu2t6chcfhl2zzjh36a87nmd6dwsu3jenqsslnz7e",
+            ),
+        },
+    ),
+    // SundaeSwap V3 order — composes the TRADER's stake credential, so it
+    // has as many addresses as traders.
+    (
+        "fa6a58bbe2d0ff05534431c8e2f0ef2cbdc1602a8456e4b13c8f3077",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange {
+                label: "SundaeSwap",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1z8ax5k9mutg07p2ngscu3chsauktmstq92z9de938j8nqa7zcka2k2tsgmuedt4xl2j5awftvqzmmv3vs2yduzqxfcmsyun6n3",
+            ),
+        },
+    ),
+    // SundaeSwap V1 pool.
+    (
+        "4020e7fc2de75a0729c3cc3af715b34d98381e0cdbcfa99c950bc3ac",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange {
+                label: "SundaeSwap",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1w9qzpelu9hn45pefc0xr4ac4kdxeswq7pndul2vuj59u8tqaxdznu",
+            ),
+        },
+    ),
+    // WingRiders V2 pool.
+    (
+        "af97793b8702f381976cec83e303e9ce17781458c73c4bb16fe02b83",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange {
+                label: "WingRiders",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1wxhew7fmsup08qvhdnkg8ccra88pw7q5trrncja3dlszhqczc0qfe",
+            ),
+        },
+    ),
+    // WingRiders V1 pool.
+    (
+        "e6c90a5923713af5786963dee0fdffd830ca7e0c86a041d9e5833e91",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange {
+                label: "WingRiders",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1w8nvjzjeydcn4atcd93aac8allvrpjn7pjr2qsweukpnayghhwcpj",
             ),
         },
     ),
@@ -1073,6 +1168,18 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             ),
         },
     ),
+    // snek.fun's ORDER contract — a buy or sell waiting for the curve. It IS
+    // an order book like any DEX's, so `Exchange`, unlike the curve above.
+    // On $ALIENS 2026-10-23 it held 712 of the 914 outputs no venue claimed.
+    (
+        "d9143ac63473b17a215d1b7484dfb6ac6b4a0005beb0e26a6ca02c96",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "snek.fun" }),
+            derived_from: CredentialSource::Address(
+                "addr1z8v3gwkxx3emz73pt5dhfpxlk6kxkjsqqkltpcn2djsze95ujstczdrz5vsjeuafd74g845yd2utpzhaxn8qlf2n4vzqfhxpxg",
+            ),
+        },
+    ),
     // Solada's bonding curve, same contract as the ADDRESS_REGISTRY entry above.
     (
         "8a0cfe6369fd7d7295e684ab2d6e8f62398a3bb53fffbe788ec67033",
@@ -1080,6 +1187,34 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             category: AC::Script(SC::Launchpad { label: "Solada" }),
             derived_from: CredentialSource::Address(
                 "addr1vx9qelnrd87h6u54u6z2kttw3a3rnz3mk5lll0nc3mr8qvc6dqa4y",
+            ),
+        },
+    ),
+    // ── Lock platforms, added 2026-10-23 ─────────────────────────────────
+    //
+    // Platforms many tokens lock into, not any one token's vesting — which
+    // is the bar for this table. The canonical constants live in
+    // `mitos-vesting-decode`; mitos's `registry_drift` test keeps the two in
+    // step.
+    //
+    // CrowdLock, the cnft.tools loyalty lock. Its per-user forms are already
+    // matched by prefix in ADDRESS_PREFIX_REGISTRY; this is the credential.
+    (
+        "381cd9b620ce9d7c73dd45cfe207971cc79df79251003116094f6b36",
+        CredentialEntry {
+            category: AC::Script(SC::Vesting { label: "CrowdLock" }),
+            derived_from: CredentialSource::Address(
+                "addr1zyupekdkyr8f6lrnm4zulcs8juwv080hjfgsqvgkp98kkdhym9auk0rgpz3lurkryvhl55046ak6ex4tlyj6mxxj735syr937w",
+            ),
+        },
+    ),
+    // snek.fun's lock.
+    (
+        "ddbebc6263726bcc035934b3b71c1fb144a78a1cbbc57499c45b1e89",
+        CredentialEntry {
+            category: AC::Script(SC::Vesting { label: "snek.fun" }),
+            derived_from: CredentialSource::Address(
+                "addr1w8wma0rzvdexhnqrty6t8dcur7c5ffu2rjau2ayec3d3azg5qp35x",
             ),
         },
     ),

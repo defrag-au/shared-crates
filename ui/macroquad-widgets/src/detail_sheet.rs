@@ -102,6 +102,11 @@ impl DetailRow {
 
 pub struct DetailSheetVm<'a> {
     pub title: &'a str,
+    /// Height of a figure between the title and the rows; 0 for none. The
+    /// widget only makes the room: the host draws into
+    /// [`SheetResponse::figure`], since what the figure is (a chart, a route
+    /// graph) is the host's to know.
+    pub figure_h: f32,
     pub rows: &'a [DetailRow],
     /// Short lines under the rows, already split to fit: the widget does not
     /// wrap, so a host words each line for the narrowest form.
@@ -171,10 +176,20 @@ pub struct SheetResponse {
     pub close: bool,
     /// Where the sheet is drawn this frame.
     pub rect: Option<Rect>,
+    /// The room made for the figure this frame, when one was asked for.
+    pub figure: Option<Rect>,
 }
 
+/// Room between the figure and the first row.
+const FIGURE_GAP: f32 = 10.0;
+
 /// How tall the sheet's content is, for a form.
-fn content_height(form: SheetForm, rows: usize, notes: usize) -> f32 {
+fn content_height(form: SheetForm, figure_h: f32, rows: usize, notes: usize) -> f32 {
+    let figure = if figure_h > 0.0 {
+        figure_h + FIGURE_GAP
+    } else {
+        0.0
+    };
     let handle = if form == SheetForm::Bottom {
         HANDLE_SPACE
     } else {
@@ -185,7 +200,7 @@ fn content_height(form: SheetForm, rows: usize, notes: usize) -> f32 {
     } else {
         0.0
     };
-    handle + PAD + 22.0 + 10.0 + rows as f32 * ROW_H + notes_h + 14.0 + CLOSE_H + PAD
+    handle + PAD + 22.0 + 10.0 + figure + rows as f32 * ROW_H + notes_h + 14.0 + CLOSE_H + PAD
 }
 
 /// Where the sheet sits at `progress` (0 shut, 1 open).
@@ -253,7 +268,7 @@ pub fn detail_sheet(
     let c = &p.theme.color;
     let e = state.progress();
     let form = SheetForm::for_area(area);
-    let h = content_height(form, vm.rows.len(), vm.notes.len());
+    let h = content_height(form, vm.figure_h, vm.rows.len(), vm.notes.len());
     let r = sheet_rect(form, area, h, e);
     out.rect = Some(r);
 
@@ -304,6 +319,10 @@ pub fn detail_sheet(
         with_alpha(c.text_primary, alpha),
     );
     y += 22.0 + 10.0;
+    if vm.figure_h > 0.0 {
+        out.figure = Some(Rect::new(x, y, right - x, vm.figure_h));
+        y += vm.figure_h + FIGURE_GAP;
+    }
 
     let size = p.size(TextSize::Base);
     for row in vm.rows {
@@ -392,6 +411,13 @@ mod tests {
             s.update(1.0 / 60.0);
         }
         assert!(!s.visible(), "a closed sheet is gone, not nearly gone");
+    }
+
+    #[test]
+    fn a_figure_makes_room_and_none_makes_none() {
+        let plain = content_height(SheetForm::Bottom, 0.0, 4, 2);
+        let with = content_height(SheetForm::Bottom, 120.0, 4, 2);
+        assert_eq!(with - plain, 120.0 + FIGURE_GAP);
     }
 
     #[test]

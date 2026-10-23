@@ -725,6 +725,7 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
             Ok(UnsignedTx {
                 staging: tx.fee(fee).network_id(network_id),
                 fee,
+                total_collateral: None,
             })
         }
     }

@@ -24,6 +24,7 @@ mod gesture;
 mod mint_checkout;
 mod order_fulfilment;
 mod quantity_stepper;
+mod route_graph;
 mod segmented;
 mod slider;
 mod squad_picker;
@@ -64,6 +65,10 @@ pub use order_fulfilment::{
 pub use painter::frame_tap;
 pub use painter::{Hit, Painter, draw_rounded_rect};
 pub use quantity_stepper::{QuantityStepperVm, StepperAction, StepperResponse, quantity_stepper};
+pub use route_graph::{
+    LegState, ROUTE_STRIP_H, RouteCard, RouteGraphVm, RouteMeter, RouteNode, route_graph,
+    route_graph_height, route_strip,
+};
 pub use segmented::segmented;
 pub use slider::{AmountSliderVm, SliderStop, amount_slider};
 pub use squad_picker::{

@@ -40,11 +40,20 @@ pub struct TxDeps {
 /// A fully assembled but unsigned transaction.
 ///
 /// The staging TX has fee and network_id already set. Consumers choose how to sign:
-/// - Server: `build_conway_raw()` → `sign_transaction(built, &secret_key)`
-/// - Browser: extract CBOR hex → pass to CIP-30 `wallet.signTx()`
+/// - Server: [`UnsignedTx::build_and_sign`]
+/// - Browser: [`UnsignedTx::build_conway`] → CBOR hex → CIP-30 `wallet.signTx()`
+///
+/// Serialise through [`UnsignedTx::build_conway`], not the staging
+/// transaction's own `build_conway_raw`: only the former writes
+/// [`total_collateral`](Self::total_collateral), and a chained transaction
+/// names its parent by the hash of THOSE bytes.
 pub struct UnsignedTx {
     pub staging: StagingTransaction,
     pub fee: u64,
+    /// The body's `total_collateral` (key 17), which pallas 1.4 cannot stage.
+    /// Set beside a collateral return, so a wallet shows the lovelace really
+    /// at stake rather than the whole collateral input.
+    pub total_collateral: Option<u64>,
 }
 
 impl std::fmt::Debug for UnsignedTx {
@@ -124,6 +133,23 @@ fn staging_outputs(staging: &StagingTransaction) -> Vec<TxOutputRef> {
 }
 
 impl UnsignedTx {
+    /// The Conway-era bytes, unsigned, and the body hash a signer attests to.
+    ///
+    /// The one serialiser for an [`UnsignedTx`]: the staging transaction's
+    /// bytes, plus [`total_collateral`](Self::total_collateral) when set.
+    pub fn build_conway(&self) -> Result<pallas_txbuilder::BuiltTransaction, TxBuildError> {
+        use pallas_txbuilder::BuildConway;
+        let built = self
+            .staging
+            .clone()
+            .build_conway_raw()
+            .map_err(|e| TxBuildError::BuildFailed(e.to_string()))?;
+        match self.total_collateral {
+            Some(lovelace) => with_total_collateral(built, lovelace),
+            None => Ok(built),
+        }
+    }
+
     /// Build the Conway-era tx + sign it with an Ed25519 key, returning
     /// the hex tx hash and CBOR. The staging tx already carries `fee` +
     /// `network_id` (set during construction), so this is just the
@@ -137,11 +163,7 @@ impl UnsignedTx {
         self,
         secret_key: &pallas_crypto::key::ed25519::SecretKeyExtended,
     ) -> Result<SignedTx, TxBuildError> {
-        use pallas_txbuilder::BuildConway;
-        let built = self
-            .staging
-            .build_conway_raw()
-            .map_err(|e| TxBuildError::BuildFailed(e.to_string()))?;
+        let built = self.build_conway()?;
         let signed = crate::sign::sign_transaction(built, secret_key)?;
         Ok(SignedTx {
             tx_hash: hex::encode(signed.tx_hash.0),
@@ -158,11 +180,7 @@ impl UnsignedTx {
         self,
         secret_keys: &[&pallas_crypto::key::ed25519::SecretKeyExtended],
     ) -> Result<SignedTx, TxBuildError> {
-        use pallas_txbuilder::BuildConway;
-        let built = self
-            .staging
-            .build_conway_raw()
-            .map_err(|e| TxBuildError::BuildFailed(e.to_string()))?;
+        let built = self.build_conway()?;
         let signed = crate::sign::sign_transaction_multi(built, secret_keys)?;
         Ok(SignedTx {
             tx_hash: hex::encode(signed.tx_hash.0),
@@ -208,6 +226,73 @@ impl UnsignedTx {
         };
         Ok((signed, effects))
     }
+}
+
+/// The bytes `total_collateral` adds to a body: its key, its value (5 ADA is a
+/// five-byte uint), and a byte of slack for the map header growing. Builders
+/// that set it add this to the fee, since fee convergence measures the staging
+/// transaction, which cannot carry it.
+pub(crate) const TOTAL_COLLATERAL_FIELD_BYTES: u64 = 1 + 9 + 1;
+
+/// `built` with `total_collateral` (body key 17) added and the body rehashed.
+///
+/// The field goes in KEY ORDER, before the first larger key, so the body stays
+/// canonical: hardware wallets refuse a body whose keys are out of order.
+/// Every other byte is copied, so the script-data hash and everything the
+/// evaluator saw are untouched.
+fn with_total_collateral(
+    built: pallas_txbuilder::BuiltTransaction,
+    lovelace: u64,
+) -> Result<pallas_txbuilder::BuiltTransaction, TxBuildError> {
+    use pallas_codec::minicbor::{Decoder, Encoder};
+    const TOTAL_COLLATERAL_KEY: u64 = 17;
+
+    let fail = |m: String| TxBuildError::BuildFailed(format!("total collateral: {m}"));
+    let bytes = &built.tx_bytes.0;
+    let mut d = Decoder::new(bytes);
+    d.array().map_err(|e| fail(e.to_string()))?;
+    let body_start = d.position();
+    let entries = d
+        .map()
+        .map_err(|e| fail(e.to_string()))?
+        .ok_or_else(|| fail("the body map has no length".to_string()))?;
+    let fields_start = d.position();
+    let mut insert_at = None;
+    for _ in 0..entries {
+        let at = d.position();
+        let key = d.u64().map_err(|e| fail(e.to_string()))?;
+        if key == TOTAL_COLLATERAL_KEY {
+            return Err(fail("the body already carries it".to_string()));
+        }
+        if key > TOTAL_COLLATERAL_KEY && insert_at.is_none() {
+            insert_at = Some(at);
+        }
+        d.skip().map_err(|e| fail(e.to_string()))?;
+    }
+    let body_end = d.position();
+    let insert_at = insert_at.unwrap_or(body_end);
+
+    let mut body = Vec::with_capacity(body_end - body_start + 16);
+    Encoder::new(&mut body)
+        .map(entries + 1)
+        .map_err(|e| fail(e.to_string()))?;
+    body.extend_from_slice(&bytes[fields_start..insert_at]);
+    Encoder::new(&mut body)
+        .u64(TOTAL_COLLATERAL_KEY)
+        .and_then(|e| e.u64(lovelace))
+        .map_err(|e| fail(e.to_string()))?;
+    body.extend_from_slice(&bytes[insert_at..body_end]);
+
+    let hash = pallas_crypto::hash::Hasher::<256>::hash(&body);
+    let mut tx = Vec::with_capacity(bytes.len() + 16);
+    tx.extend_from_slice(&bytes[..body_start]);
+    tx.extend_from_slice(&body);
+    tx.extend_from_slice(&bytes[body_end..]);
+    Ok(pallas_txbuilder::BuiltTransaction {
+        tx_hash: pallas_txbuilder::Bytes32(*hash),
+        tx_bytes: pallas_txbuilder::Bytes(tx),
+        ..built
+    })
 }
 
 /// Two-round fee convergence.
@@ -273,6 +358,7 @@ pub fn converge_fee_with_witnesses(
     Ok(UnsignedTx {
         staging,
         fee: final_fee,
+        total_collateral: None,
     })
 }
 

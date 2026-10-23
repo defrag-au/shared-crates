@@ -12,6 +12,7 @@
 
 mod chain_fixture;
 mod gamekit_stories;
+mod route_stories;
 
 use chain_fixture::{ChainSim, Scenario};
 use gamekit_stories::{KitStory, KitView};
@@ -26,6 +27,7 @@ use macroquad_widgets::{
     WalletState, block_pulse, block_train, floating_stick, mint_checkout, order_fulfilment,
     quantity_stepper, squad_picker, theme, wallet_connect, wallet_list,
 };
+use route_stories::RouteStory;
 use ui_theme::{TextSize, Token};
 
 const SIDEBAR_W: f32 = 210.0;
@@ -122,6 +124,8 @@ enum Body {
     Stick(Box<StickStory>),
     /// A `macroquad-gamekit` story, driven by the storybook clock.
     Kit(Box<KitStory>),
+    /// A route graph and its strip, driven by the storybook clock.
+    Route(Box<RouteStory>),
 }
 
 /// A floating stick the reader can drag with the mouse, beside fixed samples
@@ -145,6 +149,7 @@ enum Kind {
     SquadPicker,
     Stick,
     Kit,
+    Route,
 }
 
 struct Story {
@@ -248,6 +253,15 @@ impl Story {
             Body::SquadPicker(_) => Kind::SquadPicker,
             Body::Stick(_) => Kind::Stick,
             Body::Kit(_) => Kind::Kit,
+            Body::Route(_) => Kind::Route,
+        }
+    }
+
+    fn route(name: &'static str, story: RouteStory) -> Self {
+        Self {
+            category: "route",
+            name,
+            body: Body::Route(Box::new(story)),
         }
     }
 
@@ -669,6 +683,13 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::kit("rounded art", KitView::Art),
         Story::kit("preloader", KitView::Preload),
         Story::kit("card face", KitView::Face),
+        Story::route("two-way split", RouteStory::split()),
+        Story::route("declined split", RouteStory::declined()),
+        Story::route("single venue", RouteStory::single()),
+        Story::route("four routes", RouteStory::four()),
+        Story::route("filling", RouteStory::filling()),
+        Story::route("closed unfilled", RouteStory::ended(false)),
+        Story::route("failed on chain", RouteStory::ended(true)),
     ]
 }
 
@@ -1046,7 +1067,7 @@ impl Storybook {
         );
         y += 20.0;
         let help = match self.stories[sel].kind() {
-            Kind::Kit => format!(
+            Kind::Kit | Kind::Route => format!(
                 "arrows / click to switch  ·  t = theme: {}  ·  p pause · . step · s slow  ·  {}",
                 p.theme.name,
                 self.clock.label()
@@ -1071,6 +1092,12 @@ impl Storybook {
             Kind::Fulfilment => self.draw_fulfilment(p, sel, x0, y, col_w),
             Kind::SquadPicker => self.draw_squad_picker(p, sel, x0, y, col_w),
             Kind::Stick => self.draw_stick(p, sel, x0, y),
+            Kind::Route => {
+                let t = self.clock.t as f32;
+                if let Body::Route(story) = &self.stories[sel].body {
+                    story.draw(p, x0, y, t);
+                }
+            }
             Kind::Kit => {
                 let (dt, t, g) = (self.dt, self.clock.t, self.gesture);
                 if let Body::Kit(story) = &mut self.stories[sel].body {

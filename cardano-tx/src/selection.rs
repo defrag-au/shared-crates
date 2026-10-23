@@ -6,7 +6,7 @@
 use cardano_assets::UtxoApi;
 
 use crate::error::TxBuildError;
-use crate::helpers::utxo_query::is_pure_ada_utxo;
+use crate::helpers::utxo_query::{is_pure_ada_utxo, is_simple_utxo};
 use crate::params::TxBuildParams;
 
 /// Tuning knobs for single-UTxO selection. Defaults match the policy every
@@ -177,18 +177,24 @@ pub fn select_all_utxos_for_max<'a>(
     Ok(usable)
 }
 
-/// Select the best collateral UTxO from wallet UTxOs.
-///
-/// Plutus script transactions require a collateral input (pure ADA, no native
-/// assets). Prefers the smallest pure-ADA UTxO with at least 5 ADA. Falls back
-/// to the largest pure-ADA UTxO if none meet the 5 ADA threshold.
-pub fn select_collateral(utxos: &[UtxoApi]) -> Option<&UtxoApi> {
-    const MIN_COLLATERAL: u64 = 5_000_000; // 5 ADA
+/// The lovelace a script transaction puts at stake as collateral: a whole
+/// pure-ADA UTxO of this size, or this much of a token-bearing one whose rest
+/// comes back through the collateral return.
+pub const COLLATERAL_AT_STAKE: u64 = 5_000_000;
 
+/// Select the best pure-ADA collateral UTxO from wallet UTxOs.
+///
+/// Prefers the smallest pure-ADA UTxO with at least 5 ADA. Falls back to the
+/// largest pure-ADA UTxO if none meet the 5 ADA threshold.
+///
+/// Only UTxOs with no tags qualify. A datum, a reference script or a script
+/// address marks an output its owner parked on purpose (or one the ledger will
+/// not accept as collateral at all), not spare ADA to put at stake.
+pub fn select_collateral(utxos: &[UtxoApi]) -> Option<&UtxoApi> {
     // Prefer smallest pure-ADA UTxO >= 5 ADA (least wasteful)
     let mut candidates: Vec<&UtxoApi> = utxos
         .iter()
-        .filter(|u| is_pure_ada_utxo(u) && u.lovelace >= MIN_COLLATERAL)
+        .filter(|u| is_simple_utxo(u) && u.lovelace >= COLLATERAL_AT_STAKE)
         .collect();
     candidates.sort_by_key(|u| u.lovelace);
 
@@ -199,8 +205,92 @@ pub fn select_collateral(utxos: &[UtxoApi]) -> Option<&UtxoApi> {
     // Fallback: largest pure-ADA UTxO (even if < 5 ADA)
     utxos
         .iter()
-        .filter(|u| is_pure_ada_utxo(u))
+        .filter(|u| is_simple_utxo(u))
         .max_by_key(|u| u.lovelace)
+}
+
+/// What a script transaction puts up as collateral.
+#[derive(Debug, Clone, Copy)]
+pub enum CollateralChoice<'a> {
+    /// A pure-ADA UTxO. The whole of it is at stake, and no return output is
+    /// needed.
+    Pure(&'a UtxoApi),
+    /// A token-bearing UTxO. The ledger only accepts one with a collateral
+    /// return output, which gives back its tokens and everything above
+    /// [`COLLATERAL_AT_STAKE`] if a script fails.
+    WithReturn(&'a UtxoApi),
+}
+
+impl<'a> CollateralChoice<'a> {
+    pub fn utxo(&self) -> &'a UtxoApi {
+        match self {
+            Self::Pure(u) | Self::WithReturn(u) => u,
+        }
+    }
+}
+
+/// The same kind of choice of the same UTxO, by its ref.
+impl PartialEq for CollateralChoice<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        let same_kind = matches!(
+            (self, other),
+            (Self::Pure(_), Self::Pure(_)) | (Self::WithReturn(_), Self::WithReturn(_))
+        );
+        let (a, b) = (self.utxo(), other.utxo());
+        same_kind && a.tx_hash == b.tx_hash && a.output_index == b.output_index
+    }
+}
+
+/// Choose collateral for a script transaction.
+///
+/// 1. The smallest untagged pure-ADA UTxO of at least 5 ADA.
+/// 2. Otherwise an untagged token-bearing UTxO with a collateral return. This
+///    is what lets a wallet that keeps every UTxO beside tokens run a script
+///    at all: it needs no pure-ADA UTxO, and no transaction to make one first.
+///    The smallest value wins, so the return output costs the fewest bytes.
+/// 3. Otherwise the largest untagged pure-ADA UTxO below 5 ADA, which may
+///    still clear the ledger's 150%-of-fee floor.
+///
+/// A collateral input may also be a regular input of the same transaction, so
+/// nothing here excludes UTxOs that coin selection might also draw on.
+pub fn choose_collateral<'a>(
+    utxos: &'a [UtxoApi],
+    params: &TxBuildParams,
+) -> Option<CollateralChoice<'a>> {
+    if let Some(pure) = select_collateral(utxos).filter(|u| u.lovelace >= COLLATERAL_AT_STAKE) {
+        return Some(CollateralChoice::Pure(pure));
+    }
+    select_token_collateral(utxos, params)
+        .map(CollateralChoice::WithReturn)
+        .or_else(|| select_collateral(utxos).map(CollateralChoice::Pure))
+}
+
+/// An untagged token-bearing UTxO that can put [`COLLATERAL_AT_STAKE`] at
+/// stake and still return its tokens at their min-ADA, with a pure-ADA floor
+/// of margin. Fewest value bytes first, then the ref, so the pick is stable.
+fn select_token_collateral<'a>(
+    utxos: &'a [UtxoApi],
+    params: &TxBuildParams,
+) -> Option<&'a UtxoApi> {
+    let amounts = |u: &UtxoApi| -> Vec<crate::utxo::AssetAmount> {
+        u.assets
+            .iter()
+            .map(|a| (a.asset_id.clone(), a.quantity))
+            .collect()
+    };
+    utxos
+        .iter()
+        .filter(|u| u.tags.is_empty() && !u.assets.is_empty())
+        .filter(|u| {
+            let returned = params.min_utxo_for_assets(&amounts(u)) + params.min_pure_utxo();
+            u.lovelace >= COLLATERAL_AT_STAKE + returned
+        })
+        .min_by(|a, b| {
+            crate::utxo::value_size(&amounts(a))
+                .cmp(&crate::utxo::value_size(&amounts(b)))
+                .then(a.tx_hash.cmp(&b.tx_hash))
+                .then(a.output_index.cmp(&b.output_index))
+        })
 }
 
 /// Select multiple UTxOs to cover a required amount.
@@ -582,5 +672,98 @@ mod tests {
     fn test_collateral_empty_utxos() {
         let utxos: Vec<UtxoApi> = vec![];
         assert!(select_collateral(&utxos).is_none());
+    }
+
+    fn tagged(lovelace: u64, tag: cardano_assets::utxo::UtxoTag) -> UtxoApi {
+        UtxoApi {
+            tags: vec![tag],
+            ..make_utxo(lovelace)
+        }
+    }
+
+    #[test]
+    fn test_collateral_skips_tagged_utxos() {
+        use cardano_assets::utxo::UtxoTag::*;
+        let utxos = vec![
+            tagged(15_000_000, HasDatum),
+            tagged(6_000_000, HasScriptRef),
+            tagged(5_500_000, ScriptAddress),
+        ];
+        assert!(select_collateral(&utxos).is_none());
+        assert!(choose_collateral(&utxos, &test_params()).is_none());
+    }
+
+    #[test]
+    fn choose_prefers_pure_ada_over_a_return_output() {
+        let utxos = vec![make_utxo_with_asset(50_000_000), make_utxo(7_000_000)];
+        let choice = choose_collateral(&utxos, &test_params()).unwrap();
+        assert_eq!(choice, CollateralChoice::Pure(&utxos[1]));
+    }
+
+    /// The wallet that could not buy: every UTxO beside tokens, none pure.
+    #[test]
+    fn choose_takes_a_token_bearing_utxo_when_no_pure_ada_exists() {
+        let utxos = vec![
+            make_utxo_with_asset(3_000_000), // too little to keep its tokens
+            make_utxo_with_id("c".repeat(64), 1, 40_000_000, true),
+            tagged(80_000_000, cardano_assets::utxo::UtxoTag::HasDatum),
+        ];
+        let choice = choose_collateral(&utxos, &test_params()).unwrap();
+        assert_eq!(choice, CollateralChoice::WithReturn(&utxos[1]));
+    }
+
+    #[test]
+    fn choose_takes_the_smallest_token_value() {
+        let mut many = make_utxo_with_id("d".repeat(64), 0, 40_000_000, true);
+        many.assets.push(AssetQuantity {
+            asset_id: AssetId::new("b".repeat(56), "4e4655".to_string()).unwrap(),
+            quantity: 7,
+        });
+        let one = make_utxo_with_id("e".repeat(64), 0, 9_000_000, true);
+        let utxos = vec![many, one];
+        let choice = choose_collateral(&utxos, &test_params()).unwrap();
+        assert_eq!(choice, CollateralChoice::WithReturn(&utxos[1]));
+    }
+
+    /// The wallet that hit "No suitable collateral UTxO found" on a fastbuy
+    /// (addr1q90xk6…khtrwx): seven UTxOs, every one beside tokens. The 2 ADA
+    /// ones cannot spare 5 ADA; of the two that can, the one-token UTxO wins
+    /// because its return output is the smaller.
+    #[test]
+    fn choose_handles_the_wallet_that_could_not_buy() {
+        let mut three = make_utxo_with_id("62e6".repeat(16), 1, 1_495_286_304, true);
+        for name in ["4e4655", "4e4656"] {
+            three.assets.push(AssetQuantity {
+                asset_id: AssetId::new("c".repeat(56), name.to_string()).unwrap(),
+                quantity: 1,
+            });
+        }
+        let utxos = vec![
+            three,
+            make_utxo_with_id("0f2c".repeat(16), 1, 152_440_747, true),
+            make_utxo_with_id("af08".repeat(16), 2, 2_000_000, true),
+            make_utxo_with_id("a12f".repeat(16), 2, 2_000_000, true),
+            make_utxo_with_id("5896".repeat(16), 2, 2_000_000, true),
+            make_utxo_with_id("5702".repeat(16), 2, 2_000_000, true),
+            make_utxo_with_id("0ad0".repeat(16), 0, 1_168_010, true),
+        ];
+        assert!(select_collateral(&utxos).is_none(), "no pure-ADA UTxO");
+        let choice = choose_collateral(&utxos, &test_params()).unwrap();
+        assert_eq!(choice, CollateralChoice::WithReturn(&utxos[1]));
+    }
+
+    /// A small pure-ADA UTxO is the last resort: a return output keeps the
+    /// at-stake amount at 5 ADA, a 2 ADA UTxO may not clear 150% of the fee.
+    #[test]
+    fn choose_prefers_a_return_output_over_small_pure_ada() {
+        let utxos = vec![make_utxo(2_000_000), make_utxo_with_asset(20_000_000)];
+        let choice = choose_collateral(&utxos, &test_params()).unwrap();
+        assert_eq!(choice, CollateralChoice::WithReturn(&utxos[1]));
+
+        let only_small = vec![make_utxo(2_000_000)];
+        assert_eq!(
+            choose_collateral(&only_small, &test_params()),
+            Some(CollateralChoice::Pure(&only_small[0]))
+        );
     }
 }
