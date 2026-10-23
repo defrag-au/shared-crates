@@ -561,6 +561,10 @@ pub struct RouteBuildOptions {
     /// any payment, after the route's outputs, so they never sit at an index a
     /// leg's validator relies on.
     pub extra_outputs: Vec<pallas_txbuilder::Output>,
+    /// A CIP-20 message (label 674) for EVERY transaction in the plan — each
+    /// is a transaction the user signs, and each shows up on its own in an
+    /// explorer. Empty attaches nothing.
+    pub message: Vec<String>,
 }
 
 impl Default for RouteBuildOptions {
@@ -569,6 +573,7 @@ impl Default for RouteBuildOptions {
             collateral: CollateralConfig::Auto,
             dust_sweep: DustSweep::Off,
             extra_outputs: Vec::new(),
+            message: Vec::new(),
         }
     }
 }
@@ -755,6 +760,9 @@ where
             for output in &options.extra_outputs {
                 builder = builder.output(output.clone());
             }
+        }
+        if !options.message.is_empty() {
+            builder = builder.with_cip20_message(&options.message)?;
         }
         let unsigned = builder.build_evaluated_pending(evaluator, &pending).await?;
 
