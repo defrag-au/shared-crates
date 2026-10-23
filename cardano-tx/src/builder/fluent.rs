@@ -278,6 +278,16 @@ impl TxBuilder {
         Ok(self)
     }
 
+    /// Attach a CIP-20 transaction message: label 674, `{ "msg": [lines] }`,
+    /// which explorers and wallets show as the transaction's comment. Lines
+    /// over 64 bytes are truncated. Replaces any metadata already attached.
+    pub fn with_cip20_message(mut self, lines: &[String]) -> Result<Self, TxBuildError> {
+        let aux_bytes = crate::metadata::cip20::build_cip20_auxiliary_data(lines)
+            .map_err(|e| TxBuildError::BuildFailed(format!("CIP-20 message error: {e}")))?;
+        self.auxiliary_data = Some(aux_bytes);
+        Ok(self)
+    }
+
     // --- Collateral ---
 
     /// Configure collateral for Plutus transactions.
@@ -1712,6 +1722,70 @@ mod tests {
         assert!(
             unsigned.fee >= needed,
             "fee {} below {needed} for {size} bytes",
+            unsigned.fee
+        );
+    }
+
+    /// A CIP-20 message rides the transaction exactly as built, the body
+    /// commits to it, and it survives the total-collateral injection — the
+    /// one path that rewrites the body after pallas has hashed it.
+    #[test]
+    fn a_cip20_message_is_committed_to_and_paid_for() {
+        use cardano_assets::utxo::AssetQuantity;
+        use pallas_codec::utils::Nullable;
+        let mut deps = test_deps();
+        deps.utxos[0].assets = vec![AssetQuantity {
+            asset_id: cardano_assets::AssetId::new_unchecked("ab".repeat(28), "4c554d50".into()),
+            quantity: 1_000_000,
+        }];
+        let params = deps.params.clone();
+        let to_addr = deps.from_address.clone();
+        let lines = vec!["Brand: 1.0.0".to_string(), "Partner: Someone".to_string()];
+        let unsigned = TxBuilder::new(deps)
+            .spend_script_utxo(&script_utxo(), v2_script_input())
+            .unwrap()
+            .pay_to(&to_addr, 10_000_000)
+            .with_cip20_message(&lines)
+            .unwrap()
+            .build()
+            .expect("builds");
+        assert_eq!(unsigned.total_collateral, Some(COLLATERAL_AT_STAKE));
+
+        let built = unsigned.build_conway().expect("serialises");
+        let tx: pallas_primitives::conway::Tx =
+            pallas_codec::minicbor::decode(&built.tx_bytes.0).expect("decodes");
+        let Nullable::Some(aux) = &tx.auxiliary_data else {
+            panic!("the message is attached");
+        };
+        assert_eq!(
+            aux.raw_cbor(),
+            crate::metadata::cip20::build_cip20_auxiliary_data(&lines).unwrap(),
+            "exactly the message asked for"
+        );
+        let committed = tx
+            .transaction_body
+            .auxiliary_data_hash
+            .as_ref()
+            .expect("the body commits to the metadata");
+        assert_eq!(
+            &committed[..],
+            &pallas_crypto::hash::Hasher::<256>::hash(aux.raw_cbor())[..],
+            "and to these bytes"
+        );
+        assert_eq!(
+            tx.transaction_body.total_collateral,
+            Some(COLLATERAL_AT_STAKE)
+        );
+        assert_eq!(
+            built.tx_hash.0,
+            *pallas_crypto::hash::Hasher::<256>::hash(tx.transaction_body.raw_cbor()),
+        );
+
+        let size = built.tx_bytes.0.len() as u64 + 110;
+        let needed = params.min_fee_constant + params.min_fee_coefficient * size;
+        assert!(
+            unsigned.fee >= needed,
+            "fee {} below {needed}",
             unsigned.fee
         );
     }

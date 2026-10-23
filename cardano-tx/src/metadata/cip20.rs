@@ -11,6 +11,21 @@ use pallas_primitives::{Metadata, Metadatum};
 
 use super::MetadataError;
 
+/// The longest a CIP-20 line may be, in BYTES: the ledger's limit on any
+/// metadata text.
+pub const MAX_LINE_BYTES: usize = 64;
+
+/// The longest prefix of `s` within `max` bytes that ends on a character
+/// boundary. Slicing at `max` directly panics when it lands inside a
+/// multi-byte character — a token name with an emoji in it, say.
+fn truncate_to_char_boundary(s: &str, max: usize) -> &str {
+    let mut end = max.min(s.len());
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Build CIP-20 auxiliary data from a list of message strings.
 ///
 /// Produces: `{ 674: { "msg": ["line1", "line2", ...] } }`
@@ -31,9 +46,9 @@ pub fn build_cip20_auxiliary_data(messages: &[String]) -> Result<Vec<u8>, Metada
     let msg_items: Vec<Metadatum> = messages
         .iter()
         .map(|s| {
-            if s.len() > 64 {
-                tracing::warn!("CIP-20 message truncated to 64 bytes: {s}");
-                Metadatum::Text(s[..64].to_string())
+            if s.len() > MAX_LINE_BYTES {
+                tracing::warn!("CIP-20 message truncated to {MAX_LINE_BYTES} bytes: {s}");
+                Metadatum::Text(truncate_to_char_boundary(s, MAX_LINE_BYTES).to_string())
             } else {
                 Metadatum::Text(s.clone())
             }
@@ -88,5 +103,18 @@ mod tests {
         let long = "a".repeat(100);
         let bytes = build_cip20_auxiliary_data(&[long]).unwrap();
         assert!(!bytes.is_empty());
+    }
+
+    /// 63 ASCII bytes then a 4-byte emoji: byte 64 is inside the emoji, and
+    /// the line must stop before it rather than panic.
+    #[test]
+    fn a_multibyte_character_at_the_limit_is_dropped_whole() {
+        let line = format!("{}🚀tail", "a".repeat(63));
+        assert_eq!(
+            truncate_to_char_boundary(&line, MAX_LINE_BYTES),
+            "a".repeat(63)
+        );
+        assert!(build_cip20_auxiliary_data(&[line]).is_ok());
+        assert_eq!(truncate_to_char_boundary("short", MAX_LINE_BYTES), "short");
     }
 }
