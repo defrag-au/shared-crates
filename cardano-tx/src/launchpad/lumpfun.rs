@@ -41,6 +41,17 @@ pub const ORDER_CRED: [u8; 28] = [
 /// holds the two together; a second literal would eventually disagree.
 pub const ORDER_CRED_HEX: &str = "23c870a96ef1343a38c61a0d566c9d39d130d53eaa1517ca92f60eb4";
 
+/// The curve contract's address (mainnet) — where a pool UTxO lives.
+pub const POOL_ADDRESS: &str = "addr1wyj2cxrm7pkfz0sx6j6lgueg8035yrs4ry9xupcvcxlrg6cywmqny";
+
+/// The state NFT's asset name: CIP-67 label 100 (`000643b0`) + `POOL`. One per
+/// pool, under the token's own policy — which is why it identifies the pool and
+/// a per-launch address cannot.
+pub const STATE_NFT_NAME: [u8; 8] = [0x00, 0x06, 0x43, 0xb0, b'P', b'O', b'O', b'L'];
+
+/// [`STATE_NFT_NAME`] in hex: the form a Koios key and a `pool_nft` use.
+pub const STATE_NFT_NAME_HEX: &str = "000643b0504f4f4c";
+
 /// `V_ada` compiled into the v5 validator for this cohort, lovelace.
 pub const V_ADA: i64 = 5_000_000_000;
 
@@ -75,6 +86,32 @@ pub enum LumpFunError {
 pub struct Curve {
     pub ada_reserve: i64,
     pub token_reserve: i64,
+}
+
+/// A pool's curve datum, decoded: `Constr 3`, six fields.
+///
+/// The two reserves are the DATUM's — [`CurveDatum::ada_effective`] adds the
+/// compiled offset, which is what a quote prices against.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CurveDatum {
+    pub policy: Vec<u8>,
+    pub name: Vec<u8>,
+    /// Lovelace on the curve, net of the pool's own min-ADA and of both
+    /// accrued fee buckets.
+    pub ada_reserve: u64,
+    /// Tokens the curve prices against — VIRTUAL, larger than the UTxO holds by
+    /// a constant fixed per launch.
+    pub token_reserve: u64,
+    pub platform_accrued: u64,
+    pub creator_accrued: u64,
+}
+
+impl CurveDatum {
+    /// The ADA side a quote prices against: the datum's reserve plus the
+    /// COMPILED offset. `None` if the two overflow, which no real pool does.
+    pub fn ada_effective(&self) -> Option<u64> {
+        self.ada_reserve.checked_add(u64::try_from(V_ADA).ok()?)
+    }
 }
 
 /// Parameters for a v5 buy order.
@@ -143,6 +180,11 @@ pub fn order_value(curve_amount: u64, settler_fee: u64) -> Option<u64> {
 /// against. That is undefined, not zero: a preview that showed "0 tokens"
 /// would be a different claim from "no price yet".
 pub fn quote(curve: &Curve, curve_amount: u64) -> Option<u64> {
+    // BEFORE the offset: a curve with nothing on it has no first buy, and
+    // adding `V_ADA` would give it a price it has never had.
+    if curve.ada_reserve <= 0 {
+        return None;
+    }
     quote_effective(
         curve.ada_reserve.checked_add(V_ADA)?,
         curve.token_reserve,
@@ -164,6 +206,91 @@ pub fn quote_effective(ada_effective: i64, token_reserve: i64, curve_amount: u64
     let numerator = i128::from(token_reserve) * g;
     let denominator = i128::from(ada_effective) + g;
     u64::try_from(numerator / denominator).ok()
+}
+
+/// Decode a curve datum from its CBOR.
+///
+/// Refuses anything that is not `Constr 3` with six fields rather than reading
+/// a different shape positionally: a LumpPad pool datum is `Constr 2` with
+/// eleven, and reading it as this one would price a pool that is not this
+/// venue's.
+pub fn decode_curve(datum_cbor: &[u8]) -> Result<CurveDatum, LumpFunError> {
+    let data = PlutusData::decode_fragment(datum_cbor)
+        .map_err(|e| LumpFunError::CborEncoding(format!("curve datum is not CBOR: {e}")))?;
+    let PlutusData::Constr(c) = &data else {
+        return Err(LumpFunError::InvalidInput(
+            "expected a Constr, got another PlutusData variant".to_string(),
+        ));
+    };
+    // Constr 3 is CBOR tag 124, or `any_constructor` 3 from an encoder that
+    // spells it the other way. Both decode to the same data.
+    if !(c.tag == 124 || c.any_constructor == Some(3)) || c.fields.len() != 6 {
+        return Err(LumpFunError::InvalidInput(format!(
+            "expected Constr 3 with 6 fields, got tag={} constructor={:?} fields={}",
+            c.tag,
+            c.any_constructor,
+            c.fields.len()
+        )));
+    }
+    Ok(CurveDatum {
+        policy: datum_bytes(&c.fields[0])?,
+        name: datum_bytes(&c.fields[1])?,
+        ada_reserve: datum_amount(&c.fields[2])?,
+        token_reserve: datum_amount(&c.fields[3])?,
+        platform_accrued: datum_amount(&c.fields[4])?,
+        creator_accrued: datum_amount(&c.fields[5])?,
+    })
+}
+
+fn datum_bytes(data: &PlutusData) -> Result<Vec<u8>, LumpFunError> {
+    match data {
+        PlutusData::BoundedBytes(bytes) => Ok(bytes.to_vec()),
+        other => Err(LumpFunError::InvalidInput(format!(
+            "expected bytes in the curve datum, got {other:?}"
+        ))),
+    }
+}
+
+fn datum_amount(data: &PlutusData) -> Result<u64, LumpFunError> {
+    match data {
+        PlutusData::BigInt(BigInt::Int(int)) => {
+            let value: i128 = (*int).into();
+            u64::try_from(value).map_err(|_| {
+                LumpFunError::InvalidInput(format!("a curve quantity is outside u64: {value}"))
+            })
+        }
+        other => Err(LumpFunError::InvalidInput(format!(
+            "expected an integer in the curve datum, got {other:?}"
+        ))),
+    }
+}
+
+/// Lovelace into the CURVE that moves its price by `impact_bps`, against the
+/// effective pair.
+///
+/// A constant product, so the spot moves with the square of the ADA side:
+/// `(1 + g/A)² = 1 + p`, hence `g = A·(√(1+p) − 1)`. Integer square root,
+/// scaled by 1e6, so the figure is within a lovelace or two at any real depth.
+pub fn depth_in(ada_effective: u64, impact_bps: u32) -> u64 {
+    const BPS: u128 = 10_000;
+    const SCALE: u128 = 1_000_000;
+    let p = u128::from(impact_bps.min(9_999));
+    let a = u128::from(ada_effective);
+    let root = isqrt((BPS + p) * BPS * SCALE * SCALE) / BPS;
+    u64::try_from(a * root.saturating_sub(SCALE) / SCALE).unwrap_or(u64::MAX)
+}
+
+fn isqrt(n: u128) -> u128 {
+    if n == 0 {
+        return 0;
+    }
+    let mut x = n;
+    let mut y = x.div_ceil(2);
+    while y < x {
+        x = y;
+        y = (x + n / x) / 2;
+    }
+    x
 }
 
 /// Build a v5 buy order.
@@ -342,6 +469,74 @@ mod tests {
     #[test]
     fn the_order_credential_has_one_spelling() {
         assert_eq!(hex::encode(ORDER_CRED), ORDER_CRED_HEX);
+        assert_eq!(hex::encode(STATE_NFT_NAME), STATE_NFT_NAME_HEX);
+    }
+
+    /// The pool's inline datum in the sample buy `1f7e8e57…`, copied from the
+    /// chain — the same bytes the decoder crate's golden uses.
+    const BUNNY_CURVE: &str = "d87c9f581ca1b085f414fb7799d378e90e39d24c9e54c841a311d72b2f57cba2934542554e4e591a5caf6ac01a3329db221a001e84801a001e8480ff";
+
+    /// Six fields, field for field, and the effective ADA side is the datum's
+    /// reserve plus the COMPILED offset — not the recovered one.
+    #[test]
+    fn the_measured_curve_datum_decodes_field_for_field() {
+        let c = decode_curve(&hex::decode(BUNNY_CURVE).unwrap()).expect("a live curve datum");
+        assert_eq!(
+            hex::encode(&c.policy),
+            "a1b085f414fb7799d378e90e39d24c9e54c841a311d72b2f57cba293"
+        );
+        assert_eq!(hex::encode(&c.name), "42554e4e59");
+        assert_eq!(c.ada_reserve, 1_555_000_000);
+        assert_eq!(c.token_reserve, 858_381_090);
+        assert_eq!(c.platform_accrued, 2_000_000);
+        assert_eq!(c.creator_accrued, 2_000_000);
+        assert_eq!(c.ada_effective(), Some(6_555_000_000));
+    }
+
+    /// An ORDER datum is `Constr 0` with eight fields. Reading it as a curve
+    /// would price a pool that does not exist.
+    #[test]
+    fn another_phase_datum_is_refused() {
+        assert!(decode_curve(&hex::decode(MEASURED_ORDER).unwrap()).is_err());
+        assert!(decode_curve(&[]).is_err());
+    }
+
+    /// The state NFT lives under the token's own policy, so the pool it names
+    /// can only be that launch's.
+    #[test]
+    fn the_pool_address_is_a_script_with_no_stake_part() {
+        let Address::Shelley(shelley) = Address::from_bech32(POOL_ADDRESS).expect("decodes") else {
+            panic!("a script address is a Shelley address")
+        };
+        assert!(
+            shelley.payment().is_script(),
+            "the curve is a validator, not a wallet"
+        );
+        assert!(
+            matches!(
+                shelley.delegation(),
+                pallas_addresses::ShelleyDelegationPart::Null
+            ),
+            "the curve address has no stake part"
+        );
+    }
+
+    /// `depth_in` is the inverse of the quote's price move: spending what it
+    /// returns moves the spot by exactly that many basis points, to within the
+    /// integer square root's precision.
+    #[test]
+    fn a_depth_moves_the_price_by_its_basis_points() {
+        let (a, _t) = (6_555_000_000u128, 858_381_090u128);
+        for bps in [100u32, 200, 500] {
+            let g = u128::from(depth_in(a as u64, bps));
+            // (A + g)² / A² is the price ratio on a constant product.
+            let ratio = (a + g) * (a + g) * 1_000_000 / (a * a);
+            let want = 1_000_000 + u128::from(bps) * 100;
+            assert!(
+                ratio.abs_diff(want) <= 200,
+                "{bps}bps: depth moves the price {ratio}/1e6, wanted {want}"
+            );
+        }
     }
 
     /// Before the first buy there is no reserve to price against. `None`,
