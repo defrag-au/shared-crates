@@ -27,6 +27,9 @@
 //!   reports [`HeartbeatSnapshot::block_due_probability`]. A peer that answers
 //!   keep-alive but stops sending blocks is ended by the follower's
 //!   `stall_after` watchdog, so the host can move to another relay.
+//! - **A link blip is not an outage.** A consumer's socket that drops for less
+//!   than [`RECONNECT_GRACE_SECS`] keeps the live reading; only a loss that
+//!   outlasts it is reported as `Disconnected`.
 //! - **Catch-up is not activity.** Blocks replayed after a reconnect arrive as
 //!   [`SyncState::CatchingUp`]; a UI should not pulse for them.
 //! - **Block production is memoryless.** The due-probability rises with elapsed
@@ -88,8 +91,8 @@ pub use beat::{
 pub use block::{BlockError, BlockParts, BlockTransactions, block_transactions, split_block};
 pub use header::{BlockHeader, HeaderError, HeaderVrf, VrfCert};
 pub use heartbeat::{
-    Checkpoint, DEFAULT_CAPACITY, FeedHealth, Heartbeat, HeartbeatSnapshot, Restore,
-    SILENT_AFTER_SECS, WindowStats,
+    Checkpoint, DEFAULT_CAPACITY, FeedHealth, Heartbeat, HeartbeatSnapshot, RECONNECT_GRACE_SECS,
+    ReconnectGrace, Restore, SILENT_AFTER_SECS, WindowStats,
 };
 pub use network::{
     ACTIVE_SLOT_COEFFICIENT, EpochPosition, Network, Relay, UnknownNetwork,

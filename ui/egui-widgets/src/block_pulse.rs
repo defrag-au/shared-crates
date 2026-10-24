@@ -43,9 +43,10 @@ const MARK_RADIUS: f32 = 0.36;
 /// The dot's radius as a fraction of the ring's.
 const DOT_FRACTION: f32 = 0.45;
 
-/// How long a feed must be disconnected before it reads as offline. Reconnects
-/// measured on the gateway take two to three seconds.
-pub const OFFLINE_AFTER_SECS: u64 = 5;
+/// How long a feed must be disconnected before it reads as offline. The shared
+/// value, so the socket layer's grace and the widgets agree: a shorter drop is
+/// a reconnect in progress, not an outage worth shouting about.
+pub const OFFLINE_AFTER_SECS: u64 = chain_heartbeat::RECONNECT_GRACE_SECS;
 
 /// How much a pulse shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

@@ -14,6 +14,44 @@ pub const DEFAULT_CAPACITY: usize = 256;
 /// this long is reported as `Silent`. Three missed 30 s keep-alives.
 pub const SILENT_AFTER_SECS: u64 = 90;
 
+/// A feed that loses its link for less than this is reconnecting, not offline.
+///
+/// Both drops this covers are routine: the Cardano relays rotate their
+/// followers every few minutes and are back in 1.5–3 s, and a browser socket
+/// the edge recycled has the same shape. Consumers hold the live reading across
+/// it, so a blip never paints an outage over a feed that never went away.
+pub const RECONNECT_GRACE_SECS: u64 = 5;
+
+/// A consumer's link to a feed, held back until a loss outlasts
+/// [`RECONNECT_GRACE_SECS`].
+///
+/// The heartbeat's `FeedHealth` is what every renderer reads, so a socket blip
+/// must not reach it: `pulse` and `train` would paint an outage over a feed that
+/// is merely reconnecting. The loss is timestamped when it happens, not when the
+/// grace expires, so the eventual outage reports its real age.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ReconnectGrace {
+    lost_at_ms: Option<u64>,
+}
+
+impl ReconnectGrace {
+    /// Record that the link was lost. Keeps the first loss.
+    pub fn lost(&mut self, now_ms: u64) {
+        self.lost_at_ms.get_or_insert(now_ms);
+    }
+
+    /// The link delivered again: whatever loss was pending is over.
+    pub fn recovered(&mut self) {
+        self.lost_at_ms = None;
+    }
+
+    /// The loss timestamp once it outlasts the grace, else `None`.
+    pub fn outage(&self, now_ms: u64) -> Option<u64> {
+        self.lost_at_ms
+            .filter(|lost| now_ms.saturating_sub(*lost) >= RECONNECT_GRACE_SECS * 1_000)
+    }
+}
+
 const HOUR_SECS: u64 = 3_600;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -614,6 +652,39 @@ mod tests {
                 disconnected_secs: 5
             }
         );
+    }
+
+    /// A socket blip shorter than the grace is a reconnect in progress, not an
+    /// outage, so it must never reach the heartbeat the widgets read.
+    #[test]
+    fn a_link_loss_inside_the_grace_is_not_an_outage() {
+        let mut grace = ReconnectGrace::default();
+        grace.lost(1_000);
+        assert_eq!(
+            grace.outage(1_000 + (RECONNECT_GRACE_SECS - 1) * 1_000),
+            None
+        );
+    }
+
+    /// Once it outlasts the grace, the outage is dated from the drop rather
+    /// than from the moment the grace expired.
+    #[test]
+    fn an_outage_is_dated_from_when_the_link_dropped() {
+        let mut grace = ReconnectGrace::default();
+        grace.lost(1_000);
+        assert_eq!(
+            grace.outage(1_000 + RECONNECT_GRACE_SECS * 1_000),
+            Some(1_000)
+        );
+    }
+
+    /// Frames arriving inside the grace cancel the pending outage.
+    #[test]
+    fn a_frame_inside_the_grace_cancels_it() {
+        let mut grace = ReconnectGrace::default();
+        grace.lost(1_000);
+        grace.recovered();
+        assert_eq!(grace.outage(60_000), None);
     }
 
     #[test]

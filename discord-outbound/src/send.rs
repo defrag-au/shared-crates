@@ -30,7 +30,8 @@
 //! supplies [`HttpTransport::execute`] and a clock, and nothing else. That is
 //! what stops the native and wasm paths drifting, which they had.
 
-use discord_message::{MessageBody, MessageTarget, wire};
+use discord_message::{BASE_URL, MessageBody, MessageTarget, wire};
+use serde::de::DeserializeOwned;
 
 use crate::ratelimit::{self, RateLimitTracker};
 use crate::{DiscordError, SentMessage, Target};
@@ -185,9 +186,61 @@ pub trait DiscordOutbound {
         .await
     }
 
-    /// The shared half: gate on the tracker, pick a transport, read the answer.
+    /// Post a new message to a user's DMs.
+    ///
+    /// Two requests: open (or find) the DM channel, then an ordinary channel
+    /// post into it. Opening is idempotent on Discord's side — it returns the
+    /// existing channel when there is one — so nothing is cached here.
+    ///
+    /// A user who has turned off DMs, or who shares no server with the bot,
+    /// comes back as [`DiscordError::CannotMessageUser`]. Expect it: it is the
+    /// user's setting, not a fault.
+    async fn send_dm(
+        &self,
+        user_id: &str,
+        body: &MessageBody,
+        options: SendOptions,
+    ) -> Result<SentMessage, DiscordError> {
+        let channel_id = self.open_dm(user_id, options.on_rate_limit).await?;
+        // Ephemerality means nothing outside an interaction, so it is dropped
+        // rather than sent as a flag Discord would ignore.
+        let options = SendOptions {
+            ephemeral: false,
+            ..options
+        };
+        self.send(&Target::channel(channel_id), body, options).await
+    }
+
+    /// The DM channel with `user_id`, created if it does not exist yet.
     #[doc(hidden)]
-    async fn dispatch(
+    async fn open_dm(&self, user_id: &str, backoff: Backoff) -> Result<String, DiscordError> {
+        if user_id.is_empty() {
+            return Err(DiscordError::Config(
+                "a DM needs a user id; an empty one would open nothing".to_string(),
+            ));
+        }
+        let json = serde_json::to_string(&OpenDm {
+            recipient_id: user_id,
+        })?;
+        let channel: DmChannel = self
+            .dispatch(
+                Method::Post,
+                &format!("{BASE_URL}/users/@me/channels"),
+                json,
+                &MessageBody::default(),
+                true,
+                backoff,
+            )
+            .await?;
+        Ok(channel.id)
+    }
+
+    /// The shared half: gate on the tracker, pick a transport, read the answer.
+    ///
+    /// Generic over what comes back, because not every route answers with a
+    /// message — opening a DM answers with a channel.
+    #[doc(hidden)]
+    async fn dispatch<T: DeserializeOwned>(
         &self,
         method: Method,
         url: &str,
@@ -195,7 +248,7 @@ pub trait DiscordOutbound {
         body: &MessageBody,
         needs_bot_token: bool,
         backoff: Backoff,
-    ) -> Result<SentMessage, DiscordError> {
+    ) -> Result<T, DiscordError> {
         let route = ratelimit::route_key(url);
 
         if let Some(wait) = self.rate_limits().wait_ms(route, self.now_ms()) {
@@ -258,9 +311,21 @@ pub trait DiscordOutbound {
 
     /// Turn a raw response into a result, recording anything worth remembering.
     #[doc(hidden)]
-    fn interpret(&self, route: &str, response: HttpResponse) -> Result<SentMessage, DiscordError> {
+    fn interpret<T: DeserializeOwned>(
+        &self,
+        route: &str,
+        response: HttpResponse,
+    ) -> Result<T, DiscordError> {
         if (200..300).contains(&response.status) {
             return Ok(serde_json::from_str(&response.body)?);
+        }
+
+        // Read the JSON error code, not the message text: Discord rewords its
+        // messages, and the code is the documented contract.
+        if serde_json::from_str::<ErrorBody>(&response.body)
+            .is_ok_and(|e| e.code == CANNOT_MESSAGE_USER)
+        {
+            return Err(DiscordError::CannotMessageUser);
         }
 
         if response.status == 429 {
@@ -298,6 +363,27 @@ pub trait DiscordOutbound {
             response.status, response.body
         )))
     }
+}
+
+/// Discord's JSON error code for "Cannot send messages to this user".
+const CANNOT_MESSAGE_USER: u64 = 50007;
+
+/// The part of Discord's error body this client reads.
+#[derive(serde::Deserialize)]
+struct ErrorBody {
+    code: u64,
+}
+
+/// `POST /users/@me/channels`.
+#[derive(serde::Serialize)]
+struct OpenDm<'a> {
+    recipient_id: &'a str,
+}
+
+/// The part of Discord's channel object a DM needs: where to post.
+#[derive(serde::Deserialize)]
+struct DmChannel {
+    id: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -612,6 +698,77 @@ mod tests {
         assert_eq!(payload["components"][0]["type"], 1);
         assert_eq!(payload["content"], "pick");
         assert!(payload.get("flags").is_none(), "classic sets no flags");
+    }
+
+    // ── Direct messages ─────────────────────────────────────────────────
+
+    /// A DM is two requests: open the channel with the bot token, then post
+    /// into the channel id that came back.
+    #[test]
+    fn a_dm_opens_the_channel_then_posts_into_it() {
+        let fake = Fake::default();
+        block_on(fake.send_dm("42", &MessageBody::text("linked"), SendOptions::default())).unwrap();
+
+        let sent = fake.sent.borrow();
+        assert_eq!(sent.len(), 2);
+        assert_eq!(sent[0].method, Method::Post);
+        assert_eq!(
+            sent[0].url,
+            "https://discord.com/api/v10/users/@me/channels"
+        );
+        let open: serde_json::Value = serde_json::from_slice(&sent[0].body).unwrap();
+        assert_eq!(open["recipient_id"], "42");
+        assert!(
+            sent[0]
+                .headers
+                .iter()
+                .any(|(k, v)| k == "Authorization" && v == "Bot tok")
+        );
+        // The fake answers every request with id 999, so that is the channel.
+        assert_eq!(
+            sent[1].url,
+            "https://discord.com/api/v10/channels/999/messages"
+        );
+    }
+
+    /// Ephemeral means nothing outside an interaction; a DM must not carry it.
+    #[test]
+    fn a_dm_never_carries_the_ephemeral_flag() {
+        let fake = Fake::default();
+        block_on(fake.send_dm("42", &MessageBody::text("hi"), SendOptions::ephemeral())).unwrap();
+        assert!(fake.payload().get("flags").is_none(), "{}", fake.payload());
+    }
+
+    /// 50007 is the user's DM setting, not a fault — its own variant, read
+    /// from the code rather than the wording.
+    #[test]
+    fn a_user_who_refuses_dms_is_its_own_outcome() {
+        let fake = Fake::answering(
+            403,
+            r#"{"message":"Cannot send messages to this user","code":50007}"#,
+        );
+        let result = block_on(fake.send_dm("42", &MessageBody::text("hi"), SendOptions::default()));
+        assert!(matches!(result, Err(DiscordError::CannotMessageUser)));
+    }
+
+    /// Any other 403 stays an ordinary request error.
+    #[test]
+    fn other_forbidden_errors_are_not_mistaken_for_a_dm_refusal() {
+        let fake = Fake::answering(403, r#"{"message":"Missing Access","code":50001}"#);
+        let result = block_on(fake.send(
+            &Target::channel("1"),
+            &MessageBody::text("hi"),
+            SendOptions::default(),
+        ));
+        assert!(matches!(result, Err(DiscordError::Request(_))));
+    }
+
+    #[test]
+    fn an_empty_user_id_never_reaches_the_network() {
+        let fake = Fake::default();
+        let result = block_on(fake.send_dm("", &MessageBody::text("hi"), SendOptions::default()));
+        assert!(matches!(result, Err(DiscordError::Config(_))));
+        assert!(fake.sent.borrow().is_empty());
     }
 
     // ── Edits ───────────────────────────────────────────────────────────
