@@ -91,6 +91,74 @@ fn summary_stops_at_the_first_sentence_even_mid_line() {
     assert_eq!(summary("use macroquad;\n"), None);
 }
 
+/// The painter's text-placement methods and the first sentence of each one's
+/// doc comment: what a screen built from scratch reaches for to put a label
+/// in a box. The painter is infrastructure, not a widget, so it has no row in
+/// the module table, and these were not being found: labels were placed with
+/// `text_top` and an offset tuned by eye, and sat a point or two off centre.
+fn placement(src: &str) -> Vec<(String, String)> {
+    let places = |name: &str| {
+        name.starts_with("text")
+            || name.starts_with("mono")
+            || name.starts_with("stack")
+            || name.ends_with("baseline")
+            || name.starts_with("cap_height")
+    };
+    let mut out = Vec::new();
+    let mut doc: Vec<String> = Vec::new();
+    // Only `impl Painter`'s own methods: a helper type's `mono` is not one.
+    let mut inside = false;
+    for line in src.lines() {
+        if line.starts_with("impl") {
+            inside = line.contains("Painter");
+        } else if line == "}" {
+            inside = false;
+        }
+        if !inside {
+            doc.clear();
+            continue;
+        }
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("///") {
+            doc.push(rest.trim().to_string());
+            continue;
+        }
+        if let Some(rest) = t.strip_prefix("pub fn ") {
+            let name: String = rest
+                .chars()
+                .take_while(|c| *c == '_' || c.is_alphanumeric())
+                .collect();
+            if places(&name) && !doc.is_empty() {
+                let mut para = String::new();
+                for d in &doc {
+                    if d.is_empty() {
+                        break;
+                    }
+                    if !para.is_empty() {
+                        para.push(' ');
+                    }
+                    para.push_str(d);
+                }
+                let first = first_sentence(&para).trim_end_matches('.').to_string();
+                out.push((name, first));
+            }
+        }
+        if !t.starts_with("#[") {
+            doc.clear();
+        }
+    }
+    out
+}
+
+#[test]
+fn placement_reads_each_methods_first_sentence() {
+    let src = "impl<'a> Painter<'a> {\n    /// Text in a box. More detail.\n    pub fn text_in(&self) {}\n    /// Not text.\n    pub fn tapped(&self) {}\n}\nimpl Line {\n    /// Not the painter's.\n    pub fn mono(self) {}\n}";
+    assert_eq!(
+        placement(src),
+        vec![("text_in".to_string(), "Text in a box".to_string())]
+    );
+}
+
 #[test]
 fn catalogue_is_current() {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -132,6 +200,22 @@ fn catalogue_is_current() {
     rendered.push_str("| module | what it is |\n|---|---|\n");
     for (name, desc) in &entries {
         rendered.push_str(&format!("| `{name}` | {} |\n", desc.replace('|', "\\|")));
+    }
+
+    let painter = std::fs::read_to_string(dir.join("src/painter.rs")).expect("read painter");
+    rendered.push_str(
+        "\n## Text placement\n\n\
+         **A label in a box is placed by its capitals, through these `Painter` methods**, never\n\
+         with `text_top` and an offset tuned by eye: that is how labels end up a point or two\n\
+         off centre, differently per face and size. `text_in` for one line (start, centre or\n\
+         end), `stack_in` for a block (a title over its subtitle). Generated from `painter.rs`.\n\n\
+         | method | what it does |\n|---|---|\n",
+    );
+    for (name, desc) in placement(&painter) {
+        rendered.push_str(&format!(
+            "| `Painter::{name}` | {} |\n",
+            desc.replace('|', "\\|")
+        ));
     }
 
     let path = dir.join("CATALOG.md");

@@ -12,11 +12,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1792479356,
-        "narHash": "sha256-ov7JStwr3VGYiqJo6bt7FfyfTJ8U0i4/iMFl54AYako=",
+        "lastModified": 1792831812,
+        "narHash": "sha256-6jwjKxQXxrxZvNT9IhFg/TOuEudMJaF/cpfTwouvkM0=",
         "owner": "defrag-au",
         "repo": "agent-playbook",
-        "rev": "cb692d1971c3e923206e9c7d347ae7b5c9c22037",
+        "rev": "c08abf63c7d00ae751e95e0b3616e3543559ae0e",
         "type": "github"
       },
       "original": {
@@ -74,19 +74,36 @@
         "type": "github"
       }
     },
+    "container-compose": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792830352,
+        "narHash": "sha256-h7b8LDmxgWd4z8rabT4F4ST192OHd3jao/tWoFFWIF4=",
+        "owner": "defrag-au",
+        "repo": "container-compose",
+        "rev": "da456210b5ce714901b8a5814c35a9e9913462bd",
+        "type": "github"
+      },
+      "original": {
+        "owner": "defrag-au",
+        "repo": "container-compose",
+        "type": "github"
+      }
+    },
     "defrag-nix": {
       "inputs": {
         "agent-playbook": "agent-playbook",
         "compact": "compact",
+        "container-compose": "container-compose",
         "fenix": "fenix_9",
         "nixpkgs": "nixpkgs_18"
       },
       "locked": {
-        "lastModified": 1792479645,
-        "narHash": "sha256-CQw+6uizLCSDCsgH0KcBYiZ6qDVoJFYv1Ev/VY4MR14=",
+        "lastModified": 1792831857,
+        "narHash": "sha256-Zij6O5biaIvRhJwZKpF4dx9PPGGXEmr8efTQyaRAh3U=",
         "owner": "defrag-au",
         "repo": "defrag-nix",
-        "rev": "c072b52d836c49f9b724a1a20e76c79d9842fbd8",
+        "rev": "524d30d46d3c7b12d98a25ef3f4935bfad3497e3",
         "type": "github"
       },
       "original": {

@@ -1,0 +1,15 @@
+[package]
+name = "arcade-peer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "The peer plane beside a lockstep room: signalling between players, who offers, and the browser half that owns RTCPeerConnection. Pure protocol, no dependencies."
+
+# No dependencies, deliberately, for the same reason `arcade-room` has none: the
+# protocol is decoded inside a Durable Object (wasm32) and a macroquad client
+# (wasm32 under miniquad, where wasm-bindgen cannot run), and must behave
+# identically in both.
+
+[dependencies]

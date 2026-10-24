@@ -295,6 +295,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "arcade-peer"
+version = "0.1.0"
+
+[[package]]
 name = "arcade-room"
 version = "0.1.0"
 

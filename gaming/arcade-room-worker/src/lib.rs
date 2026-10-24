@@ -207,15 +207,27 @@ impl<S: RoomSim> RoomHost<S> {
     /// `/<world>` with `Upgrade: websocket`: seat a connection.
     /// `/<world>/status`: the room's counters, as text. [`connect`] sends
     /// both.
+    ///
+    /// **A status probe reads; it never makes a world.** `ensure(None)` loads a
+    /// saved room if there is one and starts nothing if there is not, so a
+    /// monitor asking about a world nobody has played does not generate its
+    /// islands, seat anyone or write a save. Before this, a probe that ran
+    /// first created the room — and a Durable Object never moves — so a
+    /// monitoring check could decide which region a world lived in.
     pub async fn fetch(&self, req: Request) -> Result<Response> {
         let url = req.url()?;
         let mut parts = url.path().trim_start_matches('/').split('/');
         let world = parts.next().filter(|w| !w.is_empty()).unwrap_or("main");
         let status = parts.next() == Some("status");
-        self.ensure(Some(world)).await?;
+        let live = self.ensure((!status).then_some(world)).await?;
         if status {
+            if !live {
+                // No room and, deliberately, none started: this is the
+                // answer, not a reason to make one.
+                return Response::ok(format!("{} v{}: no world here\n", S::GAME, S::VERSION,));
+            }
             let live = self.live.borrow();
-            let live = live.as_ref().expect("ensured");
+            let live = live.as_ref().expect("live");
             return Response::ok(format!(
                 "{} v{}: tick {}, {} seated, {} real connected, running {}\n{:?}\n",
                 S::GAME,

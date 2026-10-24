@@ -4,7 +4,7 @@
 //! hit-test). Deliberately tiny — a widget toolkit, not a UI framework.
 
 use macroquad::prelude::*;
-use macroquad_text::{TextStyle, draw_run, measure_run};
+use macroquad_text::{Align, TextStyle, draw_run, measure_run};
 use ui_theme::{TextRole, TextSize};
 
 use crate::theme::{self, Theme};
@@ -231,6 +231,53 @@ impl<'a> Painter<'a> {
         self.mono_mid(s, x, rect.y + rect.h * 0.5, size, color);
     }
 
+    /// Proportional text in `rect` with its capitals on the rect's midline,
+    /// against its start, its centre or its end: a row's label, a figure
+    /// right against a tile's edge, a chip's word. Inset `rect` for padding.
+    ///
+    /// The one call for "a label in a box". Placing it with
+    /// [`Painter::text_top`] and an offset tuned by eye is how labels end up
+    /// a point or two off centre, differently per face and per size.
+    pub fn text_in(&self, s: &str, rect: Rect, size: f32, color: Color, align: Align) {
+        let x = aligned_x(rect, self.measure(s, size).width, align);
+        self.text_mid(s, x, rect.y + rect.h * 0.5, size, color);
+    }
+
+    /// [`Painter::text_in`] in the monospace face.
+    pub fn mono_in(&self, s: &str, rect: Rect, size: f32, color: Color, align: Align) {
+        let x = aligned_x(rect, self.measure_mono(s, size).width, align);
+        self.mono_mid(s, x, rect.y + rect.h * 0.5, size, color);
+    }
+
+    /// Lines centred in `rect` as one block, each against `align`: a title
+    /// over its subtitle in a list row, a figure over its caption in a tile.
+    ///
+    /// Placed by their capitals, `gap` apart (cap band to cap band), and the
+    /// block's capitals are centred on the rect's midline, so a two-line row
+    /// sits in its box the way a one-line label does. Descenders hang below
+    /// their line, as in print; leave room for them in `gap`.
+    pub fn stack_in(&self, lines: &[Line<'_>], rect: Rect, align: Align, gap: f32) {
+        let cap = |l: &Line<'_>| match l.mono {
+            true => self.cap_height_mono(l.size),
+            false => self.cap_height(l.size),
+        };
+        let caps: Vec<f32> = lines.iter().map(cap).collect();
+        let block = caps.iter().sum::<f32>() + gap * lines.len().saturating_sub(1) as f32;
+        let mut top = rect.y + (rect.h - block) * 0.5;
+        for (line, cap) in lines.iter().zip(caps) {
+            let w = match line.mono {
+                true => self.measure_mono(line.text, line.size).width,
+                false => self.measure(line.text, line.size).width,
+            };
+            let x = aligned_x(rect, w, align);
+            match line.mono {
+                true => self.mono(line.text, x, top + cap, line.size, line.color),
+                false => self.text(line.text, x, top + cap, line.size, line.color),
+            }
+            top += cap + gap;
+        }
+    }
+
     /// Did the user tap inside `rect` this frame?
     pub fn tapped(&self, rect: Rect) -> bool {
         self.tap.is_some_and(|p| rect.contains(p))
@@ -273,6 +320,41 @@ impl<'a> Painter<'a> {
         if w > r {
             draw_rounded_rect(rect.x, rect.y, w, rect.h, r, fill);
         }
+    }
+}
+
+/// One line of a [`Painter::stack_in`] block.
+#[derive(Clone, Copy, Debug)]
+pub struct Line<'s> {
+    pub text: &'s str,
+    pub size: f32,
+    pub color: Color,
+    /// In the monospace face.
+    pub mono: bool,
+}
+
+impl<'s> Line<'s> {
+    pub fn new(text: &'s str, size: f32, color: Color) -> Self {
+        Self {
+            text,
+            size,
+            color,
+            mono: false,
+        }
+    }
+
+    /// The same line in the monospace face.
+    pub fn mono(self) -> Self {
+        Self { mono: true, ..self }
+    }
+}
+
+/// Where text `w` wide starts in `rect` for `align`.
+fn aligned_x(rect: Rect, w: f32, align: Align) -> f32 {
+    match align {
+        Align::Start => rect.x,
+        Align::Center => rect.x + (rect.w - w) * 0.5,
+        Align::End => rect.right() - w,
     }
 }
 
