@@ -15,8 +15,9 @@
 //! cardano-tx → maestro     → http-client  → (as above)
 //! ```
 //!
-//! Both are now behind default-on features, so `default-features = false`
-//! yields a crate with no HTTP in it at all. This test is what stops the edge
+//! The Maestro adapter has since been deleted outright, and `http-client` is
+//! behind the default-on `http` feature, so `default-features = false` yields a
+//! crate with no HTTP in it at all. This test is what stops the edge
 //! growing back: adding an innocuous-looking dependency to the default-free
 //! build is exactly the change that would do it, and nothing else would notice
 //! until a macroquad host failed to link.
@@ -121,7 +122,7 @@ fn the_miniquad_linkable_set_carries_no_wasm_bindgen() {
 /// Without this, the test above would still pass if the features silently
 /// stopped pulling anything at all — a typo'd feature name, a dependency
 /// dropped by accident — and it would look like a success. The default build
-/// SHOULD reach wasm-bindgen (that is what `http` and `maestro` are for), so
+/// SHOULD reach wasm-bindgen (that is what `http` is for), so
 /// asserting it proves the guard is measuring the feature split rather than
 /// measuring nothing.
 #[test]
@@ -139,6 +140,6 @@ fn the_default_build_still_reaches_wasm_bindgen_so_the_guard_means_something() {
          That is not a problem in itself — it may be good news — but it means \
          the guard above is no longer proving that `--no-default-features` is \
          what removes it. Either delete this control and say why, or check the \
-         `maestro` / `http` features still do what their comments claim."
+         `http` feature still does what its comment claims."
     );
 }

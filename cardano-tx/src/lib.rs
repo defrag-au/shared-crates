@@ -27,6 +27,4 @@ pub mod utxo;
 pub use fee::{calculate_fee, calculate_tx_fee, estimate_tx_size};
 pub use pallas_txbuilder::ExUnits;
 pub use submit::{SubmitError, SubmitOk, SubmitProvider, classify_failure, submit_with_fallback};
-#[cfg(feature = "maestro")]
-pub use utxo::find_asset;
 pub use utxo::{AssetAmount, OutputParams, calculate_min_ada, calculate_min_ada_with_params};

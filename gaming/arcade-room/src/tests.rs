@@ -504,6 +504,43 @@ fn a_loaded_room_idles_everyone_until_they_rejoin() {
     assert_eq!(dot.2, [0, 0], "its input idled");
 }
 
+/// A signal goes to the other seats and never back to its sender: the room
+/// vouches for who sent it, and a peer's own message is not put in front of it.
+#[test]
+fn a_signal_reaches_the_other_seats_and_not_the_sender() {
+    let mut room = Room::<Walkers>::new(1, cfg());
+    room.open(1);
+    room.open(2);
+    room.message(1, &crate::client::hello::<Walkers>("a", true), 0);
+    room.message(2, &crate::client::hello::<Walkers>("b", true), 0);
+
+    let mut seat_of = std::collections::BTreeMap::new();
+    for out in room.drain() {
+        if let (To::One(conn), Ok(ToClient::Welcome { seat, .. })) =
+            (out.to, ToClient::decode(&out.bytes))
+        {
+            seat_of.insert(conn, seat);
+        }
+    }
+    let (a, b) = (seat_of[&1], seat_of[&2]);
+    assert_ne!(a, b);
+
+    let body = b"v=0\r\na=setup:actpass\r\n".to_vec();
+    room.message(1, &ToRoom::Signal(body.clone()).encode(), 1_000);
+
+    let mut heard = 0;
+    for out in room.drain() {
+        if let Ok(ToClient::Signal { from, bytes }) = ToClient::decode(&out.bytes) {
+            heard += 1;
+            assert_eq!(out.to, To::One(2), "the other seat, not the sender");
+            assert_eq!(from, a, "the seat the room vouched for");
+            assert_eq!(bytes, body, "carried verbatim");
+        }
+    }
+    assert_eq!(heard, 1, "one recipient, and no echo to the sender");
+    let _ = b;
+}
+
 /// The player's own prediction is what the room later confirms: on a phone's
 /// connection (120 ms each way, ±60 ms), once the client has measured the
 /// link no input of theirs lands late, so their own character is never

@@ -137,6 +137,9 @@ pub struct Client<S: RoomSim> {
     /// Why the room turned this seated client away, once it has: the same
     /// player joined from somewhere else.
     refused: Option<String>,
+    /// Signalling from other players, in arrival order: the seat the room
+    /// vouched for, and the `arcade-peer` bytes beside it.
+    signals: VecDeque<(Seat, Vec<u8>)>,
 }
 
 impl<S: RoomSim> Client<S> {
@@ -171,6 +174,7 @@ impl<S: RoomSim> Client<S> {
                     behind: Glide::at(start, now),
                     to_play: VecDeque::new(),
                     refused: None,
+                    signals: VecDeque::new(),
                 };
                 client.ahead = Glide::at(room_tick as f64 + client.lead(), now);
                 client.ping(now);
@@ -302,9 +306,26 @@ impl<S: RoomSim> Client<S> {
         self.out.push(msg.encode());
     }
 
+    /// Send a signalling message to the other players here.
+    ///
+    /// The room stamps this seat as the sender, so the bytes carry no identity
+    /// of their own and a peer cannot claim another's seat by writing it down.
+    pub fn send_signal(&mut self, bytes: Vec<u8>, now: u64) {
+        self.send(ToRoom::Signal(bytes), now);
+    }
+
+    /// The next signalling message from another player, with the seat the room
+    /// vouched for. Nothing here interprets the bytes: that is `arcade-peer`'s.
+    pub fn take_signal(&mut self) -> Option<(Seat, Vec<u8>)> {
+        self.signals.pop_front()
+    }
+
     /// A frame from the room. Errors only for a frame that does not decode.
     pub fn receive(&mut self, bytes: &[u8], now: u64) -> Result<(), String> {
         match ToClient::decode(bytes).map_err(|e| e.to_string())? {
+            ToClient::Signal { from, bytes } => {
+                self.signals.push_back((from, bytes));
+            }
             ToClient::Confirmed {
                 first,
                 room_tick,

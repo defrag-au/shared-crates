@@ -21,6 +21,8 @@ pub mod txdata_ext;
 pub mod utxo_analysis;
 
 #[cfg(all(test, feature = "indexers"))]
+mod maestro_fixtures;
+#[cfg(all(test, feature = "indexers"))]
 mod tests;
 
 #[cfg(feature = "indexers")]
@@ -53,10 +55,6 @@ pub use utxo_analysis::*;
 /// Main error type for transaction classification
 #[derive(Error, Debug)]
 pub enum TxClassifierError {
-    #[cfg(feature = "indexers")]
-    #[error("Maestro API error: {0}")]
-    Maestro(#[from] ::maestro::MaestroError),
-
     #[error("Transaction not found: {0}")]
     TransactionNotFound(String),
 

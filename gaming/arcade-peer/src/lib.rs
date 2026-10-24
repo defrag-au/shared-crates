@@ -6,7 +6,7 @@
 //! the offer — nothing here decides where anyone is, and nothing here is
 //! allowed to reach a sim, a state hash or a replay.
 //!
-//! ## Signalling is broadcast
+//! ## Signalling is broadcast, and pairwise signals name their target
 //!
 //! Every [`Signal`] goes to everyone in the group; the receiver filters on the
 //! sender's seat, which the room stamps. That is deliberate, and it is what
@@ -14,6 +14,18 @@
 //! no routing table, no per-peer bookkeeping, and no way to get a route wrong.
 //! For the group sizes this overlay has (K ≤ 12) the extra copies are nothing,
 //! and the room still scopes delivery to the group, so an offer never leaves it.
+//!
+//! Broadcast is not enough on its own, though: with three peers, C answers an
+//! offer from A and an offer from B, and *both* answers reach both of them. Each
+//! has one link to C and would apply both answers to it — the first wins and the
+//! second is a `setRemoteDescription` in the wrong state. So the pairwise
+//! messages ([`Signal::Offer`], `Answer`, `Candidate`, `Bye`) carry a `to`, and
+//! a receiver drops anything not addressed to it. The pair is `(from, to)`, and
+//! `from` is the room's, so a peer cannot impersonate another; a wrong `to` only
+//! misdelivers the sender's own message. `Announce` is genuinely broadcast and
+//! carries no target.
+//!
+//! The room still never reads the body, and there is still no routing table.
 //!
 //! ## One offers, and the other tolerates it anyway
 //!
@@ -35,7 +47,10 @@ pub type Seat = u16;
 
 /// Bumped when the layout below changes. The room and both ends of a link must
 /// agree; a mismatch is refused rather than misread.
-pub const SIGNAL_VERSION: u32 = 1;
+///
+/// 2: pairwise signals carry a `to`, because a broadcast bus delivers one
+/// peer's answer to every other peer, not only the one that offered.
+pub const SIGNAL_VERSION: u32 = 2;
 
 /// An SDP body is 1–3 KB in practice. The cap is generous enough for a
 /// browser's full offer and small enough that a hostile frame cannot ask for a
@@ -59,27 +74,36 @@ pub const BYE_FAILED: u8 = 2;
 /// authenticated connection, so a peer cannot claim to be someone else's seat.
 /// The receiving side learns who sent a message from the envelope the room
 /// delivers it in, not from anything the sender wrote.
+///
+/// `to` is the other half of the pair, and it is the sender's to name — it says
+/// which of *their* links the message is for, so a broadcast reaches one link
+/// per receiver rather than every link from that sender. See the module note.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Signal {
     /// I am here, in this group, with this epoch. The only message that is
-    /// sent unprompted, and the one that starts a negotiation.
+    /// sent unprompted, and the one that starts a negotiation. Broadcast: it
+    /// has no target.
     Announce {
         epoch: u16,
     },
     Offer {
         epoch: u16,
+        to: Seat,
         sdp: Vec<u8>,
     },
     Answer {
         epoch: u16,
+        to: Seat,
         sdp: Vec<u8>,
     },
     Candidate {
         epoch: u16,
+        to: Seat,
         candidate: Vec<u8>,
     },
     Bye {
         epoch: u16,
+        to: Seat,
         reason: u8,
     },
 }
@@ -92,24 +116,32 @@ impl Signal {
                 w.u8(TAG_ANNOUNCE);
                 w.u16(*epoch);
             }
-            Self::Offer { epoch, sdp } => {
+            Self::Offer { epoch, to, sdp } => {
                 w.u8(TAG_OFFER);
                 w.u16(*epoch);
+                w.u16(*to);
                 w.blob(sdp);
             }
-            Self::Answer { epoch, sdp } => {
+            Self::Answer { epoch, to, sdp } => {
                 w.u8(TAG_ANSWER);
                 w.u16(*epoch);
+                w.u16(*to);
                 w.blob(sdp);
             }
-            Self::Candidate { epoch, candidate } => {
+            Self::Candidate {
+                epoch,
+                to,
+                candidate,
+            } => {
                 w.u8(TAG_CANDIDATE);
                 w.u16(*epoch);
+                w.u16(*to);
                 w.blob(candidate);
             }
-            Self::Bye { epoch, reason } => {
+            Self::Bye { epoch, to, reason } => {
                 w.u8(TAG_BYE);
                 w.u16(*epoch);
+                w.u16(*to);
                 w.u8(*reason);
             }
         }
@@ -124,18 +156,22 @@ impl Signal {
             TAG_ANNOUNCE => Self::Announce { epoch },
             TAG_OFFER => Self::Offer {
                 epoch,
+                to: r.u16()?,
                 sdp: r.blob(MAX_SDP)?,
             },
             TAG_ANSWER => Self::Answer {
                 epoch,
+                to: r.u16()?,
                 sdp: r.blob(MAX_SDP)?,
             },
             TAG_CANDIDATE => Self::Candidate {
                 epoch,
+                to: r.u16()?,
                 candidate: r.blob(MAX_CANDIDATE)?,
             },
             TAG_BYE => Self::Bye {
                 epoch,
+                to: r.u16()?,
                 reason: r.u8()?,
             },
             other => return Err(SignalError::UnknownTag(other)),
@@ -151,6 +187,17 @@ impl Signal {
             | Self::Answer { epoch, .. }
             | Self::Candidate { epoch, .. }
             | Self::Bye { epoch, .. } => *epoch,
+        }
+    }
+
+    /// Who this message is for, or `None` for one that is broadcast.
+    pub fn to(&self) -> Option<Seat> {
+        match self {
+            Self::Announce { .. } => None,
+            Self::Offer { to, .. }
+            | Self::Answer { to, .. }
+            | Self::Candidate { to, .. }
+            | Self::Bye { to, .. } => Some(*to),
         }
     }
 }
@@ -287,18 +334,22 @@ mod tests {
             Signal::Announce { epoch: 3 },
             Signal::Offer {
                 epoch: 3,
+                to: 7,
                 sdp: b"v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n".to_vec(),
             },
             Signal::Answer {
                 epoch: 3,
+                to: 7,
                 sdp: b"v=0\r\na=setup:active\r\n".to_vec(),
             },
             Signal::Candidate {
                 epoch: 3,
+                to: 7,
                 candidate: b"candidate:1 1 udp 2113 10.0.0.2 5000 typ host".to_vec(),
             },
             Signal::Bye {
                 epoch: 3,
+                to: 7,
                 reason: BYE_REPLACED,
             },
         ]
@@ -311,10 +362,47 @@ mod tests {
         }
     }
 
-    /// The two messages that carry nothing: a header and no body.
+    /// The exact bytes, for the three shapes. The browser half writes this
+    /// layout a second time in `peer.js`, and a change here that is not there
+    /// is two ends disagreeing about what a byte means.
+    #[test]
+    fn the_layout_is_fixed() {
+        assert_eq!(Signal::Announce { epoch: 3 }.encode(), [TAG_ANNOUNCE, 3, 0]);
+        assert_eq!(
+            Signal::Offer {
+                epoch: 3,
+                to: 7,
+                sdp: b"hi".to_vec()
+            }
+            .encode(),
+            [TAG_OFFER, 3, 0, 7, 0, 2, 0, b'h', b'i']
+        );
+        assert_eq!(
+            Signal::Bye {
+                epoch: 3,
+                to: 7,
+                reason: 1
+            }
+            .encode(),
+            [TAG_BYE, 3, 0, 7, 0, 1]
+        );
+    }
+
+    /// The two messages that carry nothing but their header.
     #[test]
     fn a_bare_announce_is_three_bytes() {
         assert_eq!(Signal::Announce { epoch: 1 }.encode().len(), 3);
+    }
+
+    /// An announce has no target; everything else is pairwise.
+    #[test]
+    fn only_announce_is_broadcast() {
+        assert_eq!(Signal::Announce { epoch: 1 }.to(), None);
+        for signal in all() {
+            if !matches!(signal, Signal::Announce { .. }) {
+                assert_eq!(signal.to(), Some(7), "{signal:?} lost its target");
+            }
+        }
     }
 
     /// SDP is carried verbatim: no escaping, so what went in comes out byte for
@@ -324,6 +412,7 @@ mod tests {
         let sdp = b"v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\n".to_vec();
         let signal = Signal::Offer {
             epoch: 1,
+            to: 2,
             sdp: sdp.clone(),
         };
         match Signal::decode(&signal.encode()) {
@@ -349,7 +438,7 @@ mod tests {
     fn an_oversized_body_is_refused() {
         // A candidate claiming 4096 bytes is over MAX_CANDIDATE. Hand-built
         // because the writer would never make one.
-        let mut bytes = vec![TAG_CANDIDATE, 1, 0];
+        let mut bytes = vec![TAG_CANDIDATE, 1, 0, 2, 0];
         bytes.extend_from_slice(&4096u16.to_le_bytes());
         bytes.resize(bytes.len() + 4096, 0);
         assert_eq!(Signal::decode(&bytes), Err(SignalError::TooLong));
@@ -409,6 +498,37 @@ mod tests {
         assert!(
             PEER_JS.contains("maxRetransmits: 0"),
             "no unreliable channel"
+        );
+    }
+
+    /// The shim has to write the wire format down a second time — the browser
+    /// cannot read a Rust constant — so a change to either side must fail here
+    /// rather than produce two ends that disagree about what a byte means.
+    #[test]
+    fn the_browser_half_agrees_with_the_protocol() {
+        for (name, value) in [
+            ("TAG_ANNOUNCE", TAG_ANNOUNCE),
+            ("TAG_OFFER", TAG_OFFER),
+            ("TAG_ANSWER", TAG_ANSWER),
+            ("TAG_CANDIDATE", TAG_CANDIDATE),
+            ("TAG_BYE", TAG_BYE),
+        ] {
+            assert!(
+                PEER_JS.contains(&format!("var {name} = {value};")),
+                "peer.js disagrees about {name}"
+            );
+        }
+        assert!(
+            PEER_JS.contains(&format!("var MAX_SDP = {MAX_SDP};")),
+            "peer.js disagrees about MAX_SDP"
+        );
+        assert!(
+            PEER_JS.contains(&format!("var MAX_CANDIDATE = {MAX_CANDIDATE};")),
+            "peer.js disagrees about MAX_CANDIDATE"
+        );
+        assert!(
+            PEER_JS.contains(&format!("var BYE_REPLACED = {BYE_REPLACED};")),
+            "peer.js disagrees about BYE_REPLACED"
         );
     }
 }

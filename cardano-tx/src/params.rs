@@ -1,8 +1,8 @@
 //! Protocol parameters abstraction for transaction building
 //!
 //! [`TxBuildParams`] captures the minimum protocol parameters needed to build
-//! transactions. Consumers convert from their source-specific types (Maestro,
-//! Blockfrost, Koios, etc.) into this common representation.
+//! transactions. Consumers convert from their source-specific types (Koios,
+//! Blockfrost, etc.) into this common representation.
 
 use crate::builder::cost_models::PlutusCostModels;
 use pallas_txbuilder::ExUnits;
@@ -157,96 +157,5 @@ impl TxBuildParams {
     /// alone, without reaching for an indexer's `ProtocolParameters` type.
     pub fn min_utxo_for_assets(&self, assets: &[crate::utxo::AssetAmount]) -> u64 {
         crate::utxo::min_ada_for_assets(self.coins_per_utxo_byte, assets)
-    }
-}
-
-#[cfg(feature = "maestro")]
-impl From<&maestro::ProtocolParameters> for TxBuildParams {
-    fn from(pp: &maestro::ProtocolParameters) -> Self {
-        let (price_mem, price_step) = pp
-            .script_execution_prices
-            .as_ref()
-            .map(|ep| (ep.parse_memory(), ep.parse_cpu()))
-            .unwrap_or((None, None));
-
-        Self {
-            min_fee_coefficient: pp.min_fee_coefficient,
-            min_fee_constant: pp.min_fee_constant.ada.lovelace,
-            coins_per_utxo_byte: pp.min_utxo_deposit_coefficient,
-            // Maestro doesn't expose max_tx_size directly; use Cardano mainnet default
-            max_tx_size: 16384,
-            max_value_size: 5000,
-            // From the live params when present, else Conway mainnet's values.
-            // A too-LARGE fallback would let an over-budget sweep through to
-            // the node, which is the failure this field exists to prevent, so
-            // the default is the real protocol figure rather than something
-            // permissive.
-            max_tx_ex_units: pp
-                .max_execution_units_per_transaction
-                .as_ref()
-                .map(|eu| ExUnits {
-                    mem: eu.memory,
-                    steps: eu.cpu,
-                })
-                .unwrap_or(ExUnits {
-                    mem: 16_500_000,
-                    steps: 10_000_000_000,
-                }),
-            price_mem,
-            price_step,
-            min_fee_ref_script_cost_per_byte: CONWAY_MIN_FEE_REF_SCRIPT_COST_PER_BYTE,
-            // Nothing is known about reference scripts at this point; whoever
-            // builds a transaction that USES one must declare its size.
-            ref_script_size: 0,
-            cost_models: PlutusCostModels::from(pp),
-        }
-    }
-}
-
-#[cfg(feature = "maestro")]
-impl From<&maestro::ProtocolParameters> for PlutusCostModels {
-    fn from(pp: &maestro::ProtocolParameters) -> Self {
-        pp.plutus_cost_models
-            .as_ref()
-            .map(|cm| Self {
-                plutus_v1: cm.plutus_v1.clone(),
-                plutus_v2: cm.plutus_v2.clone(),
-                plutus_v3: cm.plutus_v3.clone(),
-            })
-            .unwrap_or_default()
-    }
-}
-
-// Only the Maestro adapter is exercised here, so the whole module goes with
-// the feature — gating the single test would leave `use super::*` unused.
-#[cfg(all(test, feature = "maestro"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_from_maestro_params() {
-        let maestro_params = maestro::ProtocolParameters {
-            min_fee_coefficient: 44,
-            min_fee_constant: maestro::AdaLovelace {
-                ada: maestro::AdaAmount { lovelace: 155381 },
-            },
-            min_utxo_deposit_coefficient: 4310,
-            script_execution_prices: Some(maestro::ExecutionPrices {
-                memory: "577/10000".to_string(),
-                cpu: "721/10000000".to_string(),
-            }),
-            max_execution_units_per_transaction: None,
-            max_transaction_size: None,
-            plutus_cost_models: None,
-        };
-
-        let params = TxBuildParams::from(&maestro_params);
-        assert_eq!(params.min_fee_coefficient, 44);
-        assert_eq!(params.min_fee_constant, 155381);
-        assert_eq!(params.coins_per_utxo_byte, 4310);
-        assert_eq!(params.max_tx_size, 16384);
-        assert_eq!(params.max_value_size, 5000);
-        assert_eq!(params.price_mem, Some((577, 10000)));
-        assert_eq!(params.price_step, Some((721, 10000000)));
     }
 }

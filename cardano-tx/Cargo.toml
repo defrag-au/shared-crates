@@ -5,28 +5,31 @@ edition.workspace = true
 license.workspace = true
 description = "Cardano transaction utilities: fee calculation, min UTxO, and DEX order building"
 
-# WHY THESE EXIST: transaction BUILDING is pure arithmetic over protocol
-# parameters, but two vendor adapters were wired in unconditionally and dragged
-# the whole HTTP stack in behind them:
+# WHY THIS EXISTS: transaction BUILDING is pure arithmetic over protocol
+# parameters, but a vendor adapter wired in unconditionally drags the whole
+# HTTP stack in behind it:
 #
 #   cardano-tx → http-client → worker_stack → worker → wasm-bindgen
-#   cardano-tx → maestro     → http-client  → (as above)
 #
 # Measured 2026-09-18: 46 wasm-bindgen crates reached a macroquad frontend that
 # wanted nothing but `TxBuildParams`. wasm-bindgen can NEVER link under
-# miniquad, so those two edges foreclosed client-side transaction building for
-# every macroquad host — for two `From` impls and one `TxEvaluator`.
+# miniquad, so that edge forecloses client-side transaction building for every
+# macroquad host.
 #
-# Both default ON so every existing consumer compiles unchanged. A host that
+# `http` defaults ON so every existing consumer compiles unchanged. A host that
 # only builds transactions takes `default-features = false` and gets a crate
 # with no HTTP in it at all.
 [features]
-default = ["maestro", "http"]
-# Adapters for the Maestro indexer: `From<&maestro::ProtocolParameters>` and
-# `impl TxEvaluator for MaestroApi`. The Maestro Developer API shuts down
-# 2026-09-18; this feature is the seam along which it gets deleted, and turning
-# it off is how cargo enumerates what still depends on it.
-maestro = ["dep:maestro"]
+default = ["http"]
+# EMPTY, and only kept so a manifest still naming it resolves. The Maestro
+# adapters it used to gate (`From<&maestro::ProtocolParameters>`,
+# `impl TxEvaluator for MaestroApi`, `find_asset`) are gone: Maestro is shut
+# down (its host is NXDOMAIN) and Koios provides both halves — see
+# `koios`'s `evaluator` feature. Delete this line once no manifest enables it
+# (cnft.dev-workers' asset-hire did at the time of removal); until then a
+# stale opt-in fails to compile at its use sites rather than failing cargo's
+# resolution of the whole workspace.
+maestro = []
 # Outbound HTTP — currently only the Splash DEX analytics endpoints, which are
 # the sole reason this crate ever needed a network stack.
 http = ["dep:http-client"]
@@ -42,8 +45,7 @@ pallas-txbuilder = { workspace = true }
 # Workspace crates
 cardano-assets = { workspace = true }
 address-registry = { workspace = true }
-# BOTH OPTIONAL, and that is load-bearing — see `[features]` below.
-maestro = { path = "../indexers/maestro", optional = true }
+# OPTIONAL, and that is load-bearing — see `[features]` above.
 http-client = { path = "../http-client", optional = true }
 
 # Workspace crates (serde helpers)
@@ -56,7 +58,7 @@ hex = "0.4"
 thiserror = { workspace = true }
 tracing = { workspace = true }
 # Object-safe async trait (`dyn SubmitProvider`) so an ordered fallback list can
-# hold heterogeneous providers (mitos + maestro). `?Send` form is wasm-safe.
+# hold heterogeneous providers (mitos + koios). `?Send` form is wasm-safe.
 async-trait = "0.1"
 
 [dev-dependencies]

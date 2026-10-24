@@ -820,7 +820,6 @@ dependencies = [
  "cardano-assets",
  "hex",
  "http-client",
- "maestro",
  "pallas-addresses",
  "pallas-codec",
  "pallas-crypto",

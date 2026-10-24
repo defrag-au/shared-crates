@@ -20,8 +20,7 @@ pub fn load_tx(json_data: &str) -> maestro::CompleteTransactionDetails {
 pub fn classify_tx(
     tx: &CompleteTransactionDetails,
 ) -> Result<(TxClassification, RawTxData), TxClassifierError> {
-    let indexer_pool = crate::indexers::IndexerPool::new_mock();
-    let raw_tx_data = indexer_pool.convert_complete_transaction_to_raw_data(tx)?;
+    let raw_tx_data = crate::maestro_fixtures::convert_complete_transaction_to_raw_data(tx)?;
 
     let rule_engine = crate::rules::RuleEngine::default();
     Ok((rule_engine.classify(&raw_tx_data), raw_tx_data))
