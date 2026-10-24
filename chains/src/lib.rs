@@ -90,6 +90,14 @@ impl ChainFamily {
         }
     }
 
+    /// The family a CAIP-2 namespace names — `eip155` is EVM. Case-insensitive,
+    /// like [`ChainRef`]'s namespace match.
+    pub fn from_namespace(namespace: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|family| family.namespace().eq_ignore_ascii_case(namespace))
+    }
+
     /// What a reader calls this family — a picker row, a sentence.
     ///
     /// Distinct from [`ChainRef::monogram`], which is a *mark* ("ADA", "EVM")
@@ -833,6 +841,120 @@ impl From<CardanoNetwork> for ChainRef {
     }
 }
 
+// ============================================================================
+// ChainScope
+// ============================================================================
+
+/// Where something holds: one chain, or every chain of a family.
+///
+/// # Why this exists beside `ChainRef`
+///
+/// Some facts are chain-specific and some are not. A Cardano stake address
+/// encodes its network, so a link proven with it holds on exactly one chain.
+/// An EVM account is derived from a key alone, so a signature proving control
+/// of it holds on *every* EIP-155 chain — naming one chain there would assert
+/// something the proof never established.
+///
+/// CAIP-2 has no wildcard: `namespace:reference` requires the reference, and
+/// `eip155:0` would read as a real chain. So the family-wide form is written as
+/// the **bare namespace** — `eip155` — which is the CAIP namespace itself and
+/// cannot be mistaken for a chain id.
+///
+/// # Wire form
+///
+/// | Scope | Written |
+/// |---|---|
+/// | [`Self::Chain`] | the CAIP-2 string, exactly as [`ChainRef`] writes it |
+/// | [`Self::Family`] | the namespace alone — `eip155`, `cardano` |
+///
+/// So every persisted `ChainRef` string is already a valid `ChainScope`, and
+/// existing columns need no rewrite to be read as one.
+///
+/// [`ChainRef`]'s own parser stays strict and refuses a bare namespace: code
+/// that needs a chain must not be handed a family by accident.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub enum ChainScope {
+    /// Holds on every chain of this family.
+    Family(ChainFamily),
+    /// Holds on exactly this chain.
+    Chain(ChainRef),
+}
+
+impl ChainScope {
+    /// The family either way — the mechanics, which every scope has.
+    pub const fn family(self) -> ChainFamily {
+        match self {
+            Self::Family(family) => family,
+            Self::Chain(chain) => chain.family(),
+        }
+    }
+
+    /// The specific chain, where the scope names one.
+    pub const fn chain(self) -> Option<ChainRef> {
+        match self {
+            Self::Family(_) => None,
+            Self::Chain(chain) => Some(chain),
+        }
+    }
+
+    /// The persisted form. See the type's docs.
+    pub fn as_str(self) -> String {
+        match self {
+            Self::Family(family) => family.namespace().to_string(),
+            Self::Chain(chain) => chain.as_caip2(),
+        }
+    }
+}
+
+impl From<ChainRef> for ChainScope {
+    fn from(chain: ChainRef) -> Self {
+        Self::Chain(chain)
+    }
+}
+
+impl From<ChainFamily> for ChainScope {
+    fn from(family: ChainFamily) -> Self {
+        Self::Family(family)
+    }
+}
+
+impl fmt::Display for ChainScope {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.as_str())
+    }
+}
+
+impl FromStr for ChainScope {
+    type Err = ChainRefError;
+
+    /// No colon is a family; anything else goes through [`ChainRef`]'s parser,
+    /// so there is one set of rules for a chain rather than two.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let trimmed = s.trim();
+        if trimmed.contains(':') {
+            return trimmed.parse().map(Self::Chain);
+        }
+        ChainFamily::from_namespace(trimmed)
+            .map(Self::Family)
+            .ok_or_else(|| ChainRefError::UnknownNamespace(trimmed.to_ascii_lowercase()))
+    }
+}
+
+impl TryFrom<String> for ChainScope {
+    type Error = ChainRefError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        s.parse()
+    }
+}
+
+impl From<ChainScope> for String {
+    fn from(scope: ChainScope) -> Self {
+        scope.as_str()
+    }
+}
+
 /// Why a string was not a chain.
 ///
 /// Hand-written rather than pulled from `thiserror`, so this crate's only
@@ -1376,5 +1498,88 @@ mod tests {
         for family in ChainFamily::ALL {
             assert!(!family.namespace().is_empty());
         }
+    }
+
+    // ── ChainScope ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn every_family_round_trips_through_its_namespace() {
+        for family in ChainFamily::ALL {
+            assert_eq!(
+                ChainFamily::from_namespace(family.namespace()),
+                Some(family)
+            );
+        }
+        assert_eq!(
+            ChainFamily::from_namespace("EIP155"),
+            Some(ChainFamily::Evm)
+        );
+        assert_eq!(
+            ChainFamily::from_namespace("evm"),
+            None,
+            "the namespace, not the name"
+        );
+    }
+
+    /// The family-wide form is the bare namespace — no wildcard, no chain 0.
+    #[test]
+    fn a_family_scope_is_written_as_its_namespace() {
+        let scope = ChainScope::Family(ChainFamily::Evm);
+        assert_eq!(scope.to_string(), "eip155");
+        assert_eq!("eip155".parse::<ChainScope>().unwrap(), scope);
+        assert_eq!(scope.chain(), None);
+        assert_eq!(scope.family(), ChainFamily::Evm);
+    }
+
+    /// Every persisted `ChainRef` string is already a valid scope, so existing
+    /// columns read unchanged.
+    #[test]
+    fn a_chain_scope_is_written_exactly_as_the_chain() {
+        for caip2 in [
+            "cardano:mainnet",
+            "cardano:preprod",
+            "eip155:4663",
+            "eip155:1",
+        ] {
+            let scope: ChainScope = caip2.parse().unwrap();
+            assert_eq!(scope.to_string(), caip2);
+            assert_eq!(scope.chain(), Some(caip2.parse::<ChainRef>().unwrap()));
+        }
+    }
+
+    /// A scope that names a chain keeps its family.
+    #[test]
+    fn a_chain_scope_knows_its_family() {
+        let scope = ChainScope::from(ChainRef::Evm(EvmChain::Robinhood));
+        assert_eq!(scope.family(), ChainFamily::Evm);
+    }
+
+    /// `ChainRef` stays strict: code that needs a chain must not be handed a
+    /// family by accident.
+    #[test]
+    fn a_bare_namespace_is_not_a_chain() {
+        assert!(ChainRef::from_str("eip155").is_err());
+    }
+
+    #[test]
+    fn unknown_or_malformed_scopes_are_refused() {
+        assert_eq!(
+            "bitcoin".parse::<ChainScope>(),
+            Err(ChainRefError::UnknownNamespace("bitcoin".to_string()))
+        );
+        assert!("".parse::<ChainScope>().is_err());
+        assert!("eip155:".parse::<ChainScope>().is_err());
+        assert!(
+            "eip155:1:0xabc".parse::<ChainScope>().is_err(),
+            "an account, not a scope"
+        );
+    }
+
+    #[test]
+    fn a_scope_serialises_as_its_string() {
+        let scope = ChainScope::Family(ChainFamily::Evm);
+        assert_eq!(serde_json::to_string(&scope).unwrap(), "\"eip155\"");
+        let back: ChainScope = serde_json::from_str("\"cardano:mainnet\"").unwrap();
+        assert_eq!(back, ChainScope::Chain(ChainRef::cardano_mainnet()));
     }
 }

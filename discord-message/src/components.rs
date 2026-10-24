@@ -87,10 +87,21 @@ pub enum PluginComponent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         placeholder: Option<String>,
         options: Vec<SelectOption>,
+        /// How many options may be chosen at once. `None` is exactly one — what
+        /// every select was before this field existed, so an older payload
+        /// without it reads unchanged. At least one is always required.
+        ///
+        /// Clamped when rendered to Discord's limit (25) and to the number of
+        /// options, since Discord rejects a maximum larger than either.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_values: Option<u8>,
         #[serde(default)]
         disabled: bool,
     },
 }
+
+/// Discord's cap on options in one select, and so on how many can be chosen.
+pub const MAX_SELECT_OPTIONS: usize = 25;
 
 impl PluginComponent {
     /// The component's `custom_id`, or `None` for a link button.

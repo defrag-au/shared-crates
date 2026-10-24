@@ -208,20 +208,31 @@ fn interactive(component: &PluginComponent) -> ComponentJson {
             custom_id,
             placeholder,
             options,
+            max_values,
             disabled,
         } => ComponentJson::Select(SelectJson {
             kind: kind::TEXT_SELECT,
             custom_id: custom_id.clone(),
             placeholder: placeholder.clone(),
             options: options.iter().map(select_option).collect(),
-            // Exactly one. The protocol has no multi-select, and Discord
-            // defaults `min_values` to 1 but `max_values` to 1 as well — being
-            // explicit costs two keys and removes the question.
+            // At least one, always. Explicit even though it is Discord's
+            // default too — two keys that remove the question.
             min_values: 1,
-            max_values: 1,
+            max_values: select_max(*max_values, options.len()),
             disabled: *disabled,
         }),
     }
+}
+
+/// The `max_values` Discord will accept for a select with `options` options.
+///
+/// Discord rejects the whole message when `max_values` exceeds the option
+/// count or 25, or falls below `min_values` (1). A drawer asking for "all of
+/// them" over a list that shrank since is the ordinary way to hit that, so the
+/// request is clamped here rather than trusted.
+fn select_max(requested: Option<u8>, options: usize) -> u8 {
+    let ceiling = options.clamp(1, crate::MAX_SELECT_OPTIONS) as u8;
+    requested.unwrap_or(1).clamp(1, ceiling)
 }
 
 fn select_option(option: &SelectOption) -> SelectOptionJson {
@@ -718,6 +729,7 @@ mod tests {
                         default: true,
                     },
                 ],
+                max_values: None,
                 disabled: false,
             },
         ])))
@@ -746,6 +758,60 @@ mod tests {
                 }],
             })
         );
+    }
+
+    /// A multi-select carries its maximum; an over-ask is clamped to what
+    /// Discord accepts rather than failing the message.
+    #[test]
+    fn a_multi_select_carries_its_maximum_clamped_to_what_discord_accepts() {
+        assert_eq!(select_max(None, 5), 1, "absent is exactly one");
+        assert_eq!(select_max(Some(3), 5), 3);
+        assert_eq!(select_max(Some(9), 2), 2, "never more than the options");
+        assert_eq!(
+            select_max(Some(40), 30),
+            25,
+            "never more than Discord's cap"
+        );
+        assert_eq!(select_max(Some(0), 4), 1, "never below the minimum");
+        assert_eq!(
+            select_max(Some(3), 0),
+            1,
+            "an empty select still renders validly"
+        );
+
+        let value = serde_json::to_value(action_row(&PluginActionRow::new(vec![
+            PluginComponent::Select {
+                custom_id: "pick".into(),
+                placeholder: None,
+                options: (0..3)
+                    .map(|i| SelectOption {
+                        label: format!("{i}"),
+                        value: format!("{i}"),
+                        description: None,
+                        default: false,
+                    })
+                    .collect(),
+                max_values: Some(3),
+                disabled: false,
+            },
+        ])))
+        .unwrap();
+        assert_eq!(value["components"][0]["min_values"], 1);
+        assert_eq!(value["components"][0]["max_values"], 3);
+    }
+
+    /// A payload from before the field existed reads as exactly one.
+    #[test]
+    fn a_select_without_a_maximum_still_deserialises() {
+        let json = r#"{"type":"select","custom_id":"x","options":[]}"#;
+        let component: PluginComponent = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            component,
+            PluginComponent::Select {
+                max_values: None,
+                ..
+            }
+        ));
     }
 
     /// Rows nest inside V2 containers, so the same renderer has to reach them
