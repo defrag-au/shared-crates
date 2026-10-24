@@ -199,6 +199,74 @@ pub struct PluginCommand {
     /// config instead of advertising it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cooldown_seconds: Option<u64>,
+
+    /// Where this command can run. See [`CommandContexts`].
+    ///
+    /// Absent is [`CommandContexts::GUILD`] — every command written before this
+    /// field existed. Subcommands inherit their parent's: Discord registers a
+    /// command tree as one unit, so a subcommand's own value is ignored.
+    #[serde(default, skip_serializing_if = "CommandContexts::is_guild_only")]
+    pub contexts: CommandContexts,
+}
+
+/// Where a command can run: in guilds, in DMs with the bot, or both.
+///
+/// **The plugin's declaration is the whole opt-in for DMs.** Listing
+/// `bot_dm` puts the command in DMs with the bot — there is no host-side list
+/// to add it to — and is the plugin's promise that the command is safe there:
+/// it reads nothing guild-scoped, answers only about the invoking user, and
+/// handles a [`crate::CommandInvocation::guild_id`] of `None`.
+///
+/// A DM command must also be [`PermissionClass::Everyone`]: a DM carries no
+/// member permissions, so anything gated would resolve to `Everyone` anyway.
+/// Augie refuses to register one that isn't.
+///
+/// See `augminted-bots/docs/AUGIE_DM_COMMANDS_DESIGN.md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommandContexts {
+    /// Registered in each guild that has the plugin. Default `true`.
+    #[serde(default = "yes")]
+    pub guild: bool,
+    /// Registered globally, for DMs with the bot. Default `false`.
+    #[serde(default)]
+    pub bot_dm: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+impl CommandContexts {
+    /// Guilds only — the default, and every command before DMs existed.
+    pub const GUILD: Self = Self {
+        guild: true,
+        bot_dm: false,
+    };
+    /// Guilds and DMs with the bot.
+    pub const GUILD_AND_DM: Self = Self {
+        guild: true,
+        bot_dm: true,
+    };
+    /// DMs with the bot only. Skipped when a guild's command set is built.
+    pub const DM_ONLY: Self = Self {
+        guild: false,
+        bot_dm: true,
+    };
+
+    pub fn is_guild_only(&self) -> bool {
+        *self == Self::GUILD
+    }
+
+    /// Runs nowhere — a manifest mistake Augie reports rather than registers.
+    pub fn is_empty(&self) -> bool {
+        !self.guild && !self.bot_dm
+    }
+}
+
+impl Default for CommandContexts {
+    fn default() -> Self {
+        Self::GUILD
+    }
 }
 
 /// A command parameter. Mirrors the subset of Discord's option types that
@@ -325,7 +393,48 @@ mod tests {
             ephemeral: false,
             needs_identity: false,
             cooldown_seconds: None,
+            contexts: CommandContexts::GUILD,
         }
+    }
+
+    /// A manifest from before DMs existed reads as guild-only, and a
+    /// guild-only command writes no `contexts` key — so old and new plugins
+    /// and hosts agree on the wire.
+    #[test]
+    fn contexts_default_to_guild_only_and_stay_off_the_wire() {
+        let parsed: PluginCommand =
+            serde_json::from_str(r#"{"name":"status","description":"d"}"#).unwrap();
+        assert_eq!(parsed.contexts, CommandContexts::GUILD);
+
+        let json = serde_json::to_string(&cmd("status", vec![])).unwrap();
+        assert!(!json.contains("contexts"), "{json}");
+    }
+
+    #[test]
+    fn a_dm_capable_command_round_trips() {
+        let mut command = cmd("wallets", vec![]);
+        command.contexts = CommandContexts::GUILD_AND_DM;
+        let json = serde_json::to_string(&command).unwrap();
+        assert!(
+            json.contains(r#""contexts":{"guild":true,"bot_dm":true}"#),
+            "{json}"
+        );
+        let back: PluginCommand = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.contexts, CommandContexts::GUILD_AND_DM);
+
+        // A partial object fills the rest from the defaults: guild on, DM off.
+        let dm_only: CommandContexts =
+            serde_json::from_str(r#"{"guild":false,"bot_dm":true}"#).unwrap();
+        assert_eq!(dm_only, CommandContexts::DM_ONLY);
+        let just_dm: CommandContexts = serde_json::from_str(r#"{"bot_dm":true}"#).unwrap();
+        assert_eq!(just_dm, CommandContexts::GUILD_AND_DM);
+        assert!(
+            CommandContexts {
+                guild: false,
+                bot_dm: false
+            }
+            .is_empty()
+        );
     }
 
     #[test]

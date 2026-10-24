@@ -7,6 +7,7 @@ pub mod evaluate;
 pub mod fee;
 pub mod helpers;
 pub mod intents;
+pub mod launchpad;
 pub mod metadata;
 pub mod params;
 pub mod plan;

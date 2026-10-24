@@ -10,7 +10,7 @@ across frames and takes time as an argument. Stories are in `macroquad-storybook
 under "gamekit". MACROQUAD only: no wasm-bindgen, see the shared-crates CLAUDE.md on
 runtime pairs.
 
-27 modules.
+28 modules.
 
 | module | what it is |
 |---|---|
@@ -26,7 +26,7 @@ runtime pairs.
 | `input` | `Actions` — a game's verbs (hop, fire, pause) bound to keys, swipes, taps and pad buttons, with key repeat and press buffering |
 | `light` | `Lighting` — soft shadows, glows and a foil sheen, drawn by shader on a quad that turns with the thing it lights |
 | `pads` | `Pads` — gamepads by player slot, with sticks deadzoned and running y-down like the screen (feature `gamepads`) |
-| `paint` | `fill_gradient` and friends — the depth a printed card has and flat fills do not: gradient plates, bevels, inner shadows and a seeded grain texture |
+| `paint` | `fill_gradient` and friends — the depth a printed card has and flat fills do not: gradient plates, bevels, inner shadows, a seeded grain texture and CRT scanlines |
 | `pixel` | `PixelSprite` — pixel art written as text in code, one character a pixel, baked into nearest-filtered textures: sprites with no asset files, diffable and editable by anyone |
 | `plan` | `plan` — a capture plan (`--plan plan.txt`): many conditions, many captures, one launch |
 | `pointer` | `Pointer` — the press, drag, long-press and tap a card game needs, built on the widgets crate's `Gesture`; `Swipes`, the four-way swipe an arcade game needs; and `HoverGrace`, which keeps a hover alive for a moment between targets |
@@ -34,6 +34,7 @@ runtime pairs.
 | `sequence` | `Sequencer` — plays queued cues one after another, each holding the stage until its animation is done |
 | `shape` | `RoundedArt` — art cropped to fill a frame and clipped to its rounded corners, plus the rounded outline every card and badge needs |
 | `sprite` | `Sprite` — a retained, animated display object: where a card is, how it is turned and scaled, how visible, and whether a point is on it |
+| `starfield` | `Starfield` — a seeded sky of stars in depth layers that drift and twinkle, drawn behind a space scene, a title or a whole window |
 | `startup` | `Startup` — the phases a screen goes through between opening and drawing whole: settling while the window finds its size, warming glyphs behind a [`Preloader`], then live |
 | `step` | `FixedStep` — a simulation that steps at a fixed rate, whatever the frame rate |
 | `tech` | `TechPanel` — a workbench's panel for a tech tree, a tier at a time: tiles for the tier's nodes (built, ready, short or locked, and a server goal's fill), arrows between tiers, and a line about the picked one |

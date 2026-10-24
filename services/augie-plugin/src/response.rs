@@ -143,7 +143,7 @@ impl WellKnownCommand {
     pub fn default_message(&self) -> &'static str {
         match self {
             Self::LinkWallet => {
-                "🔗 **Link your wallet**\n\nConnect a Cardano wallet to prove ownership. \
+                "🔗 **Link your wallet**\n\nConnect a Cardano or EVM wallet to prove ownership. \
                  You'll be asked to sign a message — this costs nothing and never moves funds."
             }
         }

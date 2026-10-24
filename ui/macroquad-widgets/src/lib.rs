@@ -24,6 +24,7 @@ mod gesture;
 mod mint_checkout;
 mod order_fulfilment;
 mod quantity_stepper;
+mod radar;
 mod route_graph;
 mod segmented;
 mod slider;
@@ -65,6 +66,7 @@ pub use order_fulfilment::{
 pub use painter::frame_tap;
 pub use painter::{Hit, Painter, draw_rounded_rect};
 pub use quantity_stepper::{QuantityStepperVm, StepperAction, StepperResponse, quantity_stepper};
+pub use radar::{Blip, RadarVm, behind_sweep, radar, sweep_bearing};
 pub use route_graph::{
     LegState, ROUTE_STRIP_H, RouteCard, RouteGraphVm, RouteMeter, RouteNode, route_graph,
     route_graph_height, route_strip,

@@ -486,14 +486,14 @@ pub fn block_train(
         t.color.bg_highlight,
     );
 
-    // A status light beside "full", so the full width goes to the blocks.
+    // A status light beside "full", so the full width goes to the blocks. The
+    // light and the word share one midline (the word is centred on it by its
+    // capitals, below).
+    let status_mid = plot.top() + 1.0 + tick_band / 2.0;
     let pop = state.pulse.progress(snapshot.tip.as_ref(), feed, now_t);
     draw_mark(
         t,
-        vec2(
-            plot.left() + 2.0 + mark_radius,
-            plot.top() + 1.0 + tick_band / 2.0,
-        ),
+        vec2(plot.left() + 2.0 + mark_radius, status_mid),
         mark_radius,
         feed,
         pop,
@@ -649,10 +649,10 @@ pub fn block_train(
     }
 
     // Labels: the newest block on the left, the wait since it on the right.
-    p.text(
+    p.text_mid(
         "full",
         plot.left() + 2.0 + mark_radius * 2.0 + 4.0,
-        p.top_baseline(plot.top() + 1.0, tick),
+        status_mid,
         tick,
         theme::with_alpha(t.color.text_muted, 0.8),
     );

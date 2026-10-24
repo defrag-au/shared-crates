@@ -146,6 +146,11 @@ impl<'a> Painter<'a> {
     /// Baseline `y` that vertically centres text (at `size`) within a band of
     /// `height` starting at `top` — **independent of the string's own glyphs**.
     ///
+    /// For capitals-and-digits labels in a tight box (a stamp, a badge, a
+    /// pill), prefer [`Painter::text_centred`] or [`Painter::mid_baseline`]:
+    /// they centre the cap band rather than a line box with a tuned nudge, so
+    /// they hold in every face.
+    ///
     /// Centring on the *measured string* would drop caps-only labels (`Mint`)
     /// lower than descender labels (`tap`), since their glyph boxes differ. So
     /// we centre a fixed reference line with both a cap AND a descender (`"Ag"`)
@@ -157,6 +162,73 @@ impl<'a> Painter<'a> {
         const OPTICAL_NUDGE: f32 = 0.10;
         let line = self.measure("Ag", size);
         top + height * 0.5 + line.offset_y - line.height * 0.5 + size * OPTICAL_NUDGE
+    }
+
+    // ── Vertical placement by cap height ────────────────────────────────────
+    //
+    // UI labels are mostly capitals and digits (`FILED 7/14`, `#13,358,880`,
+    // `MEAN GAP`), and what the eye centres is their INK: the band from the
+    // baseline up to the top of a capital. The point size is much taller than
+    // that band (VT323's capitals are about half its size), and a line box
+    // from ascender to descender hangs below it. Centre either of those in a
+    // box and capitals sit visibly high, by a different amount per face.
+    //
+    // These place text by the cap band, so a label is centred in a stamp, on a
+    // row's midline or beside an icon whatever the face, with no per-face
+    // nudge. Descenders hang below the band, as they do in print.
+
+    /// Height of a capital above the baseline in the proportional face.
+    pub fn cap_height(&self, size: f32) -> f32 {
+        self.measure("H", size).offset_y
+    }
+
+    /// Height of a capital above the baseline in the monospace face.
+    pub fn cap_height_mono(&self, size: f32) -> f32 {
+        self.measure_mono("H", size).offset_y
+    }
+
+    /// Baseline that puts the middle of the capitals on `mid`.
+    pub fn mid_baseline(&self, mid: f32, size: f32) -> f32 {
+        mid + self.cap_height(size) * 0.5
+    }
+
+    /// [`Painter::mid_baseline`] for the monospace face.
+    pub fn mid_baseline_mono(&self, mid: f32, size: f32) -> f32 {
+        mid + self.cap_height_mono(size) * 0.5
+    }
+
+    /// Proportional text whose capitals are centred on `mid`: a row's
+    /// midline, an icon's centre. Pair it with the icon's own centre and the
+    /// two line up in any face.
+    pub fn text_mid(&self, s: &str, x: f32, mid: f32, size: f32, color: Color) {
+        self.text(s, x, self.mid_baseline(mid, size), size, color);
+    }
+
+    /// Monospace text whose capitals are centred on `mid`.
+    pub fn mono_mid(&self, s: &str, x: f32, mid: f32, size: f32, color: Color) {
+        self.mono(s, x, self.mid_baseline_mono(mid, size), size, color);
+    }
+
+    /// Monospace text with the top of its capitals at `top`: the monospace
+    /// twin of [`Painter::text_top`].
+    pub fn mono_top(&self, s: &str, x: f32, top: f32, size: f32, color: Color) {
+        let base = top + self.cap_height_mono(size);
+        self.mono(s, x, base, size, color);
+    }
+
+    /// Proportional text centred in `rect` both ways, by its capitals: a
+    /// stamp, a badge, a button's label.
+    pub fn text_centred(&self, s: &str, rect: Rect, size: f32, color: Color) {
+        let w = self.measure(s, size).width;
+        let x = rect.x + (rect.w - w) * 0.5;
+        self.text_mid(s, x, rect.y + rect.h * 0.5, size, color);
+    }
+
+    /// Monospace text centred in `rect` both ways, by its capitals.
+    pub fn mono_centred(&self, s: &str, rect: Rect, size: f32, color: Color) {
+        let w = self.measure_mono(s, size).width;
+        let x = rect.x + (rect.w - w) * 0.5;
+        self.mono_mid(s, x, rect.y + rect.h * 0.5, size, color);
     }
 
     /// Did the user tap inside `rect` this frame?

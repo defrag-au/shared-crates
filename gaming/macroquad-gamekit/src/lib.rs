@@ -59,6 +59,7 @@ pub mod preload;
 pub mod sequence;
 pub mod shape;
 pub mod sprite;
+pub mod starfield;
 pub mod startup;
 pub mod step;
 pub mod tech;
@@ -85,7 +86,7 @@ pub use light::Lighting;
 pub use pads::{Pad, Pads};
 pub use paint::{
     Gradient, bevel, fill_circle_gradient, fill_gradient, grain, inner_shadow, noise_pixels,
-    noise_texture,
+    noise_texture, scanlines,
 };
 pub use pixel::{Grid, Palette, PixelError, PixelSprite, parse_frames};
 pub use pointer::{HoverGrace, Pointer, PointerConfig, PointerEvent, Swipe, Swipes};
@@ -93,6 +94,7 @@ pub use preload::Preloader;
 pub use sequence::{Sequencer, stagger};
 pub use shape::{RoundedArt, cover_source, fill_rounded, stroke_rounded};
 pub use sprite::{Pose, Sprite, draw_order, topmost};
+pub use starfield::{Star, Starfield};
 pub use startup::{Finished, Phase, Startup};
 pub use step::{FixedStep, Tick};
 pub use tech::{TechHit, TechLayout, TechPanel, TechStyle, TechTile, TileState};
