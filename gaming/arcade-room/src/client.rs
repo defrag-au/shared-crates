@@ -140,11 +140,20 @@ pub struct Client<S: RoomSim> {
     /// Signalling from other players, in arrival order: the seat the room
     /// vouched for, and the `arcade-peer` bytes beside it.
     signals: VecDeque<(Seat, Vec<u8>)>,
+    /// Who the room says this player should keep a peer link with, and the
+    /// epoch that names the set: `None` until the room has said.
+    group: Option<(u32, Vec<Seat>)>,
     /// Frames sent the room since this client was seated. For a readout, and
     /// for measuring what a full room would cost: 64 players at one frame per
     /// input change is the number that decides whether the rate split is
     /// mandatory. Never read for a rule.
     sent: u32,
+    /// Signalling frames sent and received since this client was seated. The
+    /// peer plane shares the same socket as the game, so this is the only
+    /// count that says how much of the room's traffic it is. For a readout and
+    /// for the 64-seat measurement; never read for a rule.
+    signals_sent: u32,
+    signals_received: u32,
 }
 
 impl<S: RoomSim> Client<S> {
@@ -180,7 +189,10 @@ impl<S: RoomSim> Client<S> {
                     to_play: VecDeque::new(),
                     refused: None,
                     signals: VecDeque::new(),
+                    group: None,
                     sent: 0,
+                    signals_sent: 0,
+                    signals_received: 0,
                 };
                 client.ahead = Glide::at(room_tick as f64 + client.lead(), now);
                 client.ping(now);
@@ -246,6 +258,20 @@ impl<S: RoomSim> Client<S> {
     /// ticks.
     pub fn lead_ticks(&self) -> u64 {
         self.lead().ceil() as u64
+    }
+
+    /// How far behind the present the confirmed stream is drawn, in
+    /// milliseconds: the one-way trip plus the margin the behind timeline
+    /// plays at.
+    ///
+    /// The overlay's sample age is the same kind of quantity, so the difference
+    /// between the two is what the overlay buys **in time** — no moving sprite,
+    /// no world geometry, no rounding to tiles. On a loopback room this is the
+    /// playback margin alone; with the room a continent away it grows by the
+    /// trip.
+    pub fn behind_ms(&self) -> u32 {
+        let ms = (self.one_way() + BEHIND_TICKS) * 1_000.0 / f64::from(S::TICK_HZ);
+        ms.round().max(0.0) as u32
     }
 
     /// Move both display clocks to `now`, and play the behind timeline up to
@@ -324,7 +350,14 @@ impl<S: RoomSim> Client<S> {
     /// The room stamps this seat as the sender, so the bytes carry no identity
     /// of their own and a peer cannot claim another's seat by writing it down.
     pub fn send_signal(&mut self, bytes: Vec<u8>, now: u64) {
+        self.signals_sent = self.signals_sent.saturating_add(1);
         self.send(ToRoom::Signal(bytes), now);
+    }
+
+    /// Signalling frames this client has sent and received. A readout number
+    /// and a measurement, not an input to anything.
+    pub fn signals(&self) -> (u32, u32) {
+        (self.signals_sent, self.signals_received)
     }
 
     /// The next signalling message from another player, with the seat the room
@@ -333,10 +366,21 @@ impl<S: RoomSim> Client<S> {
         self.signals.pop_front()
     }
 
+    /// Who the room says this player should keep a peer link with, nearest
+    /// first, and the epoch that names that set: `None` until the room has
+    /// said, which is why the peer plane waits for it rather than assuming a
+    /// mesh.
+    pub fn group(&self) -> Option<(u32, &[Seat])> {
+        self.group
+            .as_ref()
+            .map(|(epoch, members)| (*epoch, members.as_slice()))
+    }
+
     /// A frame from the room. Errors only for a frame that does not decode.
     pub fn receive(&mut self, bytes: &[u8], now: u64) -> Result<(), String> {
         match ToClient::decode(bytes).map_err(|e| e.to_string())? {
             ToClient::Signal { from, bytes } => {
+                self.signals_received = self.signals_received.saturating_add(1);
                 self.signals.push_back((from, bytes));
             }
             ToClient::Confirmed {
@@ -389,6 +433,7 @@ impl<S: RoomSim> Client<S> {
                 self.own.retain(|t, _| *t >= done);
             }
             ToClient::Refused { reason } => self.refused = Some(reason),
+            ToClient::Group { epoch, members } => self.group = Some((epoch, members)),
             ToClient::Welcome { .. } => {}
         }
         Ok(())

@@ -21,7 +21,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use crate::sim::{Change, RoomSim, Seat};
+use crate::sim::{Change, INTEREST_MAX, RoomSim, Seat};
 use crate::wire::{ToClient, ToRoom};
 
 /// A connection, numbered by the edge.
@@ -107,6 +107,19 @@ pub struct Room<S: RoomSim> {
     identify: Option<Identify>,
     /// Seats newly taken since the host last asked ([`Room::take_joined`]).
     joined: Vec<(Seat, String)>,
+    /// Each seat's interest set as last published, and the epoch that names it.
+    /// A set that has not changed is not re-sent.
+    groups: BTreeMap<Seat, Vec<Seat>>,
+    group_epoch: u32,
+    /// The tick the groups were last recomputed at.
+    grouped_at: u64,
+    /// Signalling frames from seats, and the copies each produced. A payload
+    /// shares the game's socket with its inputs, so these are the peer plane's
+    /// whole cost to the object: one frame in, one per seat in the sender's
+    /// group out. Counted for the 64-seat measurement (§9); never read for a
+    /// rule.
+    signals_in: u32,
+    signal_copies: u32,
 }
 
 /// Verifies a session token from a hello, returning who it names (a stable
@@ -128,6 +141,14 @@ pub struct RoomStats {
 
 const SAVE_MAGIC: &[u8] = b"ARM1";
 
+/// How often a seat's group is recomputed, in seconds.
+///
+/// Coarse on purpose. A membership change costs a `Bye` and a re-announce at
+/// both ends, so recomputing it at tick rate would churn more than it buys;
+/// players cross an area-of-interest boundary over a second or two of travel,
+/// not over a tick.
+const GROUP_EVERY_SECS: u64 = 1;
+
 impl<S: RoomSim> Room<S> {
     pub fn new(seed: u64, cfg: RoomConfig) -> Self {
         Self::around(S::new(seed), cfg)
@@ -146,7 +167,18 @@ impl<S: RoomSim> Room<S> {
             stats: RoomStats::default(),
             identify: None,
             joined: Vec::new(),
+            groups: BTreeMap::new(),
+            group_epoch: 0,
+            grouped_at: 0,
+            signals_in: 0,
+            signal_copies: 0,
         }
+    }
+
+    /// Signalling frames received from seats, and the copies the room made of
+    /// them. A readout and a measurement, not an input to anything.
+    pub fn signals(&self) -> (u32, u32) {
+        (self.signals_in, self.signal_copies)
     }
 
     /// Seats taken by a new arrival since the last call, with the key each
@@ -323,21 +355,16 @@ impl<S: RoomSim> Room<S> {
                 );
             }
             // Signalling: the room vouches for who sent it and puts it in front
-            // of everyone else here. It never reads the body — that is
+            // of the sender's group. It never reads the body — that is
             // `arcade-peer`'s — and it does not echo to the sender.
             //
-            // Broadcast rather than per-peer routing, deliberately: a relay
-            // needs no routing table and no way to get a route wrong. Delivery
-            // is the room, which is the group until interest sets exist; when
-            // they do, this becomes the group's conns and nothing else changes.
+            // Scoped rather than broadcast: with groups, an offer never leaves
+            // the pair of interest sets it belongs to, so a 64-player world
+            // pays for the peers an eye can see rather than for every seat.
             (ToRoom::Signal(bytes), Some(seat)) => {
-                let targets: Vec<ConnId> = self
-                    .conns
-                    .iter()
-                    .filter(|(other, c)| c.seat.is_some() && **other != conn)
-                    .map(|(other, _)| *other)
-                    .collect();
-                for target in targets {
+                self.signals_in = self.signals_in.saturating_add(1);
+                for target in self.signal_targets(seat) {
+                    self.signal_copies = self.signal_copies.saturating_add(1);
                     self.send(
                         target,
                         ToClient::Signal {
@@ -506,6 +533,7 @@ impl<S: RoomSim> Room<S> {
     /// has. Called by every other method; the edge also calls it on a timer
     /// as a backstop.
     pub fn poll(&mut self, now: u64) {
+        self.regroup();
         let expired: Vec<Seat> = self
             .seats
             .iter()
@@ -590,6 +618,89 @@ impl<S: RoomSim> Room<S> {
             bytes: msg.encode(),
             close: false,
         });
+    }
+
+    /// Recompute every seat's interest set, and tell the seats whose set
+    /// changed.
+    ///
+    /// The room asks the sim, because the sim is the only thing that knows
+    /// where anyone is; it intersects the answer with the seats it actually
+    /// holds, so a stale answer cannot name a ghost. A sim with no opinion
+    /// (`interest` returning `None`) gets the whole room, which is what every
+    /// game had before groups existed.
+    fn regroup(&mut self) {
+        let every = u64::from(S::TICK_HZ).max(1) * GROUP_EVERY_SECS;
+        let due = self.sim.tick().saturating_sub(self.grouped_at) >= every;
+        if !due && self.groups.len() == self.seats.len() {
+            return;
+        }
+        self.grouped_at = self.sim.tick();
+        let held: Vec<Seat> = self.seats.keys().copied().collect();
+        let mut next = BTreeMap::new();
+        let mut changed = Vec::new();
+        for seat in &held {
+            let members: Vec<Seat> = match self.sim.interest(*seat, INTEREST_MAX) {
+                Some(near) => near
+                    .into_iter()
+                    .filter(|s| s != seat && self.seats.contains_key(s))
+                    .collect(),
+                None => held.iter().copied().filter(|s| s != seat).collect(),
+            };
+            if self.groups.get(seat) != Some(&members) {
+                changed.push((*seat, members.clone()));
+            }
+            next.insert(*seat, members);
+        }
+        self.groups = next;
+        if changed.is_empty() {
+            return;
+        }
+        self.group_epoch = self.group_epoch.wrapping_add(1);
+        for (seat, members) in changed {
+            let Some(conn) = self.seats.get(&seat).and_then(|s| s.conn) else {
+                continue;
+            };
+            self.send(
+                conn,
+                ToClient::Group {
+                    epoch: self.group_epoch,
+                    members,
+                },
+            );
+        }
+    }
+
+    /// The connections a signal from `seat` goes to: its own group, plus every
+    /// seat that names `seat` in theirs.
+    ///
+    /// The union is not belt-and-braces. A distance set capped at
+    /// [`INTEREST_MAX`] is not symmetric — A's twelve nearest can exclude B
+    /// while B's include A — and a pair where only one end knows the other still
+    /// has to negotiate: A offers because it sees B, and B's answer has to reach
+    /// A.
+    ///
+    /// Before the first group has been computed (a signal racing a hello) this
+    /// falls back to every other seated connection, which is what the room did
+    /// before groups existed.
+    fn signal_targets(&self, seat: Seat) -> Vec<ConnId> {
+        let Some(members) = self.groups.get(&seat) else {
+            return self
+                .conns
+                .iter()
+                .filter(|(_, c)| c.seat.is_some() && c.seat != Some(seat))
+                .map(|(id, _)| *id)
+                .collect();
+        };
+        let mut reaches = members.clone();
+        for (other, theirs) in &self.groups {
+            if *other != seat && theirs.contains(&seat) && !reaches.contains(other) {
+                reaches.push(*other);
+            }
+        }
+        reaches
+            .into_iter()
+            .filter_map(|s| self.seats.get(&s).and_then(|i| i.conn))
+            .collect()
     }
 
     /// Messages to send, in order.

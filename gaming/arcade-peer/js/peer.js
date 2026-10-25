@@ -87,22 +87,37 @@
 
   var BYE_REPLACED = 1;
 
-  // Bounded interest sets are the design's rule, not this file's to invent. But
-  // until the room sends `Group`, every seated peer announces and every announce
-  // would be answered: at 64 players that is a full mesh, which is explicitly
-  // out of scope. The cap is the shim's half of "bounded" — it bounds
-  // connections, not traffic, and it is replaced when `Group` lands.
+  // Bounded interest sets are the design's rule, not this file's to invent.
+  // The room publishes a group (§5), and this is the shim's half of it: links
+  // outside the group are closed and no new one is opened. `MAX_LINKS` stays as
+  // a hard cap — a group that is somehow larger than the design's bound still
+  // cannot produce a mesh — but it should never bind.
   var MAX_LINKS = 12;
 
   // ── ICE ──────────────────────────────────────────────────────────────────
   //
-  // Two STUN servers, no TURN. STUN is how a peer learns its own address on the
-  // far side of its NAT; without it a peer offers host candidates only, and a
-  // browser disguises those as mDNS `.local` names, so two peers on different
-  // networks never find a pair. TURN is the relay of last resort and it needs
-  // credentials this file cannot hold: see `docs/P2P_OVERLAY_DESIGN.md` §9.
+  // Two STUN servers by default. STUN is how a peer learns its own address on
+  // the far side of its NAT; without it a peer offers host candidates only, and
+  // a browser disguises those as mDNS `.local` names, so two peers on different
+  // networks never find a pair.
   //
-  // The pair is measured rather than remembered. `freeice`'s `ice-check`
+  // TURN is the relay of last resort, for the symmetric-NAT pair STUN cannot
+  // connect. Its credentials are short-lived and cannot live in this file, so
+  // they come from the room: `GET /ice` mints them server-side and answers the
+  // list a `RTCPeerConnection` takes. The fetch starts at load and a join waits
+  // for it, because a connection negotiated before the list arrived would be
+  // STUN-only for the rest of its life. An empty answer — the route not
+  // deployed, no secret configured, the mint failing — leaves the default in
+  // place: TURN is an improvement, never a requirement.
+  //
+  // `?ice=off` for a run that must not depend on the network; `?ice=stun:a:1,…`
+  // to point a test at named servers. Either wins over the room's list, and
+  // neither fetches it.
+  //
+  // `?relay=1` restricts gathering to relay candidates: how a run proves the
+  // credentials work, rather than that two peers happen to be on one machine.
+  //
+  // The default pair is measured rather than remembered. `freeice`'s `ice-check`
   // (2026-10-25, Sydney) answered in 6 ms from Cloudflare and 18 ms from
   // Google, while the European hosts that list also ships took 200–350 ms.
   // Both of these are anycast, so the figure is a distance to the nearest colo
@@ -114,10 +129,19 @@
     { urls: 'stun:stun.l.google.com:19302' },
   ];
 
-  // `?ice=off` for a run that must not depend on the network; `?ice=stun:a:1,…`
-  // to point a test at named servers. Absent, the default above applies: this
-  // game is played across the internet.
   var ICE = iceFromQuery(window.location.search);
+  var RELAY = /[?&]relay=1/.test(window.location.search || '');
+  var OFFLINE = /[?&]offline=1/.test(window.location.search || '');
+
+  // How long a join waits for the room's list. Under `wrangler dev` the mint is
+  // a round trip to Cloudflare Realtime and back, and a longer budget would be
+  // a visible delay at the door for a relay that may not be needed. Past it the
+  // default is used.
+  var ICE_BUDGET_MS = 1500;
+
+  var iceSettled = false;
+  var iceReady = null;
+  var pendingJoin = null;
 
   function iceFromQuery(search) {
     var match = /[?&]ice=([^&#]*)/.exec(search || '');
@@ -142,6 +166,99 @@
   function iceUrls(servers) {
     return servers.map(function (server) {
       return Array.isArray(server.urls) ? server.urls.join(' ') : server.urls;
+    });
+  }
+
+  function reportIce() {
+    if (!window.__bt) {
+      return;
+    }
+    window.__bt.ice = {
+      source: ICE.source,
+      urls: iceUrls(ICE.servers),
+      room: ICE.room,
+      relay: RELAY,
+    };
+  }
+
+  // The room's list, ahead of the default. A default earns its place only if it
+  // names an address the room's list does not already have: Cloudflare's mint
+  // carries its own STUN server, and listing it twice buys nothing. Google's is
+  // a second operator, so it is the entry that survives.
+  function mergeIce(room, defaults) {
+    var seen = {};
+    var merged = [];
+    function urlsOf(server) {
+      return Array.isArray(server.urls) ? server.urls : [server.urls];
+    }
+    function take(server, onlyIfNew) {
+      var urls = urlsOf(server);
+      if (onlyIfNew && urls.every(function (url) { return seen[url]; })) {
+        return;
+      }
+      urls.forEach(function (url) { seen[url] = true; });
+      merged.push(server);
+    }
+    room.forEach(function (server) { take(server, false); });
+    defaults.forEach(function (server) { take(server, true); });
+    return merged;
+  }
+
+  // Ask the room for credentials, once. `ICE.room` says what came back, for a
+  // report that would otherwise show only the list it ended up with:
+  // 'off' (an override, or no room on this origin), 'pending', 'ok', 'empty'
+  // (the route answered and had nothing to add), 'unavailable' (no route).
+  function loadRoomIce() {
+    if (ICE.source !== 'default' || OFFLINE) {
+      ICE.room = 'off';
+      iceSettled = true;
+      reportIce();
+      return Promise.resolve(ICE);
+    }
+    ICE.room = 'pending';
+    reportIce();
+    var settled = false;
+    return new Promise(function (resolve) {
+      var controller = typeof AbortController === 'function' ? new AbortController() : null;
+      var timer = setTimeout(function () {
+        if (controller) {
+          controller.abort();
+        }
+        finish('unavailable');
+      }, ICE_BUDGET_MS);
+      function finish(state) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        iceSettled = true;
+        clearTimeout(timer);
+        if (state !== null) {
+          ICE.room = state;
+        }
+        reportIce();
+        resolve(ICE);
+      }
+      fetch('/ice', {
+        cache: 'no-store',
+        signal: controller ? controller.signal : undefined,
+      }).then(function (response) {
+        return response.ok ? response.json() : null;
+      }).then(function (body) {
+        var servers = body && Array.isArray(body.iceServers) ? body.iceServers : [];
+        servers = servers.filter(function (server) {
+          return server && (typeof server.urls === 'string' ||
+            (Array.isArray(server.urls) && server.urls.length > 0));
+        });
+        if (servers.length === 0) {
+          finish('empty');
+          return;
+        }
+        ICE.servers = mergeIce(servers, DEFAULT_ICE);
+        finish('ok');
+      }).catch(function () {
+        finish('unavailable');
+      });
     });
   }
 
@@ -173,6 +290,11 @@
   var links = new Map();
   var seen = new Set();
 
+  // The room's interest set for this seat: who it is worth keeping a channel
+  // to. Null until the room has said; before then every peer, which is what
+  // the room does until its sim has an opinion about who is near whom.
+  var group = null;
+
   window.__bt = {
     // 'new' | 'connecting' | 'open' | 'closed' | 'failed'. A roll-up over the
     // links rather than a value any one browser event can walk backwards: a
@@ -201,17 +323,29 @@
     // Pairwise signals that reached us addressed to another peer. They are the
     // cost of broadcasting, and a count of them says the filter is working.
     ignored: 0,
+    // Discovery, counted: announces queued for the room, announces received,
+    // and signals dropped because the sender is outside this seat's group.
+    // An announce is the first step of every negotiation, so when a seat the
+    // room names has no link, these say whether it never asked, asked and was
+    // answered by silence, or was dropped here.
+    signals: { announced: 0, announces: 0, dropped: 0 },
     // What each link is doing, refreshed by `rollup`, so a report has more than
     // a count when a connection does not hold.
     links: [],
+    // Who the room says this player should be linked to: `{ epoch, members }`,
+    // or null before it has said. Its length is the peer count the room
+    // considers worth a channel, which is not the same as the world's seats.
+    group: null,
     // A bounded ring of link events — who offered, who answered, what closed —
     // because "state: closed" is not a diagnosis. Read it with
     // `eval "<peer>" "window.__bt.events" out=events.json`.
     events: [],
-    // What ICE was configured with: `source` is 'default' | 'query' | 'off', and
-    // `urls` is the list, so a report says which server list a run used rather
-    // than assuming it.
-    ice: { source: ICE.source, urls: iceUrls(ICE.servers) },
+    // What ICE was configured with: `source` is 'default' | 'query' | 'off',
+    // `urls` is the list, `room` says what the room's credential route answered
+    // ('off' | 'pending' | 'ok' | 'empty' | 'unavailable'), and `relay` is
+    // whether gathering was restricted to relay candidates. A report says which
+    // list a run used rather than assuming it.
+    ice: { source: ICE.source, urls: iceUrls(ICE.servers), room: ICE.room, relay: RELAY },
     // Every candidate gathered, by type. `host` is this machine and would be
     // gathered with no server configured at all; `srflx` is the one that proves
     // a STUN server answered.
@@ -220,6 +354,10 @@
     // difference between "ICE is configured" and "ICE answered".
     mapped: null,
   };
+
+  // Ask the room for TURN credentials now, so the join is not the first thing
+  // that has to wait for them.
+  iceReady = loadRoomIce();
 
   // The ring's bound: enough for a few negotiations, small enough that a long
   // session cannot grow without limit.
@@ -527,7 +665,13 @@
     if (link.pc) {
       return link.pc;
     }
-    var pc = new RTCPeerConnection({ iceServers: ICE.servers });
+    var options = { iceServers: ICE.servers };
+    if (RELAY) {
+      // Only a relay may carry this connection. `?relay=1` is a proof, not a
+      // deployment: with no TURN credentials it cannot connect at all.
+      options.iceTransportPolicy = 'relay';
+    }
+    var pc = new RTCPeerConnection(options);
     link.pc = pc;
     link.remoteSet = false;
     link.pending = [];
@@ -586,6 +730,7 @@
   // ── Negotiation ──────────────────────────────────────────────────────────
 
   function announce() {
+    window.__bt.signals.announced += 1;
     window.__btQueueSignal(frame(TAG_ANNOUNCE, sessionEpoch, null, new Uint8Array(0)));
   }
 
@@ -714,7 +859,19 @@
       console.warn('[peer] a signal from seat ' + from + ' did not decode');
       return;
     }
-    if (msg.tag !== TAG_ANNOUNCE && msg.to !== me) {
+    if (group !== null && !group.members.has(from)) {
+      // The room delivers to the sender's group, so this is a set that changed
+      // between the room deciding and the frame arriving. Dropping it is what
+      // the new set would have done.
+      window.__bt.signals.dropped += 1;
+      if (msg.tag === TAG_ANNOUNCE) {
+        note(from, 'announce dropped: outside the group');
+      }
+      return;
+    }
+    if (msg.tag === TAG_ANNOUNCE) {
+      window.__bt.signals.announces += 1;
+    } else if (msg.to !== me) {
       // Broadcast delivers every peer's pairwise signal to everyone. Only the
       // one it names acts on it — otherwise, with three peers, B would apply
       // C's answer to A's offer on its own link to C.
@@ -781,6 +938,80 @@
   // The room has seated us. Called from Rust whenever the seat changes, so it
   // must be cheap and idempotent for the seat it is already on.
   window.__btJoin = function (seat) {
+    if (me === seat || pendingJoin === seat) {
+      return false;
+    }
+    if (!iceSettled) {
+      // A connection negotiated now would never learn about TURN, and a link is
+      // only negotiated once. Hold the seat until the list settles — at once,
+      // unless the room is still minting.
+      pendingJoin = seat;
+      iceReady.then(function () {
+        if (pendingJoin === seat) {
+          pendingJoin = null;
+          join(seat);
+        }
+      });
+      return true;
+    }
+    pendingJoin = null;
+    return join(seat);
+  };
+
+  // The room's interest set for this seat, and the epoch that names it. Called
+  // when the set changes — about once a second at most — and again after a
+  // join. Links outside the set are told `Bye` and forgotten; a seat the set
+  // has gained is offered a channel from here, by whichever end leads.
+  //
+  // Offering on the group rather than on an announce is what makes the set
+  // self-starting. An announce can be dropped in flight by the far side's group
+  // filter — it arrives between the room deciding the set and that page
+  // applying it — and the `seen` guard then suppresses the echo that would
+  // recover it, which left two peers the room names permanently unlinked until
+  // the set changed again. The group is the room's statement that a channel is
+  // worth having, so the leader opens it without waiting to be announced at.
+  // The announce stays as the nudge for a page whose group has not arrived.
+  window.__btGroup = function (epoch, members) {
+    if (group !== null && epoch <= group.epoch) {
+      return false;
+    }
+    group = { epoch: epoch, members: new Set(members) };
+    window.__bt.group = { epoch: epoch, members: members.slice() };
+    var leaving = [];
+    links.forEach(function (link, seat) {
+      if (!group.members.has(seat)) {
+        leaving.push(link);
+      }
+    });
+    for (var i = 0; i < leaving.length; i += 1) {
+      var link = leaving[i];
+      sendBye(link.seat, link.myEpoch, BYE_REPLACED);
+      note(link.seat, 'left the group');
+      reset(link, 'left the group');
+      links.delete(link.seat);
+      seen.delete(link.seat);
+    }
+    if (me !== null && group.members.size > 0) {
+      announce();
+      group.members.forEach(function (seat) {
+        if (leadsOffer(seat) && !links.has(seat)) {
+          var link = linkFor(seat);
+          if (link !== null) {
+            startOffer(link);
+          }
+        }
+      });
+    }
+    rollup();
+    return true;
+  };
+
+  function join(seat) {
+    // A seat change is a new session: whatever the room said about the old one
+    // describes a set that may not be this seat's, and a room that restarted
+    // begins its epochs again.
+    group = null;
+    window.__bt.group = null;
     if (me === seat) {
       return false;
     }
@@ -802,7 +1033,7 @@
     announce();
     rollup();
     return true;
-  };
+  }
 
   // Whatever has arrived since the last drain, handed to the links. Called by
   // `probe_peer_out` once a frame.
@@ -876,7 +1107,9 @@
   // a machine gathers those with no server configured at all, and a browser
   // disguises them as mDNS names. This is the one check that separates "ICE is
   // configured" from "a STUN server answered" — and the first thing a
-  // two-network test should look at when a link does not open.
+  // two-network test should look at when a link does not open. A relay-only run
+  // (`?relay=1`) never gathers `srflx` and is still fine: `state: 'gathered'`
+  // with `types.relay > 0` is what that run asserts.
   //
   // The result is left on `window.__bt.iceProbe` as well as resolved, so a
   // harness that cannot await a promise can poll it.
@@ -884,6 +1117,8 @@
     var result = {
       state: 'gathering',
       source: ICE.source,
+      room: ICE.room,
+      relay: RELAY,
       urls: iceUrls(ICE.servers),
       types: {},
       srflx: null,
@@ -896,7 +1131,9 @@
     }
     var pc;
     try {
-      pc = new RTCPeerConnection({ iceServers: ICE.servers });
+      pc = new RTCPeerConnection(RELAY
+        ? { iceServers: ICE.servers, iceTransportPolicy: 'relay' }
+        : { iceServers: ICE.servers });
     } catch (e) {
       result.state = 'error';
       result.error = describe(e);
@@ -904,8 +1141,12 @@
     }
     return new Promise(function (resolve) {
       var settled = false;
+      // A candidate that proves something outside this machine: a relay
+      // allocation, or a STUN server answering. Host candidates are gathered
+      // with no server at all, so they do not count.
+      var gathered = false;
       var timer = setTimeout(function () {
-        done(result.srflx ? 'gathered' : 'timeout');
+        done(result.srflx || gathered ? 'gathered' : 'timeout');
       }, ICE_PROBE_MS);
       function done(state) {
         if (settled) {
@@ -927,13 +1168,16 @@
         }
         var type = candidateType(e.candidate);
         result.types[type] = (result.types[type] || 0) + 1;
+        if (type === 'srflx' || type === 'relay') {
+          gathered = true;
+        }
         if (type === 'srflx' && !result.srflx) {
           result.srflx = candidateAddress(e.candidate);
         }
       };
       pc.onicegatheringstatechange = function () {
         if (pc.iceGatheringState === 'complete') {
-          done(result.srflx ? 'complete' : 'no-srflx');
+          done(result.srflx ? 'complete' : (gathered ? 'gathered' : 'no-srflx'));
         }
       };
       pc.createDataChannel('probe');

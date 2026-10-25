@@ -1,0 +1,10 @@
+[package]
+name = "turn-credentials"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "Cloudflare Realtime TURN credentials — the minting pair, the response shape, and expiry"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

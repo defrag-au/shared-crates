@@ -77,6 +77,18 @@ pub enum ToClient {
         from: Seat,
         bytes: Vec<u8>,
     },
+    /// Who this player should keep a peer link with: at most
+    /// [`INTEREST_MAX`](crate::INTEREST_MAX), nearest first, recomputed by the
+    /// room from the world it runs.
+    ///
+    /// The epoch names the set rather than its contents: a seat that sees the
+    /// same number twice knows nothing changed, and a change is a clean event
+    /// (drop the links that left, announce to the ones that joined) rather than
+    /// something a client has to infer.
+    Group {
+        epoch: u32,
+        members: Vec<Seat>,
+    },
 }
 
 /// Why a frame did not decode.
@@ -252,6 +264,14 @@ impl ToClient {
                 w.u16(*from);
                 w.bytes16(bytes);
             }
+            Self::Group { epoch, members } => {
+                w.u8(7);
+                w.u32(*epoch);
+                w.len(members.len());
+                for seat in members {
+                    w.u16(*seat);
+                }
+            }
         }
         w.0
     }
@@ -296,6 +316,15 @@ impl ToClient {
                 from: r.u16()?,
                 bytes: r.bytes16()?,
             },
+            7 => {
+                let epoch = r.u32()?;
+                let n = r.len()?;
+                let mut members = Vec::with_capacity(n);
+                for _ in 0..n {
+                    members.push(r.u16()?);
+                }
+                Self::Group { epoch, members }
+            }
             t => return Err(WireError::UnknownTag(t)),
         };
         r.done()?;
@@ -520,6 +549,14 @@ mod tests {
             ToClient::Signal {
                 from: 3,
                 bytes: b"candidate:1 1 udp 2113 10.0.0.2 5000 typ host".to_vec(),
+            },
+            ToClient::Group {
+                epoch: 7,
+                members: vec![1, 2, 9, 63],
+            },
+            ToClient::Group {
+                epoch: 0,
+                members: Vec::new(),
             },
         ];
         for m in to_client {

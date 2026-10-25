@@ -38,6 +38,10 @@ members = [
     # Games: replay verification, lockstep rooms, and the macroquad game
     # layer. Kept together so the game crates read as one family.
     "gaming/*",
+    # Realtime media-plane crates: the parts of WebRTC a browser will not do
+    # for us. Kept apart from `gaming/*` because a relay's credentials are not
+    # a game concept — any realtime client needs them.
+    "realtime/*",
     "chains",
     "chain-ledger",
     "chain-ledger-koios",
@@ -251,6 +255,10 @@ arcade-room-quad = { path = "gaming/arcade-room-quad" }
 # The peer plane beside a room: the signalling protocol between players, who
 # offers, and the browser half that owns RTCPeerConnection.
 arcade-peer = { path = "gaming/arcade-peer" }
+# TURN credentials for that peer plane: the `id:token` pair a mint is signed
+# with, the shape Cloudflare Realtime answers, and when a mint goes stale. Pure
+# shapes, no transport — the Worker that mints composes its own fetch.
+turn-credentials = { path = "realtime/turn-credentials" }
 # Enum-keyed state for deterministic sims (timed effects, capped counts):
 # canonical, cheap to clone, its own wire format.
 arcade-state = { path = "gaming/arcade-state" }

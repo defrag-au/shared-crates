@@ -526,6 +526,58 @@ mod tests {
         );
     }
 
+    /// TURN's credentials are short-lived and cannot ship in this file, so the
+    /// shim asks the room for them (`GET /ice`). A shim that stops asking still
+    /// connects — it simply never relays — which is the failure this pins.
+    #[test]
+    fn the_browser_half_asks_the_room_for_turn() {
+        assert!(
+            PEER_JS.contains("fetch('/ice'"),
+            "the shim does not ask the room for TURN credentials"
+        );
+        assert!(
+            PEER_JS.contains("iceTransportPolicy"),
+            "no relay-only mode, so a run cannot prove it crossed a relay"
+        );
+        assert!(PEER_JS.contains("relay=1"), "the ?relay=1 switch is gone");
+        assert!(
+            PEER_JS.contains("if (!iceSettled)"),
+            "a join no longer waits for the credential list, so a link can be built without TURN"
+        );
+    }
+
+    /// The shim keeps links only to the room's interest set. A shim that ignores
+    /// it still works for two peers and quietly becomes a mesh at sixty-four,
+    /// which is the failure this pins.
+    #[test]
+    fn the_browser_half_keeps_only_the_rooms_group() {
+        assert!(
+            PEER_JS.contains("window.__btGroup = function"),
+            "the room's group is not taken"
+        );
+        assert!(
+            PEER_JS.contains("group.members.has(from)"),
+            "a signal from outside the group is accepted"
+        );
+        assert!(
+            PEER_JS.contains("left the group"),
+            "a link outside the group is not closed"
+        );
+    }
+
+    /// The group is the room saying a channel is worth having, so the end that
+    /// leads offers on it rather than waiting to be announced at. Waiting is
+    /// what left two named peers permanently unlinked: an announce that crosses
+    /// the far side's group filter in flight is dropped, and the `seen` guard
+    /// then suppresses the echo that would recover it.
+    #[test]
+    fn the_browser_half_offers_on_the_group() {
+        assert!(
+            PEER_JS.contains("leadsOffer(seat) && !links.has(seat)"),
+            "a group naming an unlinked seat no longer starts an offer"
+        );
+    }
+
     /// The shim has to write the wire format down a second time — the browser
     /// cannot read a Rust constant — so a change to either side must fail here
     /// rather than produce two ends that disagree about what a byte means.

@@ -142,6 +142,15 @@ impl<S: RoomSim> Harness<S> {
         }
     }
 
+    /// The playing client `i` for writing: what a test needs to send a signal
+    /// or an input outside [`Harness::run`]'s per-frame callback.
+    pub fn client_mut(&mut self, i: usize) -> Option<&mut Client<S>> {
+        match &mut self.bots[i].state {
+            BotState::Playing(c) => Some(c),
+            _ => None,
+        }
+    }
+
     fn arrival(&mut self, i: usize, to_room: bool) -> u64 {
         let (latency, jitter) = (self.bots[i].link.latency, self.bots[i].link.jitter);
         let mut at = self.now + latency + self.random(jitter * 2 + 1);

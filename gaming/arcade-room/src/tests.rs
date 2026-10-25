@@ -15,6 +15,11 @@ struct Walkers {
     dots: BTreeMap<Seat, (i64, i64, [u8; 2])>,
 }
 
+/// How close two walkers must be to keep a peer link: a standing-in for a
+/// game's area of interest, small enough that a test can walk one dot out of
+/// range in a second.
+const NEAR: i64 = 4;
+
 impl RoomSim for Walkers {
     const GAME: &'static str = "walkers";
     const VERSION: u32 = 1;
@@ -113,6 +118,25 @@ impl RoomSim for Walkers {
             rest = r;
         }
         Ok(w)
+    }
+
+    /// Walkers that are within [`NEAR`] of each other keep a peer link, and no
+    /// more: a small standing-in for a game's area of interest, so a group test
+    /// can walk one dot out of range and watch the set change.
+    fn interest(&self, seat: Seat, k: usize) -> Option<Vec<Seat>> {
+        let (x, y, _) = *self.dots.get(&seat)?;
+        let mut near: Vec<(i64, Seat)> = self
+            .dots
+            .iter()
+            .filter(|(other, _)| **other != seat)
+            .filter_map(|(other, d)| {
+                let (dx, dy) = (d.0 - x, d.1 - y);
+                let d2 = dx * dx + dy * dy;
+                (d2 <= NEAR * NEAR).then_some((d2, *other))
+            })
+            .collect();
+        near.sort_by_key(|(d2, other)| (*d2, *other));
+        Some(near.into_iter().take(k).map(|(_, other)| other).collect())
     }
 }
 
@@ -541,6 +565,44 @@ fn a_signal_reaches_the_other_seats_and_not_the_sender() {
     let _ = b;
 }
 
+/// One signal in is one frame; one signal out is one copy per seat it reaches.
+/// The pair of counts is what the 64-seat measurement divides, so an off-by-one
+/// here would make the peer plane look cheaper or dearer than it is.
+#[test]
+fn a_signal_is_counted_once_in_and_once_per_copy_out() {
+    let mut h = Harness::<Walkers>::new(1, cfg());
+    let a = h.connect("a", true, 10, 0);
+    let b = h.connect("b", true, 10, 0);
+    let c = h.connect("c", true, 10, 0);
+    h.run(1_000, |_, _, _| None);
+
+    assert_eq!(h.room.signals(), (0, 0), "nothing sent yet");
+
+    let now = h.now;
+    h.client_mut(a)
+        .expect("seated")
+        .send_signal(b"v=0\r\n".to_vec(), now);
+    h.run(100, |_, _, _| None);
+
+    // Walkers names every other seat, so one frame reaches two seats.
+    assert_eq!(h.room.signals(), (1, 2), "one in, one copy per member");
+    assert_eq!(
+        h.client(a).expect("seated").signals(),
+        (1, 0),
+        "the sender counts what it sent and none of its own"
+    );
+    assert_eq!(
+        h.client(b).expect("seated").signals(),
+        (0, 1),
+        "a recipient counts what arrived"
+    );
+    assert_eq!(
+        h.client(c).expect("seated").signals(),
+        (0, 1),
+        "both recipients, not one"
+    );
+}
+
 /// The player's own prediction is what the room later confirms: on a phone's
 /// connection (120 ms each way, ±60 ms), once the client has measured the
 /// link no input of theirs lands late, so their own character is never
@@ -584,4 +646,132 @@ fn a_players_own_prediction_is_never_corrected_on_a_jittery_link() {
         "late once measured: {:?}",
         h.room.stats()
     );
+}
+
+/// The room publishes each seat's interest set, and it follows the world: two
+/// walkers start in range of each other, and one that walks away leaves.
+#[test]
+fn a_group_is_the_seats_the_world_says_are_near() {
+    let mut h = Harness::<Walkers>::new(15, cfg());
+    let a = h.connect("a", true, 20, 0);
+    let b = h.connect("b", true, 20, 0);
+    h.run(1_200, |_, _, _| None);
+
+    let (a_seat, b_seat) = (
+        h.client(a).expect("playing").seat(),
+        h.client(b).expect("playing").seat(),
+    );
+    let group = |h: &Harness<Walkers>, i: usize| {
+        h.client(i)
+            .and_then(|c| c.group())
+            .map(|(_, members)| members.to_vec())
+    };
+
+    assert_eq!(group(&h, a), Some(vec![b_seat]), "a sees b");
+    assert_eq!(group(&h, b), Some(vec![a_seat]), "and b sees a");
+    let first_epoch = h.client(a).and_then(|c| c.group()).map(|(e, _)| e);
+    assert!(first_epoch.is_some_and(|e| e > 0), "a group is named");
+
+    // Twenty units a tick for three and a half seconds is far outside `NEAR`.
+    h.run(3_500, |i, _, _| (i == a).then(|| vec![20, 0]));
+    h.run(1_500, |_, _, _| None);
+
+    assert_eq!(group(&h, a), Some(Vec::new()), "a has walked out of range");
+    assert_eq!(
+        group(&h, b),
+        Some(Vec::new()),
+        "so b's set no longer names a"
+    );
+    assert!(
+        h.client(a)
+            .and_then(|c| c.group())
+            .is_some_and(|(e, _)| Some(e) != first_epoch),
+        "a change is a new epoch, not a quiet edit"
+    );
+}
+
+/// Three seats and a deliberately asymmetric interest set: seat 0 sees 1, and 1
+/// sees nobody. Enough to pin group-scoped delivery and the union that makes an
+/// asymmetric pair work.
+#[derive(Clone)]
+struct Islands {
+    tick: u64,
+}
+
+impl RoomSim for Islands {
+    const GAME: &'static str = "islands";
+    const VERSION: u32 = 1;
+    const TICK_HZ: u32 = 60;
+    const MAX_SEATS: usize = 8;
+    const INPUT_BYTES: usize = 1;
+
+    fn new(_seed: u64) -> Self {
+        Self { tick: 0 }
+    }
+    fn tick(&self) -> u64 {
+        self.tick
+    }
+    fn step(&mut self, _changes: &[Change]) {
+        self.tick += 1;
+    }
+    fn hash(&self) -> u64 {
+        self.tick
+    }
+    fn snapshot(&self) -> Vec<u8> {
+        Vec::new()
+    }
+    fn restore(_bytes: &[u8]) -> Result<Self, String> {
+        Ok(Self { tick: 0 })
+    }
+    fn interest(&self, seat: Seat, _k: usize) -> Option<Vec<Seat>> {
+        Some(match seat {
+            0 => vec![1],
+            _ => Vec::new(),
+        })
+    }
+}
+
+/// A signal goes to its sender's group and to anyone who names the sender, and
+/// no further. The second half is not decoration: a capped distance set is not
+/// symmetric, and the far end of an asymmetric pair still has to answer.
+#[test]
+fn a_signal_reaches_its_groups_union_and_no_further() {
+    let mut room = Room::<Islands>::new(1, cfg());
+    for conn in 1..=3 {
+        room.open(conn);
+    }
+    for (conn, name) in [(1, "a"), (2, "b"), (3, "c")] {
+        room.message(conn, &crate::client::hello::<Islands>(name, true), 0);
+    }
+
+    let mut seat_of = BTreeMap::new();
+    for out in room.drain() {
+        if let (To::One(conn), Ok(ToClient::Welcome { seat, .. })) =
+            (out.to, ToClient::decode(&out.bytes))
+        {
+            seat_of.insert(conn, seat);
+        }
+    }
+    for (conn, seat) in [(1, 0), (2, 1), (3, 2)] {
+        assert_eq!(seat_of.get(&conn), Some(&seat), "seated in hello order");
+    }
+
+    let heard = |room: &mut Room<Islands>, from: u64| {
+        room.message(from, &ToRoom::Signal(b"v=0\r\n".to_vec()).encode(), 1_000);
+        room.drain()
+            .into_iter()
+            .filter_map(|out| match (out.to, ToClient::decode(&out.bytes)) {
+                (To::One(conn), Ok(ToClient::Signal { from, .. })) => Some((conn, from)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(heard(&mut room, 1), vec![(2, 0)], "0's group is 1");
+    assert_eq!(
+        heard(&mut room, 2),
+        vec![(1, 1)],
+        "1's reply reaches 0 through 0's group, though 1 names nobody"
+    );
+    assert!(heard(&mut room, 3).is_empty(), "2 is in nobody's group");
 }

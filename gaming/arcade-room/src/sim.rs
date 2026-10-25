@@ -5,6 +5,14 @@
 /// renumbers anyone.
 pub type Seat = u16;
 
+/// The most peers one seat is asked to keep in touch with.
+///
+/// The room caps every interest set at this, and the browser shim caps its own
+/// links at the same number (`MAX_LINKS` in `peer.js`). Full mesh is not the
+/// plan: eight to twelve channels to players you can actually see is (§5 of
+/// `docs/P2P_OVERLAY_DESIGN.md` in augminted-bots).
+pub const INTEREST_MAX: usize = 12;
+
 /// What changes in a world on one tick. A seat's input is held from one tick
 /// to the next until a change replaces it, so only changes travel.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -70,4 +78,19 @@ pub trait RoomSim: Clone + Sized {
     fn snapshot(&self) -> Vec<u8>;
     /// The world a snapshot was taken of.
     fn restore(bytes: &[u8]) -> Result<Self, String>;
+
+    /// Who `seat` should talk to over the peer plane: at most `k` others,
+    /// nearest first if the game has a notion of near.
+    ///
+    /// The room intersects what this names with the seats it actually holds, so
+    /// a stale or careless answer cannot name a ghost, and it publishes the
+    /// result as a group. `None` means "no opinion": every other seated player,
+    /// which is what a world small enough not to care wants, and what every
+    /// game that has not implemented this keeps.
+    ///
+    /// Positions are the sim's, so this is where area-of-interest belongs:
+    /// what is on screen is what is worth a data channel.
+    fn interest(&self, _seat: Seat, _k: usize) -> Option<Vec<Seat>> {
+        None
+    }
 }
