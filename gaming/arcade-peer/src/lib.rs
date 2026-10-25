@@ -501,6 +501,31 @@ mod tests {
         );
     }
 
+    /// Host candidates alone cannot cross a NAT, and a browser disguises them as
+    /// mDNS names, so a shim that ships with no STUN server looks connected on
+    /// one machine and never connects anywhere else. This pins the two measured
+    /// hosts — anycast, different operators — and fails if the list is emptied
+    /// again.
+    #[test]
+    fn the_browser_half_configures_ice() {
+        assert!(
+            PEER_JS.contains("stun:stun.cloudflare.com:3478"),
+            "the Cloudflare STUN server is gone"
+        );
+        assert!(
+            PEER_JS.contains("stun:stun.l.google.com:19302"),
+            "the Google STUN server is gone"
+        );
+        assert!(
+            !PEER_JS.contains("var ICE_SERVERS = [];"),
+            "ICE defaults to empty again: peers on different networks cannot connect"
+        );
+        assert!(
+            PEER_JS.contains("window.__btIceProbe = function"),
+            "no ICE diagnostic, so a run cannot tell a configured list from an answered one"
+        );
+    }
+
     /// The shim has to write the wire format down a second time — the browser
     /// cannot read a Rust constant — so a change to either side must fail here
     /// rather than produce two ends that disagree about what a byte means.

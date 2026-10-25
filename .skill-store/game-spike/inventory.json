@@ -1,0 +1,25 @@
+{
+  "id": "urn:skill:game-spike",
+  "type": "https://ocfl.io/1.1/spec/#inventory",
+  "digestAlgorithm": "sha512",
+  "head": "v1",
+  "manifest": {
+    "24749058ee6cb514ba787688c49eab578cc8461e76b6c6d8ec098d57749ea1d31f2aa43beb705954b3707162b2ea8b310af01e80d924be7073e709308e5cfd5f": [
+      "v1/content/SKILL.md"
+    ]
+  },
+  "versions": {
+    "v1": {
+      "created": "2026-10-25T06:37:14Z",
+      "state": {
+        "24749058ee6cb514ba787688c49eab578cc8461e76b6c6d8ec098d57749ea1d31f2aa43beb705954b3707162b2ea8b310af01e80d924be7073e709308e5cfd5f": [
+          "SKILL.md"
+        ]
+      },
+      "message": "first published version",
+      "user": {
+        "name": "damo"
+      }
+    }
+  }
+}

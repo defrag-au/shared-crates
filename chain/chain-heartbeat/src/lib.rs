@@ -69,6 +69,7 @@ mod poll;
 mod relay;
 mod track;
 mod vrf;
+mod watch;
 
 #[cfg(feature = "flow")]
 pub mod feed;
@@ -99,6 +100,10 @@ pub use network::{
     block_probability_within,
 };
 pub use vrf::{VrfValue, lottery_value_from_output};
+pub use watch::{
+    BadPolicyId, MAX_WATCHED, PolicyId, WATCH_DOMAIN, WatchError, WatchEvent, WatchListError,
+    WatchedTx, parse_watch_list, watch_block,
+};
 
 pub(crate) fn blake2b<const N: usize>(data: &[u8]) -> [u8; N] {
     use blake2::digest::{Update, VariableOutput};

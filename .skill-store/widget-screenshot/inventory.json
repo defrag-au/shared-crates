@@ -1,0 +1,25 @@
+{
+  "id": "urn:skill:widget-screenshot",
+  "type": "https://ocfl.io/1.1/spec/#inventory",
+  "digestAlgorithm": "sha512",
+  "head": "v1",
+  "manifest": {
+    "3298b342d76387978a0fc6381db786b0f30444fa7bd9a9c88b8d4c0dc6e3ed5719df6a02e6486402cefb4b0835dc0b84602a200581c85e02255fd88d9561e1b3": [
+      "v1/content/SKILL.md"
+    ]
+  },
+  "versions": {
+    "v1": {
+      "created": "2026-10-25T06:37:14Z",
+      "state": {
+        "3298b342d76387978a0fc6381db786b0f30444fa7bd9a9c88b8d4c0dc6e3ed5719df6a02e6486402cefb4b0835dc0b84602a200581c85e02255fd88d9561e1b3": [
+          "SKILL.md"
+        ]
+      },
+      "message": "first published version",
+      "user": {
+        "name": "damo"
+      }
+    }
+  }
+}

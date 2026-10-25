@@ -21,15 +21,6 @@ description = "Cardano transaction utilities: fee calculation, min UTxO, and DEX
 # with no HTTP in it at all.
 [features]
 default = ["http"]
-# EMPTY, and only kept so a manifest still naming it resolves. The Maestro
-# adapters it used to gate (`From<&maestro::ProtocolParameters>`,
-# `impl TxEvaluator for MaestroApi`, `find_asset`) are gone: Maestro is shut
-# down (its host is NXDOMAIN) and Koios provides both halves — see
-# `koios`'s `evaluator` feature. Delete this line once no manifest enables it
-# (cnft.dev-workers' asset-hire did at the time of removal); until then a
-# stale opt-in fails to compile at its use sites rather than failing cargo's
-# resolution of the whole workspace.
-maestro = []
 # Outbound HTTP — currently only the Splash DEX analytics endpoints, which are
 # the sole reason this crate ever needed a network stack.
 http = ["dep:http-client"]

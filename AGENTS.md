@@ -2,15 +2,9 @@
 
 # Agent rules
 
-Generated from agent-playbook (`projects/shared-crates` + `models/zed`).
+Generated from `.playbook/project.conf` + `models/zed`.
 Each rule's source file is named in the comment above its heading.
 To change a rule, change the rule — not this block.
-
-## Non-negotiable
-
-The lead of each rule below, repeated so it is read first. Full text follows in place.
-
-- **Read code and history with the agent tools, not with the shell** — Reading code with `rg`, `grep`, `sed`, `cat`, `head` or `wc` → use `at-peek`. Reading installed crate source or build-script output with `grep`, `sed` or `find` under `~/.cargo` or `target/…/build` → use `at-crate`. Reading history or working-tree state with `git status`, `git diff` or `git log` → use `at-recall`. All three are read-only, bounded by construction, and say what they did not show. `git show` and `git blame` have no `at-recall` verb yet — say so rather than reaching for them silently.
 
 ## Do not report success you have not observed
 <!-- rule: rules/core/verify-before-claiming -->
@@ -395,8 +389,8 @@ nix develop -c cargo clippy --fix --allow-dirty --all-targets --all-features -- 
 
 **Before writing any widget, read the catalogue.**
 
-- `~/code/defrag/shared-crates/ui/egui-widgets/CATALOG.md` — ~100 widgets, one line each
-- `~/code/defrag/shared-crates/ui/macroquad-widgets/CATALOG.md` — the macroquad set
+- `ui/egui-widgets/CATALOG.md` in the `shared-crates` repository — ~100 widgets, one line each
+- `ui/macroquad-widgets/CATALOG.md` in `shared-crates` — the macroquad set
 
 Read the whole file. **Do not grep instead.**
 
@@ -898,7 +892,7 @@ nix develop -c cargo tree --target wasm32-unknown-unknown -p <crate> | grep -e o
 
 
 ## Subdirectory devshells are entered from the parent flake
-<!-- rule: projects/shared-crates/rules/subdir-devshell -->
+<!-- rule: .playbook/rules/subdir-devshell -->
 
 `ui/_storybook-egui` is served with the **root** devshell, run from that directory:
 
@@ -907,12 +901,11 @@ cd ui/_storybook-egui
 nix develop ../.. -c trunk serve      # http://127.0.0.1:8095 (see Trunk.toml)
 ```
 
-See the `widget-screenshot` skill for the full
-screenshot loop.
+See the `widget-screenshot` skill for the full screenshot loop.
 
 
 ## macroquad-gamekit never reads the clock, and every module has a catalogue line
-<!-- rule: projects/shared-crates/rules/gamekit-takes-time-as-an-argument -->
+<!-- rule: .playbook/rules/gamekit-takes-time-as-an-argument -->
 
 **Nothing in `gaming/macroquad-gamekit` outside `harness` calls `get_time`, `get_frame_time` or
 `Instant`.** Time is a parameter (`update(dt)`, `value(t)`, `phase`), owned by the game. The
@@ -932,7 +925,7 @@ same work on the same frame on every machine.
 
 
 ## A story has three registration sites plus a module declaration
-<!-- rule: projects/shared-crates/rules/storybook-registration -->
+<!-- rule: .playbook/rules/storybook-registration -->
 
 `_storybook-egui/src/lib.rs` has **three** places a story must be registered:
 

@@ -911,6 +911,7 @@ dependencies = [
  "log",
  "minicbor",
  "ouroboros-mux",
+ "rmp-serde",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

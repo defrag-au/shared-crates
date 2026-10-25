@@ -94,10 +94,60 @@
   // connections, not traffic, and it is replaced when `Group` lands.
   var MAX_LINKS = 12;
 
-  // No STUN, no TURN: host candidates only, which is enough for two peers that
-  // can reach each other. A deployed game needs both, and that is a
-  // configuration story this file does not have yet.
-  var ICE_SERVERS = [];
+  // ── ICE ──────────────────────────────────────────────────────────────────
+  //
+  // Two STUN servers, no TURN. STUN is how a peer learns its own address on the
+  // far side of its NAT; without it a peer offers host candidates only, and a
+  // browser disguises those as mDNS `.local` names, so two peers on different
+  // networks never find a pair. TURN is the relay of last resort and it needs
+  // credentials this file cannot hold: see `docs/P2P_OVERLAY_DESIGN.md` §9.
+  //
+  // The pair is measured rather than remembered. `freeice`'s `ice-check`
+  // (2026-10-25, Sydney) answered in 6 ms from Cloudflare and 18 ms from
+  // Google, while the European hosts that list also ships took 200–350 ms.
+  // Both of these are anycast, so the figure is a distance to the nearest colo
+  // rather than to a continent. Google's five `stun1..4` names all resolve to
+  // the one address, which is why one of them is here: more entries buy more
+  // candidates to gather, not more redundancy.
+  var DEFAULT_ICE = [
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:stun.l.google.com:19302' },
+  ];
+
+  // `?ice=off` for a run that must not depend on the network; `?ice=stun:a:1,…`
+  // to point a test at named servers. Absent, the default above applies: this
+  // game is played across the internet.
+  var ICE = iceFromQuery(window.location.search);
+
+  function iceFromQuery(search) {
+    var match = /[?&]ice=([^&#]*)/.exec(search || '');
+    if (!match) {
+      return { servers: DEFAULT_ICE, source: 'default' };
+    }
+    var value = decodeURIComponent(match[1]).trim();
+    if (value === 'off' || value === 'none') {
+      return { servers: [], source: 'off' };
+    }
+    var urls = value.split(',').map(function (part) {
+      return part.trim();
+    }).filter(Boolean);
+    return {
+      servers: urls.map(function (url) {
+        return { urls: url };
+      }),
+      source: 'query',
+    };
+  }
+
+  function iceUrls(servers) {
+    return servers.map(function (server) {
+      return Array.isArray(server.urls) ? server.urls.join(' ') : server.urls;
+    });
+  }
+
+  // How long a probe waits for gathering before deciding no STUN server
+  // answered. Chrome gives up on an unreachable server in about two seconds.
+  var ICE_PROBE_MS = 3000;
 
   // Which channel a link byte belongs to. Mirrors the game's `overlay::Kind`.
   var LINK_STATE = 0;
@@ -135,6 +185,12 @@
     open: 0,
     sent: 0,
     received: 0,
+    // The game's bytes, by channel: what went out on `state` and `ctrl`, and
+    // what arrived on `ctrl`. `received` above is the state channel, which is
+    // the one the overlay's samples come from.
+    sentState: 0,
+    sentCtrl: 0,
+    receivedCtrl: 0,
     // What the state channel had buffered when the last sample was taken.
     // The overlay's whole claim is that a thin buffer does not stall, so this
     // is the number that shows it.
@@ -152,6 +208,17 @@
     // because "state: closed" is not a diagnosis. Read it with
     // `eval "<peer>" "window.__bt.events" out=events.json`.
     events: [],
+    // What ICE was configured with: `source` is 'default' | 'query' | 'off', and
+    // `urls` is the list, so a report says which server list a run used rather
+    // than assuming it.
+    ice: { source: ICE.source, urls: iceUrls(ICE.servers) },
+    // Every candidate gathered, by type. `host` is this machine and would be
+    // gathered with no server configured at all; `srflx` is the one that proves
+    // a STUN server answered.
+    candidates: { host: 0, srflx: 0, prflx: 0, relay: 0 },
+    // The address a STUN server reported for us, once one has. Null is the
+    // difference between "ICE is configured" and "ICE answered".
+    mapped: null,
   };
 
   // The ring's bound: enough for a few negotiations, small enough that a long
@@ -167,6 +234,28 @@
 
   function describe(e) {
     return e && e.message ? e.message : String(e);
+  }
+
+  function candidateType(candidate) {
+    if (candidate.type) {
+      return candidate.type;
+    }
+    var match = / typ ([a-z]+)/.exec(candidate.candidate || '');
+    return match ? match[1] : 'other';
+  }
+
+  function candidateAddress(candidate) {
+    var host = candidate.address || candidate.ip;
+    return host ? host + ':' + candidate.port : null;
+  }
+
+  function countCandidate(candidate) {
+    var type = candidateType(candidate);
+    var counts = window.__bt.candidates;
+    counts[type] = (counts[type] || 0) + 1;
+    if (type === 'srflx' && !window.__bt.mapped) {
+      window.__bt.mapped = candidateAddress(candidate);
+    }
   }
 
   function sample() {
@@ -417,6 +506,8 @@
         if (window.__bt.received % 20 === 0) {
           sample();
         }
+      } else {
+        window.__bt.receivedCtrl += 1;
       }
       // The game's bytes. This file does not look at them: `island-wire` owns
       // the format, and all the shim knows is which seat and which channel.
@@ -436,7 +527,7 @@
     if (link.pc) {
       return link.pc;
     }
-    var pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    var pc = new RTCPeerConnection({ iceServers: ICE.servers });
     link.pc = pc;
     link.remoteSet = false;
     link.pending = [];
@@ -448,6 +539,7 @@
       if (!e.candidate) {
         return; // Gathering finished; there is no "end" message to send.
       }
+      countCandidate(e.candidate);
       // `toJSON`, not `.candidate`: the init needs its mid and m-line index to
       // be added again, and only the init has them.
       sendBlob(TAG_CANDIDATE, link, JSON.stringify(e.candidate.toJSON()), MAX_CANDIDATE);
@@ -739,6 +831,11 @@
       return false;
     }
     channel.send(bytes);
+    if (kind === LINK_STATE) {
+      window.__bt.sentState += 1;
+    } else {
+      window.__bt.sentCtrl += 1;
+    }
     return true;
   };
 
@@ -770,6 +867,83 @@
       return Promise.reject(new Error('no state channel is open'));
     }
     return Promise.resolve(sent);
+  };
+
+  // ── ICE diagnostic ───────────────────────────────────────────────────────
+
+  // What this end can learn about its own address, with no peer involved. A
+  // capture asserts `srflx` is non-zero: host candidates prove nothing, because
+  // a machine gathers those with no server configured at all, and a browser
+  // disguises them as mDNS names. This is the one check that separates "ICE is
+  // configured" from "a STUN server answered" — and the first thing a
+  // two-network test should look at when a link does not open.
+  //
+  // The result is left on `window.__bt.iceProbe` as well as resolved, so a
+  // harness that cannot await a promise can poll it.
+  window.__btIceProbe = function () {
+    var result = {
+      state: 'gathering',
+      source: ICE.source,
+      urls: iceUrls(ICE.servers),
+      types: {},
+      srflx: null,
+      error: null,
+    };
+    window.__bt.iceProbe = result;
+    if (ICE.servers.length === 0) {
+      result.state = 'none';
+      return Promise.resolve(result);
+    }
+    var pc;
+    try {
+      pc = new RTCPeerConnection({ iceServers: ICE.servers });
+    } catch (e) {
+      result.state = 'error';
+      result.error = describe(e);
+      return Promise.resolve(result);
+    }
+    return new Promise(function (resolve) {
+      var settled = false;
+      var timer = setTimeout(function () {
+        done(result.srflx ? 'gathered' : 'timeout');
+      }, ICE_PROBE_MS);
+      function done(state) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        result.state = state;
+        try {
+          pc.close();
+        } catch (e) {
+          /* already gone */
+        }
+        resolve(result);
+      }
+      pc.onicecandidate = function (e) {
+        if (!e.candidate) {
+          return;
+        }
+        var type = candidateType(e.candidate);
+        result.types[type] = (result.types[type] || 0) + 1;
+        if (type === 'srflx' && !result.srflx) {
+          result.srflx = candidateAddress(e.candidate);
+        }
+      };
+      pc.onicegatheringstatechange = function () {
+        if (pc.iceGatheringState === 'complete') {
+          done(result.srflx ? 'complete' : 'no-srflx');
+        }
+      };
+      pc.createDataChannel('probe');
+      pc.createOffer().then(function (offer) {
+        return pc.setLocalDescription(offer);
+      }).catch(function (e) {
+        result.error = describe(e);
+        done('error');
+      });
+    });
   };
 
   // Close every connection, so a run leaves nothing behind.

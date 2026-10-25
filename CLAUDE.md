@@ -2,7 +2,7 @@
 
 # Agent rules
 
-Generated from agent-playbook (`projects/shared-crates` + `models/claude-code`).
+Generated from `.playbook/project.conf` + `models/claude-code`.
 Each rule's source file is named in the comment above its heading.
 To change a rule, change the rule — not this block.
 
@@ -398,8 +398,8 @@ nix develop -c cargo clippy --fix --allow-dirty --all-targets --all-features -- 
 
 **Before writing any widget, read the catalogue.**
 
-- `~/code/defrag/shared-crates/ui/egui-widgets/CATALOG.md` — ~100 widgets, one line each
-- `~/code/defrag/shared-crates/ui/macroquad-widgets/CATALOG.md` — the macroquad set
+- `ui/egui-widgets/CATALOG.md` in the `shared-crates` repository — ~100 widgets, one line each
+- `ui/macroquad-widgets/CATALOG.md` in `shared-crates` — the macroquad set
 
 Read the whole file. **Do not grep instead.**
 
@@ -901,7 +901,7 @@ nix develop -c cargo tree --target wasm32-unknown-unknown -p <crate> | grep -e o
 
 
 ## Subdirectory devshells are entered from the parent flake
-<!-- rule: projects/shared-crates/rules/subdir-devshell -->
+<!-- rule: .playbook/rules/subdir-devshell -->
 
 `ui/_storybook-egui` is served with the **root** devshell, run from that directory:
 
@@ -910,12 +910,11 @@ cd ui/_storybook-egui
 nix develop ../.. -c trunk serve      # http://127.0.0.1:8095 (see Trunk.toml)
 ```
 
-See the `widget-screenshot` skill for the full
-screenshot loop.
+See the `widget-screenshot` skill for the full screenshot loop.
 
 
 ## macroquad-gamekit never reads the clock, and every module has a catalogue line
-<!-- rule: projects/shared-crates/rules/gamekit-takes-time-as-an-argument -->
+<!-- rule: .playbook/rules/gamekit-takes-time-as-an-argument -->
 
 **Nothing in `gaming/macroquad-gamekit` outside `harness` calls `get_time`, `get_frame_time` or
 `Instant`.** Time is a parameter (`update(dt)`, `value(t)`, `phase`), owned by the game. The
@@ -935,7 +934,7 @@ same work on the same frame on every machine.
 
 
 ## A story has three registration sites plus a module declaration
-<!-- rule: projects/shared-crates/rules/storybook-registration -->
+<!-- rule: .playbook/rules/storybook-registration -->
 
 `_storybook-egui/src/lib.rs` has **three** places a story must be registered:
 
