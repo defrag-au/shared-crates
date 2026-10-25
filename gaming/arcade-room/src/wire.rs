@@ -33,6 +33,10 @@ pub enum ToRoom {
     Hash { tick: u64, hash: u64 },
     /// For measuring the round trip.
     Ping { client_ms: u64 },
+    /// A signalling message for the other players here: an offer, an answer, a
+    /// candidate or a goodbye. The room stamps the sender's seat and broadcasts
+    /// it; what the bytes mean is `arcade-peer`'s business, not the room's.
+    Signal(Vec<u8>),
 }
 
 /// From a room to a client.
@@ -64,6 +68,14 @@ pub enum ToClient {
     Pong {
         client_ms: u64,
         room_tick: u64,
+    },
+    /// Another player's signalling message, with the seat the room vouches for.
+    ///
+    /// The sender's seat is stamped here rather than carried inside `bytes`, so
+    /// a peer cannot claim to be somebody else's seat.
+    Signal {
+        from: Seat,
+        bytes: Vec<u8>,
     },
 }
 
@@ -98,6 +110,10 @@ const MAX_STRING: usize = 256;
 const MAX_TOKEN: usize = 4_096;
 const MAX_ITEMS: usize = 4_096;
 const MAX_BLOB: usize = 1 << 20;
+/// A signalling body: an SDP description or a candidate. Generous for the
+/// former, and far below a blob, because a peer sending a megabyte of
+/// signalling would be a problem rather than a message.
+const MAX_SIGNAL: usize = 16 * 1024;
 
 impl ToRoom {
     pub fn encode(&self) -> Vec<u8> {
@@ -138,6 +154,10 @@ impl ToRoom {
                 w.u8(4);
                 w.u64(*client_ms);
             }
+            Self::Signal(bytes) => {
+                w.u8(5);
+                w.bytes16(bytes);
+            }
         }
         w.0
     }
@@ -171,6 +191,7 @@ impl ToRoom {
             4 => Self::Ping {
                 client_ms: r.u64()?,
             },
+            5 => Self::Signal(r.bytes16()?),
             t => return Err(WireError::UnknownTag(t)),
         };
         r.done()?;
@@ -226,6 +247,11 @@ impl ToClient {
                 w.u64(*client_ms);
                 w.u64(*room_tick);
             }
+            Self::Signal { from, bytes } => {
+                w.u8(6);
+                w.u16(*from);
+                w.bytes16(bytes);
+            }
         }
         w.0
     }
@@ -265,6 +291,10 @@ impl ToClient {
             5 => Self::Pong {
                 client_ms: r.u64()?,
                 room_tick: r.u64()?,
+            },
+            6 => Self::Signal {
+                from: r.u16()?,
+                bytes: r.bytes16()?,
             },
             t => return Err(WireError::UnknownTag(t)),
         };
@@ -309,6 +339,12 @@ impl Writer {
     fn blob(&mut self, b: &[u8]) {
         self.len(b.len());
         self.0.extend_from_slice(b);
+    }
+    /// A signalling body, up to [`MAX_SIGNAL`].
+    fn bytes16(&mut self, b: &[u8]) {
+        let take = b.len().min(MAX_SIGNAL);
+        self.u16(take as u16);
+        self.0.extend_from_slice(&b[..take]);
     }
     fn change(&mut self, c: &Change) {
         match c {
@@ -394,6 +430,13 @@ impl<'a> Reader<'a> {
         }
         Ok(self.take(n)?.to_vec())
     }
+    fn bytes16(&mut self) -> Result<Vec<u8>, WireError> {
+        let n = self.u16()? as usize;
+        if n > MAX_SIGNAL {
+            return Err(WireError::TooLong);
+        }
+        Ok(self.take(n)?.to_vec())
+    }
     fn change(&mut self) -> Result<Change, WireError> {
         Ok(match self.u8()? {
             0 => Change::Join(self.u16()?),
@@ -438,6 +481,8 @@ mod tests {
             ToRoom::Inputs(vec![]),
             ToRoom::Hash { tick: 60, hash: 99 },
             ToRoom::Ping { client_ms: 7 },
+            ToRoom::Signal(b"v=0\r\na=setup:actpass\r\n".to_vec()),
+            ToRoom::Signal(Vec::new()),
         ];
         for m in to_room {
             assert_eq!(ToRoom::decode(&m.encode()), Ok(m));
@@ -472,10 +517,39 @@ mod tests {
                 client_ms: 5,
                 room_tick: 6,
             },
+            ToClient::Signal {
+                from: 3,
+                bytes: b"candidate:1 1 udp 2113 10.0.0.2 5000 typ host".to_vec(),
+            },
         ];
         for m in to_client {
             assert_eq!(ToClient::decode(&m.encode()), Ok(m));
         }
+    }
+
+    /// A signalling body travels verbatim — SDP's carriage returns are not
+    /// escaped — and one past the cap is refused before it is allocated.
+    #[test]
+    fn a_signal_body_is_verbatim_and_capped() {
+        let sdp = b"v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n".to_vec();
+        let sent = ToClient::Signal {
+            from: 9,
+            bytes: sdp.clone(),
+        };
+        match ToClient::decode(&sent.encode()) {
+            Ok(ToClient::Signal { from, bytes }) => {
+                assert_eq!(from, 9);
+                assert_eq!(bytes, sdp);
+            }
+            other => panic!("expected a signal, got {other:?}"),
+        }
+
+        // A body claiming more than the cap, assembled by hand because the
+        // writer would never make one.
+        let mut huge = vec![6u8, 9, 0];
+        huge.extend_from_slice(&(MAX_SIGNAL as u16 + 1).to_le_bytes());
+        huge.resize(huge.len() + MAX_SIGNAL + 1, 0);
+        assert_eq!(ToClient::decode(&huge), Err(WireError::TooLong));
     }
 
     #[test]

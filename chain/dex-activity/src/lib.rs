@@ -238,6 +238,8 @@ pub enum TraceError {
     Block(#[from] BlockError),
     #[error(transparent)]
     Header(#[from] HeaderError),
+    #[error("transaction did not decode: {0}")]
+    Tx(String),
 }
 
 /// A transaction output's identity: the transaction that created it and its
@@ -333,6 +335,34 @@ impl PoolBook {
         }
     }
 
+    /// Remember a venue output learned some other way than a block: the
+    /// current UTxO of a pool, read from an indexer when a client starts, so
+    /// the first transaction that spends it resolves like any other. Ignored,
+    /// returning false, unless `address` is at a registered venue.
+    pub fn seed(
+        &mut self,
+        utxo: UtxoRef,
+        address: &[u8],
+        coin: u64,
+        assets: BTreeMap<(String, String), u64>,
+        slot: u64,
+    ) -> bool {
+        let Some((credential, venue)) = venue_credential(address) else {
+            return false;
+        };
+        self.insert(
+            utxo,
+            VenueUtxo {
+                credential,
+                venue,
+                coin,
+                assets,
+                slot,
+            },
+        );
+        true
+    }
+
     fn take(&mut self, key: &UtxoRef) -> Option<VenueUtxo> {
         self.utxos.remove(key)
     }
@@ -365,6 +395,10 @@ pub fn trace_block(
     let hashes = transactions.hashes();
     let mut events = Vec::new();
 
+    let at = At {
+        height: header.height,
+        slot: header.slot,
+    };
     for (index, body) in transactions.bodies.iter().enumerate() {
         if transactions.invalid.contains(&(index as u32)) {
             continue;
@@ -384,10 +418,66 @@ pub fn trace_block(
             .aux
             .get(&(index as u32))
             .and_then(|aux| cip20_memo(aux));
-        collect(book, &header, network, tx_hash, parsed, memo, &mut events);
+        collect(book, at, network, tx_hash, parsed, memo, &mut events);
     }
 
     Ok(events)
+}
+
+/// Where a transaction sits on the chain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct At {
+    pub height: u64,
+    pub slot: u64,
+}
+
+/// Decode ONE valid transaction into the venue activity it proves, against
+/// `book`, exactly as [`trace_block`] does for each transaction of a block.
+///
+/// For a consumer that is handed transactions rather than blocks: a client of
+/// a watch socket (`chain_heartbeat::WatchedTx`), which receives only the
+/// transactions touching one token. Every update of that token's pools
+/// touches it, so such a client's book stays continuous for those pools from
+/// the second transaction it sees; for the first, [`PoolBook::seed`] it with
+/// the pool's current output if it can.
+///
+/// `tx_hash` is the blake2b-256 of `body`; `aux` the transaction's auxiliary
+/// data, where a venue writes its memo. A transaction that failed phase-2
+/// validation must not be passed: its outputs never existed.
+pub fn trace_tx(
+    book: &mut PoolBook,
+    network: Network,
+    at: At,
+    tx_hash: [u8; 32],
+    body: &[u8],
+    aux: Option<&[u8]>,
+) -> Result<Vec<DexEvent>, TraceError> {
+    let parsed = parse_tx(body).map_err(|e| TraceError::Tx(e.to_string()))?;
+    let memo = aux.and_then(cip20_memo);
+    let mut events = Vec::new();
+    collect(book, at, network, tx_hash, parsed, memo, &mut events);
+    Ok(events)
+}
+
+/// One output of a transaction, whoever it pays: the address's raw bytes,
+/// its ADA and its assets, and the venue it is at, if any.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TxOutput {
+    pub index: u32,
+    /// The address as the body carries it (header byte, then credentials).
+    pub address: Vec<u8>,
+    pub coin: u64,
+    /// `(policy hex, asset name hex) => quantity`.
+    pub assets: BTreeMap<(String, String), u64>,
+    /// The registry's label and kind, for an output at a venue.
+    pub venue: Option<(&'static str, VenueKind)>,
+}
+
+/// Every output of a transaction body, in order. [`trace_tx`] reads only the
+/// outputs at venues; this reads them all, for the consumer that wants to
+/// know who a trade paid.
+pub fn tx_outputs(body: &[u8]) -> Result<Vec<TxOutput>, TraceError> {
+    read_all_outputs(body).map_err(|e| TraceError::Tx(e.to_string()))
 }
 
 /// Everything on one side of a transaction, summed for one pool or order: a
@@ -421,7 +511,7 @@ fn group(credential: [u8; 28], assets: &BTreeMap<(String, String), u64>) -> Grou
 
 fn collect(
     book: &mut PoolBook,
-    header: &BlockHeader,
+    header: At,
     network: Network,
     tx_hash: [u8; 32],
     parsed: ParsedTx,
@@ -590,12 +680,7 @@ fn collect(
     remember(book, header, tx_hash, &parsed.outputs);
 }
 
-fn remember(
-    book: &mut PoolBook,
-    header: &BlockHeader,
-    tx_hash: [u8; 32],
-    outputs: &[ParsedOutput],
-) {
+fn remember(book: &mut PoolBook, header: At, tx_hash: [u8; 32], outputs: &[ParsedOutput]) {
     for output in outputs {
         let Some((credential, venue)) = output.credential else {
             continue;
@@ -821,13 +906,21 @@ fn read_value(
     d: &mut Decoder<'_>,
     output: &mut ParsedOutput,
 ) -> Result<(), minicbor::decode::Error> {
+    read_value_into(d, &mut output.coin, &mut output.assets)
+}
+
+fn read_value_into(
+    d: &mut Decoder<'_>,
+    coin: &mut u64,
+    assets: &mut BTreeMap<(String, String), u64>,
+) -> Result<(), minicbor::decode::Error> {
     match d.datatype()? {
-        Type::U8 | Type::U16 | Type::U32 | Type::U64 => output.coin = d.u64()?,
+        Type::U8 | Type::U16 | Type::U32 | Type::U64 => *coin = d.u64()?,
         Type::Array => {
             d.array()?;
-            output.coin = d.u64()?;
+            *coin = d.u64()?;
             if d.datatype()? == Type::Map {
-                read_multiasset(d, &mut output.assets)?;
+                read_multiasset(d, assets)?;
             }
         }
         other => {
@@ -837,6 +930,72 @@ fn read_value(
         }
     }
     Ok(())
+}
+
+/// Every output of a body, whoever it pays (see [`tx_outputs`]).
+fn read_all_outputs(body: &[u8]) -> Result<Vec<TxOutput>, minicbor::decode::Error> {
+    let mut d = Decoder::new(body);
+    let count = d.map()?;
+    let mut index = 0u64;
+    while !done(count, index, &mut d)? {
+        if d.u32()? != 1 {
+            d.skip()?;
+            index += 1;
+            continue;
+        }
+        let outputs = enter_array(&mut d)?;
+        let mut found = Vec::new();
+        let mut i = 0u64;
+        while !done(outputs, i, &mut d)? {
+            found.push(read_any_output(&mut d, i as u32)?);
+            i += 1;
+        }
+        return Ok(found);
+    }
+    Ok(Vec::new())
+}
+
+fn read_any_output(d: &mut Decoder<'_>, index: u32) -> Result<TxOutput, minicbor::decode::Error> {
+    let mut out = TxOutput {
+        index,
+        address: Vec::new(),
+        coin: 0,
+        assets: BTreeMap::new(),
+        venue: None,
+    };
+    match d.datatype()? {
+        // Post-Alonzo: `[address, value, datum_option?, script_ref?]`.
+        Type::Array => {
+            let fields = d.array()?;
+            out.address = d.bytes()?.to_vec();
+            read_value_into(d, &mut out.coin, &mut out.assets)?;
+            let mut field = 2u64;
+            while !done(fields, field, d)? {
+                d.skip()?;
+                field += 1;
+            }
+        }
+        // Pre-Babbage: `{0: address, 1: value, 2: datum_hash}`.
+        Type::Map => {
+            let fields = d.map()?;
+            let mut field = 0u64;
+            while !done(fields, field, d)? {
+                match d.u32()? {
+                    0 => out.address = d.bytes()?.to_vec(),
+                    1 => read_value_into(d, &mut out.coin, &mut out.assets)?,
+                    _ => d.skip()?,
+                }
+                field += 1;
+            }
+        }
+        other => {
+            return Err(minicbor::decode::Error::message(format!(
+                "output is {other:?}"
+            )));
+        }
+    }
+    out.venue = venue_credential(&out.address).map(|(_, v)| (v.label, v.kind));
+    Ok(out)
 }
 
 fn read_multiasset(
@@ -1101,6 +1260,150 @@ mod tests {
     const SOLADA: &str = "8a0cfe6369fd7d7295e684ab2d6e8f62398a3bb53fffbe788ec67033";
     const SLOT: u64 = 186_800_000;
     const HEIGHT: u64 = 13_000_000;
+
+    /// $BUNNY's transactions around two curve buys on LumpFun v5, recorded
+    /// from mainnet on 2026-10-25 (the bodies a watch socket delivers), with
+    /// their hashes, in chain order.
+    const BUNNY_POLICY: &str = "a1b085f414fb7799d378e90e39d24c9e54c841a311d72b2f57cba293";
+    const BUNNY_TXS: [(u64, u64, &str, &[u8]); 4] = [
+        (
+            14_112_344,
+            201_327_303,
+            "0c95ba5453d68900927864347fa0100506c6fda1af344f4fe427b73b7b2e0685",
+            include_bytes!("../tests/fixtures/bunny/201327303-0c95ba54.body.cbor"),
+        ),
+        (
+            14_112_344,
+            201_327_303,
+            "fcc08b3a07544da5daca314ed0c2843c73e9bd4a846fe9039fd6951cc82b28a9",
+            include_bytes!("../tests/fixtures/bunny/201327303-fcc08b3a.body.cbor"),
+        ),
+        (
+            14_112_357,
+            201_327_473,
+            "072536b61c49932b2d984471282f31d817ce32e17e79a31140b5d91aee78dfe1",
+            include_bytes!("../tests/fixtures/bunny/201327473-072536b6.body.cbor"),
+        ),
+        (
+            14_112_780,
+            201_335_799,
+            "0624336e462487d7744650e2eb51ab94004f6b15b00187ca9c5ee5e590180811",
+            include_bytes!("../tests/fixtures/bunny/201335799-0624336e.body.cbor"),
+        ),
+    ];
+
+    /// One transaction at a time, as a watch client decodes them: the first
+    /// curve update has no predecessor and only teaches the book; the fee
+    /// claim that follows moves ADA and no token; the next buy is exact, the
+    /// curve releasing 4,554,698 $BUNNY (the amount Koios shows the buyer
+    /// receiving).
+    #[test]
+    fn a_watch_client_traces_bunny_one_transaction_at_a_time() {
+        let mut book = PoolBook::default();
+        let mut flows = Vec::new();
+        for (height, slot, hash, body) in BUNNY_TXS {
+            let mut tx_hash = [0u8; 32];
+            hex::decode_to_slice(hash, &mut tx_hash).expect("hash");
+            let at = At { height, slot };
+            let events =
+                trace_tx(&mut book, Network::Mainnet, at, tx_hash, body, None).expect("traces");
+            for e in events {
+                assert_eq!(e.venue, "LumpFun");
+                assert_eq!(e.venue_kind, VenueKind::Launchpad);
+                assert_eq!(e.tx_hash, hash);
+                flows.push(e);
+            }
+        }
+        let token = |e: &DexEvent| match &e.activity {
+            Activity::Flow { ada, assets, .. } => (
+                *ada,
+                assets
+                    .iter()
+                    .find(|a| a.policy_id == BUNNY_POLICY)
+                    .map(|a| a.delta),
+            ),
+            other => panic!("expected a flow, got {other:?}"),
+        };
+        assert_eq!(
+            flows.len(),
+            2,
+            "the claim and the buy; the first only seeds"
+        );
+        assert_eq!(token(&flows[0]), (-2_560_784, None), "a fee claim: ADA out");
+        let (ada, bunny) = token(&flows[1]);
+        assert_eq!(bunny, Some(-4_554_698), "the curve released the buy");
+        assert!(ada > 0, "ADA in for a buy, {ada}");
+
+        // Who it paid: the one output outside a venue holding $BUNNY.
+        let outputs = tx_outputs(BUNNY_TXS[3].3).expect("outputs");
+        let paid: Vec<&TxOutput> = outputs
+            .iter()
+            .filter(|o| o.venue.is_none())
+            .filter(|o| o.assets.keys().any(|(p, _)| p == BUNNY_POLICY))
+            .collect();
+        assert_eq!(paid.len(), 1);
+        assert_eq!(paid[0].assets.values().copied().max(), Some(4_554_698));
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.venue == Some(("LumpFun", VenueKind::Launchpad)))
+        );
+    }
+
+    /// A pool output learned elsewhere (an indexer, at start-up) seeds the
+    /// book, so the very first transaction that spends it is exact: here the
+    /// curve output the 9.1M buy left, seeded rather than traced, makes the
+    /// fee claim resolve on its own.
+    #[test]
+    fn a_seeded_pool_resolves_the_first_spend() {
+        let (_, _, fcc, buy) = BUNNY_TXS[1];
+        let curve = tx_outputs(buy)
+            .expect("outputs")
+            .into_iter()
+            .find(|o| o.venue.is_some())
+            .expect("the curve output");
+        let mut book = PoolBook::default();
+        let mut tx_hash = [0u8; 32];
+        hex::decode_to_slice(fcc, &mut tx_hash).expect("hash");
+        assert!(book.seed(
+            UtxoRef {
+                tx_hash,
+                index: curve.index
+            },
+            &curve.address,
+            curve.coin,
+            curve.assets.clone(),
+            201_327_303,
+        ));
+        let (height, slot, claim, body) = BUNNY_TXS[2];
+        let mut claim_hash = [0u8; 32];
+        hex::decode_to_slice(claim, &mut claim_hash).expect("hash");
+        let events = trace_tx(
+            &mut book,
+            Network::Mainnet,
+            At { height, slot },
+            claim_hash,
+            body,
+            None,
+        )
+        .expect("traces");
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            events[0].activity,
+            Activity::Flow {
+                ada: -2_560_784,
+                ..
+            }
+        ));
+        // An address at no venue is not remembered.
+        assert!(!book.seed(
+            UtxoRef { tx_hash, index: 0 },
+            &[0x01; 57],
+            1,
+            BTreeMap::new(),
+            1
+        ));
+    }
 
     #[test]
     fn a_spend_against_a_known_pool_reports_the_net_flow() {

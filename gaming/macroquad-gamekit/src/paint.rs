@@ -1,5 +1,6 @@
 //! `fill_gradient` and friends — the depth a printed card has and flat fills
-//! do not: gradient plates, bevels, inner shadows and a seeded grain texture.
+//! do not: gradient plates, bevels, inner shadows, a seeded grain texture and
+//! CRT scanlines.
 //!
 //! macroquad fills shapes with one colour. A frame that reads as metal or
 //! parchment needs light across it, an edge that catches it, and a surface with
@@ -207,6 +208,18 @@ pub fn noise_texture(size: u16, seed: u64, strength: f32) -> Texture2D {
     let tex = Texture2D::from_rgba8(size, size, &noise_pixels(size, seed, strength));
     tex.set_filter(FilterMode::Linear);
     tex
+}
+
+/// CRT scanlines over `rect`: a one-unit line of `color` every `spacing`
+/// units. Lay it over a screen-within-the-screen (a radar, a terminal, a
+/// viewport) with a low alpha; it reads as phosphor without hiding anything.
+pub fn scanlines(rect: Rect, spacing: f32, color: Color) {
+    let spacing = spacing.max(2.0);
+    let mut y = rect.y;
+    while y < rect.bottom() {
+        draw_rectangle(rect.x, y, rect.w, 1.0_f32.min(rect.bottom() - y), color);
+        y += spacing;
+    }
 }
 
 /// Lay a grain texture over `rect` at its natural size, tiled.

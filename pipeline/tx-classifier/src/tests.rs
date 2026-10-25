@@ -20,8 +20,7 @@ pub fn load_tx(json_data: &str) -> maestro::CompleteTransactionDetails {
 pub fn classify_tx(
     tx: &CompleteTransactionDetails,
 ) -> Result<(TxClassification, RawTxData), TxClassifierError> {
-    let indexer_pool = crate::indexers::IndexerPool::new_mock();
-    let raw_tx_data = indexer_pool.convert_complete_transaction_to_raw_data(tx)?;
+    let raw_tx_data = crate::maestro_fixtures::convert_complete_transaction_to_raw_data(tx)?;
 
     let rule_engine = crate::rules::RuleEngine::default();
     Ok((rule_engine.classify(&raw_tx_data), raw_tx_data))
@@ -1366,5 +1365,130 @@ mod compound_transaction_tests {
                 "DEX swap on SaturnSwap: 1326501078 0014df1053617475726e → ₳30.80 by addr1qxhhm0pn09vtf65wg97mthhlrhecngvdfvme8vnfmpdu9duy4tm8mpeafnrtr65pjzrchymx77d5apuka3z9y607tfkswqr22c"
             ]
         );
+    }
+}
+
+/// The production path: Koios `/tx_info` rows, converted without a request.
+///
+/// `resources/test/koios/` holds real responses captured 2026-10-24 for
+/// transactions that also have a Maestro capture under `txs/`: `/tx_info`
+/// (`_inputs`, `_scripts`, `_assets` and `_metadata` set) and, as
+/// `<name>_datum_info.json`, the `/datum_info` answer for the hashes the
+/// conversion asks about. The Maestro capture's classification is the
+/// specification; these check the Koios path reaches the same answer from
+/// Koios's shape.
+mod koios_conversion {
+    use super::*;
+    use crate::indexers::koios::{
+        apply_datum_info, convert_koios_tx_to_raw_data, incomplete_datum_hashes,
+    };
+    use test_utils::test_case;
+
+    fn load_koios_tx(json_data: &str) -> ::koios::koios_transaction::KoiosTransaction {
+        let mut rows: Vec<::koios::koios_transaction::KoiosTransaction> =
+            serde_json::from_str(json_data).expect("a /tx_info response");
+        rows.remove(0)
+    }
+
+    #[test]
+    fn kwic_unlisting_classifies_the_same_from_koios_as_from_maestro() {
+        test_utils::init_test_tracing();
+
+        let (from_maestro, _) =
+            classify_tx(&load_tx(test_case!("txs/kwic_unlisting.json"))).unwrap();
+
+        let koios_tx = load_koios_tx(test_case!("koios/kwic_unlisting.json"));
+        let mut raw = convert_koios_tx_to_raw_data(&koios_tx).unwrap();
+        // What `get_tx_from_koios` would ask `/datum_info` for, and its answer.
+        assert_eq!(
+            incomplete_datum_hashes(&raw),
+            vec!["0c18a58fab09a1a865a02592f2509196ba1c5be51f3e9a0a38441acac97586ce".to_string()]
+        );
+        let datum_info: Vec<::koios::KoiosDatumInfo> =
+            serde_json::from_str(test_case!("koios/kwic_unlisting_datum_info.json")).unwrap();
+        apply_datum_info(&mut raw, datum_info);
+        assert!(incomplete_datum_hashes(&raw).is_empty());
+
+        let from_koios = crate::rules::RuleEngine::default().classify(&raw);
+
+        assert_eq!(
+            serde_json::to_value(&from_koios.tx_types).unwrap(),
+            serde_json::to_value(&from_maestro.tx_types).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&from_koios.tags).unwrap(),
+            serde_json::to_value(&from_maestro.tags).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&from_koios.assets).unwrap(),
+            serde_json::to_value(&from_maestro.assets).unwrap()
+        );
+    }
+
+    #[test]
+    fn koios_inputs_come_back_in_ledger_order() {
+        // Koios lists this transaction's inputs as 5f9d…#1 then 2240…#0; the
+        // ledger (and every spend-redeemer index) orders them the other way.
+        let raw =
+            convert_koios_tx_to_raw_data(&load_koios_tx(test_case!("koios/kwic_unlisting.json")))
+                .unwrap();
+        let refs: Vec<(&str, u32)> = raw
+            .inputs
+            .iter()
+            .map(|i| (i.tx_hash.as_str(), i.output_index))
+            .collect();
+        assert_eq!(
+            refs,
+            vec![
+                (
+                    "22406fcb0c991344efb8a15894d019e2cb0a2e76cf836519f431dd7ff9414e0f",
+                    0
+                ),
+                (
+                    "5f9daad26246ba7335b2428a3b570693a59d37c58c48af27808580d41a1d037a",
+                    1
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn koios_redeemers_keep_the_shape_the_rules_read() {
+        let raw =
+            convert_koios_tx_to_raw_data(&load_koios_tx(test_case!("koios/kwic_unlisting.json")))
+                .unwrap();
+        let redeemers = raw.redeemers.expect("redeemers");
+        let spends = redeemers["spends"].as_array().expect("spends");
+        assert_eq!(spends.len(), 1);
+        assert_eq!(spends[0]["data"]["json"]["constructor"], 0);
+        assert_eq!(spends[0]["input_index"], 0);
+        assert_eq!(
+            spends[0]["script_hash"],
+            "9068a7a3f008803edac87af1619860f2cdcde40c26987325ace138ad"
+        );
+        // The same constructor Maestro reported for this spend.
+        let maestro = crate::maestro_fixtures::convert_complete_transaction_to_raw_data(&load_tx(
+            test_case!("txs/kwic_unlisting.json"),
+        ))
+        .unwrap();
+        assert_eq!(
+            maestro.redeemers.unwrap()["spends"][0]["data"]["json"]["constructor"],
+            spends[0]["data"]["json"]["constructor"]
+        );
+    }
+
+    #[test]
+    fn koios_witnessed_datum_carries_its_json() {
+        // The script input is reported by datum hash only; its content is on
+        // the plutus_contracts entry, and offer/listing rules read the JSON.
+        let raw =
+            convert_koios_tx_to_raw_data(&load_koios_tx(test_case!("koios/kwic_unlisting.json")))
+                .unwrap();
+        let datum = raw.inputs[0].datum.as_ref().expect("script input datum");
+        assert_eq!(
+            datum.hash(),
+            "0c18a58fab09a1a865a02592f2509196ba1c5be51f3e9a0a38441acac97586ce"
+        );
+        assert!(matches!(datum, crate::TxDatum::Json { json, .. } if json["constructor"] == 0));
     }
 }

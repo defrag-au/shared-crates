@@ -153,6 +153,69 @@ impl MessageBody {
     }
 }
 
+/// A message for one user's DMs, as it travels between services.
+///
+/// The producer says who and what; whoever holds a bot token delivers it
+/// (`discord_outbound::DiscordOutbound::send_dm`). It exists so a service with
+/// news for a user — a wallet just linked to their account — can hand it to a
+/// queue and answer its own caller immediately, rather than holding the
+/// caller's request open across two Discord round trips.
+///
+/// **Content only.** Component clicks are routed through a guild's config, and
+/// a DM has no guild, so a button here could only ever report "this
+/// interaction failed". [`Self::check`] refuses one rather than sending it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DirectMessage {
+    /// The recipient's snowflake.
+    pub recipient_id: String,
+    pub body: MessageBody,
+}
+
+impl DirectMessage {
+    pub fn new(recipient_id: impl Into<String>, body: MessageBody) -> Self {
+        Self {
+            recipient_id: recipient_id.into(),
+            body,
+        }
+    }
+
+    /// Why this cannot be delivered, if it cannot. Checked before Discord is
+    /// asked, so a malformed message fails as a bad message rather than as a
+    /// delivery failure that looks worth retrying.
+    pub fn check(&self) -> Result<(), &'static str> {
+        let id = &self.recipient_id;
+        if id.len() < 17 || id.len() > 20 || !id.chars().all(|c| c.is_ascii_digit()) {
+            return Err("recipient_id must be a snowflake");
+        }
+        if self.has_components() {
+            return Err(
+                "a DM cannot carry components: clicks in a DM have no guild to route through",
+            );
+        }
+        let body = &self.body;
+        if body.content.as_deref().is_none_or(str::is_empty)
+            && body.embeds.is_empty()
+            && body.layout.is_empty()
+        {
+            return Err("the message has nothing to say");
+        }
+        Ok(())
+    }
+
+    /// Does the body carry anything clickable — a row at the top level or
+    /// nested anywhere in a layout?
+    pub fn has_components(&self) -> bool {
+        fn any_row(blocks: &[PluginBlock]) -> bool {
+            blocks.iter().any(|block| match block {
+                PluginBlock::Row(_) => true,
+                PluginBlock::Container { blocks, .. } => any_row(blocks),
+                _ => false,
+            })
+        }
+        !self.body.rows.is_empty() || any_row(&self.body.layout)
+    }
+}
+
 /// A file uploaded alongside a message.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Attachment {
@@ -326,6 +389,81 @@ mod tests {
             }])
             .is_v2()
         );
+    }
+
+    // ── DirectMessage ───────────────────────────────────────────────────
+
+    const USER: &str = "123456789012345678";
+
+    #[test]
+    fn plain_text_to_a_snowflake_is_deliverable() {
+        assert!(
+            DirectMessage::new(USER, MessageBody::text("linked"))
+                .check()
+                .is_ok()
+        );
+        let layout = MessageBody::layout(vec![PluginBlock::Text {
+            content: "linked".into(),
+        }]);
+        assert!(DirectMessage::new(USER, layout).check().is_ok());
+    }
+
+    #[test]
+    fn only_snowflakes_are_recipients() {
+        for bad in [
+            "",
+            "abc",
+            "12345",
+            "0x7980aa64093853cb78c927e05b88fed96e945f81",
+        ] {
+            assert!(
+                DirectMessage::new(bad, MessageBody::text("hi"))
+                    .check()
+                    .is_err(),
+                "{bad:?}"
+            );
+        }
+    }
+
+    /// A row anywhere is a component, and a DM cannot route a click.
+    #[test]
+    fn components_anywhere_are_refused() {
+        let top = MessageBody {
+            content: Some("hi".into()),
+            rows: vec![PluginActionRow::new(vec![])],
+            ..Default::default()
+        };
+        assert!(DirectMessage::new(USER, top).check().is_err());
+
+        let nested = MessageBody::layout(vec![PluginBlock::Container {
+            accent_color: None,
+            blocks: vec![PluginBlock::Row(PluginActionRow::new(vec![]))],
+        }]);
+        assert!(DirectMessage::new(USER, nested).check().is_err());
+    }
+
+    #[test]
+    fn an_empty_message_is_refused() {
+        assert!(
+            DirectMessage::new(USER, MessageBody::default())
+                .check()
+                .is_err()
+        );
+        assert!(
+            DirectMessage::new(USER, MessageBody::text(""))
+                .check()
+                .is_err()
+        );
+    }
+
+    /// The queue wire shape: two keys, the second the ordinary body.
+    #[test]
+    fn a_direct_message_round_trips_as_two_keys() {
+        let dm = DirectMessage::new(USER, MessageBody::text("linked"));
+        let json = serde_json::to_value(&dm).unwrap();
+        assert_eq!(json["recipient_id"], USER);
+        assert_eq!(json["body"]["content"], "linked");
+        assert_eq!(serde_json::from_value::<DirectMessage>(json).unwrap(), dm);
     }
 
     /// A body carrying only a file is not empty — that is a real message, and

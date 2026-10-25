@@ -334,12 +334,12 @@ impl TxBuilder {
     /// Build with script evaluation via the injected [`TxEvaluator`](crate::evaluate::TxEvaluator).
     ///
     /// 1. Build with estimated ExUnits (from the `ScriptInput`/`MintEntry` values)
-    /// 2. Evaluate the TX via the provider (Maestro, Koios/Ogmios, …) for real units
+    /// 2. Evaluate the TX via the provider (Koios/Ogmios, …) for real units
     /// 3. Patch the redeemers with actual ExUnits and rebuild
     ///
     /// This produces accurate fees that include the script execution cost.
-    /// The provider is any [`TxEvaluator`](crate::evaluate::TxEvaluator); passing a
-    /// `&maestro::MaestroApi` keeps the previous behaviour unchanged.
+    /// The provider is any [`TxEvaluator`](crate::evaluate::TxEvaluator) — in
+    /// practice `&koios::KoiosApi` with `koios`'s `evaluator` feature.
     pub async fn build_evaluated<E>(self, evaluator: &E) -> Result<UnsignedTx, TxBuildError>
     where
         E: crate::evaluate::TxEvaluator + ?Sized,
@@ -374,8 +374,8 @@ impl TxBuilder {
             .map_err(|e| TxBuildError::BuildFailed(format!("build_conway_raw failed: {e}")))?;
         let tx_cbor_hex = hex::encode(&built.tx_bytes.0);
 
-        // Evaluate script execution costs via the injected provider (Maestro,
-        // Koios/Ogmios, …) to get the real per-redeemer ExUnits.
+        // Evaluate script execution costs via the injected provider
+        // (Koios/Ogmios, …) to get the real per-redeemer ExUnits.
         let eval_results = evaluator
             .evaluate_pending(&tx_cbor_hex, pending)
             .await

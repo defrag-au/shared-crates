@@ -1,22 +1,6 @@
 use crate::params::TxBuildParams;
 use cardano_assets::AssetId;
 
-/// Find a UTxO containing a specific asset unit.
-///
-/// Returns `None` if no UTxO contains the target asset.
-///
-/// Shaped around Maestro's UTxO row rather than anything of ours, so it lives
-/// behind that adapter's feature and goes when the adapter does.
-#[cfg(feature = "maestro")]
-pub fn find_asset<'a>(
-    utxos: &'a [maestro::AddressUtxo],
-    target: &str,
-) -> Option<&'a maestro::AddressUtxo> {
-    utxos
-        .iter()
-        .find(|utxo| utxo.assets.iter().any(|asset| asset.unit == target))
-}
-
 /// An asset together with the quantity that will sit in the output.
 ///
 /// The quantity is load-bearing for min-ADA: it is CBOR-encoded inline in the

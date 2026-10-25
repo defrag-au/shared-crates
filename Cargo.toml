@@ -248,6 +248,9 @@ arcade-room-worker = { path = "gaming/arcade-room-worker" }
 # A room client's connection for macroquad games: the client over quad-net,
 # with quad-net's traps handled once.
 arcade-room-quad = { path = "gaming/arcade-room-quad" }
+# The peer plane beside a room: the signalling protocol between players, who
+# offers, and the browser half that owns RTCPeerConnection.
+arcade-peer = { path = "gaming/arcade-peer" }
 # Enum-keyed state for deterministic sims (timed effects, capped counts):
 # canonical, cheap to clone, its own wire format.
 arcade-state = { path = "gaming/arcade-state" }

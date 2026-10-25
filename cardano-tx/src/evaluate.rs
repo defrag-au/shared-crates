@@ -3,9 +3,9 @@
 //!
 //! This is the read-side sibling of [`crate::submit::SubmitProvider`]: it lets a
 //! tx builder ([`crate::builder::UnsignedTxBuilder::build_evaluated`]) source
-//! ExUnits from whichever backend is available — Maestro's `/transactions/evaluate`,
-//! Koios's Ogmios `evaluateTransaction`, or (eventually) a local Plutus VM — without
-//! the builder knowing which. Dolos/mitos submit but do not run phase-2, so
+//! ExUnits from whichever backend is available — Koios's Ogmios
+//! `evaluateTransaction` (`koios` crate, `evaluator` feature), or (eventually) a
+//! local Plutus VM — without the builder knowing which. Dolos/mitos submit but do not run phase-2, so
 //! evaluation is the one write-path capability that still needs an external (or
 //! embedded-VM) provider.
 
@@ -69,8 +69,8 @@ impl EvalError {
 /// needs it to run phase-2 on the transaction that spends it.
 ///
 /// Provider-neutral on purpose: Ogmios takes this as JSON `additionalUtxo`,
-/// Maestro wants a CBOR-encoded output, and neither shape belongs in a
-/// builder.
+/// another evaluator may want a CBOR-encoded output, and neither shape
+/// belongs in a builder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingUtxo {
     pub tx_hash: String,
@@ -89,7 +89,7 @@ pub struct PendingUtxo {
 /// match [`crate::submit::SubmitProvider`].
 #[async_trait(?Send)]
 pub trait TxEvaluator {
-    /// Stable identifier for logs / metrics (e.g. `"maestro"`, `"koios"`).
+    /// Stable identifier for logs / metrics (e.g. `"koios"`).
     fn name(&self) -> &str;
 
     /// Evaluate the scripts in `tx_cbor_hex` (an unsigned tx built with estimated
@@ -118,41 +118,6 @@ pub trait TxEvaluator {
             self.name(),
             pending.len()
         )))
-    }
-}
-
-/// Maestro's evaluator. Kept working for the unchained path; deliberately NOT
-/// taught to evaluate a chain.
-///
-/// Maestro's `AdditionalUtxo` takes a CBOR-encoded output rather than Ogmios's
-/// JSON, so supporting it means a second encoding — and the Maestro API is
-/// retired on 2026-09-18, with every write path already on Koios. The
-/// inherited default refuses with a message that says so, which is a better
-/// outcome than a mapping nobody will maintain.
-#[cfg(feature = "maestro")]
-#[async_trait(?Send)]
-impl TxEvaluator for maestro::MaestroApi {
-    fn name(&self) -> &str {
-        "maestro"
-    }
-
-    async fn evaluate(&self, tx_cbor_hex: &str) -> Result<Vec<RedeemerEvaluation>, EvalError> {
-        let results = self
-            .evaluate_transaction(tx_cbor_hex, None::<&[maestro::AdditionalUtxo]>)
-            .await
-            .map_err(|e| EvalError::Failed(e.to_string()))?;
-
-        Ok(results
-            .into_iter()
-            .map(|r| RedeemerEvaluation {
-                redeemer_tag: r.redeemer_tag,
-                redeemer_index: r.redeemer_index,
-                ex_units: EvalExUnits {
-                    mem: r.ex_units.mem,
-                    steps: r.ex_units.steps,
-                },
-            })
-            .collect())
     }
 }
 

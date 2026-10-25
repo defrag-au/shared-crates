@@ -81,6 +81,16 @@ pub enum DiscordError {
     #[error("Blocked by Cloudflare (error 1015) — an edge block, not a Discord rate limit")]
     CloudflareBlocked,
 
+    /// Discord error 50007: this user cannot be messaged by the bot.
+    ///
+    /// The ordinary answer for a DM to someone who has turned off DMs from
+    /// server members, or who shares no server with the bot. A distinct
+    /// variant because it is an *outcome* rather than a failure: retrying will
+    /// not change it, and a caller notifying a user should log it quietly and
+    /// move on rather than raise it.
+    #[error("Discord will not deliver to this user (error 50007)")]
+    CannotMessageUser,
+
     #[error("Invalid attachment: {0}")]
     InvalidAttachment(String),
 

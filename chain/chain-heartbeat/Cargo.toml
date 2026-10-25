@@ -46,3 +46,6 @@ ui-flow = { path = "../../ui/ui-flow", default-features = false, optional = true
 [dev-dependencies]
 futures = { workspace = true }
 serde_json = { workspace = true }
+# A watched transaction rides ui-flow, which is MessagePack: the test holds
+# its bytes to a byte string on that wire.
+rmp-serde = { workspace = true }

@@ -25,17 +25,25 @@ pub const INTERNAL_WALLETS_PATH: &str = "/_internal/wallets";
 /// `address`. A stake-shaped filter fed an `0x…` account finds nothing; an EVM
 /// ownership resolver fed a bech32 address does the same.
 ///
-/// Order is meaningful — the list arrives in the order the user arranged it,
-/// so the first entry is their primary. Consumers that only need addresses
-/// should still preserve it rather than collecting into a set.
+/// **No wallet is primary.** The list arrives in the order the wallets were
+/// linked, which is stable and nothing more: users cannot reorder it, and no
+/// entry is special. Treat it as a set. A consumer that one day needs a
+/// particular wallet — a payout destination, say — needs a setting named for
+/// that job, not the first entry here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LinkedWallet {
-    /// CAIP-2 chain the address was proven on — `cardano:mainnet`,
-    /// `eip155:4663`. The same spelling `chains::ChainRef` parses.
+    /// Where the proof holds, as `chains::ChainScope` writes it: a CAIP-2 chain
+    /// when the proof is chain-specific, the bare namespace when it is not.
     ///
-    /// An EVM proof is over the account, not a chain: the same key controls the
-    /// address everywhere. This records the chain the platform verified for, so
-    /// a consumer knows which ownership data the address can be looked up in.
+    /// | Link | `chain` | Why |
+    /// |---|---|---|
+    /// | Cardano | `cardano:mainnet` | a stake address encodes its network |
+    /// | EVM | `eip155` | the account comes from a key alone, so a signature proves control on **every** EVM chain |
+    ///
+    /// So an EVM link asserts no chain. A consumer that reads ownership on a
+    /// particular EVM chain looks the address up *there*; the link does not, and
+    /// cannot, say which chains the account is used on. Rows written before
+    /// 2026-10-24 carried `eip155:4663`; migration 0046 rewrote them.
     pub chain: String,
 
     /// The address in the form its chain uses: bech32 `stake1…` on Cardano,
@@ -70,9 +78,25 @@ impl LinkedWallet {
     /// *silently*, which is why this is a method rather than a field every
     /// consumer decides about for itself.
     pub fn cardano_address(&self) -> Option<&str> {
+        (self.namespace() == "cardano").then_some(self.address.as_str())
+    }
+
+    /// The account when this is an EVM link, else `None` — the EVM sibling of
+    /// [`Self::cardano_address`], for a consumer resolving EVM ownership.
+    ///
+    /// Valid on any EVM chain the consumer reads; see [`Self::chain`].
+    pub fn evm_address(&self) -> Option<&str> {
+        (self.namespace() == "eip155").then_some(self.address.as_str())
+    }
+
+    /// The CAIP namespace half of `chain` — the whole string for a family-wide
+    /// link, the part before the colon for a chain-specific one. Read by hand
+    /// rather than through `chains`, so this crate keeps serde as its only
+    /// dependency.
+    fn namespace(&self) -> &str {
         self.chain
-            .starts_with("cardano:")
-            .then_some(self.address.as_str())
+            .split_once(':')
+            .map_or(self.chain.as_str(), |(namespace, _)| namespace)
     }
 }
 
@@ -99,16 +123,36 @@ mod tests {
         assert_eq!(serde_json::from_str::<LinkedWallet>(&json).unwrap(), wallet);
     }
 
+    const ACCOUNT: &str = "0x7980aa64093853cb78c927e05b88fed96e945f81";
+
+    fn evm(chain: &str) -> LinkedWallet {
+        LinkedWallet {
+            chain: chain.to_string(),
+            address: ACCOUNT.to_string(),
+            handle: None,
+        }
+    }
+
+    /// An EVM link names the family, not a chain.
     #[test]
     fn an_evm_account_round_trips_beside_a_stake_address() {
-        let wallet = LinkedWallet {
-            chain: "eip155:4663".to_string(),
-            address: "0x7980aa64093853cb78c927e05b88fed96e945f81".to_string(),
-            handle: None,
-        };
+        let wallet = evm("eip155");
         let json = serde_json::to_string(&wallet).unwrap();
-        assert!(json.contains("eip155:4663"), "chain is on the wire: {json}");
+        assert!(
+            json.contains(r#""chain":"eip155""#),
+            "family on the wire: {json}"
+        );
         assert_eq!(serde_json::from_str::<LinkedWallet>(&json).unwrap(), wallet);
+    }
+
+    /// Family-wide and chain-specific rows are both EVM links; a payload
+    /// produced before the migration still reads as one.
+    #[test]
+    fn evm_address_yields_evm_links_however_they_are_scoped() {
+        assert_eq!(evm("eip155").evm_address(), Some(ACCOUNT));
+        assert_eq!(evm("eip155:4663").evm_address(), Some(ACCOUNT));
+        assert_eq!(evm("eip155").cardano_address(), None);
+        assert_eq!(cardano("stake1abc", None).evm_address(), None);
     }
 
     /// Producers may add fields; a consumer must not break on them.
@@ -152,11 +196,6 @@ mod tests {
             cardano("stake_test1abc", None).cardano_address(),
             Some("stake_test1abc")
         );
-        let evm = LinkedWallet {
-            chain: "eip155:4663".to_string(),
-            address: "0x7980aa64093853cb78c927e05b88fed96e945f81".to_string(),
-            handle: None,
-        };
-        assert_eq!(evm.cardano_address(), None);
+        assert_eq!(evm("eip155").cardano_address(), None);
     }
 }

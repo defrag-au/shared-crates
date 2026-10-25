@@ -27,7 +27,6 @@ sha2 = "0.10"
 base64 = "0.22"
 
 # Worker-specific deps (for CF Workers indexer layer)
-maestro = { workspace = true, features = ["transactions"], optional = true }
 koios = { path = "../../indexers/koios", optional = true }
 worker = { version = "=0.7.4", optional = true }
 
@@ -36,8 +35,13 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 dotenvy = "0.15"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 test_utils = { workspace = true }
+# Fixture TYPES only. The tests under `src/tests.rs` replay real transactions
+# captured from Maestro's complete-transaction endpoint; Maestro has shut down
+# and nothing in the library talks to it, but those captures are still the
+# specification for the rules. See `src/maestro_fixtures.rs`.
+maestro = { workspace = true, features = ["transactions"] }
 
 [features]
 default = []
-# Enable CF Workers indexer layer (Maestro + Koios, worker::Env, IndexerPool, TxClassifier)
-indexers = ["dep:maestro", "dep:koios", "dep:worker"]
+# Enable CF Workers indexer layer (Koios, worker::Env, IndexerPool, TxClassifier)
+indexers = ["dep:koios", "dep:worker"]

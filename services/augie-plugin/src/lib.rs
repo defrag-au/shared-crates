@@ -117,6 +117,115 @@ pub struct RefreshMessage {
     pub response: CommandResponse,
 }
 
+/// Path a service posts a [`NotifyUser`] to. Augie's side, like
+/// [`REFRESH_PATH`].
+pub const NOTIFY_USER_PATH: &str = "/notify-user";
+
+/// Ask Augie to send one Discord user a direct message.
+///
+/// # Why Augie sends it
+///
+/// A DM needs the bot token, and the bot token stays in Augie — the same reason
+/// [`RefreshMessage`] exists. The caller says *who* and *what*; Augie owns the
+/// credential and the rendering.
+///
+/// # No components
+///
+/// Augie routes a button click through the guild's plugin config, and a click
+/// in a DM has no guild. So a DM is content only: a body carrying action rows,
+/// at the top level or nested in a layout, is refused rather than sent with
+/// buttons that could only ever report "this interaction failed".
+///
+/// # Authority
+///
+/// Internal-key gated, like the refresh. Anyone holding the key can DM any
+/// user the bot can reach, so this is for trusted services telling a user
+/// about *their own* account — never a broadcast channel.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct NotifyUser {
+    /// The recipient's snowflake.
+    pub user_id: String,
+    /// What to send. `content` and `embeds`, or a V2 `layout` without rows.
+    pub body: discord_message::MessageBody,
+}
+
+impl NotifyUser {
+    /// Does the body carry anything clickable? Augie refuses those; see the
+    /// type's docs for why.
+    pub fn has_components(&self) -> bool {
+        fn any_row(blocks: &[discord_message::PluginBlock]) -> bool {
+            blocks.iter().any(|block| match block {
+                discord_message::PluginBlock::Row(_) => true,
+                discord_message::PluginBlock::Container { blocks, .. } => any_row(blocks),
+                _ => false,
+            })
+        }
+        !self.body.rows.is_empty() || any_row(&self.body.layout)
+    }
+}
+
+/// How a [`NotifyUser`] went, when it went as expected.
+///
+/// Both arms are a `200`. A user who does not accept DMs is an outcome the
+/// caller should expect and log quietly, not an error for it to retry —
+/// Discord will refuse again for exactly the same reason. Real failures (bad
+/// key, malformed body, Discord down) are non-2xx statuses instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotifyOutcome {
+    Delivered,
+    /// DMs from server members are off, or the user shares no server with
+    /// the bot.
+    Unreachable,
+}
+
+#[cfg(test)]
+mod notify_tests {
+    use super::*;
+    use discord_message::{MessageBody, PluginActionRow, PluginBlock};
+
+    fn notify(body: MessageBody) -> NotifyUser {
+        NotifyUser {
+            user_id: "42".to_string(),
+            body,
+        }
+    }
+
+    #[test]
+    fn plain_content_has_no_components() {
+        assert!(!notify(MessageBody::text("linked")).has_components());
+    }
+
+    /// A row anywhere — top level, or nested in a container — is a component.
+    #[test]
+    fn a_row_anywhere_is_a_component() {
+        let top = MessageBody {
+            rows: vec![PluginActionRow::new(vec![])],
+            ..Default::default()
+        };
+        assert!(notify(top).has_components());
+
+        let nested = MessageBody {
+            layout: vec![PluginBlock::Container {
+                accent_color: None,
+                blocks: vec![PluginBlock::Row(PluginActionRow::new(vec![]))],
+            }],
+            ..Default::default()
+        };
+        assert!(notify(nested).has_components());
+    }
+
+    /// The outcome is a stable lower-case word on the wire, since both repos
+    /// read it.
+    #[test]
+    fn outcomes_serialise_as_words() {
+        assert_eq!(
+            serde_json::to_string(&NotifyOutcome::Unreachable).unwrap(),
+            r#""unreachable""#
+        );
+    }
+}
+
 // (`MessageTarget` and its tests moved to `discord-message`. It is how *any*
 // sender addresses an existing message, not something about plugins — and the
 // outbound client needs the same two routes for its `edit` verb.)

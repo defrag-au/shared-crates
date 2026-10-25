@@ -26,10 +26,15 @@ pub struct CommandInvocation {
 
     pub user: InvokingUser,
 
-    /// Guild the command was run in. Always present — Augie rejects plugin
-    /// commands in DMs before dispatch, since permission classes are
-    /// guild-scoped and meaningless outside one.
-    pub guild_id: String,
+    /// Guild the command was run in, or `None` in a DM with the bot.
+    ///
+    /// `None` reaches only a command whose manifest declared
+    /// [`crate::CommandContexts::bot_dm`] — Augie dispatches nothing else from
+    /// a DM — so a plugin that never declares it may treat `None` as
+    /// impossible, and should refuse rather than guess if it ever sees one.
+    /// Absent on the wire reads as `None`.
+    #[serde(default)]
+    pub guild_id: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel_id: Option<String>,
@@ -95,7 +100,12 @@ pub struct ComponentInvocation {
     pub values: Vec<String>,
 
     pub user: InvokingUser,
-    pub guild_id: String,
+
+    /// Guild the component was clicked in, or `None` in a DM with the bot.
+    /// Same contract as [`CommandInvocation::guild_id`]: a DM click only ever
+    /// reaches the plugin whose DM reply drew the component.
+    #[serde(default)]
+    pub guild_id: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel_id: Option<String>,
@@ -231,7 +241,7 @@ mod tests {
                 display_name: "Spanners".to_string(),
                 avatar_hash: None,
             },
-            guild_id: "1283465958945456149".to_string(),
+            guild_id: Some("1283465958945456149".to_string()),
             channel_id: None,
             permission_class: PermissionClass::Admin,
             interaction_token: "tok".to_string(),
@@ -269,6 +279,26 @@ mod tests {
         let inv = invocation(None);
         let round_tripped: CommandInvocation =
             serde_json::from_str(&serde_json::to_string(&inv).unwrap()).unwrap();
-        assert_eq!(round_tripped.guild_id, "1283465958945456149");
+        assert_eq!(
+            round_tripped.guild_id.as_deref(),
+            Some("1283465958945456149")
+        );
+    }
+
+    /// The wire stays compatible both ways: an invocation from an augie that
+    /// still sends a string reads as `Some`, and a DM invocation's `null` (or
+    /// a missing key) reads as `None`.
+    #[test]
+    fn guild_id_reads_as_some_from_a_string_and_none_from_null_or_absent() {
+        let mut json = serde_json::to_value(invocation(None)).unwrap();
+        assert_eq!(json["guild_id"], "1283465958945456149");
+
+        json["guild_id"] = serde_json::Value::Null;
+        let dm: CommandInvocation = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(dm.guild_id, None);
+
+        json.as_object_mut().unwrap().remove("guild_id");
+        let absent: CommandInvocation = serde_json::from_value(json).unwrap();
+        assert_eq!(absent.guild_id, None);
     }
 }

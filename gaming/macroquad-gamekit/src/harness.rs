@@ -7,13 +7,31 @@
 //!
 //! ```sh
 //! game --shot out.png [--at 1.5] [--size 390x844]     # capture a moment
+//!      [--px 3]                                      # at 3 pixels a unit, whatever the display
 //!      [--hover N | --drag N | --longpress N | --rclick N]  # with a scripted pointer
 //!      [--keys "10:Up,20-40:Right"]                  # with scripted keys, by frame
 //! game --plan plan.txt                               # many conditions and captures, one launch
 //! game --soak 20                                     # the game's own soak loop
 //! game --sheet sheet.png                             # the game's own sheet of faces
+//! game --sprites sprites.png [--only whale]          # every sprite (or one, larger) on a review sheet
+//! game --sprites film.png --only whale --strip 24    # one sprite alone, played: frames in time order
+//! game --view [whale]                                # the sprite viewer, for a person: tune and print
+//! game --shot strip.png --at 9 --strip 12 [--every 2] [--crop x,y,w,h]  # frames in a row: motion in the scene
 //! game --frame-log                                   # print every frame over 50 ms
 //! ```
+//!
+//! ## Pixel art is reviewed on its own sheet
+//!
+//! A sprite in the scene overlaps others, moves, and shows whichever frame
+//! the clock lands on, at whatever size a capture comes out. [`sprite_sheet`]
+//! draws each one alone: every frame at a whole-number zoom and at its real
+//! size, facing both ways, and as a solid silhouette (where a shape that does
+//! not read shows at once), with each frame's ASCII onion skin against the
+//! next in the report (see [`crate::pixel::Onion`]).
+//!
+//! A game does not write a command for it: it lists its art in
+//! [`crate::Game::sprites`], and [`crate::app::run`] answers `--sprites` by
+//! drawing that list and exiting, before the game's first frame.
 //!
 //! ## Stalls are invisible to captures
 //!
@@ -254,6 +272,9 @@ pub struct Args {
     pub soak: Option<u32>,
     /// `--sheet sheet.png`: the game's sheet of faces.
     pub sheet: Option<String>,
+    /// `--sprites sprites.png`: the game's pixel art on a review sheet; see
+    /// [`sprite_sheet`].
+    pub sprites: Option<String>,
     /// `--hover N`, `--drag N`, `--longpress N` or `--rclick N`.
     pub script: Option<Script>,
     /// `--size 390x844`: the window, in points, and the size a capture is
@@ -268,6 +289,23 @@ pub struct Args {
     /// `--plan plan.txt`: many conditions and captures in one launch; see
     /// [`plan`](crate::plan).
     pub plan: Option<String>,
+    /// `--px 3`: device pixels per design unit for a capture, whatever the
+    /// window's. A headless or 1× display captures at 1, where a 36-pixel
+    /// sprite is a smudge; text is rasterised at this scale too, so it stays
+    /// sharp rather than enlarged. Ignored outside a capture and on a pixel
+    /// stage, whose canvas is its own resolution.
+    pub px: Option<f32>,
+    /// `--strip 12` with `--shot`: from the capture's moment, take this many
+    /// frames instead of one and write them as a [`crate::film::Film`]: the
+    /// frames tiled, a trail and a change map, and a report of how far the
+    /// mover moved each step.
+    pub strip: Option<u32>,
+    /// `--every 2`: display frames between a strip's captures (2, thirty a
+    /// second, when not given).
+    pub every: Option<u32>,
+    /// `--crop x,y,w,h`: a strip's frames cut to this rectangle, in design
+    /// units: one mover, large enough to read.
+    pub crop: Option<(f32, f32, f32, f32)>,
 }
 
 /// One key in a `--keys` script: held from frame `from` until before frame
@@ -416,6 +454,7 @@ impl Args {
             at: flag_in(argv, "--at").and_then(|v| v.parse().ok()),
             soak: flag_in(argv, "--soak").and_then(|v| v.parse().ok()),
             sheet: flag_in(argv, "--sheet"),
+            sprites: flag_in(argv, "--sprites"),
             script,
             size: flag_in(argv, "--size").and_then(|s| {
                 let (w, h) = s.split_once('x')?;
@@ -431,6 +470,31 @@ impl Args {
                 })
                 .unwrap_or_default(),
             plan: flag_in(argv, "--plan"),
+            px: flag_in(argv, "--px")
+                .and_then(|v| v.parse::<f32>().ok())
+                .filter(|p| *p > 0.0 && *p <= 8.0),
+            strip: flag_in(argv, "--strip")
+                .and_then(|v| v.parse::<u32>().ok())
+                .filter(|n| (2..=64).contains(n)),
+            every: flag_in(argv, "--every")
+                .and_then(|v| v.parse::<u32>().ok())
+                .filter(|n| *n >= 1),
+            crop: flag_in(argv, "--crop").and_then(|v| {
+                let n: Vec<f32> = v.split(',').filter_map(|p| p.trim().parse().ok()).collect();
+                match n[..] {
+                    [x, y, w, h] if w > 0.0 && h > 0.0 => Some((x, y, w, h)),
+                    _ => None,
+                }
+            }),
+        }
+    }
+
+    /// The pixels per design unit a frame is drawn at: `--px` while
+    /// capturing, else the window's own `px`.
+    pub fn capture_px(&self, px: f32) -> f32 {
+        match self.px {
+            Some(p) if self.capturing() => p,
+            _ => px,
         }
     }
 
@@ -459,7 +523,7 @@ impl Args {
 
     /// Whether this run captures, so runs on the fixed clock and records text.
     pub fn capturing(&self) -> bool {
-        self.shot.is_some() || self.sheet.is_some() || self.plan.is_some()
+        self.shot.is_some() || self.sheet.is_some() || self.sprites.is_some() || self.plan.is_some()
     }
 
     /// The window size: `--size`, else `default`.
@@ -576,6 +640,146 @@ impl Capture {
         set_default_camera();
         write_capture(&self.target.texture, path, note)
     }
+
+    /// The finished frame as an image, upright, for a strip.
+    pub fn image(self) -> Image {
+        set_default_camera();
+        self.target.texture.get_texture_data()
+    }
+}
+
+/// A `--strip` in progress: frames gathered from the capture's moment on.
+pub struct StripRun {
+    film: Option<crate::film::Film>,
+    count: u32,
+    every: u32,
+    next: u32,
+    crop: Option<(f32, f32, f32, f32)>,
+}
+
+impl StripRun {
+    /// A strip starting at display frame `from`.
+    pub fn new(args: &Args, count: u32, from: u32) -> Self {
+        Self {
+            film: None,
+            count,
+            every: args.every.unwrap_or(2),
+            next: from,
+            crop: args.crop,
+        }
+    }
+
+    /// Whether display frame `frame` is one the strip takes.
+    pub fn due(&self, frame: u32) -> bool {
+        frame == self.next
+    }
+
+    /// Add a frame drawn at `px` pixels a design unit; true once the strip
+    /// has all its frames.
+    pub fn add(&mut self, image: &Image, px: f32) -> bool {
+        let (iw, ih) = (image.width as usize, image.height as usize);
+        let (x0, y0, w, h) = match self.crop {
+            Some((x, y, w, h)) => (
+                ((x * px).round().max(0.0) as usize).min(iw),
+                ((y * px).round().max(0.0) as usize).min(ih),
+                (w * px).round() as usize,
+                (h * px).round() as usize,
+            ),
+            None => (0, 0, iw, ih),
+        };
+        let (w, h) = (w.min(iw - x0).max(1), h.min(ih - y0).max(1));
+        // A render target reads back bottom row first (`export_png` flips
+        // it back): turn it top-down here, so the crop is measured from the
+        // top as design units are.
+        let mut bytes = vec![0u8; w * h * 4];
+        for y in 0..h {
+            let s = ((ih - 1 - (y0 + y)) * iw + x0) * 4;
+            bytes[y * w * 4..(y + 1) * w * 4].copy_from_slice(&image.bytes[s..s + w * 4]);
+        }
+        let film = self
+            .film
+            .get_or_insert_with(|| crate::film::Film::new(w, h, self.every));
+        film.push(&bytes, w, h);
+        self.next += self.every;
+        film.frames.len() as u32 >= self.count
+    }
+
+    /// Write the strip's sheet to `path` and its report beside it.
+    pub fn save(&self, path: &str, note: &str) -> std::io::Result<PathBuf> {
+        let film = self
+            .film
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("the strip took no frames"))?;
+        write_film(path, film, &format!("# Strip: {path}\n{note}"))
+    }
+}
+
+/// Write `film`'s sheet to `path` and its report beside it, headed by
+/// `header`. Returns the report's path.
+pub fn write_film(path: &str, film: &crate::film::Film, header: &str) -> std::io::Result<PathBuf> {
+    // As many a row as fit about 1900 px, so the sheet is read whole.
+    let cols = (1900 / (film.w + 6)).clamp(2, 8);
+    let (top_down, w, h) = film.sheet(cols);
+    // `export_png` writes bottom row first, as a target reads back.
+    let bytes: Vec<u8> = top_down
+        .chunks_exact(w * 4)
+        .rev()
+        .flatten()
+        .copied()
+        .collect();
+    Image {
+        bytes,
+        width: w as u16,
+        height: h as u16,
+    }
+    .export_png(path);
+    let txt = Path::new(path).with_extension("txt");
+    std::fs::write(
+        &txt,
+        format!(
+            "{header}\n\nFrames in reading order, {cols} a row, {} display frames apart at 60 Hz; the last row is the trail (every frame averaged) and the change map (what changed each step, blue early to yellow late).\n\n{}",
+            film.every,
+            film.text()
+        ),
+    )?;
+    Ok(txt)
+}
+
+/// One sprite alone, played through its gait and moved by its body:
+/// `count` frames `every` display frames apart, at a zoom that makes it
+/// about 300 px wide, over `backdrop`. The report leads with the gait
+/// cycle's problems ([`crate::motion::Cycle`]), then the film's. What
+/// `--sprites out.png --only NAME --strip N` writes.
+pub fn sprite_film(
+    path: &str,
+    sprite: &SheetSprite,
+    count: usize,
+    every: u32,
+    backdrop: Color,
+) -> std::io::Result<PathBuf> {
+    let gait = sprite
+        .gait
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other(format!("{} has no gait to play", sprite.name)))?;
+    let w = sprite.frames.first().map_or(1, |g| g.w.max(1));
+    let zoom = (300 / w).clamp(2, 16);
+    let bg = [
+        (backdrop.r * 255.0) as u8,
+        (backdrop.g * 255.0) as u8,
+        (backdrop.b * 255.0) as u8,
+        255,
+    ];
+    let film = crate::film::of_sprite(&sprite.frames, gait, sprite.body, zoom, count, every, bg);
+    let cycle = crate::motion::Cycle::play(&sprite.frames, gait, sprite.scale);
+    let header = format!(
+        "# Sprite film: {} alone, {} frames at {zoom}x, body bob {:.1} and surge {:.1} art px\n\n## The gait cycle\n\n{}",
+        sprite.name,
+        sprite.frames.len(),
+        sprite.body.bob,
+        sprite.body.surge,
+        cycle.text()
+    );
+    write_film(path, &film, &header)
 }
 
 /// Write `texture` as a capture: the PNG at `path`, opaque, and the text
@@ -603,6 +807,504 @@ pub fn save_texture_png(texture: &Texture2D, path: &str) {
     let mut image = texture.get_texture_data();
     opaque(&mut image.bytes);
     image.export_png(path);
+}
+
+/// One sprite on a [`sprite_sheet`]: what a game lists in
+/// [`crate::Game::sprites`].
+#[derive(Clone, Debug)]
+pub struct SheetSprite {
+    pub name: String,
+    /// Its frames in order, all one size.
+    pub frames: Vec<crate::pixel::Grid>,
+    /// Design units an art pixel is drawn at in the game: its real size.
+    pub scale: f32,
+    /// How its frames play. With one, the sheet adds a strip of the cycle
+    /// sampled across the beat, the frames rising and falling with its swing.
+    pub gait: Option<crate::gait::Gait>,
+    /// How the body moves with the gait, in art pixels, as the game moves
+    /// it: what a sprite's film (`--strip` with `--sprites`) plays.
+    pub body: crate::film::Body,
+    /// The sprite file it was read from, when it was: where the viewer
+    /// writes tuned values back.
+    pub source: Option<String>,
+}
+
+impl SheetSprite {
+    /// A sprite as its file gives it: frames in the file's palette, its
+    /// scale, gait (for more than one frame) and body, and where it lives.
+    pub fn from_file(file: &crate::sprite_file::SpriteFile) -> Self {
+        let frames = file
+            .grids()
+            .unwrap_or_else(|e| panic!("{}: {e}", file.name));
+        let mut s = if frames.len() > 1 {
+            Self::moving(&file.name, frames, file.scale, file.gait())
+        } else {
+            Self::still(&file.name, frames, file.scale)
+        };
+        s.body = file.body();
+        s.source = file.path.clone();
+        s
+    }
+
+    /// The body's bob and surge with the gait, in art pixels: give the
+    /// numbers the game moves it by, so the film is the game's motion.
+    pub fn body(mut self, bob: f32, surge: f32) -> Self {
+        self.body = crate::film::Body { bob, surge };
+        self
+    }
+
+    /// A sprite that does not move: its frames at `scale`, no gait.
+    pub fn still(name: &str, frames: Vec<crate::pixel::Grid>, scale: f32) -> Self {
+        Self {
+            name: name.to_string(),
+            frames,
+            scale,
+            gait: None,
+            body: crate::film::Body::default(),
+            source: None,
+        }
+    }
+
+    /// A sprite whose frames play by `gait`.
+    pub fn moving(
+        name: &str,
+        frames: Vec<crate::pixel::Grid>,
+        scale: f32,
+        gait: crate::gait::Gait,
+    ) -> Self {
+        Self {
+            gait: Some(gait),
+            ..Self::still(name, frames, scale)
+        }
+    }
+}
+
+/// Draw `sprites` on one review sheet and write it to `path`, with a report
+/// beside it: the `--sprites` flag's work. A game does not call this: it
+/// lists its art in [`crate::Game::sprites`] and [`crate::app::run`] draws
+/// the sheet when the flag is given.
+///
+/// Each sprite is a row: every frame at a whole-number zoom over a checker,
+/// the same facing the other way, every frame as a white silhouette (where a
+/// shape that does not read shows at once: a tail that is a stalk, a fin
+/// that is a speck), every frame at its real size over `backdrop`, and, given
+/// a gait, its cycle sampled across the beat. The report lists each sprite's
+/// size and frames and the ASCII onion skin of each frame against the next
+/// (the last against the first), so motion can be judged in text too.
+///
+/// Needs the window, for the textures; the art itself is checked by the
+/// game's own tests on [`crate::pixel::Grid`].
+pub fn sprite_sheet(
+    path: &str,
+    sprites: &[SheetSprite],
+    backdrop: Color,
+    note: &str,
+) -> std::io::Result<PathBuf> {
+    const MARGIN: f32 = 16.0;
+    const GAP: f32 = 10.0;
+    const LABEL: f32 = 22.0;
+    const STRIP_SAMPLES: usize = 12;
+    // The cycle strip is drawn at twice real size: still the size the game
+    // draws, near enough to judge, but big enough to read the bob.
+    const STRIP_K: f32 = 2.0;
+    let cycle_of = |s: &SheetSprite| -> Option<crate::motion::Cycle> {
+        let gait = s.gait.as_ref()?;
+        (s.frames.len() > 1).then(|| crate::motion::Cycle::play(&s.frames, gait, s.scale))
+    };
+    let widest = sprites
+        .iter()
+        .filter_map(|s| s.frames.first().map(|g| g.w))
+        .max()
+        .unwrap_or(8)
+        .max(1);
+    // A whole-number zoom that makes the widest frame about 200 px.
+    // Fewer sprites (`--only`), larger: the sheet is read by eye and by a
+    // reviewer that sees images about 2000 px wide, so a lone sprite gets
+    // the room.
+    let target = if sprites.len() <= 2 { 300 } else { 200 };
+    let zoom = (target / widest).clamp(2, 16);
+    let bg = [
+        (backdrop.r * 255.0) as u8,
+        (backdrop.g * 255.0) as u8,
+        (backdrop.b * 255.0) as u8,
+        255,
+    ];
+
+    // Lay everything out first, wrapping at a width a reviewer sees whole,
+    // then size the sheet to it and draw.
+    let mut flow = Flow::new(MARGIN, SHEET_WIDTH - MARGIN);
+    let mut ops: Vec<Op> = Vec::new();
+    let mut problems: Vec<String> = Vec::new();
+    let mut body = String::new();
+    let ink = Color::from_rgba(220, 224, 236, 255);
+    let quiet = Color::from_rgba(150, 156, 170, 255);
+    for s in sprites {
+        let Some(first) = s.frames.first() else {
+            continue;
+        };
+        let (w, h) = (first.w, first.h);
+        let (zw, zh) = ((w * zoom) as f32, (h * zoom) as f32);
+        let real = vec2(w as f32 * s.scale, h as f32 * s.scale);
+        flow.gap(GAP);
+        ops.push(Op::text(
+            format!(
+                "{}  {w}x{h}, {} frame{}, drawn {:.2} a pixel",
+                s.name,
+                s.frames.len(),
+                if s.frames.len() == 1 { "" } else { "s" },
+                s.scale
+            ),
+            flow.label(LABEL),
+            18.0,
+            ink,
+        ));
+        let section = |flow: &mut Flow, ops: &mut Vec<Op>, title: &str| {
+            ops.push(Op::text(
+                title.to_string(),
+                flow.label(LABEL - 4.0),
+                15.0,
+                quiet,
+            ));
+        };
+        section(&mut flow, &mut ops, "frames");
+        for (i, g) in s.frames.iter().enumerate() {
+            let at = flow.place(vec2(zw, zh));
+            ops.push(Op::image(g.image(zoom, None), at, vec2(zw, zh), WHITE));
+            ops.push(Op::text(format!("f{i}"), at + vec2(4.0, 16.0), 16.0, ink));
+        }
+        section(&mut flow, &mut ops, "flipped");
+        for g in &s.frames {
+            let at = flow.place(vec2(zw, zh));
+            ops.push(Op::image(
+                g.flipped().image(zoom, None),
+                at,
+                vec2(zw, zh),
+                WHITE,
+            ));
+        }
+        section(
+            &mut flow,
+            &mut ops,
+            "silhouettes: does the white shape alone name it?",
+        );
+        for g in &s.frames {
+            let at = flow.place(vec2(zw, zh));
+            let img = g.silhouette(0xffffff).image(zoom, Some([24, 24, 32, 255]));
+            ops.push(Op::image(img, at, vec2(zw, zh), WHITE));
+        }
+        section(
+            &mut flow,
+            &mut ops,
+            "real size, then the cycle at twice real size",
+        );
+        for g in &s.frames {
+            let at = flow.place(real);
+            ops.push(Op::image(g.image(1, Some(bg)), at, real, WHITE));
+        }
+        if let Some(gait) = &s.gait {
+            let big = real * STRIP_K;
+            for i in 0..STRIP_SAMPLES {
+                let stride = gait.at_beat(i as f32 / STRIP_SAMPLES as f32);
+                let g = &s.frames[stride.frame.min(s.frames.len() - 1)];
+                let cell = flow.place(vec2(big.x, big.y * 2.0));
+                ops.push(Op::Rect(
+                    Rect::new(cell.x, cell.y, big.x, big.y * 2.0),
+                    backdrop,
+                ));
+                let rise = stride.swing * big.y * 0.25;
+                let at = cell + vec2(0.0, big.y * 0.5 - rise);
+                ops.push(Op::image(g.image(1, Some(bg)), at, big, WHITE));
+            }
+        }
+
+        body.push_str(&format!(
+            "\n\n## {} ({w}x{h}, {} frames)\n",
+            s.name,
+            s.frames.len()
+        ));
+        match cycle_of(s) {
+            Some(cycle) => {
+                for p in &cycle.problems {
+                    problems.push(format!("{}: {p}", s.name));
+                }
+                body.push_str(&cycle.text());
+                section(
+                    &mut flow,
+                    &mut ops,
+                    "as played at 60 Hz (red: the pose before), then the trail with the moving part's path",
+                );
+                cycle_ops(&cycle, &s.frames, zoom, &mut flow, &mut ops);
+                // The onion skins of the changes as played, each once.
+                let mut seen: Vec<(usize, usize)> = Vec::new();
+                for st in &cycle.steps {
+                    if seen.contains(&(st.from, st.to)) {
+                        continue;
+                    }
+                    seen.push((st.from, st.to));
+                    body.push_str(&format!(
+                        "\nframe {} to {}:\n{}\n",
+                        st.from,
+                        st.to,
+                        s.frames[st.from].onion(&s.frames[st.to]).text()
+                    ));
+                }
+            }
+            None if s.frames.len() > 1 => {
+                let n = s.frames.len();
+                for i in 0..n {
+                    let j = (i + 1) % n;
+                    if n == 2 && i == 1 {
+                        break;
+                    }
+                    body.push_str(&format!(
+                        "\nframe {i} to {j}:\n{}\n",
+                        s.frames[i].onion(&s.frames[j]).text()
+                    ));
+                }
+            }
+            None => {}
+        }
+        flow.gap(GAP * 2.0);
+    }
+    let size = vec2(flow.widest + MARGIN, flow.bottom() + MARGIN);
+    let capture = Capture::new(size, 1.0, Vec2::ZERO);
+    clear_background(Color::from_rgba(20, 20, 26, 255));
+    for op in &ops {
+        op.draw();
+    }
+    let mut report = String::from(note);
+    report.push_str("\n\n## Problems\n\n");
+    if problems.is_empty() {
+        report.push_str("none\n");
+    }
+    for p in &problems {
+        report.push_str(&format!("- {p}\n"));
+    }
+    report.push_str(&body);
+    capture.save(path, &report)
+}
+
+/// The widest a review sheet is laid out: a reviewer that reads images
+/// sees about 2000 px whole, and anything wider is shrunk until pixel art
+/// is a smudge.
+const SHEET_WIDTH: f32 = 1900.0;
+
+/// Panels laid out left to right, wrapping at a width, each section on a
+/// line of its own.
+struct Flow {
+    left: f32,
+    right: f32,
+    x: f32,
+    y: f32,
+    line: f32,
+    /// The furthest right anything reached.
+    widest: f32,
+}
+
+impl Flow {
+    const GAP: f32 = 10.0;
+
+    fn new(left: f32, right: f32) -> Self {
+        Self {
+            left,
+            right,
+            x: left,
+            y: left,
+            line: 0.0,
+            widest: left,
+        }
+    }
+
+    /// Finish the current line, if anything is on it.
+    fn break_line(&mut self) {
+        if self.line > 0.0 {
+            self.y += self.line + Self::GAP;
+        }
+        self.x = self.left;
+        self.line = 0.0;
+    }
+
+    /// Space before what comes next, on a line of its own.
+    fn gap(&mut self, h: f32) {
+        self.break_line();
+        self.y += h;
+    }
+
+    /// A label's top-left on a line of its own, `h` tall.
+    fn label(&mut self, h: f32) -> Vec2 {
+        self.break_line();
+        let at = vec2(self.x, self.y + h - 6.0);
+        self.y += h;
+        at
+    }
+
+    /// A panel's top-left, wrapping when it would pass the right edge.
+    fn place(&mut self, size: Vec2) -> Vec2 {
+        if self.x > self.left && self.x + size.x > self.right {
+            self.break_line();
+        }
+        let at = vec2(self.x, self.y);
+        self.x += size.x + Self::GAP;
+        self.line = self.line.max(size.y);
+        self.widest = self.widest.max(at.x + size.x);
+        at
+    }
+
+    /// The bottom of everything placed.
+    fn bottom(&self) -> f32 {
+        self.y + self.line
+    }
+}
+
+/// One thing to draw on a sheet, laid out before the sheet is sized.
+enum Op {
+    /// Text with its baseline's left at the point.
+    Text(String, Vec2, f32, Color),
+    /// An image stretched to a size, tinted, nearest-filtered.
+    Image(Image, Vec2, Vec2, Color),
+    Rect(Rect, Color),
+    Line(Vec2, Vec2, Color),
+    Dot(Vec2, Color),
+}
+
+impl Op {
+    fn text(s: String, at: Vec2, size: f32, color: Color) -> Self {
+        Op::Text(s, at, size, color)
+    }
+
+    fn image(img: Image, at: Vec2, size: Vec2, tint: Color) -> Self {
+        Op::Image(img, at, size, tint)
+    }
+
+    fn draw(&self) {
+        match self {
+            Op::Text(s, at, size, color) => {
+                draw_text(s, at.x, at.y, *size, *color);
+            }
+            Op::Image(img, at, size, tint) => {
+                let t = Texture2D::from_image(img);
+                t.set_filter(FilterMode::Nearest);
+                draw_texture_ex(
+                    &t,
+                    at.x,
+                    at.y,
+                    *tint,
+                    DrawTextureParams {
+                        dest_size: Some(*size),
+                        ..Default::default()
+                    },
+                );
+            }
+            Op::Rect(r, color) => draw_rectangle(r.x, r.y, r.w, r.h, *color),
+            Op::Line(a, b, color) => draw_line(a.x, a.y, b.x, b.y, 2.0, *color),
+            Op::Dot(at, color) => draw_circle(at.x, at.y, 4.0, *color),
+        }
+    }
+}
+
+/// A grid as an image with nothing behind it.
+fn bare(g: &crate::pixel::Grid) -> Image {
+    Image {
+        bytes: g.rgba(),
+        width: g.w as u16,
+        height: g.h as u16,
+    }
+}
+
+/// A cycle as played: each pose at `zoom` with the pose before it ghosted
+/// in red behind it (where it no longer is), labelled with its frame and
+/// hold, then a trail of every pose overlaid with the moving part's path
+/// through them in order.
+fn cycle_ops(
+    cycle: &crate::motion::Cycle,
+    frames: &[crate::pixel::Grid],
+    zoom: usize,
+    flow: &mut Flow,
+    ops: &mut Vec<Op>,
+) {
+    let Some(first) = frames.first() else {
+        return;
+    };
+    let size = vec2((first.w * zoom) as f32, (first.h * zoom) as f32);
+    let ink = Color::from_rgba(220, 224, 236, 255);
+    let n = cycle.runs.len();
+    for (i, run) in cycle.runs.iter().enumerate() {
+        let before = cycle.runs[(i + n - 1) % n].frame;
+        let at = flow.place(size);
+        ops.push(Op::Rect(
+            Rect::new(at.x, at.y, size.x, size.y),
+            Color::from_rgba(44, 44, 52, 255),
+        ));
+        if n > 1 {
+            ops.push(Op::image(
+                bare(&frames[before].silhouette(0xff5050)),
+                at,
+                size,
+                Color::new(1.0, 1.0, 1.0, 0.55),
+            ));
+        }
+        ops.push(Op::image(bare(&frames[run.frame]), at, size, WHITE));
+        ops.push(Op::text(
+            format!("f{} {}f", run.frame, run.ticks),
+            at + vec2(4.0, 16.0),
+            18.0,
+            ink,
+        ));
+        // The change into this pose, marked where it is a problem.
+        let warn = Color::from_rgba(255, 110, 100, 255);
+        if let Some(step) = cycle.steps.get(i)
+            && step.shift.travel > crate::motion::POP
+        {
+            ops.push(Op::text(
+                format!("POP {:.1}px", step.shift.travel),
+                at + vec2(4.0, size.y - 6.0),
+                18.0,
+                warn,
+            ));
+        }
+        if run.ticks < crate::motion::FLICKER {
+            ops.push(Op::text(
+                "FLICKER".to_string(),
+                at + vec2(4.0, 34.0),
+                18.0,
+                warn,
+            ));
+        }
+    }
+    // The trail: every pose faint, the path over them.
+    let at = flow.place(size);
+    ops.push(Op::Rect(
+        Rect::new(at.x, at.y, size.x, size.y),
+        Color::from_rgba(24, 24, 32, 255),
+    ));
+    let mut drawn: Vec<usize> = Vec::new();
+    for run in &cycle.runs {
+        if !drawn.contains(&run.frame) {
+            drawn.push(run.frame);
+        }
+    }
+    let fade = (1.6 / drawn.len().max(1) as f32).min(1.0);
+    for f in &drawn {
+        ops.push(Op::image(
+            bare(&frames[*f]),
+            at,
+            size,
+            Color::new(1.0, 1.0, 1.0, fade),
+        ));
+    }
+    let path: Vec<Vec2> = cycle
+        .path()
+        .iter()
+        .map(|(px, py)| at + vec2(px * zoom as f32, py * zoom as f32))
+        .collect();
+    let gold = Color::from_rgba(255, 215, 94, 255);
+    for i in 0..path.len() {
+        ops.push(Op::Line(path[i], path[(i + 1) % path.len()], gold));
+    }
+    for (i, p) in path.iter().enumerate() {
+        ops.push(Op::Dot(*p, gold));
+        ops.push(Op::text(format!("{i}"), *p + vec2(5.0, -4.0), 16.0, gold));
+    }
 }
 
 /// Set every pixel of RGBA `bytes` fully opaque.
@@ -692,6 +1394,16 @@ mod tests {
         assert!(Args::parse(&["game".into(), "--frame-log".into()]).frame_log);
         assert_eq!(flag_in(&argv, "--seed").as_deref(), Some("7"));
         assert_eq!(Args::parse(&["game".into()]), Args::default());
+    }
+
+    /// `--px` only sets the scale of a capture, and only a sane one.
+    #[test]
+    fn px_sets_a_captures_scale_only() {
+        let parse = |s: &str| Args::parse(&s.split(' ').map(String::from).collect::<Vec<_>>());
+        assert_eq!(parse("game --shot a.png --px 3").capture_px(1.0), 3.0);
+        assert_eq!(parse("game --px 3").capture_px(1.5), 1.5, "not capturing");
+        assert_eq!(parse("game --shot a.png --px 40").px, None, "out of range");
+        assert_eq!(parse("game --shot a.png").capture_px(2.0), 2.0);
     }
 
     #[test]

@@ -322,6 +322,31 @@ impl<S: RoomSim> Room<S> {
                     },
                 );
             }
+            // Signalling: the room vouches for who sent it and puts it in front
+            // of everyone else here. It never reads the body — that is
+            // `arcade-peer`'s — and it does not echo to the sender.
+            //
+            // Broadcast rather than per-peer routing, deliberately: a relay
+            // needs no routing table and no way to get a route wrong. Delivery
+            // is the room, which is the group until interest sets exist; when
+            // they do, this becomes the group's conns and nothing else changes.
+            (ToRoom::Signal(bytes), Some(seat)) => {
+                let targets: Vec<ConnId> = self
+                    .conns
+                    .iter()
+                    .filter(|(other, c)| c.seat.is_some() && **other != conn)
+                    .map(|(other, _)| *other)
+                    .collect();
+                for target in targets {
+                    self.send(
+                        target,
+                        ToClient::Signal {
+                            from: seat,
+                            bytes: bytes.clone(),
+                        },
+                    );
+                }
+            }
             // Anything else out of order is ignored: inputs before a hello,
             // a second hello.
             _ => {}

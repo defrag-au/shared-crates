@@ -2,7 +2,7 @@
 
 # Agent rules
 
-Generated from agent-playbook (`projects/shared-crates` + `models/claude-code`).
+Generated from `.playbook/project.conf` + `models/claude-code`.
 Each rule's source file is named in the comment above its heading.
 To change a rule, change the rule — not this block.
 
@@ -134,20 +134,27 @@ Options must be **specific** — name the crates, say what each costs. "We could
 or write it ourselves" is not a set of options.
 
 
-## Git history is mine — do not commit, push, merge or branch
+## Git state is mine — do not commit, push, merge or stage
 <!-- rule: rules/core/git-is-the-users-domain -->
 
-- Do not run `git commit`, `push`, `merge`, `rebase`, `tag` or anything else that mutates
-  history or a remote unless I specifically ask. Leave changes staged or unstaged for me to
-  review and commit myself.
-- Read-only git is always fine: `status`, `diff`, `log`, `show`, `blame`. Use `--no-pager` on
-  all of them.
+- Do not run `git add`, `git reset`, `git restore --staged`, `git stash`, `git commit`, `push`,
+  `merge`, `rebase`, `tag` or anything else that changes the index, history or a remote unless I
+  specifically ask. The same prohibition covers discarding working-tree changes — `git restore
+  --source`, `git checkout -- <paths>`, `git apply --reverse`, `git clean` — because the working
+  tree is mine to review too. Leave the index exactly as you found it; do not stage or unstage
+  anything.
+- For reads, `at-recall` and `at-peek` are the default, not the alternative. An agent shell may
+  not inherit the devshell; if `which at-recall` is empty, reach it as `direnv exec . at-recall …`
+  (and the same for `at-peek`). A bare `git status`, `git diff` or `git log` is a last resort:
+  only after that invocation fails, and say which one you tried. `git show` and `git blame` have
+  no `at-recall` verb yet — say so rather than widening the habit silently. Use `--no-pager` for
+  any git read that remains.
 - Branching for work is fine when it helps. Creating a branch rewrites nothing I have to
   unpick.
-- Also: no `[skip ci]`, `--no-verify` or bypassing hooks without asking · no amend,
-  force-push or reset · do not commit artefacts `.gitignore` excludes, even when they are up
-  to date · do not write a commit message and leave it staged in a way that suggests it was
-  committed.
+- If you change the index by accident, undo exactly that and say so.
+- Also: no `[skip ci]`, `--no-verify` or bypassing hooks without asking · no amend or
+  force-push · do not commit artefacts `.gitignore` excludes, even when they are up to date ·
+  do not write a commit message and leave it staged in a way that suggests it was committed.
 
 
 ## Edit files with the editor tools, never with a shell script
@@ -391,8 +398,8 @@ nix develop -c cargo clippy --fix --allow-dirty --all-targets --all-features -- 
 
 **Before writing any widget, read the catalogue.**
 
-- `~/code/defrag/shared-crates/ui/egui-widgets/CATALOG.md` — ~100 widgets, one line each
-- `~/code/defrag/shared-crates/ui/macroquad-widgets/CATALOG.md` — the macroquad set
+- `ui/egui-widgets/CATALOG.md` in the `shared-crates` repository — ~100 widgets, one line each
+- `ui/macroquad-widgets/CATALOG.md` in `shared-crates` — the macroquad set
 
 Read the whole file. **Do not grep instead.**
 
@@ -413,15 +420,21 @@ UPDATE_CATALOG=1 nix develop -c cargo test -p egui-widgets --test catalog
 ## Read code and history with the agent tools, not with the shell
 <!-- rule: rules/org/defrag/agent-tools -->
 
-- Reading code with `rg`, `grep`, `sed`, `cat`, `head` or `wc` → use `at-peek`. Reading history or
-  working-tree state with `git status`, `git diff`, `git log` or `git show` → use `at-recall`. Both
-  are read-only, bounded by construction, and say what they did not show.
+- Reading code with `rg`, `grep`, `sed`, `cat`, `head` or `wc` → use `at-peek`. Reading installed
+  crate source or build-script output with `grep`, `sed` or `find` under `~/.cargo` or
+  `target/…/build` → use `at-crate`. Reading history or working-tree state with `git status`,
+  `git diff` or `git log` → use `at-recall`. All three are read-only, bounded by construction, and
+  say what they did not show. `git show` and `git blame` have no `at-recall` verb yet — say so
+  rather than reaching for them silently.
 
 | Instead of | Use |
 | --- | --- |
 | `rg`, `grep` | `at-peek search <pattern> [path…]` |
 | `sed -n '40,60p' <file>`, `head`, `cat` | `at-peek slice <file>:40-60` |
 | `wc -l`, `ls -l`, `stat` | `at-peek stat <path>…` |
+| `grep -rn … ~/.cargo/registry/src`, `sed -n … <crate>/src/…`, `find ~/.cargo/registry` | `at-crate search <pattern> <crate>` · `at-crate slice <crate>/<path>:40-60` · `at-crate where <crate>` |
+| `cargo info <crate>`, `ls ~/.cargo/registry/src/…` | `at-crate where <crate>` · `at-crate installed [<crate>]` |
+| `head target/…/build/<crate>-*/out/…`, `grep … target/…/build/…/out/…` | `at-crate out <crate>` · `at-crate slice <crate>/<path> --build` · `at-crate search <pattern> <crate> --build` |
 | `git status`, `git status --porcelain` | `at-recall state` |
 | `git diff`, `git diff --stat` | `at-recall diff [<rev>] [<path>…]` — add `--patch` for the hunks |
 | `git log`, `git log --oneline` | `at-recall log [<rev>] [<path>…]` |
@@ -430,8 +443,14 @@ UPDATE_CATALOG=1 nix develop -c cargo test -p egui-widgets --test catalog
 
 - The exact lines · every mention · how many · which files → `at-peek slice <file>:40-60` ·
   `at-peek search <pat>` · `at-peek search <pat> --count` · `at-peek search <pat> --files-only`.
-- `which at-peek` empty → `direnv exec . at-peek <verb>`. An agent's spawned shell does not
-  inherit the devshell environment; an interactive one does.
+  For installed crate source the same three are `at-crate slice <crate>/<path>:40-60`,
+  `at-crate search <pat> <crate>` and `--count`.
+- `which at-peek` empty → `direnv exec . at-peek <verb>` (and the same for `at-recall`, `at-crate`
+  and `at-describe`). An agent's spawned shell does not inherit the devshell environment; an
+  interactive one does.
+- `at-crate` resolves a crate through the nearest `Cargo.lock`, not through memory or "latest". A
+  crate named twice in the lock, or a file present in more than one build-script `out`, is an error
+  naming the flag that chooses — never a guess. `--version` and `--build-dir` are those flags.
 - Output that was cut says so, and so does anything that would make it wrong. Repeat both when
   you report the finding: `# 50 of 143` is the difference between a fact and a guess.
 - A `# next:` line is the next question, already spelled as a command. Run it as printed rather
@@ -442,8 +461,9 @@ UPDATE_CATALOG=1 nix develop -c cargo test -p egui-widgets --test catalog
   read, and the bound is the part that makes the answer reportable.
 - The tools are for understanding, not for preparing an edit. Read the file with the editor tools
   before editing it.
-- `at-peek` runs nothing at all; `at-recall` runs `git` and nothing else. That difference is why
-  they are separate binaries, and why they are separate approvals if I have tiered them.
+- `at-peek` and `at-crate` run nothing at all; `at-recall` runs `git` and nothing else. That
+  difference is why they are separate binaries, and why they are separate approvals if I have
+  tiered them.
 - A **recipe** is one verb that composes the reads its sibling verbs use, so a count cannot disagree
   with the listing beside it: `at-recall pr` answers "write me a PR description" with the base, the
   branch's commits and the diffstat by kind, and a caveat naming tracked files that have changed
@@ -454,7 +474,8 @@ UPDATE_CATALOG=1 nix develop -c cargo test -p egui-widgets --test catalog
   description: why a change exists is not in the repository.
 - `at-recall` answers `state`, `log`, `diff` and the `pr` recipe. `blame`, `show` and `churn`, and the
   `review` and `release` recipes, are designed and not written — ask for the one you want rather than
-  reaching for `git`, and name the question, because that is what turns it into a verb.
+  reaching for `git`, and name the question, because that is what turns it into a verb. `at-crate`
+  answers `where`, `installed`, `files`, `slice`, `search` and `out`.
 
 
 ## Toggle local [patch] blocks as a unit
@@ -557,7 +578,7 @@ re-derives a rule — not damage, not which card was drawn, not where a stripped
 <!-- rule: rules/org/defrag/macroquad-traps -->
 
 Before drawing with macroquad directly, check the pieces of `macroquad-gamekit` that already handle
-these (`shared-crates/ui/macroquad-gamekit/CATALOG.md`). Each trap compiles, runs, and shows a wrong
+these (`shared-crates/gaming/macroquad-gamekit/CATALOG.md`). Each trap compiles, runs, and shows a wrong
 picture with no error.
 
 - **The window is upside down under `Camera2D::from_display_rect`.** It runs y down into a render
@@ -568,21 +589,87 @@ picture with no error.
   `Texture2D` silently becomes something else. Hold the `RenderTarget` (`Baked` does).
 - **A render target's texture is upside down** when drawn: draw it with `flip_y: true`.
 - **Translucent layers wear down a target's alpha**, because the default pipeline blends alpha like
-  colour. A layered face comes out see-through. Bake layered art with `Baker`, which seals it.
+  colour. A layered face comes out see-through. Bake layered art with `Baker`, which seals it. A
+  whole-frame capture wears down the same way and looks washed out against a viewer's white while
+  the window is fine; `Capture::save` writes the PNG opaque, so capture through it.
+- **A capture is only the size you asked for if the window is.** A tiling window manager
+  (AeroSpace) retiles the window, so `Viewport::current` and every `--shot` follow the tile, not
+  `--size`. Take the viewport from `harness::Args::viewport`, which uses `--size` when capturing.
+- **Every new glyph re-uploads the whole font atlas.** Caching a glyph marks the atlas dirty and
+  the next `draw_text_ex` uploads all of it; draws batch to the end of the frame but uploads do
+  not. A text-heavy first frame uploaded a 2048² atlas 166 times, and macOS's OpenGL kept each
+  16 MB staging copy: gigabytes of graphics memory, 43 GB and a Metal out-of-memory in release.
+  Run the screen through `macroquad_gamekit::app::run`, which turns on the kit's glyph gate (text
+  waits a frame for its glyphs, cached in one batch after the last draw), and load fonts with the
+  kit's `load_font` so the gate can warm them.
 - **Text queued before the glyph atlas grows vanishes.** The atlas doubles and deletes its old
-  texture mid-batch, typically on the first large text at a new size. `Baker` draws twice for this.
-- **Fractional text sizes must measure and draw at the same size.** Use the kit's `RichText` and
-  `MacroquadMeasure` rather than `draw_text_ex` with a rounded `font_size`, or words overlap and
-  spaces disappear.
+  texture mid-batch, typically on the first large text at a new size. Under the glyph gate it grows
+  only between frames. A bake runs ungated (a face missing its text would be missing it for good,
+  not for a frame), so `Baker` still draws twice for this.
+- **Bake text that must never wait a frame.** Under the gate, text at a size or character not seen
+  before appears one frame late; large text (over 64 device pixels) warms its digits as a set and
+  every other character one at a time, so a title's letters each pop in once. A countdown or a
+  banner that must be whole on its first frame belongs in a `Baker` face, scaled through a `Pose`.
+- **A capture can outrun the glyph gate and photograph an empty line.** `capture_due` is asked
+  BEFORE the frame is drawn, so a sentence that first appears on that frame — a live quote's
+  failure reason, a wallet's error — is held back and never recorded: the PNG has an empty panel
+  and the report's Problems list is empty too. Wait until the state has been unchanged for two
+  drawn frames, not just until `--at`. The same gate makes a truncated string at a size above 64
+  device pixels change length while it is measured (letters cache one at a time), so the `fit`
+  that cut it re-cuts differently each frame and never settles; draw a sentence at a body size,
+  where the whole ASCII set warms at once.
+- **macroquad 0.4.16 doubles a glyph atlas at random.** A glyph landing within 2 px of a row's end
+  fails the bounds check and doubles the whole atlas instead of wrapping, so one run in twelve
+  ended at 8192² (256 MB). Upstream fixed it after 0.4.16 (`8d602d3`), so every workspace
+  building the kit carries `[patch.crates-io] macroquad = { git =
+  "https://github.com/not-fl3/macroquad", rev = "8d602d3f8ebb8a3a582ee15d92983bbb81ee3ef6" }`
+  until a release has it: a `[patch]` only applies in the workspace that builds.
+- **Never animate a font size.** Each distinct pixel size rasterises a new glyph set into the
+  atlas, so text that pops or grows by drawing at `size × scale` rasterises every frame: a 96-point
+  countdown pop stalled the game 2.2 s (a macOS beachball), in release as in debug. Draw it with
+  `TextLayout::draw_scaled`, which rasterises once and scales the quads, or bake it once with
+  `Baker` and scale the texture through a `Pose`. Captures run on a fixed clock and never show the
+  stall; play with `--frame-log` to see it.
+- **Fractional text sizes must measure and draw at the same size.** Use the kit's `RichText` with
+  `MeasureAt(pixel_scale)`, which measures the glyphs the draw will use, rather than `draw_text_ex`
+  with a rounded `font_size`, or words overlap and spaces disappear.
+- **Text centred by its size or its line box sits high.** UI labels are mostly capitals and digits,
+  and the eye centres their ink: the band from the baseline to the top of a capital. The point size
+  is much taller than that band (VT323's capitals are about half of it), and `text_top`'s line box
+  hangs a descender below it, so `top = box.y + (box.h - size) / 2` or a hand-tuned `+4` leaves a
+  stamp's word high, a legend's square low beside its word, and a different error in every face.
+  Place text by a midline instead: `Painter::text_in(s, rect, size, color, Align)` for one line
+  against a box's start, centre or end (a chip, a button, a figure right against a tile's edge),
+  `Painter::stack_in(&[Line], rect, align, gap)` for a block such as a list row's title over its
+  subtitle, and `text_mid` / `mono_mid` on a row's midline with the icon beside it centred on the
+  same `y`. The widgets catalogue's "Text placement" section lists every one. Lay a card out as
+  named midlines (`title_mid`, `legend_mid`) and derive its height from the last one, rather than
+  fixed offsets from its top.
 - **Images decode from PNG and TGA only.** Convert art to PNG at build time, not JPEG.
-- **With `high_dpi`, touches arrive in device pixels and the mouse in points.** Read the mouse
-  (macroquad turns touches into mouse events) and convert once, through `Viewport::to_design`.
+- **With `high_dpi`, touches arrive in device pixels and the mouse in points.** For one pointer,
+  read the mouse (macroquad turns touches into mouse events) and convert once, through
+  `Viewport::to_design`. For several fingers (a stick and a button at once), read
+  `macroquad_widgets::touch_points()`, never `touches()`: it returns them in points. On a 3x phone a
+  raw touch lands three times too far out, so a stick is three times too sensitive and a button
+  cannot be hit where it is drawn, while a desktop browser's device emulation, driven by the mouse,
+  looks fine. Island Funk's first touch controls shipped like that.
+- **A touch has one phase a frame, its last event's.** macroquad stores touches in a map, so a
+  finger that lands and moves before the next frame arrives as `Moved`, never `Started`, and one
+  that lands and lifts arrives only as `Ended`. On a phone a landing thumb nearly always moves a
+  little, so code that waits for `Started` drops touches at random: touch-and-hold works one time in
+  a few. Treat a finger seen for the first time as landing, whatever its phase. The kit's `Thumbs`
+  and the widgets' `Gestures` and `FloatingStick` do.
 - **`get_screen_data` returns black on macOS** when the window is unfocused or not yet composited,
   and works when it is: so it passes at the desk and fails in a background run. Capture through a
-  render target (`harness::Capture`).
+  render target: `harness::Capture`, or `harness::save_texture_png` for a game that already
+  composes its frame in a target of its own.
 - **`draw_arc` thickness grows outward from the radius**, not centred on it.
+- **miniquad's log macros print a lone literal verbatim.** `macroquad::logging::info!("refused:
+  {why}")` logs the braces, not the reason: with nothing after the string the macro passes it
+  through unformatted, and it still compiles. Pass the value positionally (`"refused: {}", why`)
+  whenever the string is the only argument. The `log` and `tracing` macros do not have this trap.
 
-Two more pass every native run and capture, and fail only in the browser:
+These pass every native run and capture, and fail only in the browser:
 
 - **`render_target()` kills the web build.** In macroquad 0.4 it defaults to `sample_count: 1`,
   which `render_target_ex` treats as multisampled, so every pass ends in a `glReadBuffer` blit.
@@ -602,6 +689,10 @@ Two more pass every native run and capture, and fail only in the browser:
   the JS from the versions the package links, renders the shared shell, and fails the build if the
   wasm imports a function no staged script provides. `--base /path/` for a page served at a bare
   path.
+- **`set_cursor_grab(true)` at load breaks the page.** A browser grants pointer lock only after a
+  user gesture. Refused, miniquad keeps asking until Chrome rate-limits it, and the shared shell
+  reports the rejection as a boot error over a black canvas. Grab the pointer on the first click,
+  natively too or behind `cfg!(target_arch = "wasm32")`.
 
 
 ## Capture the exact moment, read its report, then check the real window
@@ -810,7 +901,7 @@ nix develop -c cargo tree --target wasm32-unknown-unknown -p <crate> | grep -e o
 
 
 ## Subdirectory devshells are entered from the parent flake
-<!-- rule: projects/shared-crates/rules/subdir-devshell -->
+<!-- rule: .playbook/rules/subdir-devshell -->
 
 `ui/_storybook-egui` is served with the **root** devshell, run from that directory:
 
@@ -819,26 +910,31 @@ cd ui/_storybook-egui
 nix develop ../.. -c trunk serve      # http://127.0.0.1:8095 (see Trunk.toml)
 ```
 
-See the `widget-screenshot` skill for the full
-screenshot loop.
+See the `widget-screenshot` skill for the full screenshot loop.
 
 
 ## macroquad-gamekit never reads the clock, and every module has a catalogue line
-<!-- rule: projects/shared-crates/rules/gamekit-takes-time-as-an-argument -->
+<!-- rule: .playbook/rules/gamekit-takes-time-as-an-argument -->
 
-**Nothing in `ui/macroquad-gamekit` calls `get_time`, `get_frame_time` or `Instant`.** Time is a
-parameter (`update(dt)`, `value(t)`, `phase`), owned by the game. The one exception is
-`harness::frame_dt`, which exists to choose between the fixed capture clock and the real one.
+**Nothing in `gaming/macroquad-gamekit` outside `harness` calls `get_time`, `get_frame_time` or
+`Instant`.** Time is a parameter (`update(dt)`, `value(t)`, `phase`), owned by the game. The
+harness is the one place that reads the wall clock: `frame_dt` chooses between the fixed capture
+clock and the real one, and `FrameTimer` times a frame for `--frame-log` and caps the native loop.
+The frame loop in `app::run` uses both and hands a `Game` only `dt`. A work limit that would be
+natural in milliseconds is a count instead (`flush_glyphs(Some(sizes))`), so a capture does the
+same work on the same frame on every machine.
 
 - A new module gets a `//!` header whose first line is its catalogue line, then
   `UPDATE_CATALOG=1 nix develop -c cargo test -p macroquad-gamekit --test catalog`.
 - A visual module gets a story in `macroquad-storybook` under "gamekit".
-- Text goes through `TextLayout::draw`, so the harness report sees it. A module that draws text
-  another way is invisible to every reviewer that reads the report.
+- Text goes through `macroquad-text` — `TextLayout::draw` in the kit, `draw_run` under the
+  widgets' `Painter` — so the harness report sees it and the glyph gate covers it. A module that
+  calls `draw_text_ex` itself is invisible to every reviewer that reads the report, and re-uploads
+  the font atlas mid-frame.
 
 
 ## A story has three registration sites plus a module declaration
-<!-- rule: projects/shared-crates/rules/storybook-registration -->
+<!-- rule: .playbook/rules/storybook-registration -->
 
 `_storybook-egui/src/lib.rs` has **three** places a story must be registered:
 

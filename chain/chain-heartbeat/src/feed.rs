@@ -19,7 +19,7 @@ use ui_flow::{ConnectionStatus, FlowEvent, NoAction, NoDelta, NoState, PollingFl
 
 use crate::beat::ChainEvent;
 use crate::frame::{FrameApplied, HeartbeatFrame};
-use crate::heartbeat::Heartbeat;
+use crate::heartbeat::{Heartbeat, ReconnectGrace};
 use crate::network::Network;
 use crate::relay::CHAIN_DOMAIN;
 use crate::track::{TrackEvent, Tracker};
@@ -78,6 +78,10 @@ pub struct ChainFeed {
     flow: Option<ChainFlow>,
     heartbeat: Heartbeat,
     link: FeedLink,
+    /// This page's link, held back until a loss outlasts the grace. A blip
+    /// must not reach the heartbeat, because the widgets read its `FeedHealth`
+    /// and would paint an outage over a feed that is merely reconnecting.
+    grace: ReconnectGrace,
 }
 
 impl ChainFeed {
@@ -111,6 +115,7 @@ impl ChainFeed {
                 flow,
                 heartbeat: Heartbeat::new(network),
                 link,
+                grace: ReconnectGrace::default(),
             }
         }
     }
@@ -122,6 +127,7 @@ impl ChainFeed {
             flow: None,
             heartbeat: Heartbeat::new(network),
             link: FeedLink::Disabled,
+            grace: ReconnectGrace::default(),
         }
     }
 
@@ -140,6 +146,9 @@ impl ChainFeed {
     /// every block it delivers places a tracked transaction the instant its
     /// block arrives, with no polling at all — pass `0` for that.
     pub fn pump(&mut self, now_ms: u64, tracker: &mut Tracker, entropy: u64) -> Vec<TrackEvent> {
+        // Before draining anything: a socket that has been down long enough is
+        // an outage, even if it never delivers another event to say so.
+        self.apply_link_grace(now_ms);
         let mut seen = Vec::new();
         let Some(flow) = self.flow.as_mut() else {
             return seen;
@@ -152,6 +161,7 @@ impl ChainFeed {
                     }
                     match self.heartbeat.apply_frame(&event, now_ms) {
                         FrameApplied::Applied => {
+                            self.grace.recovered();
                             if self.link == FeedLink::Connecting {
                                 self.link = FeedLink::Live;
                             }
@@ -169,14 +179,22 @@ impl ChainFeed {
                         }
                     }
                 }
-                // Whatever the host is doing, this page is not receiving the
-                // chain until the socket is back. The resync the host sends on
-                // reconnect restores its view.
+                // The socket is reconnecting. Do not mark the feed offline yet:
+                // the usual drop is a recycled edge socket or a relay rotation
+                // that is back in two or three seconds, and the widgets must
+                // keep the live reading through it. `apply_link_grace` folds it
+                // in only if it outlasts the grace.
+                FlowEvent::StatusChanged(ConnectionStatus::Reconnecting { .. }) => {
+                    self.grace.lost(now_ms);
+                }
+                // Terminal for this socket — there is no retry to wait for, so
+                // this is an outage rather than a reconnect in progress.
                 FlowEvent::StatusChanged(
-                    ConnectionStatus::Reconnecting { .. }
-                    | ConnectionStatus::Disconnected
-                    | ConnectionStatus::AuthFailed,
-                ) => self.heartbeat.disconnected(now_ms),
+                    ConnectionStatus::Disconnected | ConnectionStatus::AuthFailed,
+                ) => {
+                    self.grace.recovered();
+                    self.heartbeat.disconnected(now_ms);
+                }
                 FlowEvent::Error { message, .. } => {
                     log::debug!("chain-heartbeat: {message}");
                 }
@@ -184,6 +202,13 @@ impl ChainFeed {
             }
         }
         seen
+    }
+
+    /// Fold a pending loss into the heartbeat once it outlasts the grace.
+    fn apply_link_grace(&mut self, now_ms: u64) {
+        if let Some(lost_at) = self.grace.outage(now_ms) {
+            self.heartbeat.disconnected(lost_at);
+        }
     }
 }
 

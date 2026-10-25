@@ -20,8 +20,11 @@
 //! is a stall on the web and gigabytes of graphics memory on macOS.
 //!
 //! Stories for each module are in `macroquad-storybook`, under "gamekit".
-//! Read `CATALOG.md` before adding a module, and `CARD-FACES.md` before
-//! building a card face. A game client's review loop is [`harness`].
+//! Read `CATALOG.md` before adding a module, `CARD-FACES.md` before
+//! building a card face, and `ANIMATION.md` before drawing or animating a
+//! sprite: sprites as `.sprite` files ([`sprite_file`]), the rubric for
+//! motion, and the tools that check it (`sprite-view`, the viewer, sheets
+//! and films). A game client's review loop is [`harness`].
 //!
 //! Two opt-in features, off by default because each needs a system library
 //! natively on Linux: `audio` (sound, music, mute — [`audio`]) and
@@ -44,11 +47,14 @@ pub mod bake;
 pub mod dir;
 pub mod ease;
 pub mod face;
+pub mod film;
 pub mod fx;
+pub mod gait;
 pub mod harness;
 pub mod icon;
 pub mod input;
 pub mod light;
+pub mod motion;
 #[cfg(feature = "gamepads")]
 pub mod pads;
 pub mod paint;
@@ -59,12 +65,15 @@ pub mod preload;
 pub mod sequence;
 pub mod shape;
 pub mod sprite;
+pub mod sprite_file;
+pub mod starfield;
 pub mod startup;
 pub mod step;
 pub mod tech;
 pub mod text;
 pub mod thumbs;
 pub mod tween;
+pub mod viewer;
 pub mod web;
 
 pub use app::{Backdrop, Frame, Game, Stage};
@@ -75,24 +84,29 @@ pub use dir::Dir4;
 pub use ease::Ease;
 pub use face::{emblem, gem, line, plate, shrink_to_fit, tab, tab_width};
 pub use fx::{Particles, Popups, Shake};
+pub use gait::{Gait, Stride};
 pub use harness::{
-    Args, Capture, KeyScript, Script, Scripted, Viewport, plain_target, switch, window_camera,
+    Args, Capture, KeyScript, Script, Scripted, SheetSprite, Viewport, plain_target, sprite_sheet,
+    switch, window_camera,
 };
 pub use icon::{Icon, draw_icon};
 pub use input::{Actions, Binding, InputSnapshot, PadState};
 pub use light::Lighting;
+pub use motion::{Cycle, Shift};
 #[cfg(feature = "gamepads")]
 pub use pads::{Pad, Pads};
 pub use paint::{
     Gradient, bevel, fill_circle_gradient, fill_gradient, grain, inner_shadow, noise_pixels,
-    noise_texture,
+    noise_texture, scanlines,
 };
-pub use pixel::{Grid, Palette, PixelError, PixelSprite, parse_frames};
+pub use pixel::{Grid, Onion, Palette, PixelError, PixelSprite, parse_frames};
 pub use pointer::{HoverGrace, Pointer, PointerConfig, PointerEvent, Swipe, Swipes};
 pub use preload::Preloader;
 pub use sequence::{Sequencer, stagger};
 pub use shape::{RoundedArt, cover_source, fill_rounded, stroke_rounded};
 pub use sprite::{Pose, Sprite, draw_order, topmost};
+pub use sprite_file::{SpriteFile, SpriteFileError};
+pub use starfield::{Star, Starfield};
 pub use startup::{Finished, Phase, Startup};
 pub use step::{FixedStep, Tick};
 pub use tech::{TechHit, TechLayout, TechPanel, TechStyle, TechTile, TileState};

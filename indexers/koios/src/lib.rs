@@ -4,6 +4,7 @@ pub mod koios_cip68;
 pub mod koios_evaluate;
 pub mod koios_params;
 mod koios_serde;
+pub mod koios_submit;
 pub mod koios_tip;
 pub mod koios_transaction;
 pub mod koios_utils;
@@ -1097,6 +1098,10 @@ impl QueryOptions {
 pub struct KoiosApi {
     client: HttpClient,
     base_url: String,
+    /// The bearer token `client` authenticates with, kept so a request the
+    /// JSON client cannot send — `/submittx` takes a raw CBOR body — can
+    /// authenticate the same way.
+    api_key: Option<String>,
 }
 
 pub struct KupoApi {
@@ -1199,6 +1204,7 @@ impl Default for KoiosApi {
         Self {
             client: HttpClient::new().with_timeout(KOIOS_REQUEST_TIMEOUT),
             base_url: BASE_URL.to_string(),
+            api_key: None,
         }
     }
 }
@@ -1214,13 +1220,15 @@ impl KoiosApi {
     ///
     /// Pass `None` for the keyless free tier.
     pub fn new(base_url: impl Into<String>, api_key: Option<String>) -> Self {
-        let client = match api_key {
-            Some(key) if !key.is_empty() => HttpClient::with_bearer_token(key),
-            _ => HttpClient::new(),
+        let api_key = api_key.filter(|key| !key.is_empty());
+        let client = match &api_key {
+            Some(key) => HttpClient::with_bearer_token(key.clone()),
+            None => HttpClient::new(),
         };
         Self {
             client: client.with_timeout(KOIOS_REQUEST_TIMEOUT),
             base_url: base_url.into(),
+            api_key,
         }
     }
 
@@ -1245,14 +1253,7 @@ impl KoiosApi {
     /// differs (mainnet → `api.koios.rest`, preprod/testnet →
     /// `preprod.koios.rest`, preview → `preview.koios.rest`).
     pub async fn for_env_with_network(env: &Env, network: &str) -> worker::Result<Self> {
-        let client = match api_key(env).await {
-            Some(key) => HttpClient::with_bearer_token(key),
-            None => HttpClient::new(),
-        };
-        Ok(Self {
-            client: client.with_timeout(KOIOS_REQUEST_TIMEOUT),
-            base_url: koios_base_url(network),
-        })
+        Ok(Self::new(koios_base_url(network), api_key(env).await))
     }
 
     pub async fn get_stake_addresses(

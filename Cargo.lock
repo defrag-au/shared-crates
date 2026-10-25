@@ -295,6 +295,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "arcade-peer"
+version = "0.1.0"
+
+[[package]]
 name = "arcade-room"
 version = "0.1.0"
 
@@ -816,7 +820,6 @@ dependencies = [
  "cardano-assets",
  "hex",
  "http-client",
- "maestro",
  "pallas-addresses",
  "pallas-codec",
  "pallas-crypto",
@@ -908,6 +911,7 @@ dependencies = [
  "log",
  "minicbor",
  "ouroboros-mux",
+ "rmp-serde",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -6700,6 +6704,14 @@ checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "sprite-view"
+version = "0.1.0"
+dependencies = [
+ "macroquad",
+ "macroquad-gamekit",
 ]
 
 [[package]]

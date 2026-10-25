@@ -784,6 +784,15 @@ pub static ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
     // launches are exactly the set of token policies observed here. The
     // credential below is this address's own payment credential.
     "addr1vx9qelnrd87h6u54u6z2kttw3a3rnz3mk5lll0nc3mr8qvc6dqa4y" => AC::Script(SC::Launchpad { label: "Solada" }),
+    // LumpFun v5's bonding curve: every LumpFun launch's curve UTxO sits at
+    // this one address, keyed by its own `000643b0 "POOL"` reference NFT, and
+    // trades there until it bonds. Priced as constant product over the datum
+    // plus a virtual offset (the archive's `constant-product-virtual`).
+    //
+    // Provenance: $BUNNY (policy a1b085f4…) — its curve UTxO is here, and
+    // the curve buy fcc08b3a… (slot 201,327,303) and 0624336e… (slot
+    // 201,335,799) both spend and recreate it.
+    "addr1wyj2cxrm7pkfz0sx6j6lgueg8035yrs4ry9xupcvcxlrg6cywmqny" => AC::Script(SC::Launchpad { label: "LumpFun" }),
     // Minswap batcher contract (type 7: script payment, no staking)
     "addr1w8p79rpkcdz8x9d6tft0x0dx5mwuzac2sa4gm8cvkw5hcnqst2ctf" => AC::Script(SC::Exchange { label: "Minswap" }),
 
@@ -1187,6 +1196,17 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             category: AC::Script(SC::Launchpad { label: "Solada" }),
             derived_from: CredentialSource::Address(
                 "addr1vx9qelnrd87h6u54u6z2kttw3a3rnz3mk5lll0nc3mr8qvc6dqa4y",
+            ),
+        },
+    ),
+    // LumpFun v5's bonding curve, same contract as the ADDRESS_REGISTRY entry
+    // above, reachable by credential.
+    (
+        "24ac187bf06c913e06d4b5f473283be3420e15190a6e070cc1be346b",
+        CredentialEntry {
+            category: AC::Script(SC::Launchpad { label: "LumpFun" }),
+            derived_from: CredentialSource::Address(
+                "addr1wyj2cxrm7pkfz0sx6j6lgueg8035yrs4ry9xupcvcxlrg6cywmqny",
             ),
         },
     ),

@@ -16,3 +16,6 @@ database.sql
 
 # Agent scratch — screenshots, captures (see CLAUDE.md)
 .tmp/
+
+# `playbook skills sync` development override — a machine path, never committed
+.playbook/skills.patch
