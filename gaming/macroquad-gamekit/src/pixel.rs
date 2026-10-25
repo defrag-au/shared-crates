@@ -219,6 +219,152 @@ impl Grid {
             .flat_map(|p| p.unwrap_or([0; 4]))
             .collect()
     }
+
+    /// The colour at (`x`, `y`), if drawn.
+    pub fn at(&self, x: usize, y: usize) -> Option<[u8; 4]> {
+        (x < self.w && y < self.h)
+            .then(|| self.pixels[y * self.w + x])
+            .flatten()
+    }
+
+    /// How this frame becomes `next`, cell by cell: see [`Onion`]. Frames of
+    /// different sizes are compared over the cells both have.
+    pub fn onion(&self, next: &Grid) -> Onion {
+        let (w, h) = (self.w.min(next.w), self.h.min(next.h));
+        let mut rows = Vec::with_capacity(h);
+        let (mut stayed, mut appeared, mut vanished, mut recoloured) = (0, 0, 0, 0);
+        let mut change: Option<(usize, usize, usize, usize)> = None;
+        for y in 0..h {
+            let mut row = String::with_capacity(w);
+            for x in 0..w {
+                let c = match (self.at(x, y), next.at(x, y)) {
+                    (Some(a), Some(b)) if a == b => {
+                        stayed += 1;
+                        '#'
+                    }
+                    (Some(_), Some(_)) => {
+                        recoloured += 1;
+                        '~'
+                    }
+                    (None, Some(_)) => {
+                        appeared += 1;
+                        '+'
+                    }
+                    (Some(_), None) => {
+                        vanished += 1;
+                        '-'
+                    }
+                    (None, None) => '.',
+                };
+                if !matches!(c, '#' | '.') {
+                    change = Some(match change {
+                        None => (x, y, x, y),
+                        Some((x0, y0, x1, y1)) => (x0.min(x), y0.min(y), x1.max(x), y1.max(y)),
+                    });
+                }
+                row.push(c);
+            }
+            rows.push(row);
+        }
+        Onion {
+            w,
+            h,
+            rows,
+            stayed,
+            appeared,
+            vanished,
+            recoloured,
+            change,
+        }
+    }
+
+    /// Every pixel `zoom` times over, as an image to write with
+    /// `export_png`: art reviewed at a size it can be read at, without a
+    /// window. Transparent cells are `backdrop` (or a two-tone checker when
+    /// `None`, so a sprite's edge shows against nothing).
+    pub fn image(&self, zoom: usize, backdrop: Option<[u8; 4]>) -> Image {
+        let zoom = zoom.max(1);
+        let (w, h) = (self.w * zoom, self.h * zoom);
+        let mut bytes = Vec::with_capacity(w * h * 4);
+        for y in 0..h {
+            for x in 0..w {
+                let (gx, gy) = (x / zoom, y / zoom);
+                let px = self.at(gx, gy).unwrap_or_else(|| {
+                    backdrop.unwrap_or(if (gx + gy) % 2 == 0 {
+                        [58, 58, 66, 255]
+                    } else {
+                        [44, 44, 52, 255]
+                    })
+                });
+                bytes.extend_from_slice(&px);
+            }
+        }
+        Image {
+            bytes,
+            width: w as u16,
+            height: h as u16,
+        }
+    }
+}
+
+/// How one frame of a sprite becomes the next, as text: motion judged in the
+/// raw art, before anything is drawn.
+///
+/// One character a cell: `#` drawn in both, `+` appears, `-` vanishes, `~`
+/// drawn in both in another colour, `.` in neither. Good motion is change
+/// confined to the part that moves (a tail, a claw) while the rest, the eye
+/// above all, holds still; a frame that only shifts a thin line reads as a
+/// flicker, and one that moves everything reads as a jump.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Onion {
+    pub w: usize,
+    pub h: usize,
+    pub rows: Vec<String>,
+    pub stayed: usize,
+    pub appeared: usize,
+    pub vanished: usize,
+    pub recoloured: usize,
+    /// The cells the change spans, inclusive: `(x0, y0, x1, y1)`. `None`
+    /// when the frames are the same.
+    pub change: Option<(usize, usize, usize, usize)>,
+}
+
+impl Onion {
+    /// The share of the drawn cells (in either frame) that changed.
+    pub fn changed_share(&self) -> f32 {
+        let changed = self.appeared + self.vanished + self.recoloured;
+        let drawn = self.stayed + changed;
+        if drawn == 0 {
+            return 0.0;
+        }
+        changed as f32 / drawn as f32
+    }
+
+    /// Whether the cell at (`x`, `y`) is the same in both frames, drawn or not:
+    /// an anchor (an eye) that must not move.
+    pub fn held(&self, x: usize, y: usize) -> bool {
+        self.rows
+            .get(y)
+            .and_then(|r| r.chars().nth(x))
+            .is_some_and(|c| c == '#' || c == '.')
+    }
+
+    /// The rows, then a line of counts.
+    pub fn text(&self) -> String {
+        let mut out = self.rows.join("\n");
+        let span = self.change.map_or("none".to_string(), |(x0, y0, x1, y1)| {
+            format!("x {x0}-{x1}, y {y0}-{y1}")
+        });
+        out.push_str(&format!(
+            "\n{} held, {} appear, {} vanish, {} recolour ({:.0}% changed), change at {span}",
+            self.stayed,
+            self.appeared,
+            self.vanished,
+            self.recoloured,
+            self.changed_share() * 100.0
+        ));
+        out
+    }
 }
 
 /// Parse every frame of a sprite, checking they are all one size.
@@ -370,6 +516,40 @@ mod tests {
         assert!(!o.opaque(0, 0), "no diagonal corners");
         let blue = &o.rgba()[4..8];
         assert_eq!(blue, &[0, 0, 255, 255]);
+    }
+
+    /// A tail that flicks: the change sits in the tail's columns, the eye
+    /// holds, and each kind of change is marked and counted.
+    #[test]
+    fn an_onion_skin_shows_what_moves() {
+        let p = palette().with('w', 0xffffff);
+        let a = Grid::parse(&["r...", "rrrk", "...."], &p, 0).expect("parses");
+        let b = Grid::parse(&["....", "rrrk", "r..."], &p, 1).expect("parses");
+        let onion = a.onion(&b);
+        assert_eq!(onion.rows, vec!["-...", "####", "+..."]);
+        assert_eq!((onion.stayed, onion.appeared, onion.vanished), (4, 1, 1));
+        assert_eq!(onion.change, Some((0, 0, 0, 2)), "only the tail column");
+        assert!(onion.held(3, 1), "the eye");
+        assert!(!onion.held(0, 0));
+        assert!((onion.changed_share() - 2.0 / 6.0).abs() < 1e-6);
+        assert!(onion.text().ends_with("change at x 0-0, y 0-2"));
+
+        let c = Grid::parse(&["r...", "rrrw", "...."], &p, 2).expect("parses");
+        assert_eq!(a.onion(&c).rows[1], "###~", "a recoloured eye");
+        assert_eq!(a.onion(&a).change, None);
+    }
+
+    /// A frame enlarged for review: each pixel a block, the rest a checker.
+    #[test]
+    fn a_frame_enlarges_to_an_image() {
+        let g = Grid::parse(&["r."], &palette(), 0).expect("parses");
+        let img = g.image(3, None);
+        assert_eq!((img.width, img.height), (6, 3));
+        assert_eq!(&img.bytes[0..4], &[255, 0, 0, 255]);
+        assert_eq!(&img.bytes[8..12], &[255, 0, 0, 255], "the block's last");
+        assert_eq!(&img.bytes[12..16], &[44, 44, 52, 255], "the checker");
+        let flat = g.image(1, Some([1, 2, 3, 255]));
+        assert_eq!(&flat.bytes[4..8], &[1, 2, 3, 255]);
     }
 
     #[test]

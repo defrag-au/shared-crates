@@ -1,0 +1,21 @@
+[package]
+name = "sprite-view"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Review sprite files (macroquad-gamekit's .sprite format) with no game built: the viewer, the review sheet, the film, and a text check."
+
+# The tool behind gamekit's sprite files. A game embeds its `.sprite` files
+# with `sprite_file!`; this reads the same files from disk, so a sprite is
+# drawn, watched and tuned before (and without) the game that uses it. All the
+# drawing is gamekit's: the viewer, `--sprites` sheets and films, the motion
+# report. This crate only finds the files and hands them over.
+
+[[bin]]
+name = "sprite-view"
+path = "src/main.rs"
+
+[dependencies]
+macroquad = "0.4"
+macroquad-gamekit = { path = "../macroquad-gamekit" }

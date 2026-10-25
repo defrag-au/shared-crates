@@ -18,6 +18,14 @@ env:
   OCFL_FIXTURES_REV: d323fc207126becec066998b43408d998bf0fb1b
 
 jobs:
+  # An edit under `skills/` that was never published is an edit no consumer can see: an OCFL
+  # version is immutable, so the published object is still the old one. `skill-store status` fails
+  # on that, and on a skill directory with no object. Fix a red run with `skill-store
+  # publish-changed --store .skill-store --worktree skills`, committed with the edit.
+  skills:
+    name: Skills
+    uses: defrag-au/agent-playbook/.github/workflows/skills-check.yaml@main
+
   check-and-test:
     name: Check & Test
     runs-on: ubuntu-latest

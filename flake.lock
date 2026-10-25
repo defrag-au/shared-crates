@@ -12,11 +12,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1792848390,
-        "narHash": "sha256-jpsTcWGdT4qQhr87EdloWiqLcz/oVFhfaE8QKb30MyU=",
+        "lastModified": 1792917612,
+        "narHash": "sha256-hANbI3cvf+bu4h/k8A5M8Xxi5CNS+mnFr0sAe56tR2Y=",
         "owner": "defrag-au",
         "repo": "agent-playbook",
-        "rev": "ba0355eebd6f91c2578305fe6724954a0214db67",
+        "rev": "8eb99e1b1e854d6aa34c63a052966f854049cb32",
         "type": "github"
       },
       "original": {
@@ -99,11 +99,11 @@
         "nixpkgs": "nixpkgs_18"
       },
       "locked": {
-        "lastModified": 1792848447,
-        "narHash": "sha256-Ia32oy2iWZI0BppLh5VHM5y/XGbulxInHknYjK/Ef8Q=",
+        "lastModified": 1792919588,
+        "narHash": "sha256-ROu9Sa8cJ51BsTYrnovgWFeP0gR56wTaI4FPrqVzGOE=",
         "owner": "defrag-au",
         "repo": "defrag-nix",
-        "rev": "9605a5da90bdf262d9b1677f5b50d1b7c387ddc6",
+        "rev": "67468f0c99d5f60e355d616232a342883db67162",
         "type": "github"
       },
       "original": {

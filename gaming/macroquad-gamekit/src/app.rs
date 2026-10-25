@@ -226,6 +226,14 @@ pub trait Game {
     /// The preloader's colours.
     fn backdrop(&self) -> Backdrop;
 
+    /// The game's pixel art, for `--sprites`: every sprite with its frames,
+    /// its real scale and its gait. The loop draws them on a review sheet
+    /// ([`crate::harness::sprite_sheet`]) over [`Backdrop::top`] and exits,
+    /// so no game writes a command of its own for it. By default, none.
+    fn sprites(&self) -> Vec<crate::harness::SheetSprite> {
+        Vec::new()
+    }
+
     /// Whether the game has what it needs to draw whole: its data is in, its
     /// assets are loaded. The preloader stays up until it is.
     fn ready(&self) -> bool {
@@ -283,9 +291,35 @@ pub async fn run(design: Vec2, game: impl Game) {
     run_on(Stage::Design(design), game).await;
 }
 
-/// Run `game` on `stage`; see [`run`].
-pub async fn run_on(stage: Stage, mut game: impl Game) {
+/// Run `game` on `stage`; see [`run`]. With `--view [NAME]`, the game's
+/// sprites in the [`crate::viewer::Viewer`] instead.
+pub async fn run_on(stage: Stage, game: impl Game) {
+    if harness::switch("--view") {
+        let start = harness::flag("--view").filter(|v| !v.starts_with("--"));
+        let sprites = game.sprites();
+        if sprites.is_empty() {
+            eprintln!("--view: this game lists no sprites (Game::sprites)");
+            std::process::exit(2);
+        }
+        view(sprites, game.backdrop(), start.as_deref()).await;
+    } else {
+        run_loop(stage, game).await;
+    }
+}
+
+/// Run the [`crate::viewer::Viewer`] on `sprites`, starting at the one
+/// named `start`: what `--view` and `sprite-view` open. The kit's capture
+/// flags (`--shot`, `--strip`) work on it as on a game.
+pub async fn view(sprites: Vec<harness::SheetSprite>, backdrop: Backdrop, start: Option<&str>) {
+    let viewer = crate::viewer::Viewer::new(sprites, backdrop, start);
+    run_loop(Stage::Design(crate::viewer::SIZE), viewer).await;
+}
+
+async fn run_loop(stage: Stage, mut game: impl Game) {
     let args = Args::read();
+    if let Some(path) = args.sprites.as_deref() {
+        review_sprites(path, &game);
+    }
     let scripted = game.scripted();
     let capturing = args.capturing() || scripted;
     if capturing {
@@ -312,6 +346,8 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
     // A `--shot --at T` capture skips drawing on its way to T: see
     // `fast_forward_to`.
     let fast_forward = fast_forward_to(&args, scripted);
+    // A `--strip`, once its first frame is due.
+    let mut strip: Option<harness::StripRun> = None;
     // A `--plan`: checked whole before anything runs.
     let mut plan = args.plan.as_deref().map(|path| match Plan::load(path) {
         Ok(plan) => PlanRun::new(plan),
@@ -395,6 +431,12 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
             origin,
             ..
         } = placed;
+        // `--px` sharpens a design stage's capture; a pixel stage's canvas
+        // keeps its own resolution.
+        let px = match stage {
+            Stage::Pixel { .. } | Stage::PixelFit(_) => px,
+            _ => args.capture_px(px),
+        };
         let clock = sim.clock + dt;
         let log = |line: &str| {
             if args.frame_log {
@@ -433,8 +475,18 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
         };
         timer.mark(FrameMark::Update);
 
-        let due =
+        let shot_due =
             plan_shot.is_some() || (args.shot.is_some() && frames >= 2 && game.capture_due(&frame));
+        // A `--strip` starts where the shot would have been taken, and takes
+        // a frame every `--every` from there.
+        let due = match (&strip, args.strip) {
+            (Some(run), _) => run.due(frames),
+            (None, Some(count)) if shot_due && plan_shot.is_none() => {
+                strip = Some(harness::StripRun::new(&args, count, frames));
+                true
+            }
+            _ => shot_due,
+        };
         // A board's offset into the window rides on the camera, with the shake.
         let shake = game.shake() + placed.offset;
         // The design stage's capture draws into its own target; the pixel
@@ -502,7 +554,17 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
                 run.wrote();
             } else if due && let Some(path) = args.shot.as_ref() {
                 let note = game.capture_note(&frame);
-                finish_capture(path, harness::write_capture(&target.texture, path, &note));
+                match strip.as_mut() {
+                    // The canvas is one pixel a stage unit.
+                    Some(run) => {
+                        if run.add(&target.texture.get_texture_data(), 1.0) {
+                            finish_capture(path, run.save(path, &note));
+                        }
+                    }
+                    None => {
+                        finish_capture(path, harness::write_capture(&target.texture, path, &note))
+                    }
+                }
             }
         } else if let Some(capture) = capture {
             if let (Some(path), Some(run)) = (&plan_shot, plan.as_mut()) {
@@ -510,7 +572,15 @@ pub async fn run_on(stage: Stage, mut game: impl Game) {
                 wrote_planned(path, capture.save(path, &note));
                 run.wrote();
             } else if let Some(path) = args.shot.as_ref() {
-                save(capture, path, &game.capture_note(&frame));
+                let note = game.capture_note(&frame);
+                match strip.as_mut() {
+                    Some(run) => {
+                        if run.add(&capture.image(), px) {
+                            finish_capture(path, run.save(path, &note));
+                        }
+                    }
+                    None => save(capture, path, &note),
+                }
             }
         }
         game.presented(&frame);
@@ -779,6 +849,51 @@ fn present(target: &RenderTarget, viewport: Viewport, origin: Vec2) {
             ..Default::default()
         },
     );
+}
+
+/// `--sprites`: the game's [`Game::sprites`] on a review sheet, then exit.
+fn review_sprites(path: &str, game: &impl Game) -> ! {
+    let mut sprites = game.sprites();
+    if sprites.is_empty() {
+        eprintln!("--sprites: this game lists no sprites (Game::sprites)");
+        std::process::exit(2);
+    }
+    // `--only whale,shark`: just those, larger.
+    if let Some(only) = harness::flag("--only") {
+        let names: Vec<&str> = only.split(',').map(str::trim).collect();
+        sprites.retain(|s| names.contains(&s.name.as_str()));
+        if sprites.is_empty() {
+            let all: Vec<String> = game.sprites().into_iter().map(|s| s.name).collect();
+            eprintln!(
+                "--only {only}: no such sprite; the game lists {}",
+                all.join(", ")
+            );
+            std::process::exit(2);
+        }
+    }
+    // `--strip N`: one sprite alone, played, rather than the sheet.
+    let args = Args::read();
+    if let Some(count) = args.strip {
+        let [sprite] = &sprites[..] else {
+            eprintln!("--sprites with --strip plays one sprite: name it with --only");
+            std::process::exit(2);
+        };
+        finish_capture(
+            path,
+            harness::sprite_film(
+                path,
+                sprite,
+                count as usize,
+                args.every.unwrap_or(2),
+                game.backdrop().top,
+            ),
+        );
+    }
+    let note = format!("Sprites: {} on the sheet.", sprites.len());
+    finish_capture(
+        path,
+        harness::sprite_sheet(path, &sprites, game.backdrop().top, &note),
+    )
 }
 
 /// Write a capture and its report, say where, and exit.
