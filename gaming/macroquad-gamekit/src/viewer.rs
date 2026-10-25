@@ -169,7 +169,9 @@ impl Viewer {
         let s = &self.sprites[self.at];
         let Some(path) = s.source.clone() else {
             let name = s.name.clone();
-            self.say(format!("{name} was not read from a file: press P for the lines"));
+            self.say(format!(
+                "{name} was not read from a file: press P for the lines"
+            ));
             return;
         };
         let tune = &self.tunes[self.at];

@@ -5,26 +5,36 @@ move, and show whichever frame the clock lands on. So a sprite is tested **alone
 then in motion**, against the rubric below. Each rule has a check that names it in a report, so a
 review that reads images and text (an agent's) can apply it the same way an animator's eye would.
 
-## The loop
+## Sprites are files
 
-The game lists its art in `Game::sprites`: each sprite's frames, the scale it is drawn at, its
-`Gait`, and `.body(bob, surge)`, the art pixels its body moves with the gait. Take those numbers
-from the same function the scene uses, so what is tested is what is drawn.
+A sprite lives in a `.sprite` file (see `src/sprite_file.rs` for the format): its rows, palette,
+scale, gait, and body motion (`bob`, `surge`, in art pixels). The game embeds it with
+`sprite_file!("sprites/whale.sprite")` and reads everything from it (`SpriteFile::grids`,
+`gait`, `body`, `scale`), and lists it for review with `SheetSprite::from_file`. One file is the
+one place a sprite changes, and what is reviewed is what is drawn.
+
+`sprite-view` (shared-crates, `gaming/sprite-view`) reads the same files with no game built:
 
 ```sh
-game --sprites .tmp/s.png --only whale                        # 1. still: shape and the cycle
-game --sprites .tmp/f.png --only whale --strip 24 --every 6   # 2. alone, in motion
+sprite-view sprites/                                        # the viewer, on every file under it
+sprite-view sprites/ --check                                # every file read, its motion report; no window
+sprite-view sprites/ --sprites .tmp/s.png --only whale      # 1. still: shape and the cycle
+sprite-view sprites/ --sprites .tmp/f.png --only whale --strip 24 --every 6   # 2. alone, in motion
 game --shot .tmp/m.png --size 814x844 --at 9 --strip 16 --every 4 --crop x,y,w,h   # 3. in the scene
-game --view whale                                             # 4. a person's review: the viewer
 ```
 
-**The viewer is where a person judges it.** `--view` opens a window, in place of the game, on
-the sprites `Game::sprites` lists. It shows one sprite looping, large against where it rests and at
-its real size, and a crowd of its clones each on its own phase. Keys tune the period, each step's
-hold, the jitter, the bob and the surge live, and `P` prints the `Gait::new(...)` and `.body(...)`
-lines to paste back; the motion problems for the tuned values show beside it. It runs through the
-kit's loop, so `--view whale --shot v.png --size 1280x800` captures it, the tuned lines and the
-problems in the report: the agent's way to see what the person is looking at.
+Until it is packaged into the shells, run it from shared-crates:
+`cargo run -p sprite-view -- <path> [flags]`. A game also serves all of these itself
+(`game --view whale`, `game --sprites ...`) from the files it embeds.
+
+**The viewer is where a person judges it.** It shows one sprite looping, large against where it
+rests and at its real size, and a crowd of its clones each on its own phase. Keys tune the period,
+each step's hold, the jitter, the bob and the surge live, with the motion problems for the tuned
+values beside them. `W` writes the tuned values into the sprite's file (only those header lines;
+the art and comments untouched), and a file saved in an editor reloads in the viewer, so art and
+timing are worked on in one loop. It runs through the kit's loop, so
+`sprite-view sprites/ --view whale --shot v.png --size 1280x800` captures it, the tuned values and
+the problems in the report: the agent's way to see what the person is looking at.
 
 The numbers below are for the agent's iterations and the person's attention. They are not a gate:
 nothing fails a build on them, and a rule broken on purpose (a smear frame, a snap for a hit) is
@@ -42,8 +52,8 @@ just said so.
 3. **The scene**, only once the sprite passes alone. `--strip` takes frames from `--at` on.
    `--crop` cuts them to one mover, in design units. Always give `--size`: the layout follows the
    window, so a crop without it lands somewhere else.
-4. **Hand it over.** Tell the person to open `--view NAME`. What they tune there comes back as
-   lines to paste.
+4. **Hand it over.** Tell the person to open `sprite-view <dir> --view NAME`. What they tune
+   there, they write back with `W`; read the file again before the next iteration.
 
 Fix the art, not the threshold. A threshold that names something good as a problem is a bug in
 the check: fix the check, saying why (the `line` rule once flagged a pivoting tail whose arc is

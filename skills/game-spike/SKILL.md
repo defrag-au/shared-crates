@@ -116,17 +116,18 @@ Read `shared-crates/gaming/macroquad-gamekit/CATALOG.md` first, and the rule `de
   targets with `Script::pointer`.
 - Give the game a `--soak N` (play N seeds to the end through the real screen, checking what is
   shown against the engine every step) and a `--sheet` (every face at once).
-- **Pixel art: list it, do not write a command for it.** Implement `Game::sprites` returning
-  `harness::SheetSprite::moving(name, frames, scale, gait).body(bob, surge)` / `::still(...)`
-  for every sprite, and `app::run` answers `--sprites` (and `--strip` with it) itself. Keep the
-  art's frames, palettes, gait and body motion in functions the game and the list both call, so
-  what is tested is what the scene draws. Read the kit's `ANIMATION.md` before drawing.
+- **Pixel art lives in `.sprite` files, not in code.** One file a sprite (`<client>/sprites/`):
+  rows, palette, scale, gait and body motion. The game embeds each with
+  `sprite_file!("sprites/whale.sprite")` and reads frames, gait, body and scale from it; colours
+  that vary at runtime are swapped with `grids_with(&[('f', flag)])`. `Game::sprites` returns
+  `SheetSprite::from_file` for each, so the kit serves `--sprites` and `--view` from the same
+  files. Read the kit's `ANIMATION.md` before drawing.
 - **Motion through a `Gait`, never `clock as usize % n`.** `Gait::new(&[(frame, hold), ...],
   period).jitter(0.15)`: the ends of a stroke held longer than the pass between them, frames
   that can come round twice (up, level, down, level), and every instance its own rate and phase
   from its seed, so clones of one sprite share textures but never flick in step. Move the body
   with the stride's eased `swing` (bob) and `surge` (push forward), not linearly. Build the gaits
-  once (a `OnceLock`), not per draw.
+  once (a `LazyLock` over the files), not per draw.
 
 ## 4. Review loop: capture, read, fix
 
@@ -134,9 +135,12 @@ Read `shared-crates/gaming/macroquad-gamekit/CATALOG.md` first, and the rule `de
 nix develop -c cargo build -p <game>
 ./target/debug/<game> --shot .tmp/s.png --at 1.25 --hover 2
 ./target/debug/<game> --sheet .tmp/sheet.png
-./target/debug/<game> --sprites .tmp/s.png --only whale                        # a sprite, still
-./target/debug/<game> --sprites .tmp/f.png --only whale --strip 24 --every 6   # a sprite alone, moving
 ./target/debug/<game> --shot .tmp/s.png --px 3       # sharp: 3 device pixels a design unit
+
+# sprites, with no game built (from shared-crates: cargo run -p sprite-view -- ...)
+sprite-view <client>/sprites --check                                   # every file, its motion report
+sprite-view <client>/sprites --sprites .tmp/s.png --only whale         # a sprite, still
+sprite-view <client>/sprites --sprites .tmp/f.png --only whale --strip 24 --every 6   # alone, moving
 ```
 
 Each capture writes `s.png` and `s.txt`.
@@ -155,10 +159,11 @@ reports:
   through its gait and moved by its body, N frames in time order, with a trail and change map.
   Its report flags `uneven` steps and `stall`s.
 - **Then the scene**, `--shot --strip` with `--size` and `--crop` around one mover.
-- **Then hand it to the user in the viewer**: `<game> --view NAME`. They watch it loop large, at
-  real size and as a crowd of clones, tune the gait and body with keys, and `P` prints the lines
-  to paste. `--view NAME --shot v.png --size 1280x800` captures what they see, the tuned lines
-  and problems in its report.
+- **Then hand it to the user in the viewer**: `sprite-view <client>/sprites --view NAME`. They
+  watch it loop large, at real size and as a crowd of clones, tune the gait and body with keys,
+  and `W` writes the values into the file; a file saved in an editor reloads. Read the file again
+  before the next iteration. `--view NAME --shot v.png --size 1280x800` captures what they see,
+  the tuned values and problems in its report.
 
 Fix every named problem in the art, or say why it stands. The numbers guide the iterations; the
 user's eye in the viewer is the judge. Do not write unit tests for how a sprite looks or moves.

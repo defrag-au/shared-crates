@@ -10,7 +10,7 @@ across frames and takes time as an argument. Stories are in `macroquad-storybook
 under "gamekit". MACROQUAD only: no wasm-bindgen, see the shared-crates CLAUDE.md on
 runtime pairs.
 
-32 modules.
+33 modules.
 
 | module | what it is |
 |---|---|
@@ -37,6 +37,7 @@ runtime pairs.
 | `sequence` | `Sequencer` — plays queued cues one after another, each holding the stage until its animation is done |
 | `shape` | `RoundedArt` — art cropped to fill a frame and clipped to its rounded corners, plus the rounded outline every card and badge needs |
 | `sprite` | `Sprite` — a retained, animated display object: where a card is, how it is turned and scaled, how visible, and whether a point is on it |
+| `sprite_file` | `SpriteFile` — a sprite as a text file: its rows, palette, gait, scale and body motion in one place, so a game embeds it and `sprite-view` reviews it, with no game built |
 | `starfield` | `Starfield` — a seeded sky of stars in depth layers that drift and twinkle, drawn behind a space scene, a title or a whole window |
 | `startup` | `Startup` — the phases a screen goes through between opening and drawing whole: settling while the window finds its size, warming glyphs behind a [`Preloader`], then live |
 | `step` | `FixedStep` — a simulation that steps at a fixed rate, whatever the frame rate |

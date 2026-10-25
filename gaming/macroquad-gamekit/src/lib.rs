@@ -22,7 +22,9 @@
 //! Stories for each module are in `macroquad-storybook`, under "gamekit".
 //! Read `CATALOG.md` before adding a module, `CARD-FACES.md` before
 //! building a card face, and `ANIMATION.md` before drawing or animating a
-//! sprite: the rubric for motion, and the tools that check it. A game client's review loop is [`harness`].
+//! sprite: sprites as `.sprite` files ([`sprite_file`]), the rubric for
+//! motion, and the tools that check it (`sprite-view`, the viewer, sheets
+//! and films). A game client's review loop is [`harness`].
 //!
 //! Two opt-in features, off by default because each needs a system library
 //! natively on Linux: `audio` (sound, music, mute — [`audio`]) and

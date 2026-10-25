@@ -21,8 +21,19 @@ use macroquad_gamekit::{Backdrop, Frame, Game, SpriteFile, app};
 
 /// Flags whose next argument is their value, not a sprite path.
 const VALUED: &[&str] = &[
-    "--sprites", "--only", "--strip", "--every", "--shot", "--at", "--size", "--px", "--crop",
-    "--view", "--keys", "--plan", "--seconds",
+    "--sprites",
+    "--only",
+    "--strip",
+    "--every",
+    "--shot",
+    "--at",
+    "--size",
+    "--px",
+    "--crop",
+    "--view",
+    "--keys",
+    "--plan",
+    "--seconds",
 ];
 
 /// The `.sprite` files the arguments name: files as given, directories
@@ -146,7 +157,11 @@ async fn run(files: Vec<SpriteFile>) {
     let backdrop = backdrop(&files);
     let flag = macroquad_gamekit::harness::flag;
     if flag("--sprites").is_some() {
-        app::run(macroquad_gamekit::viewer::SIZE, Library { sprites, backdrop }).await;
+        app::run(
+            macroquad_gamekit::viewer::SIZE,
+            Library { sprites, backdrop },
+        )
+        .await;
     } else {
         let start = flag("--view")
             .or_else(|| flag("--only"))

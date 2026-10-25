@@ -140,7 +140,8 @@ impl SpriteFile {
             if let Some(label) = trimmed.strip_prefix("frame")
                 && (label.is_empty() || label.starts_with(' '))
             {
-                out.frames.push((uncommented(label).to_string(), Vec::new()));
+                out.frames
+                    .push((uncommented(label).to_string(), Vec::new()));
                 continue;
             }
             if let Some((_, rows)) = out.frames.last_mut() {
@@ -180,9 +181,9 @@ impl SpriteFile {
                     let mut steps = Vec::new();
                     for step in value.split_whitespace() {
                         let (f, w) = step.split_once('*').unwrap_or((step, "1"));
-                        let f = f
-                            .parse::<usize>()
-                            .map_err(|_| err(n, format!("`{step}`: expected FRAME or FRAME*HOLD")))?;
+                        let f = f.parse::<usize>().map_err(|_| {
+                            err(n, format!("`{step}`: expected FRAME or FRAME*HOLD"))
+                        })?;
                         steps.push((f, num(n, w)?));
                     }
                     out.steps = Some(steps);
@@ -201,7 +202,10 @@ impl SpriteFile {
         {
             return Err(err(
                 0,
-                format!("the gait plays frame {f}, but there are {}", out.frames.len()),
+                format!(
+                    "the gait plays frame {f}, but there are {}",
+                    out.frames.len()
+                ),
             ));
         }
         // Drop blank rows a frame ends with (the gap before the next one).
@@ -249,7 +253,9 @@ impl SpriteFile {
     /// The frames with some colours swapped: `&[('f', flag)]` flies a
     /// ship's flag in its pool's colour.
     pub fn grids_with(&self, swaps: &[(char, u32)]) -> Result<Vec<Grid>, PixelError> {
-        let palette = swaps.iter().fold(self.palette(), |p, (c, rgb)| p.with(*c, *rgb));
+        let palette = swaps
+            .iter()
+            .fold(self.palette(), |p, (c, rgb)| p.with(*c, *rgb));
         self.grids_in(&palette)
     }
 
@@ -315,10 +321,13 @@ impl SpriteFile {
                 .flatten();
             match values.iter().position(|(k, _)| Some(*k) == key) {
                 Some(i) => {
-                    let comment = line.find('#').map_or(String::new(), |at| {
-                        format!("  {}", line[at..].trim_end())
-                    });
-                    lines.push(format!("{}: {}{comment}", values[i].0, values[i].1));
+                    let mut out = format!("{}: {}", values[i].0, values[i].1);
+                    // A comment keeps its column, so aligned comments stay aligned.
+                    if let Some(at) = line.find('#') {
+                        let column = at.max(out.len() + 2);
+                        out = format!("{out:column$}{}", line[at..].trim_end());
+                    }
+                    lines.push(out);
                     done[i] = true;
                 }
                 None => lines.push(line.to_string()),
@@ -350,7 +359,11 @@ impl SpriteFile {
 fn trim(v: f32) -> String {
     let s = format!("{v:.3}");
     let s = s.trim_end_matches('0').trim_end_matches('.');
-    if s == "-0" { "0".to_string() } else { s.to_string() }
+    if s == "-0" {
+        "0".to_string()
+    } else {
+        s.to_string()
+    }
 }
 
 #[cfg(test)]
@@ -399,9 +412,21 @@ bB.
         let bad = |t: &str| SpriteFile::parse(t).expect_err("should not read");
         assert_eq!(bad("name: x\nscale: big\nframe\nb\n").line, 2);
         assert_eq!(bad("name: x\nwobble: 1\nframe\nb\n").line, 2);
-        assert!(bad("name: x\npalette: b=123\nframe\nb\n").message.contains("colour"));
-        assert!(bad("name: x\nframe\nz\n").message.contains("not in the palette"));
-        assert!(bad("name: x\npalette: b=000000\ngait: 0 3\nframe\nb\n").message.contains("frame 3"));
+        assert!(
+            bad("name: x\npalette: b=123\nframe\nb\n")
+                .message
+                .contains("colour")
+        );
+        assert!(
+            bad("name: x\nframe\nz\n")
+                .message
+                .contains("not in the palette")
+        );
+        assert!(
+            bad("name: x\npalette: b=000000\ngait: 0 3\nframe\nb\n")
+                .message
+                .contains("frame 3")
+        );
         assert!(bad("scale: 1\nframe\n.\n").message.contains("name"));
     }
 
@@ -411,12 +436,15 @@ bB.
         let gait = Gait::new(&[(0, 1.5), (1, 1.0)], 0.9).jitter(0.2);
         let out = SpriteFile::retuned(TAIL, &gait, 0.75, 1.0);
         assert!(out.contains("gait: 0*1.5 1\n"), "{out}");
-        assert!(out.contains("period: 0.9  # a slow stroke\n"), "{out}");
+        assert!(out.contains("period: 0.9   # a slow stroke\n"), "{out}");
         assert!(out.contains("bob: 0.75\n"), "{out}");
         // Missing keys go after the name.
         assert!(out.contains("name: tail\njitter: 0.2\nsurge: 1\n"), "{out}");
         // The art and comments are untouched.
-        assert!(out.contains("# between frames\nframe down\n...\nbB.\n"), "{out}");
+        assert!(
+            out.contains("# between frames\nframe down\n...\nbB.\n"),
+            "{out}"
+        );
         let again = SpriteFile::parse(&out).expect("still reads");
         assert_eq!(again.gait().steps(), &[(0, 1.5), (1, 1.0)]);
         assert_eq!(again.surge, 1.0);
