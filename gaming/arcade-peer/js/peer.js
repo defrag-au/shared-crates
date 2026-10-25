@@ -959,7 +959,7 @@
   };
 
   // The room's interest set for this seat, and the epoch that names it. Called
-  // when the set changes — about once a second at most — and again after a
+  // when the set changes — on the room's regroup interval, and at once after a
   // join. Links outside the set are told `Bye` and forgotten; a seat the set
   // has gained is offered a channel from here, by whichever end leads.
   //

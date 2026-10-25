@@ -122,8 +122,10 @@ impl RoomSim for Walkers {
 
     /// Walkers that are within [`NEAR`] of each other keep a peer link, and no
     /// more: a small standing-in for a game's area of interest, so a group test
-    /// can walk one dot out of range and watch the set change.
-    fn interest(&self, seat: Seat, k: usize) -> Option<Vec<Seat>> {
+    /// can walk one dot out of range and watch the set change. No stickiness:
+    /// the tests here are about the room publishing what the sim says, and
+    /// `island-sim` is where hysteresis is measured.
+    fn interest(&self, seat: Seat, k: usize, _held: &[Seat]) -> Option<Vec<Seat>> {
         let (x, y, _) = *self.dots.get(&seat)?;
         let mut near: Vec<(i64, Seat)> = self
             .dots
@@ -674,7 +676,9 @@ fn a_group_is_the_seats_the_world_says_are_near() {
 
     // Twenty units a tick for three and a half seconds is far outside `NEAR`.
     h.run(3_500, |i, _, _| (i == a).then(|| vec![20, 0]));
-    h.run(1_500, |_, _, _| None);
+    // The room re-ranks on an interval rather than every tick, so the wait is a
+    // regroup plus a little, named rather than guessed.
+    h.run(crate::room::GROUP_EVERY_SECS * 1_000 + 500, |_, _, _| None);
 
     assert_eq!(group(&h, a), Some(Vec::new()), "a has walked out of range");
     assert_eq!(
@@ -723,7 +727,7 @@ impl RoomSim for Islands {
     fn restore(_bytes: &[u8]) -> Result<Self, String> {
         Ok(Self { tick: 0 })
     }
-    fn interest(&self, seat: Seat, _k: usize) -> Option<Vec<Seat>> {
+    fn interest(&self, seat: Seat, _k: usize, _held: &[Seat]) -> Option<Vec<Seat>> {
         Some(match seat {
             0 => vec![1],
             _ => Vec::new(),

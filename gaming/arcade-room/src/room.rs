@@ -143,11 +143,22 @@ const SAVE_MAGIC: &[u8] = b"ARM1";
 
 /// How often a seat's group is recomputed, in seconds.
 ///
-/// Coarse on purpose. A membership change costs a `Bye` and a re-announce at
-/// both ends, so recomputing it at tick rate would churn more than it buys;
-/// players cross an area-of-interest boundary over a second or two of travel,
-/// not over a tick.
-const GROUP_EVERY_SECS: u64 = 1;
+/// Coarse on purpose, and **measured**: a membership change costs a `Bye` and a
+/// re-announce at both ends, every new member is a fresh `RTCPeerConnection`, and
+/// recomputing every second in a crowd turns that into a handshake storm. At 64
+/// players on the spawn pad, one second cost 116 new pairs a second (a link lived
+/// 3.3 s); five costs 36 (a link lives 10.7 s). The first number is 1,700–4,600
+/// signal frames a second, the second 540–1,400 — §5 of
+/// `docs/P2P_OVERLAY_DESIGN.md` has the table.
+///
+/// What the interval buys is bought from staleness, and it is staleness nobody
+/// sees: a player who walks into view keeps being drawn from the confirmed
+/// stream (the room's tick, ~150 ms behind) until the next regroup gives them a
+/// channel. A seat joining regroups at once — the `all_named` check below — so
+/// an arrival never waits for the interval. A seat leaving is noticed on the
+/// next one, which costs nothing: its channels are already dead and its seat is
+/// held for its grace regardless.
+pub(crate) const GROUP_EVERY_SECS: u64 = 5;
 
 impl<S: RoomSim> Room<S> {
     pub fn new(seed: u64, cfg: RoomConfig) -> Self {
@@ -631,20 +642,28 @@ impl<S: RoomSim> Room<S> {
     fn regroup(&mut self) {
         let every = u64::from(S::TICK_HZ).max(1) * GROUP_EVERY_SECS;
         let due = self.sim.tick().saturating_sub(self.grouped_at) >= every;
-        if !due && self.groups.len() == self.seats.len() {
+        // Every seat having a set, rather than as many sets as seats: a join
+        // that coincides with a departure leaves the counts equal while the new
+        // seat has never been named, and it must not wait for the interval.
+        let all_named = self.seats.keys().all(|seat| self.groups.contains_key(seat));
+        if !due && all_named {
             return;
         }
         self.grouped_at = self.sim.tick();
-        let held: Vec<Seat> = self.seats.keys().copied().collect();
+        let seated: Vec<Seat> = self.seats.keys().copied().collect();
         let mut next = BTreeMap::new();
         let mut changed = Vec::new();
-        for seat in &held {
-            let members: Vec<Seat> = match self.sim.interest(*seat, INTEREST_MAX) {
+        for seat in &seated {
+            // What this seat was last told, so the sim can keep an incumbent
+            // rather than re-rank the crowd from scratch: a fresh ranking churns
+            // every tick, and every change is a handshake at both ends.
+            let last = self.groups.get(seat).map_or(&[][..], Vec::as_slice);
+            let members: Vec<Seat> = match self.sim.interest(*seat, INTEREST_MAX, last) {
                 Some(near) => near
                     .into_iter()
                     .filter(|s| s != seat && self.seats.contains_key(s))
                     .collect(),
-                None => held.iter().copied().filter(|s| s != seat).collect(),
+                None => seated.iter().copied().filter(|s| s != seat).collect(),
             };
             if self.groups.get(seat) != Some(&members) {
                 changed.push((*seat, members.clone()));

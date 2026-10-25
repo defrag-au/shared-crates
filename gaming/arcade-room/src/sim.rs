@@ -82,6 +82,13 @@ pub trait RoomSim: Clone + Sized {
     /// Who `seat` should talk to over the peer plane: at most `k` others,
     /// nearest first if the game has a notion of near.
     ///
+    /// `held` is the set the room last published for this seat, and it is there
+    /// so membership can be **sticky**: a fresh ranking of a crowd changes every
+    /// tick, and every change costs a WebRTC handshake at both ends. A sim that
+    /// keeps an incumbent unless a newcomer is clearly better turns a reshuffle
+    /// into nothing (`docs/P2P_OVERLAY_DESIGN.md` §5 measures the difference).
+    /// The room owns what was published, because the sim does not store it.
+    ///
     /// The room intersects what this names with the seats it actually holds, so
     /// a stale or careless answer cannot name a ghost, and it publishes the
     /// result as a group. `None` means "no opinion": every other seated player,
@@ -90,7 +97,7 @@ pub trait RoomSim: Clone + Sized {
     ///
     /// Positions are the sim's, so this is where area-of-interest belongs:
     /// what is on screen is what is worth a data channel.
-    fn interest(&self, _seat: Seat, _k: usize) -> Option<Vec<Seat>> {
+    fn interest(&self, _seat: Seat, _k: usize, _held: &[Seat]) -> Option<Vec<Seat>> {
         None
     }
 }
