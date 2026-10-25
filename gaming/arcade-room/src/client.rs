@@ -140,6 +140,11 @@ pub struct Client<S: RoomSim> {
     /// Signalling from other players, in arrival order: the seat the room
     /// vouched for, and the `arcade-peer` bytes beside it.
     signals: VecDeque<(Seat, Vec<u8>)>,
+    /// Frames sent the room since this client was seated. For a readout, and
+    /// for measuring what a full room would cost: 64 players at one frame per
+    /// input change is the number that decides whether the rate split is
+    /// mandatory. Never read for a rule.
+    sent: u32,
 }
 
 impl<S: RoomSim> Client<S> {
@@ -175,6 +180,7 @@ impl<S: RoomSim> Client<S> {
                     to_play: VecDeque::new(),
                     refused: None,
                     signals: VecDeque::new(),
+                    sent: 0,
                 };
                 client.ahead = Glide::at(room_tick as f64 + client.lead(), now);
                 client.ping(now);
@@ -211,6 +217,12 @@ impl<S: RoomSim> Client<S> {
     /// The round trip, smoothed, in ms.
     pub fn rtt_ms(&self) -> u64 {
         self.rtt_ms.round() as u64
+    }
+
+    /// Frames this client has sent the room since it was seated, of every
+    /// kind: inputs, pings, heartbeats and signals.
+    pub fn sent(&self) -> u32 {
+        self.sent
     }
 
     /// The room's clock, estimated.
@@ -303,6 +315,7 @@ impl<S: RoomSim> Client<S> {
 
     fn send(&mut self, msg: ToRoom, now: u64) {
         self.last_sent_ms = now;
+        self.sent = self.sent.saturating_add(1);
         self.out.push(msg.encode());
     }
 

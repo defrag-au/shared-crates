@@ -99,6 +99,17 @@
   // configuration story this file does not have yet.
   var ICE_SERVERS = [];
 
+  // Which channel a link byte belongs to. Mirrors the game's `overlay::Kind`.
+  var LINK_STATE = 0;
+  var LINK_CTRL = 1;
+
+  // How many arrived bytes to hold for the game. A queue that grows means the
+  // game stopped draining, which is a stall; dropping the oldest is right
+  // because a position's value decays, and a keyframe comes every second.
+  var MAX_RECV = 256;
+
+  var recv = [];
+
   var encoder = new TextEncoder();
   var decoder = new TextDecoder();
 
@@ -399,15 +410,25 @@
     channel.onerror = function (e) {
       fail(link, name + ' channel: ' + describe(e));
     };
-    if (name === 'state') {
-      channel.onmessage = function () {
+    channel.onmessage = function (event) {
+      if (name === 'state') {
         window.__bt.received += 1;
         window.__bt.buffered = channel.bufferedAmount;
         if (window.__bt.received % 20 === 0) {
           sample();
         }
-      };
-    }
+      }
+      // The game's bytes. This file does not look at them: `island-wire` owns
+      // the format, and all the shim knows is which seat and which channel.
+      recv.push({
+        seat: link.seat,
+        kind: name === 'state' ? LINK_STATE : LINK_CTRL,
+        bytes: new Uint8Array(event.data),
+      });
+      if (recv.length > MAX_RECV) {
+        recv.shift();
+      }
+    };
     return channel;
   }
 
@@ -702,6 +723,30 @@
     for (var i = 0; i < take.length; i += 1) {
       deliver(take[i].from, take[i].bytes);
     }
+  };
+
+  // ── The state and control channels ───────────────────────────────────────
+  //
+  // What the game puts on a data channel, and what arrived on one. The shim
+  // never parses either — `island-wire` owns the format.
+  window.__btSendLink = function (seat, kind, bytes) {
+    var link = links.get(seat);
+    if (!link) {
+      return false;
+    }
+    var channel = kind === LINK_STATE ? link.state : link.ctrl;
+    if (!channel || channel.readyState !== 'open') {
+      return false;
+    }
+    channel.send(bytes);
+    return true;
+  };
+
+  // Whatever arrived on the data channels since the last drain, oldest first.
+  window.__btDrainLinks = function () {
+    var out = recv;
+    recv = [];
+    return out;
   };
 
   // Send `n` state messages, so a receiver has something to count and a
