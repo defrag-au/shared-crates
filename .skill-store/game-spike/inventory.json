@@ -2,8 +2,11 @@
   "id": "urn:skill:game-spike",
   "type": "https://ocfl.io/1.1/spec/#inventory",
   "digestAlgorithm": "sha512",
-  "head": "v2",
+  "head": "v3",
   "manifest": {
+    "23cb7013c336e7adf05667aeaf15a2664f3086f988dccb069ca9230b84adf39dc5c11c44ff1a1dcfee6b03a7f3243fcf356e60194bea652bc1cfda236a471b66": [
+      "v3/content/SKILL.md"
+    ],
     "24749058ee6cb514ba787688c49eab578cc8461e76b6c6d8ec098d57749ea1d31f2aa43beb705954b3707162b2ea8b310af01e80d924be7073e709308e5cfd5f": [
       "v1/content/SKILL.md"
     ],
@@ -31,6 +34,19 @@
           "SKILL.md"
         ]
       },
+      "user": {
+        "name": "Damon Oehlman",
+        "address": "https://github.com/defrag-au/shared-crates"
+      }
+    },
+    "v3": {
+      "created": "2026-10-26T00:15:54Z",
+      "state": {
+        "23cb7013c336e7adf05667aeaf15a2664f3086f988dccb069ca9230b84adf39dc5c11c44ff1a1dcfee6b03a7f3243fcf356e60194bea652bc1cfda236a471b66": [
+          "SKILL.md"
+        ]
+      },
+      "message": "document the window title marker for automated runs",
       "user": {
         "name": "Damon Oehlman",
         "address": "https://github.com/defrag-au/shared-crates"

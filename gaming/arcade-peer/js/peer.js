@@ -38,6 +38,42 @@
 // can briefly disagree. `rtc-quickconnect` does the same, and says why: the
 // master's offer is "only really for the sake of politeness".
 //
+// ## An offer that is not answered
+//
+// `startOffer` refuses while an attempt is outstanding, and a link the browser
+// never connects stays `connecting` until ICE consent gives up — about half a
+// minute — so a signal lost in flight parks the pair for that long with nothing
+// to restart it. `OFFER_MS` abandons the attempt, tells the far side, and lets
+// the ordinary paths start a fresh one on a newer epoch.
+//
+// ## The offer queue
+//
+// A page just named twelve peers would otherwise write twelve offers in one
+// frame, each with its own candidates. `MAX_NEGOTIATING` keeps four in flight
+// and queues the rest; `__btDrain` starts the next as a slot frees — connected,
+// expired, or reset. The cap is about the burst a group change makes, not the
+// steady state: the room regroups on every join, so an ordinary world never
+// queues.
+//
+// ## A link that dies
+//
+// ICE does not always say so: the transport can sit `connected` while both
+// channels are closed, and a `failed` connection without `?persist=1` used to be
+// terminal — the record stayed, so nothing renegotiated it. `dropDead` is the one
+// exit: reset, tell the far side, and let the leader offer again if the room
+// still names the seat. `disconnected` waits `LINK_STALE_MS` because it often
+// comes back on its own; `failed` acts at once; a channel that closes under us
+// waits `LINK_SETTLE_MS` for the far side's `Bye`, which a deliberate close
+// always sends just behind it — and a set change is exactly that, so the window
+// is what stops the shim re-offering to a seat it is about to drop.
+//
+// The cheap repair, tried first on `disconnected`, is an ICE **restart**: the end
+// that offered asks for new candidates on the connection both ends already have
+// (`TAG_RESTART`), the far side answers without a reset, and the channels — and
+// anything buffered on them — stay where they are. The offer reuses the attempt's
+// epoch deliberately: a higher one means "start over", which would tear down the
+// very channels the restart is there to keep.
+//
 // ## Announcing
 //
 // `Announce` is broadcast, and the room stamps the sender. A peer that joined
@@ -81,28 +117,72 @@
   var TAG_ANSWER = 3;
   var TAG_CANDIDATE = 4;
   var TAG_BYE = 5;
+  // An offer for the connection both ends already have: new ICE credentials,
+  // same `RTCPeerConnection`, same channels. It carries the epoch of the attempt
+  // it belongs to — a higher epoch means "start over", which is the teardown this
+  // exists to avoid — and is answered with a plain Answer.
+  var TAG_RESTART = 6;
 
   var MAX_SDP = 8192;
   var MAX_CANDIDATE = 512;
 
+  // The `to` a queued signal carries when it is for everyone. The room routes a
+  // targeted signal to one seat and copies a broadcast one to the sender's
+  // reach set; a world holds 64 seats, so 0xffff cannot collide with one.
+  var BROADCAST = 0xffff;
+
   var BYE_REPLACED = 1;
 
-  // Bounded interest sets are the design's rule, not this file's to invent. But
-  // until the room sends `Group`, every seated peer announces and every announce
-  // would be answered: at 64 players that is a full mesh, which is explicitly
-  // out of scope. The cap is the shim's half of "bounded" — it bounds
-  // connections, not traffic, and it is replaced when `Group` lands.
+  // Bounded interest sets are the design's rule, not this file's to invent.
+  // The room publishes a group (§5), and this is the shim's half of it: links
+  // outside the group are closed and no new one is opened. `MAX_LINKS` stays as
+  // a hard cap — a group that is somehow larger than the design's bound still
+  // cannot produce a mesh — but it should never bind.
   var MAX_LINKS = 12;
+
+  // Persistent links hold dormant channels too, so the cap has to cover the
+  // set and the seats it recently dropped. When it binds, the longest-dormant
+  // link is evicted: the ranking problem moved from the room to the client,
+  // which §5 says is what this costs.
+  var MAX_LINKS_PERSIST = 18;
+
+  // How many offers this page runs at once. A leader whose group has just grown
+  // would otherwise create one connection, one SDP and a stream of candidates
+  // per new seat in the same frame, and every one of those messages leaves
+  // together — the burst §9 measures. The rest wait their turn and start as the
+  // ones in flight settle: connected, expired, or reset.
+  var MAX_NEGOTIATING = 4;
+
+  // How often the same link may be restarted. A path that flaps reports
+  // `disconnected` on each one, and a restart per flap is a handshake's worth of
+  // messages for a blip. The stale timer is the backstop if a restart does not
+  // take: past it the link is torn down and offered again.
+  var RESTART_EVERY_MS = 5000;
 
   // ── ICE ──────────────────────────────────────────────────────────────────
   //
-  // Two STUN servers, no TURN. STUN is how a peer learns its own address on the
-  // far side of its NAT; without it a peer offers host candidates only, and a
-  // browser disguises those as mDNS `.local` names, so two peers on different
-  // networks never find a pair. TURN is the relay of last resort and it needs
-  // credentials this file cannot hold: see `docs/P2P_OVERLAY_DESIGN.md` §9.
+  // Two STUN servers by default. STUN is how a peer learns its own address on
+  // the far side of its NAT; without it a peer offers host candidates only, and
+  // a browser disguises those as mDNS `.local` names, so two peers on different
+  // networks never find a pair.
   //
-  // The pair is measured rather than remembered. `freeice`'s `ice-check`
+  // TURN is the relay of last resort, for the symmetric-NAT pair STUN cannot
+  // connect. Its credentials are short-lived and cannot live in this file, so
+  // they come from the room: `GET /ice` mints them server-side and answers the
+  // list a `RTCPeerConnection` takes. The fetch starts at load and a join waits
+  // for it, because a connection negotiated before the list arrived would be
+  // STUN-only for the rest of its life. An empty answer — the route not
+  // deployed, no secret configured, the mint failing — leaves the default in
+  // place: TURN is an improvement, never a requirement.
+  //
+  // `?ice=off` for a run that must not depend on the network; `?ice=stun:a:1,…`
+  // to point a test at named servers. Either wins over the room's list, and
+  // neither fetches it.
+  //
+  // `?relay=1` restricts gathering to relay candidates: how a run proves the
+  // credentials work, rather than that two peers happen to be on one machine.
+  //
+  // The default pair is measured rather than remembered. `freeice`'s `ice-check`
   // (2026-10-25, Sydney) answered in 6 ms from Cloudflare and 18 ms from
   // Google, while the European hosts that list also ships took 200–350 ms.
   // Both of these are anycast, so the figure is a distance to the nearest colo
@@ -114,10 +194,44 @@
     { urls: 'stun:stun.l.google.com:19302' },
   ];
 
-  // `?ice=off` for a run that must not depend on the network; `?ice=stun:a:1,…`
-  // to point a test at named servers. Absent, the default above applies: this
-  // game is played across the internet.
   var ICE = iceFromQuery(window.location.search);
+  var RELAY = /[?&]relay=1/.test(window.location.search || '');
+  var OFFLINE = /[?&]offline=1/.test(window.location.search || '');
+  // Persistent links (design §5): a seat the room stops naming keeps its
+  // channel, dormant, so walking back into view costs no handshake. Off by
+  // default while it is measured — `p2p-persist.dsl` and `p2p-persist-off.dsl`
+  // are the A/B, and the eviction rule below is what the run is judging.
+  var PERSIST = /[?&]persist=1/.test(window.location.search || '');
+
+  // How long an offer may go unanswered before the attempt is abandoned and
+  // retried. Longer than a handshake takes on any path that connects at all
+  // (loopback measures ~100 ms; a TURN relay adds round trips, not tens of
+  // seconds), and short enough that a lost signal costs a retry rather than a
+  // stare. `?offerMs=<ms>` overrides it; `?offerMs=0` turns expiry off.
+  var OFFER_MS = offerMs(window.location.search);
+
+  // How long a link may sit `disconnected` before it is treated as dead. ICE
+  // reports `disconnected` for a path that may come back — a wifi hiccup, a
+  // route change — and `failed` for one that will not, so the first waits and the
+  // second does not. `?staleMs=<ms>` overrides it; `?staleMs=0` waits forever.
+  var LINK_STALE_MS = staleMs(window.location.search);
+
+  // How long a channel that closed under a live link is given for the far side's
+  // `Bye` to arrive. A deliberate close always sends one, and when the room's set
+  // changed the two cross in flight: without this window the close looks like a
+  // crash and the shim re-offers to a seat it is about to drop. A channel that
+  // closes with no `Bye` behind it is a peer that died mid-connection.
+  var LINK_SETTLE_MS = 1000;
+
+  // How long a join waits for the room's list. Under `wrangler dev` the mint is
+  // a round trip to Cloudflare Realtime and back, and a longer budget would be
+  // a visible delay at the door for a relay that may not be needed. Past it the
+  // default is used.
+  var ICE_BUDGET_MS = 1500;
+
+  var iceSettled = false;
+  var iceReady = null;
+  var pendingJoin = null;
 
   function iceFromQuery(search) {
     var match = /[?&]ice=([^&#]*)/.exec(search || '');
@@ -142,6 +256,117 @@
   function iceUrls(servers) {
     return servers.map(function (server) {
       return Array.isArray(server.urls) ? server.urls.join(' ') : server.urls;
+    });
+  }
+
+  function offerMs(search) {
+    var match = /[?&]offerMs=(\d+)/.exec(search || '');
+    if (!match) {
+      return 12000;
+    }
+    var ms = parseInt(match[1], 10);
+    return ms > 0 ? ms : Infinity;
+  }
+
+  function staleMs(search) {
+    var match = /[?&]staleMs=(\d+)/.exec(search || '');
+    if (!match) {
+      return 10000;
+    }
+    var ms = parseInt(match[1], 10);
+    return ms > 0 ? ms : Infinity;
+  }
+
+  function reportIce() {
+    if (!window.__bt) {
+      return;
+    }
+    window.__bt.ice = {
+      source: ICE.source,
+      urls: iceUrls(ICE.servers),
+      room: ICE.room,
+      relay: RELAY,
+    };
+  }
+
+  // The room's list, ahead of the default. A default earns its place only if it
+  // names an address the room's list does not already have: Cloudflare's mint
+  // carries its own STUN server, and listing it twice buys nothing. Google's is
+  // a second operator, so it is the entry that survives.
+  function mergeIce(room, defaults) {
+    var seen = {};
+    var merged = [];
+    function urlsOf(server) {
+      return Array.isArray(server.urls) ? server.urls : [server.urls];
+    }
+    function take(server, onlyIfNew) {
+      var urls = urlsOf(server);
+      if (onlyIfNew && urls.every(function (url) { return seen[url]; })) {
+        return;
+      }
+      urls.forEach(function (url) { seen[url] = true; });
+      merged.push(server);
+    }
+    room.forEach(function (server) { take(server, false); });
+    defaults.forEach(function (server) { take(server, true); });
+    return merged;
+  }
+
+  // Ask the room for credentials, once. `ICE.room` says what came back, for a
+  // report that would otherwise show only the list it ended up with:
+  // 'off' (an override, or no room on this origin), 'pending', 'ok', 'empty'
+  // (the route answered and had nothing to add), 'unavailable' (no route).
+  function loadRoomIce() {
+    if (ICE.source !== 'default' || OFFLINE) {
+      ICE.room = 'off';
+      iceSettled = true;
+      reportIce();
+      return Promise.resolve(ICE);
+    }
+    ICE.room = 'pending';
+    reportIce();
+    var settled = false;
+    return new Promise(function (resolve) {
+      var controller = typeof AbortController === 'function' ? new AbortController() : null;
+      var timer = setTimeout(function () {
+        if (controller) {
+          controller.abort();
+        }
+        finish('unavailable');
+      }, ICE_BUDGET_MS);
+      function finish(state) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        iceSettled = true;
+        clearTimeout(timer);
+        if (state !== null) {
+          ICE.room = state;
+        }
+        reportIce();
+        resolve(ICE);
+      }
+      fetch('/ice', {
+        cache: 'no-store',
+        signal: controller ? controller.signal : undefined,
+      }).then(function (response) {
+        return response.ok ? response.json() : null;
+      }).then(function (body) {
+        var servers = body && Array.isArray(body.iceServers) ? body.iceServers : [];
+        servers = servers.filter(function (server) {
+          return server && (typeof server.urls === 'string' ||
+            (Array.isArray(server.urls) && server.urls.length > 0));
+        });
+        if (servers.length === 0) {
+          finish('empty');
+          return;
+        }
+        ICE.servers = mergeIce(servers, DEFAULT_ICE);
+        finish('ok');
+      }).catch(function () {
+        finish('unavailable');
+      });
     });
   }
 
@@ -173,6 +398,20 @@
   var links = new Map();
   var seen = new Set();
 
+  // seat -> the last epoch this page used with it, kept across link records. A
+  // record is deleted when a link dies or a seat leaves the set, and a recreated
+  // one must not restart the count below what the far side has already seen: it
+  // would read every later offer as one from an older attempt and ignore it.
+  var epochs = new Map();
+
+  // Seats waiting for an offer slot (`MAX_NEGOTIATING`), in arrival order.
+  var queue = [];
+
+  // The room's interest set for this seat: who it is worth keeping a channel
+  // to. Null until the room has said; before then every peer, which is what
+  // the room does until its sim has an opinion about who is near whom.
+  var group = null;
+
   window.__bt = {
     // 'new' | 'connecting' | 'open' | 'closed' | 'failed'. A roll-up over the
     // links rather than a value any one browser event can walk backwards: a
@@ -183,6 +422,8 @@
     me: -1,
     peers: 0,
     open: 0,
+    live: 0,
+    idle: 0,
     sent: 0,
     received: 0,
     // The game's bytes, by channel: what went out on `state` and `ctrl`, and
@@ -198,20 +439,59 @@
     // Why the last connection failed, for a report that would otherwise say
     // only "failed".
     error: null,
-    // Pairwise signals that reached us addressed to another peer. They are the
-    // cost of broadcasting, and a count of them says the filter is working.
+    // Pairwise signals that reached us addressed to another peer. With the
+    // room routing a targeted signal to one seat this is zero, and a number
+    // that climbs means the broadcast path came back.
     ignored: 0,
+    // Signals for a pair we hold no link to: a race after a bye, or the room
+    // carrying a dropped pair's message inside its grace (§9).
+    unknown: 0,
+    // Discovery, counted: announces queued for the room, announces received,
+    // and signals dropped because the sender is outside this seat's group.
+    // An announce is the first step of every negotiation, so when a seat the
+    // room names has no link, these say whether it never asked, asked and was
+    // answered by silence, or was dropped here.
+    signals: { announced: 0, announces: 0, dropped: 0 },
+    // Negotiations started, cumulative: `offered` by this page, `answered` for
+    // a peer that offered, and `expired` offers abandoned unanswered; `failed` is
+    // links the browser gave up on and the shim renegotiated; `restarts` is ICE
+    // restarts this page asked for, `restartAnswered` the ones it answered. `peak` is
+    // the most offers this page ever ran at once, which is what the queue behind
+    // `MAX_NEGOTIATING` is there to bound. The number
+    // persistence exists to stop moving when the room's set changes and nothing
+    // else did.
+    negotiations: {
+      offered: 0,
+      answered: 0,
+      expired: 0,
+      failed: 0,
+      restarts: 0,
+      restartAnswered: 0,
+      peak: 0,
+    },
+    // Game bytes that arrived on a dormant link, and bytes the game offered one.
+    // Both are dropped: a dormant link is open and silent.
+    idleDropped: 0,
     // What each link is doing, refreshed by `rollup`, so a report has more than
     // a count when a connection does not hold.
     links: [],
+    // Who the room says this player should be linked to: `{ epoch, members }`,
+    // or null before it has said. Its length is the peer count the room
+    // considers worth a channel, which is not the same as the world's seats.
+    group: null,
     // A bounded ring of link events — who offered, who answered, what closed —
     // because "state: closed" is not a diagnosis. Read it with
     // `eval "<peer>" "window.__bt.events" out=events.json`.
     events: [],
-    // What ICE was configured with: `source` is 'default' | 'query' | 'off', and
-    // `urls` is the list, so a report says which server list a run used rather
-    // than assuming it.
-    ice: { source: ICE.source, urls: iceUrls(ICE.servers) },
+    // Bytes the game offered a link that could not take them, by seat, channel
+    // and reason. Bounded by the link count and the two channels.
+    refused: {},
+    // What ICE was configured with: `source` is 'default' | 'query' | 'off',
+    // `urls` is the list, `room` says what the room's credential route answered
+    // ('off' | 'pending' | 'ok' | 'empty' | 'unavailable'), and `relay` is
+    // whether gathering was restricted to relay candidates. A report says which
+    // list a run used rather than assuming it.
+    ice: { source: ICE.source, urls: iceUrls(ICE.servers), room: ICE.room, relay: RELAY },
     // Every candidate gathered, by type. `host` is this machine and would be
     // gathered with no server configured at all; `srflx` is the one that proves
     // a STUN server answered.
@@ -220,6 +500,10 @@
     // difference between "ICE is configured" and "ICE answered".
     mapped: null,
   };
+
+  // Ask the room for TURN credentials now, so the join is not the first thing
+  // that has to wait for them.
+  iceReady = loadRoomIce();
 
   // The ring's bound: enough for a few negotiations, small enough that a long
   // session cannot grow without limit.
@@ -309,11 +593,11 @@
     framed[0] = body.length & 0xff;
     framed[1] = (body.length >> 8) & 0xff;
     framed.set(body, 2);
-    window.__btQueueSignal(frame(tag, link.myEpoch, link.seat, framed));
+    window.__btQueueSignal(link.seat, frame(tag, link.myEpoch, link.seat, framed));
   }
 
   function sendBye(seat, epoch, reason) {
-    window.__btQueueSignal(frame(TAG_BYE, epoch, seat, new Uint8Array([reason])));
+    window.__btQueueSignal(seat, frame(TAG_BYE, epoch, seat, new Uint8Array([reason])));
   }
 
   // Strict, like `Signal::decode`: a body that does not finish exactly where
@@ -357,7 +641,7 @@
       if (msg.to === null) {
         return null;
       }
-      if (tag === TAG_OFFER || tag === TAG_ANSWER) {
+      if (tag === TAG_OFFER || tag === TAG_RESTART || tag === TAG_ANSWER) {
         msg.sdp = blob(MAX_SDP);
         if (msg.sdp === null) {
           return null;
@@ -387,7 +671,7 @@
     if (link) {
       return link;
     }
-    if (links.size >= MAX_LINKS) {
+    if (!makeRoom()) {
       return null;
     }
     link = {
@@ -395,16 +679,44 @@
       pc: null,
       ctrl: null,
       state: null,
-      // My attempt at this pair, and theirs. Each only moves forward, and only
-      // within its own direction: two peers' counters mean nothing to each
-      // other, which is why they are tracked separately.
-      myEpoch: sessionEpoch,
+      // What this pair last agreed on, my direction and theirs. Each only moves
+      // forward, and only within its own direction: two peers' counters mean
+      // nothing to each other, which is why they are tracked separately.
+      myEpoch: epochs.get(seat) || sessionEpoch,
       theirEpoch: 0,
       // I am the offerer in this negotiation, so a competing offer is mine to
       // judge. Cleared when I answer instead.
       offerer: false,
+      // When the outstanding offer was written, or 0 when there is none. The
+      // sweep in `__btDrain` abandons an attempt older than `OFFER_MS`.
+      offerSince: 0,
+      // When ICE first said `disconnected` — or a channel closed under a live
+      // link — and how long that suspicion is given. The sweep gives up after it.
+      staleSince: 0,
+      staleFor: 0,
+      // When this link last asked for an ICE restart, so a flapping path cannot
+      // ask once per flap.
+      restartedAt: 0,
+      // How many times a channel has opened on this record. A restart leaves it
+      // at 1; a renegotiation makes a new record and starts again.
+      opens: 0,
+      // The harness closed this link's transport without telling anyone
+      // (`__btDrop`). Its own events are ignored until it is renegotiated.
+      silent: false,
       remoteSet: false,
       pending: [],
+      // In the room's group, or dropped from it and kept open (persistence).
+      // An idle link sends nothing and hands nothing to the game.
+      idle: false,
+      idleSince: 0,
+      // What this link has carried, each way, by channel. The roll-up counts
+      // are for the page; these are for the answer when one link differs from
+      // its neighbours — an ack that reaches every peer but one, or a link whose
+      // acks never arrive.
+      sentCtrl: 0,
+      recvCtrl: 0,
+      sentState: 0,
+      recvState: 0,
     };
     links.set(seat, link);
     return link;
@@ -419,13 +731,83 @@
     );
   }
 
+  // Reusable: the group names the seat, the channels are open, and the
+  // transport says connected. The channel state alone is not enough — after a
+  // peer closes its end they can read open for a while, and reusing one of
+  // those would black-hole the seat rather than renegotiate it.
+  function isHealthy(link) {
+    return link.pc !== null && link.pc.connectionState === 'connected' && isOpen(link);
+  }
+
+  function maxLinks() {
+    return PERSIST ? MAX_LINKS_PERSIST : MAX_LINKS;
+  }
+
+  // Make space for one more link. At the cap, persistence evicts the link that
+  // has been dormant longest — the seats dropped most recently are the ones a
+  // player is most likely to walk back into.
+  function makeRoom() {
+    if (links.size < maxLinks()) {
+      return true;
+    }
+    if (!PERSIST) {
+      return false;
+    }
+    var oldest = null;
+    links.forEach(function (link) {
+      if (!link.idle) {
+        return;
+      }
+      if (oldest === null || link.idleSince < oldest.idleSince) {
+        oldest = link;
+      }
+    });
+    if (oldest === null) {
+      return false;
+    }
+    note(oldest.seat, 'evicted: dormant longest');
+    sendBye(oldest.seat, oldest.myEpoch, BYE_REPLACED);
+    reset(oldest, 'evicted');
+    links.delete(oldest.seat);
+    seen.delete(oldest.seat);
+    return true;
+  }
+
+  // The room stopped naming this seat. The channel stays open and silent.
+  function setIdle(link) {
+    if (link.idle) {
+      return;
+    }
+    link.idle = true;
+    link.idleSince = performance.now();
+    note(link.seat, 'dormant: left the group');
+    rollup();
+  }
+
+  function setLive(link) {
+    if (!link.idle) {
+      return;
+    }
+    link.idle = false;
+    link.idleSince = 0;
+    note(link.seat, 'live: back in the group');
+    rollup();
+  }
+
   function rollup() {
     var open = 0;
+    var openLive = 0;
+    var dormant = 0;
     var live = 0;
     var detail = [];
     links.forEach(function (link) {
       if (isOpen(link)) {
         open += 1;
+        if (link.idle) {
+          dormant += 1;
+        } else {
+          openLive += 1;
+        }
       }
       if (link.pc !== null) {
         live += 1;
@@ -438,11 +820,21 @@
         offerer: link.offerer,
         epoch: link.myEpoch,
         theirEpoch: link.theirEpoch,
+        sentCtrl: link.sentCtrl,
+        recvCtrl: link.recvCtrl,
+        sentState: link.sentState,
+        recvState: link.recvState,
+        opens: link.opens,
+        idle: link.idle,
+        healthy: isHealthy(link),
       });
     });
     window.__bt.links = detail;
     window.__bt.open = open;
+    window.__bt.live = openLive;
+    window.__bt.idle = dormant;
     window.__bt.peers = links.size;
+    window.__bt.queue = queue.length;
     if (open > 0) {
       window.__bt.state = 'open';
     } else if (live > 0) {
@@ -481,8 +873,58 @@
       link.pc = null;
     }
     link.offerer = false;
+    link.offerSince = 0;
+    link.staleSince = 0;
+    link.staleFor = 0;
+    link.restartedAt = 0;
+    link.silent = false;
     link.remoteSet = false;
     link.pending = [];
+    rollup();
+  }
+
+  // Mark a link suspect: it may be dying, or the far side may be about to tell us
+  // it left. The first suspicion keeps its (earlier) deadline.
+  function suspect(link, forMs) {
+    if (link.staleSince === 0) {
+      link.staleSince = performance.now();
+      link.staleFor = forMs;
+    }
+  }
+
+  // A link the browser has given up on.
+  //
+  // Reset the browser half, forget the record, and tell the far side — it may be
+  // holding the other half of a connection that will never carry anything. Then
+  // the ordinary paths start again if the room still names the seat: the leader
+  // offers, the follower announces. Persistence does not change that: a dormant
+  // link that died is not dormant, it is gone.
+  //
+  // Idempotent, because one dead connection reports itself twice — `ICE failed`
+  // and `connection failed` are the same event in two spellings, and the
+  // channels closing behind them are a third.
+  function dropDead(link, why) {
+    if (links.get(link.seat) !== link) {
+      return;
+    }
+    var seat = link.seat;
+    var epoch = link.myEpoch;
+    var live = !link.idle && (group === null || group.members.has(seat));
+    window.__bt.negotiations.failed += 1;
+    note(seat, why);
+    reset(link, why);
+    links.delete(seat);
+    seen.delete(seat);
+    sendBye(seat, epoch, BYE_REPLACED);
+    if (me !== null && live) {
+      if (leadsOffer(seat)) {
+        if (linkFor(seat) !== null) {
+          queueOffer(seat);
+        }
+      } else {
+        announce();
+      }
+    }
     rollup();
   }
 
@@ -490,24 +932,48 @@
     channel.binaryType = 'arraybuffer';
     channel.onopen = function () {
       note(link.seat, name + ' open');
+      link.opens += 1;
       rollup();
     };
     channel.onclose = function () {
       note(link.seat, name + ' closed');
+      // A deliberate close (`reset`, a group change, a `Bye`) has already nulled
+      // the field before this queued event runs, and a renegotiation replaces it
+      // with a different object; either way the channel that closed is no longer
+      // one of the link's. A channel that closes under its own steam is the
+      // transport dying without ICE saying so.
+      var current = name === 'state' ? link.state : link.ctrl;
+      if (current === channel && !link.silent) {
+        suspect(link, LINK_SETTLE_MS);
+      }
       rollup();
     };
     channel.onerror = function (e) {
       fail(link, name + ' channel: ' + describe(e));
     };
     channel.onmessage = function (event) {
+      if (link.idle) {
+        // Dormant: the room no longer names this seat, so its samples are not
+        // ours to draw. Counted apart from `received` so that stays a rate of
+        // samples the game can use.
+        window.__bt.idleDropped += 1;
+        if (name === 'state') {
+          link.recvState += 1;
+        } else {
+          link.recvCtrl += 1;
+        }
+        return;
+      }
       if (name === 'state') {
         window.__bt.received += 1;
+        link.recvState += 1;
         window.__bt.buffered = channel.bufferedAmount;
         if (window.__bt.received % 20 === 0) {
           sample();
         }
       } else {
         window.__bt.receivedCtrl += 1;
+        link.recvCtrl += 1;
       }
       // The game's bytes. This file does not look at them: `island-wire` owns
       // the format, and all the shim knows is which seat and which channel.
@@ -527,7 +993,13 @@
     if (link.pc) {
       return link.pc;
     }
-    var pc = new RTCPeerConnection({ iceServers: ICE.servers });
+    var options = { iceServers: ICE.servers };
+    if (RELAY) {
+      // Only a relay may carry this connection. `?relay=1` is a proof, not a
+      // deployment: with no TURN credentials it cannot connect at all.
+      options.iceTransportPolicy = 'relay';
+    }
+    var pc = new RTCPeerConnection(options);
     link.pc = pc;
     link.remoteSet = false;
     link.pending = [];
@@ -546,13 +1018,22 @@
     };
     pc.oniceconnectionstatechange = function () {
       if (pc.iceConnectionState === 'failed') {
-        fail(link, 'ICE failed');
+        dropDead(link, 'ICE failed');
       }
     };
     pc.onconnectionstatechange = function () {
       note(link.seat, 'connection ' + pc.connectionState);
       if (pc.connectionState === 'failed') {
-        fail(link, 'connection failed');
+        dropDead(link, 'connection failed');
+      } else if (pc.connectionState === 'disconnected') {
+        // May come back on its own. The stale timer is the backstop; the end
+        // that offered asks ICE to try a new path first, because that is the
+        // cheap repair and it leaves the channels alone.
+        suspect(link, LINK_STALE_MS);
+        startRestart(link);
+      } else {
+        link.staleSince = 0;
+        link.staleFor = 0;
       }
       rollup();
     };
@@ -586,7 +1067,8 @@
   // ── Negotiation ──────────────────────────────────────────────────────────
 
   function announce() {
-    window.__btQueueSignal(frame(TAG_ANNOUNCE, sessionEpoch, null, new Uint8Array(0)));
+    window.__bt.signals.announced += 1;
+    window.__btQueueSignal(BROADCAST, frame(TAG_ANNOUNCE, sessionEpoch, null, new Uint8Array(0)));
   }
 
   function leadsOffer(them) {
@@ -603,6 +1085,18 @@
     }
     var pc = ensurePc(link);
     link.offerer = true;
+    link.offerSince = performance.now();
+    var inFlight = offersInFlight();
+    if (inFlight > window.__bt.negotiations.peak) {
+      window.__bt.negotiations.peak = inFlight;
+    }
+    // A fresh attempt needs a newer epoch. Without one, a far side still holding
+    // a stale link reads the offer as a duplicate of the one it already answered
+    // and ignores it; every other value on the wire already moves forward per
+    // attempt, and this one did not.
+    link.myEpoch = (link.myEpoch % 65535) + 1;
+    epochs.set(link.seat, link.myEpoch);
+    window.__bt.negotiations.offered += 1;
     note(link.seat, 'offering');
     link.ctrl = wire(pc.createDataChannel('ctrl', { ordered: true }), link, 'ctrl');
     link.state = wire(
@@ -622,13 +1116,145 @@
       });
   }
 
+  // Ask ICE to try again on the connection this pair already has.
+  //
+  // Only the end that offered does this: it is the same rule that decides who
+  // offers, so two ends cannot restart at each other. The offer carries the
+  // attempt's epoch unchanged, which is what stops the far side's `deliver`
+  // treating it as a restart of the *negotiation* and resetting the channels this
+  // exists to keep. Nothing here is timed by `OFFER_MS`: a restart that does not
+  // take is caught by the stale timer, which tears the link down properly.
+  function startRestart(link) {
+    if (!link.offerer || link.pc === null || link.offerSince !== 0) {
+      return false;
+    }
+    if (!isOpen(link)) {
+      // Channels already gone: there is no association left to keep, and the
+      // settle timer is about to tear the link down properly.
+      return false;
+    }
+    var now = performance.now();
+    if (link.restartedAt !== 0 && now - link.restartedAt < RESTART_EVERY_MS) {
+      return false;
+    }
+    link.restartedAt = now;
+    window.__bt.negotiations.restarts += 1;
+    note(link.seat, 'restarting ice');
+    var pc = link.pc;
+    pc.restartIce();
+    pc.createOffer()
+      .then(function (offer) {
+        return pc.setLocalDescription(offer);
+      })
+      .then(function () {
+        sendBlob(TAG_RESTART, link, pc.localDescription.sdp, MAX_SDP);
+      })
+      .catch(function (e) {
+        fail(link, 'restart: ' + describe(e));
+      });
+    return true;
+  }
+
   function onAnnounce(link) {
     if (!seen.has(link.seat)) {
       seen.add(link.seat);
       announce();
     }
     if (leadsOffer(link.seat)) {
+      queueOffer(link.seat);
+    }
+  }
+
+  function offersInFlight() {
+    var n = 0;
+    links.forEach(function (link) {
+      if (link.offerSince !== 0) {
+        n += 1;
+      }
+    });
+    return n;
+  }
+
+  function queueOffer(seat) {
+    if (queue.indexOf(seat) === -1) {
+      queue.push(seat);
+    }
+    pumpQueue();
+  }
+
+  // Start what fits, called every frame from `__btDrain` — so a slot freed by a
+  // connection, an expiry or a `Bye` is taken by the next seat without every
+  // one of those paths having to remember to. A queued seat that has left the
+  // group, lost its link, or no longer leads is dropped rather than offered to.
+  function pumpQueue() {
+    while (queue.length > 0 && offersInFlight() < MAX_NEGOTIATING) {
+      var seat = queue.shift();
+      if (group !== null && !group.members.has(seat)) {
+        continue;
+      }
+      var link = links.get(seat);
+      if (link === undefined || !leadsOffer(seat)) {
+        continue;
+      }
       startOffer(link);
+    }
+  }
+
+  // Abandon an offer the far side never answered.
+  //
+  // The attempt is torn down and the pair told, because the far side may be
+  // holding its half of a negotiation whose answer was lost, and a `Bye` is
+  // cheaper than waiting for it to notice. Then the ordinary paths take over: the
+  // leader offers again on a newer epoch, and the follower announces so the
+  // leader does. `reset` clears `offerSince`, so this cannot fire twice for one
+  // attempt.
+  function sweepOffer(link, now) {
+    if (link.offerSince === 0) {
+      return;
+    }
+    if (isOpen(link) || (link.pc !== null && link.pc.connectionState === 'connected')) {
+      // The handshake did connect; from here a failure is ICE's to report.
+      link.offerSince = 0;
+      return;
+    }
+    if (now - link.offerSince < OFFER_MS) {
+      return;
+    }
+    var seat = link.seat;
+    var epoch = link.myEpoch;
+    window.__bt.negotiations.expired += 1;
+    note(seat, 'offer expired');
+    reset(link, 'offer expired');
+    sendBye(seat, epoch, BYE_REPLACED);
+    if (me === null || link.idle) {
+      return;
+    }
+    if (leadsOffer(seat)) {
+      startOffer(link);
+    } else {
+      announce();
+    }
+  }
+
+  function sweepOffers(now) {
+    links.forEach(function (link) {
+      sweepOffer(link, now);
+    });
+  }
+
+  // A link that stayed suspect past its deadline: ICE said `disconnected` and
+  // never took it back, or a channel closed and no `Bye` followed. Collected
+  // first, because `dropDead` may recreate the record for a retry and a live
+  // iteration would then visit the new one too.
+  function sweepStale(now) {
+    var dead = [];
+    links.forEach(function (link) {
+      if (link.staleSince !== 0 && now - link.staleSince >= link.staleFor) {
+        dead.push(link);
+      }
+    });
+    for (var i = 0; i < dead.length; i += 1) {
+      dropDead(dead[i], 'silent for ' + dead[i].staleFor + ' ms');
     }
   }
 
@@ -645,6 +1271,7 @@
     }
     reset(link, 'taking their offer');
     var pc = ensurePc(link);
+    window.__bt.negotiations.answered += 1;
     note(link.seat, 'answering ' + msg.sdp.length + 'B sdp');
     pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp })
       .then(function () {
@@ -660,6 +1287,40 @@
       })
       .catch(function (e) {
         fail(link, 'answer: ' + describe(e));
+      });
+  }
+
+  // Answer a restart on the connection both ends already have.
+  //
+  // No `reset`, which is the whole point: the offer carries new ICE credentials
+  // for an existing association, and applying it keeps the channels. A restart
+  // for a link whose browser half is already gone is ignored — there is nothing
+  // to restart, and the end that asked will reach its stale timer and start over.
+  function onRestart(link, msg) {
+    if (link.pc === null || link.pc.connectionState === 'closed') {
+      // Nothing to restart. The end that asked reaches its stale timer and
+      // starts over, which is the only repair available from here.
+      return;
+    }
+    window.__bt.negotiations.restartAnswered += 1;
+    link.offerer = false;
+    link.offerSince = 0;
+    note(link.seat, 'restart taken ' + msg.sdp.length + 'B sdp');
+    var pc = link.pc;
+    pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp })
+      .then(function () {
+        link.remoteSet = true;
+        flush(link);
+        return pc.createAnswer();
+      })
+      .then(function (answer) {
+        return pc.setLocalDescription(answer);
+      })
+      .then(function () {
+        sendBlob(TAG_ANSWER, link, pc.localDescription.sdp, MAX_SDP);
+      })
+      .catch(function (e) {
+        fail(link, 'restart answer: ' + describe(e));
       });
   }
 
@@ -714,10 +1375,24 @@
       console.warn('[peer] a signal from seat ' + from + ' did not decode');
       return;
     }
-    if (msg.tag !== TAG_ANNOUNCE && msg.to !== me) {
-      // Broadcast delivers every peer's pairwise signal to everyone. Only the
-      // one it names acts on it — otherwise, with three peers, B would apply
-      // C's answer to A's offer on its own link to C.
+    if (group !== null && !group.members.has(from) && !links.has(from)) {
+      // The room delivers to the sender's group, so this is a set that changed
+      // between the room deciding and the frame arriving. Dropping it is what
+      // the new set would have done. A link we hold is the exception: a dormant
+      // one still has to hear `Bye` or a restarted offer, or persistence would
+      // keep a link nobody can use and never replace it.
+      window.__bt.signals.dropped += 1;
+      if (msg.tag === TAG_ANNOUNCE) {
+        note(from, 'announce dropped: outside the group');
+      }
+      return;
+    }
+    if (msg.tag === TAG_ANNOUNCE) {
+      window.__bt.signals.announces += 1;
+    } else if (msg.to !== me) {
+      // Addressed to another peer. The room routes a targeted signal to one
+      // seat, so this is now only reachable with an old room or a relay in a
+      // scenario — and the count staying at zero is what says targeting holds.
       window.__bt.ignored += 1;
       return;
     }
@@ -727,21 +1402,22 @@
         // A seat we have not met. At the cap it is ignored rather than told:
         // a `Bye` answered by a `Bye` from a peer that is also at its cap
         // ping-pongs, and an announce is broadcast, so it is not a request.
-        if (links.size >= MAX_LINKS) {
+        if (!makeRoom()) {
           return;
         }
       } else if (msg.tag === TAG_OFFER) {
         // They are negotiating with a seat we have no link for, so offer them
         // the courtesy of a refusal rather than a half-open connection. A
         // `Bye` is not answered with a `Bye`, which is what stops this looping.
-        if (links.size >= MAX_LINKS) {
+        if (!makeRoom()) {
           sendBye(from, msg.epoch, BYE_REPLACED);
           return;
         }
       } else {
-        // An answer, candidate or bye for a pair we are not in: another
-        // receiver's copy of a broadcast, or a race after a bye.
-        window.__bt.ignored += 1;
+        // An answer, candidate or bye for a pair we are not in: a race after a
+        // bye, or a message the room carried under a dropped pair's grace (§9).
+        // Not a misdelivery, so it is counted apart from `ignored`.
+        window.__bt.unknown += 1;
         return;
       }
       link = linkFor(from);
@@ -767,6 +1443,8 @@
       onAnnounce(link);
     } else if (msg.tag === TAG_OFFER) {
       onOffer(link, msg);
+    } else if (msg.tag === TAG_RESTART) {
+      onRestart(link, msg);
     } else if (msg.tag === TAG_ANSWER) {
       onAnswer(link, msg);
     } else if (msg.tag === TAG_CANDIDATE) {
@@ -781,6 +1459,105 @@
   // The room has seated us. Called from Rust whenever the seat changes, so it
   // must be cheap and idempotent for the seat it is already on.
   window.__btJoin = function (seat) {
+    if (me === seat || pendingJoin === seat) {
+      return false;
+    }
+    if (!iceSettled) {
+      // A connection negotiated now would never learn about TURN, and a link is
+      // only negotiated once. Hold the seat until the list settles — at once,
+      // unless the room is still minting.
+      pendingJoin = seat;
+      iceReady.then(function () {
+        if (pendingJoin === seat) {
+          pendingJoin = null;
+          join(seat);
+        }
+      });
+      return true;
+    }
+    pendingJoin = null;
+    return join(seat);
+  };
+
+  // The room's interest set for this seat, and the epoch that names it. Called
+  // when the set changes — on the room's regroup interval, and at once after a
+  // join. Links outside the set are told `Bye` and forgotten; a seat the set
+  // has gained is offered a channel from here, by whichever end leads.
+  //
+  // Offering on the group rather than on an announce is what makes the set
+  // self-starting. An announce can be dropped in flight by the far side's group
+  // filter — it arrives between the room deciding the set and that page
+  // applying it — and the `seen` guard then suppresses the echo that would
+  // recover it, which left two peers the room names permanently unlinked until
+  // the set changed again. The group is the room's statement that a channel is
+  // worth having, so the leader opens it without waiting to be announced at.
+  // The announce stays as the nudge for a page whose group has not arrived.
+  window.__btGroup = function (epoch, members) {
+    if (group !== null && epoch <= group.epoch) {
+      return false;
+    }
+    group = { epoch: epoch, members: new Set(members) };
+    window.__bt.group = { epoch: epoch, members: members.slice() };
+    // A seat that left has no business holding an offer slot either.
+    queue = queue.filter(function (seat) {
+      return group.members.has(seat);
+    });
+    var leaving = [];
+    links.forEach(function (link, seat) {
+      if (group.members.has(seat)) {
+        return;
+      }
+      if (PERSIST) {
+        // Persistent links (design §5): the channel stays, dormant, so walking
+        // back into view costs no handshake. Nothing is sent on it and nothing
+        // arriving on it reaches the game while the set does not name the seat.
+        setIdle(link);
+      } else {
+        leaving.push(link);
+      }
+    });
+    for (var i = 0; i < leaving.length; i += 1) {
+      var link = leaving[i];
+      sendBye(link.seat, link.myEpoch, BYE_REPLACED);
+      note(link.seat, 'left the group');
+      reset(link, 'left the group');
+      links.delete(link.seat);
+      seen.delete(link.seat);
+    }
+    if (me !== null && group.members.size > 0) {
+      announce();
+      group.members.forEach(function (seat) {
+        var held = links.get(seat);
+        if (held !== undefined) {
+          var wasIdle = held.idle;
+          setLive(held);
+          if (wasIdle && PERSIST && !isHealthy(held)) {
+            // It died while the set did not name it, so nothing noticed. Forget
+            // it and let this group start a fresh negotiation. A link that is
+            // still connecting is not stale — it has not finished its first
+            // handshake, and tearing it down here would restart every slow
+            // negotiation once per regroup.
+            reset(held, 'stale on return');
+            links.delete(seat);
+            seen.delete(seat);
+            held = undefined;
+          }
+        }
+        if (held === undefined && leadsOffer(seat) && linkFor(seat) !== null) {
+          queueOffer(seat);
+        }
+      });
+    }
+    rollup();
+    return true;
+  };
+
+  function join(seat) {
+    // A seat change is a new session: whatever the room said about the old one
+    // describes a set that may not be this seat's, and a room that restarted
+    // begins its epochs again.
+    group = null;
+    window.__bt.group = null;
     if (me === seat) {
       return false;
     }
@@ -792,6 +1569,8 @@
       });
       links.clear();
       seen.clear();
+      queue = [];
+      epochs.clear();
     }
     note(seat, me === null ? 'joined' : 're-seated from ' + me);
     me = seat;
@@ -802,19 +1581,25 @@
     announce();
     rollup();
     return true;
-  };
+  }
 
   // Whatever has arrived since the last drain, handed to the links. Called by
-  // `probe_peer_out` once a frame.
+  // `probe_peer_out` once a frame. The sweep runs after the inbox: an answer
+  // that arrives on the frame an offer would have expired is worth applying, so
+  // the deadline is judged against the link's state once this frame's signals
+  // have had their say.
   window.__btDrain = function () {
     var inbox = window.__btInbox;
-    if (!inbox || inbox.length === 0) {
-      return;
+    if (inbox && inbox.length > 0) {
+      var take = inbox.splice(0, inbox.length);
+      for (var i = 0; i < take.length; i += 1) {
+        deliver(take[i].from, take[i].bytes);
+      }
     }
-    var take = inbox.splice(0, inbox.length);
-    for (var i = 0; i < take.length; i += 1) {
-      deliver(take[i].from, take[i].bytes);
-    }
+    var now = performance.now();
+    sweepStale(now);
+    sweepOffers(now);
+    pumpQueue();
   };
 
   // ── The state and control channels ───────────────────────────────────────
@@ -824,25 +1609,45 @@
   window.__btSendLink = function (seat, kind, bytes) {
     var link = links.get(seat);
     if (!link) {
+      refuse(seat, kind, 'no link');
+      return false;
+    }
+    if (link.idle) {
+      refuse(seat, kind, 'dormant');
       return false;
     }
     var channel = kind === LINK_STATE ? link.state : link.ctrl;
     if (!channel || channel.readyState !== 'open') {
+      refuse(seat, kind, 'closed');
       return false;
     }
     channel.send(bytes);
     if (kind === LINK_STATE) {
       window.__bt.sentState += 1;
+      link.sentState += 1;
     } else {
       window.__bt.sentCtrl += 1;
+      link.sentCtrl += 1;
     }
     return true;
   };
 
+  // Why the game's byte did not go. A link whose state flow is one-way is not a
+  // connection as far as the overlay is concerned, and "sent 0" cannot tell a
+  // missing link from a channel that has not opened.
+  function refuse(seat, kind, why) {
+    var key = seat + ':' + (kind === LINK_STATE ? 'state' : 'ctrl') + ':' + why;
+    window.__bt.refused[key] = (window.__bt.refused[key] || 0) + 1;
+  }
+
   // Whatever arrived on the data channels since the last drain, oldest first.
+  // The per-link counters in `links` are refreshed here, because the drain is
+  // the one thing that runs every frame: a link whose traffic changed but whose
+  // connection state did not would otherwise report the counts it had at open.
   window.__btDrainLinks = function () {
     var out = recv;
     recv = [];
+    rollup();
     return out;
   };
 
@@ -876,7 +1681,9 @@
   // a machine gathers those with no server configured at all, and a browser
   // disguises them as mDNS names. This is the one check that separates "ICE is
   // configured" from "a STUN server answered" — and the first thing a
-  // two-network test should look at when a link does not open.
+  // two-network test should look at when a link does not open. A relay-only run
+  // (`?relay=1`) never gathers `srflx` and is still fine: `state: 'gathered'`
+  // with `types.relay > 0` is what that run asserts.
   //
   // The result is left on `window.__bt.iceProbe` as well as resolved, so a
   // harness that cannot await a promise can poll it.
@@ -884,6 +1691,8 @@
     var result = {
       state: 'gathering',
       source: ICE.source,
+      room: ICE.room,
+      relay: RELAY,
       urls: iceUrls(ICE.servers),
       types: {},
       srflx: null,
@@ -896,7 +1705,9 @@
     }
     var pc;
     try {
-      pc = new RTCPeerConnection({ iceServers: ICE.servers });
+      pc = new RTCPeerConnection(RELAY
+        ? { iceServers: ICE.servers, iceTransportPolicy: 'relay' }
+        : { iceServers: ICE.servers });
     } catch (e) {
       result.state = 'error';
       result.error = describe(e);
@@ -904,8 +1715,12 @@
     }
     return new Promise(function (resolve) {
       var settled = false;
+      // A candidate that proves something outside this machine: a relay
+      // allocation, or a STUN server answering. Host candidates are gathered
+      // with no server at all, so they do not count.
+      var gathered = false;
       var timer = setTimeout(function () {
-        done(result.srflx ? 'gathered' : 'timeout');
+        done(result.srflx || gathered ? 'gathered' : 'timeout');
       }, ICE_PROBE_MS);
       function done(state) {
         if (settled) {
@@ -927,13 +1742,16 @@
         }
         var type = candidateType(e.candidate);
         result.types[type] = (result.types[type] || 0) + 1;
+        if (type === 'srflx' || type === 'relay') {
+          gathered = true;
+        }
         if (type === 'srflx' && !result.srflx) {
           result.srflx = candidateAddress(e.candidate);
         }
       };
       pc.onicegatheringstatechange = function () {
         if (pc.iceGatheringState === 'complete') {
-          done(result.srflx ? 'complete' : 'no-srflx');
+          done(result.srflx ? 'complete' : (gathered ? 'gathered' : 'no-srflx'));
         }
       };
       pc.createDataChannel('probe');
@@ -946,6 +1764,37 @@
     });
   };
 
+  // Ask for an ICE restart on a live link, as the `disconnected` handler does on
+  // its own. A harness seam like `__btDrop`: a path that goes quiet without
+  // closing its channels cannot be staged from a page, so this is how
+  // `p2p-ice-restart.dsl` exercises the signalling and the answer that keeps the
+  // channels.
+  window.__btRestart = function (seat) {
+    var link = links.get(seat);
+    if (!link) {
+      return false;
+    }
+    return startRestart(link);
+  };
+
+  // Simulate the far side's browser going away without a `Bye`: close this
+  // link's transport and ignore its own events until something renegotiates it.
+  // `__btClose` is the clean shutdown; this is the crash a liveness test needs,
+  // and it is a harness seam like the rest.
+  window.__btDrop = function (seat) {
+    var link = links.get(seat);
+    if (!link || !link.pc) {
+      return false;
+    }
+    link.silent = true;
+    try {
+      link.pc.close();
+    } catch (e) {
+      /* already gone */
+    }
+    return true;
+  };
+
   // Close every connection, so a run leaves nothing behind.
   window.__btClose = function () {
     links.forEach(function (link) {
@@ -953,6 +1802,7 @@
     });
     links.clear();
     seen.clear();
+    queue = [];
     window.__bt.state = 'closed';
     return Promise.resolve(true);
   };

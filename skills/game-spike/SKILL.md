@@ -52,6 +52,27 @@ Read `shared-crates/gaming/macroquad-gamekit/CATALOG.md` first, and the rule `de
   window manager resizes the window, the glyph gate, a preloader cover until the screen draws
   whole, `--frame-log`, `--seconds N` and the native 60 FPS cap. `fight-macroquad`, `backrooms`
   and `turbo-turns` are the references.
+- **Set the window title through the harness, not a literal.** `Args::window_title` appends
+  `[capture]` for `--shot`/`--sheet`/`--sprites`/`--plan` and `[soak]` for `--soak`, and leaves
+  the title alone for a play run. AeroSpace matches those markers and parks the window in the
+  scratchpad, so an automated run does not retile the workspace. Set it in `window_conf`, where
+  the title is part of the window as it is created — a title set after the first frame is too
+  late for `on-window-detected`.
+
+  ```rust
+  fn window_conf() -> Conf {
+      let args = Args::read();
+      let (w, h) = args.window_size((390, 844));
+      Conf {
+          window_title: args.window_title("Game Name"),
+          window_width: w,
+          window_height: h,
+          high_dpi: true,
+          window_resizable: true,
+          ..Default::default()
+      }
+  }
+  ```
 - **Pick the stage.** `app::run` draws in design units at the window's device pixels. A
   pixel-art game runs on `app::run_on(Stage::Pixel { width, height }, game)`: the kit owns the
   canvas, scales it by whole numbers and letterboxes it, and a `--shot` is the canvas at 1:1

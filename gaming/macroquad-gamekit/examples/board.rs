@@ -143,9 +143,10 @@ impl Game for Board {
 }
 
 fn window_conf() -> Conf {
-    let (w, h) = Args::read().window_size((448, 512));
+    let args = Args::read();
+    let (w, h) = args.window_size((448, 512));
     Conf {
-        window_title: "gamekit board".to_owned(),
+        window_title: args.window_title("gamekit board"),
         window_width: w,
         window_height: h,
         high_dpi: true,

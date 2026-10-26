@@ -46,6 +46,13 @@
 //! sized from the window ignores `--size`. [`Args::viewport`] sizes a
 //! capture from `--size` when one is given.
 //!
+//! ## A capture or soak's window says so in its title
+//!
+//! Both still open a window. [`Args::window_title`] appends
+//! [`CAPTURE_TITLE_MARKER`] while capturing, or [`SOAK_TITLE_MARKER`] for a
+//! soak, so a window manager can move the window out of the way; AeroSpace
+//! matches both with `test %{window-title} ~= '\[(capture|soak)\]'`.
+//!
 //! ## The report checks what a glance misses
 //!
 //! Each capture writes `out.png` and `out.txt`. The image is the review; the
@@ -433,6 +440,16 @@ pub fn key_named(name: &str) -> Option<KeyCode> {
 /// printing under `--frame-log`: three frames at 60 Hz.
 pub const SLOW_FRAME: f32 = 0.05;
 
+/// Appended to a game's window title while it is capturing, so a window
+/// manager can move the window out of the tiling tree. AeroSpace matches it
+/// with `test %{window-title} ~= '\[(capture|soak)\]'`.
+pub const CAPTURE_TITLE_MARKER: &str = "[capture]";
+
+/// Appended to a game's window title while its soak runs, for the same reason
+/// as [`CAPTURE_TITLE_MARKER`]: a soak still opens a window and can hold it for
+/// minutes.
+pub const SOAK_TITLE_MARKER: &str = "[soak]";
+
 impl Args {
     pub fn read() -> Self {
         if cfg!(target_arch = "wasm32") {
@@ -529,6 +546,24 @@ impl Args {
     /// The window size: `--size`, else `default`.
     pub fn window_size(&self, default: (i32, i32)) -> (i32, i32) {
         self.size.unwrap_or(default)
+    }
+
+    /// The window title this run should use: `base`, with
+    /// [`CAPTURE_TITLE_MARKER`] appended while capturing or
+    /// [`SOAK_TITLE_MARKER`] while a soak runs.
+    ///
+    /// Set it from `window_conf`, where the title is part of the window as it
+    /// is created. A title set after the first frame is too late for an
+    /// `on-window-detected` rule, and a debug binary shares its bundle id with
+    /// every other unbundled `cargo` binary.
+    pub fn window_title(&self, base: &str) -> String {
+        if self.capturing() {
+            format!("{base} {CAPTURE_TITLE_MARKER}")
+        } else if self.soak.is_some() {
+            format!("{base} {SOAK_TITLE_MARKER}")
+        } else {
+            base.to_owned()
+        }
     }
 }
 
@@ -1394,6 +1429,16 @@ mod tests {
         assert!(Args::parse(&["game".into(), "--frame-log".into()]).frame_log);
         assert_eq!(flag_in(&argv, "--seed").as_deref(), Some("7"));
         assert_eq!(Args::parse(&["game".into()]), Args::default());
+    }
+
+    #[test]
+    fn a_capture_or_soak_marks_the_window_title_and_play_does_not() {
+        let capture = Args::parse(&["game".into(), "--shot".into(), "a.png".into()]);
+        assert_eq!(capture.window_title("game"), "game [capture]");
+        let soak = Args::parse(&["game".into(), "--soak".into(), "20".into()]);
+        assert_eq!(soak.window_title("game"), "game [soak]");
+        let play = Args::parse(&["game".into()]);
+        assert_eq!(play.window_title("game"), "game");
     }
 
     /// `--px` only sets the scale of a capture, and only a sane one.

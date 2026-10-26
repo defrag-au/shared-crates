@@ -1,0 +1,55 @@
+{
+  "format": 1,
+  "services": [
+    {
+      "stake": "stake17ykfvl6t62y5fvryvtsnch3lt406dcpls4n4d9pcekpnumg6v83tq",
+      "label": "JPG.store",
+      "kind": "Marketplace",
+      "source": "delegation part of the registered JPG.store escrow addresses addr1xxgx3far… (offer, V1) and addr1x8rjw3paw… (sale, V2); both are addr1x (script payment + script stake) and carry the identical script credential 2c967f4bd28944b06462e13c5e3f5d5fa6e03f8567569438cd833e6d"
+    },
+    {
+      "stake": "stake17yvew80mg6nl5cgama29a6zd40t5z32vfqmkd80gxgkhrqgy48g8s",
+      "label": "JPG.store",
+      "kind": "Marketplace",
+      "source": "delegation part of the registered JPG.store minter address; reached by exactly one payment script and no other registered label"
+    },
+    {
+      "stake": "stake1u902fq2jxqctywjf22rv5xsch52p5jf7nddpnkyfj5lkekcnnhvtv",
+      "label": "SaturnSwap",
+      "kind": "Exchange",
+      "source": "delegation shared by three registered SaturnSwap scripts and carrying no other registered label"
+    },
+    {
+      "stake": "stake1uxqh9rn76n8nynsnyvf4ulndjv0srcc8jtvumut3989cqmgjt49h6",
+      "label": "JPG.store",
+      "kind": "Marketplace",
+      "source": "delegation part of the registered JPG.store V1 sale escrow addr1zxgx3far… (script payment + key stake); credential 81728e7ed4cf324e1323135e7e6d931f01e30792d9cdf17129cb806d"
+    },
+    {
+      "stake": "stake1uxw8pmwq7my926m9xuk5zpy83at8hyzqla4qxs843sfjznsgtwgxy",
+      "label": "PERP staking",
+      "kind": "Staking",
+      "source": "attested by the operator of the flow explorer 2026-10-27: the address $PERP holders stake to for rewards; handle $perpstaking"
+    },
+    {
+      "stake": "stake1uy50zl7a9k9c74v66c0gn833at5sh83qnjldk8hg4rrv05g3mmskr",
+      "label": "Anvil",
+      "kind": "MintingProvider",
+      "source": "observed 2026-08-22: constant 1.15 ADA mint-tx fee across policies 55bd0ac4 (KAT Pack, 333), 6b42eca9 (chadano_citizen, 1501), e26a8565 (perps_into_the_factions, 242), 812197d5 (Biddy_DeGoat, 127); 1,009 unspent ~1 ADA UTxOs from unrelated projects"
+    }
+  ],
+  "exclusions": [
+    {
+      "stake": "stake17xe0d2lkpnx7jt4wrgh5lhm97t40vgydsukx7rje0nqskpc5zugc3",
+      "reason": "Splash/Spectrum's LBSP staking credential: fourteen payment scripts registered under both Splash and DexHunter delegate here by design, so it names a staking arrangement, not an operator"
+    },
+    {
+      "stake": "stake1u8653j3mcjks5d304g6eexryse7ma22erw8p05fsvefem8qklu7w7",
+      "reason": "three scripts registered under both The Vault staking and Wayup sale delegate here; a credential two entities reach names neither"
+    },
+    {
+      "stake": "stake1uxwcw3rr36r8q9e5egy3e74cmazpjvx4t5ajsq50xhm568celda4g",
+      "reason": "a person's wallet (handle $curiousfutures), confirmed by its owner 2026-10-27: a key stake credential with 18 payment addresses. Listed once as Wayup because two of its addresses are that seller's Wayup listings, which carry the seller's own stake key"
+    }
+  ]
+}
