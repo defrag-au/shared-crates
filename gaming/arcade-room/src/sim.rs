@@ -5,6 +5,34 @@
 /// renumbers anyone.
 pub type Seat = u16;
 
+/// The identity of a game's peer-plane format, as the room publishes it in every
+/// welcome.
+///
+/// The room never parses the peer plane — it carries the identity so a client
+/// built against a different soft-state layout can refuse the overlay rather
+/// than misread another player's packet. `wire` is the game's own version, and
+/// `hash` covers the layout numbers a version bump can miss.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Schema {
+    /// The game's soft-state wire version.
+    pub wire: u32,
+    /// A hash of that format's layout numbers.
+    pub hash: u64,
+}
+
+impl Schema {
+    /// What a game that has not declared a format says. Every client agrees
+    /// with it, so a room that predates the schema cannot refuse anyone.
+    pub const UNKNOWN: Self = Self { wire: 0, hash: 0 };
+
+    /// Whether two identities name the same format. `UNKNOWN` agrees with
+    /// everything, which is what makes this safe to add to a room that older
+    /// builds still host.
+    pub const fn agrees(self, other: Self) -> bool {
+        self.wire == 0 || other.wire == 0 || (self.wire == other.wire && self.hash == other.hash)
+    }
+}
+
 /// The most peers one seat is asked to keep in touch with.
 ///
 /// The room caps every interest set at this, and the browser shim caps its own
@@ -63,6 +91,15 @@ pub trait RoomSim: Clone + Sized {
     /// player who lost signal mid-stride stands still through their grace
     /// period instead of walking on as a ghost.
     const INPUT_BYTES: usize;
+
+    /// The peer-plane format this game speaks, published to every client in its
+    /// welcome.
+    ///
+    /// A game with no overlay leaves it [`Schema::UNKNOWN`], which every client
+    /// agrees with. A game that has one names its wire version and a hash of the
+    /// layout, so a client built against a different shape refuses the overlay
+    /// instead of decoding another player's packet as something else.
+    const SCHEMA: Schema = Schema::UNKNOWN;
 
     /// A fresh world.
     fn new(seed: u64) -> Self;

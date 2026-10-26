@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use crate::room::{PAIR_GRACE_MS, Room, RoomConfig, To};
-use crate::sim::{Change, INTEREST_MAX, RoomSim, Seat};
+use crate::sim::{Change, INTEREST_MAX, RoomSim, Schema, Seat};
 use crate::testkit::{BotState, Harness};
 use crate::wire::{ToClient, ToRoom};
 
@@ -26,6 +26,10 @@ impl RoomSim for Walkers {
     const TICK_HZ: u32 = 60;
     const MAX_SEATS: usize = 64;
     const INPUT_BYTES: usize = 2;
+    const SCHEMA: Schema = Schema {
+        wire: 7,
+        hash: 0xfeed_face_dead_beef,
+    };
 
     fn new(_seed: u64) -> Self {
         Self {
@@ -140,6 +144,44 @@ impl RoomSim for Walkers {
         near.sort_by_key(|(d2, other)| (*d2, *other));
         Some(near.into_iter().take(k).map(|(_, other)| other).collect())
     }
+}
+
+/// The welcome carries the peer-plane format the game declares, so a client
+/// can compare it with its own before any peer's bytes reach a decoder
+/// (design §10). The room never parses it.
+#[test]
+fn the_welcome_carries_the_games_schema() {
+    let mut h = Harness::<Walkers>::new(1, cfg());
+    h.connect("a", true, 10, 0);
+    h.run(100, |_, _, _| None);
+
+    assert_eq!(
+        h.client(0).expect("seated").schema(),
+        <Walkers as RoomSim>::SCHEMA,
+        "the schema a client is told is not the one the game declared"
+    );
+}
+
+/// `UNKNOWN` agrees with everything, which is what lets a room that predates
+/// the schema seat a client that has one. Two declared formats must match on
+/// both numbers.
+#[test]
+fn an_undeclared_schema_agrees_with_everything() {
+    let ours = Schema {
+        wire: 1,
+        hash: 0xabcd,
+    };
+    assert!(Schema::UNKNOWN.agrees(ours));
+    assert!(ours.agrees(Schema::UNKNOWN));
+    assert!(ours.agrees(ours));
+    assert!(!ours.agrees(Schema {
+        wire: 2,
+        hash: 0xabcd
+    }));
+    assert!(!ours.agrees(Schema {
+        wire: 1,
+        hash: 0xabce
+    }));
 }
 
 fn cfg() -> RoomConfig {

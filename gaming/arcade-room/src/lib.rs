@@ -28,4 +28,4 @@ pub use room::{ConnId, Identify, Out, Room, RoomConfig, RoomStats, To};
 
 #[cfg(test)]
 mod tests;
-pub use sim::{Change, INTEREST_MAX, RoomSim, Seat};
+pub use sim::{Change, INTEREST_MAX, RoomSim, Schema, Seat};

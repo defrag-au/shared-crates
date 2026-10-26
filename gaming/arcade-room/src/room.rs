@@ -568,6 +568,7 @@ impl<S: RoomSim> Room<S> {
             seat,
             tick_hz: S::TICK_HZ,
             room_tick: self.room_tick(now),
+            schema: S::SCHEMA,
             snapshot: self.sim.snapshot(),
         };
         self.send(conn, welcome);

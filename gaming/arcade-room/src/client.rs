@@ -26,7 +26,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use crate::sim::{Change, RoomSim, Seat};
+use crate::sim::{Change, RoomSim, Schema, Seat};
 use crate::wire::{ToClient, ToRoom};
 
 /// Ms between heartbeats when no input has been sent. Every client message
@@ -110,6 +110,9 @@ pub fn hello_as<S: RoomSim>(player: &str, session: &str, real: bool) -> Vec<u8> 
 
 pub struct Client<S: RoomSim> {
     seat: Seat,
+    /// The peer-plane format the room was built with, from the welcome. A game
+    /// compares it with its own before it lets a peer's bytes near a decoder.
+    schema: Schema,
     confirmed: S,
     /// This seat's inputs not yet confirmed, by the tick they were sent for.
     own: BTreeMap<u64, Vec<u8>>,
@@ -164,6 +167,7 @@ impl<S: RoomSim> Client<S> {
             ToClient::Welcome {
                 seat,
                 room_tick,
+                schema,
                 snapshot,
                 ..
             } => {
@@ -171,6 +175,7 @@ impl<S: RoomSim> Client<S> {
                 let start = confirmed.tick() as f64;
                 let mut client = Self {
                     seat,
+                    schema,
                     playback: confirmed.clone(),
                     confirmed,
                     own: BTreeMap::new(),
@@ -205,6 +210,12 @@ impl<S: RoomSim> Client<S> {
 
     pub fn seat(&self) -> Seat {
         self.seat
+    }
+
+    /// The peer-plane format the room was built with, as it published it in
+    /// this client's welcome ([`Schema`]).
+    pub fn schema(&self) -> Schema {
+        self.schema
     }
 
     /// Why the room turned this client away after seating it, if it has:
