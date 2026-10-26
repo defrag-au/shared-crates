@@ -85,6 +85,11 @@
   var MAX_SDP = 8192;
   var MAX_CANDIDATE = 512;
 
+  // The `to` a queued signal carries when it is for everyone. The room routes a
+  // targeted signal to one seat and copies a broadcast one to the sender's
+  // reach set; a world holds 64 seats, so 0xffff cannot collide with one.
+  var BROADCAST = 0xffff;
+
   var BYE_REPLACED = 1;
 
   // Bounded interest sets are the design's rule, not this file's to invent.
@@ -93,6 +98,12 @@
   // a hard cap — a group that is somehow larger than the design's bound still
   // cannot produce a mesh — but it should never bind.
   var MAX_LINKS = 12;
+
+  // Persistent links hold dormant channels too, so the cap has to cover the
+  // set and the seats it recently dropped. When it binds, the longest-dormant
+  // link is evicted: the ranking problem moved from the room to the client,
+  // which §5 says is what this costs.
+  var MAX_LINKS_PERSIST = 18;
 
   // ── ICE ──────────────────────────────────────────────────────────────────
   //
@@ -132,6 +143,11 @@
   var ICE = iceFromQuery(window.location.search);
   var RELAY = /[?&]relay=1/.test(window.location.search || '');
   var OFFLINE = /[?&]offline=1/.test(window.location.search || '');
+  // Persistent links (design §5): a seat the room stops naming keeps its
+  // channel, dormant, so walking back into view costs no handshake. Off by
+  // default while it is measured — `p2p-persist.dsl` and `p2p-persist-off.dsl`
+  // are the A/B, and the eviction rule below is what the run is judging.
+  var PERSIST = /[?&]persist=1/.test(window.location.search || '');
 
   // How long a join waits for the room's list. Under `wrangler dev` the mint is
   // a round trip to Cloudflare Realtime and back, and a longer budget would be
@@ -305,6 +321,8 @@
     me: -1,
     peers: 0,
     open: 0,
+    live: 0,
+    idle: 0,
     sent: 0,
     received: 0,
     // The game's bytes, by channel: what went out on `state` and `ctrl`, and
@@ -329,6 +347,13 @@
     // room names has no link, these say whether it never asked, asked and was
     // answered by silence, or was dropped here.
     signals: { announced: 0, announces: 0, dropped: 0 },
+    // Negotiations started, cumulative: `offered` by this page, `answered` for
+    // a peer that offered. The number persistence exists to stop moving when
+    // the room's set changes and nothing else did.
+    negotiations: { offered: 0, answered: 0 },
+    // Game bytes that arrived on a dormant link, and bytes the game offered one.
+    // Both are dropped: a dormant link is open and silent.
+    idleDropped: 0,
     // What each link is doing, refreshed by `rollup`, so a report has more than
     // a count when a connection does not hold.
     links: [],
@@ -340,6 +365,9 @@
     // because "state: closed" is not a diagnosis. Read it with
     // `eval "<peer>" "window.__bt.events" out=events.json`.
     events: [],
+    // Bytes the game offered a link that could not take them, by seat, channel
+    // and reason. Bounded by the link count and the two channels.
+    refused: {},
     // What ICE was configured with: `source` is 'default' | 'query' | 'off',
     // `urls` is the list, `room` says what the room's credential route answered
     // ('off' | 'pending' | 'ok' | 'empty' | 'unavailable'), and `relay` is
@@ -447,11 +475,11 @@
     framed[0] = body.length & 0xff;
     framed[1] = (body.length >> 8) & 0xff;
     framed.set(body, 2);
-    window.__btQueueSignal(frame(tag, link.myEpoch, link.seat, framed));
+    window.__btQueueSignal(link.seat, frame(tag, link.myEpoch, link.seat, framed));
   }
 
   function sendBye(seat, epoch, reason) {
-    window.__btQueueSignal(frame(TAG_BYE, epoch, seat, new Uint8Array([reason])));
+    window.__btQueueSignal(seat, frame(TAG_BYE, epoch, seat, new Uint8Array([reason])));
   }
 
   // Strict, like `Signal::decode`: a body that does not finish exactly where
@@ -525,7 +553,7 @@
     if (link) {
       return link;
     }
-    if (links.size >= MAX_LINKS) {
+    if (!makeRoom()) {
       return null;
     }
     link = {
@@ -543,6 +571,18 @@
       offerer: false,
       remoteSet: false,
       pending: [],
+      // In the room's group, or dropped from it and kept open (persistence).
+      // An idle link sends nothing and hands nothing to the game.
+      idle: false,
+      idleSince: 0,
+      // What this link has carried, each way, by channel. The roll-up counts
+      // are for the page; these are for the answer when one link differs from
+      // its neighbours — an ack that reaches every peer but one, or a link whose
+      // acks never arrive.
+      sentCtrl: 0,
+      recvCtrl: 0,
+      sentState: 0,
+      recvState: 0,
     };
     links.set(seat, link);
     return link;
@@ -557,13 +597,83 @@
     );
   }
 
+  // Reusable: the group names the seat, the channels are open, and the
+  // transport says connected. The channel state alone is not enough — after a
+  // peer closes its end they can read open for a while, and reusing one of
+  // those would black-hole the seat rather than renegotiate it.
+  function isHealthy(link) {
+    return link.pc !== null && link.pc.connectionState === 'connected' && isOpen(link);
+  }
+
+  function maxLinks() {
+    return PERSIST ? MAX_LINKS_PERSIST : MAX_LINKS;
+  }
+
+  // Make space for one more link. At the cap, persistence evicts the link that
+  // has been dormant longest — the seats dropped most recently are the ones a
+  // player is most likely to walk back into.
+  function makeRoom() {
+    if (links.size < maxLinks()) {
+      return true;
+    }
+    if (!PERSIST) {
+      return false;
+    }
+    var oldest = null;
+    links.forEach(function (link) {
+      if (!link.idle) {
+        return;
+      }
+      if (oldest === null || link.idleSince < oldest.idleSince) {
+        oldest = link;
+      }
+    });
+    if (oldest === null) {
+      return false;
+    }
+    note(oldest.seat, 'evicted: dormant longest');
+    sendBye(oldest.seat, oldest.myEpoch, BYE_REPLACED);
+    reset(oldest, 'evicted');
+    links.delete(oldest.seat);
+    seen.delete(oldest.seat);
+    return true;
+  }
+
+  // The room stopped naming this seat. The channel stays open and silent.
+  function setIdle(link) {
+    if (link.idle) {
+      return;
+    }
+    link.idle = true;
+    link.idleSince = performance.now();
+    note(link.seat, 'dormant: left the group');
+    rollup();
+  }
+
+  function setLive(link) {
+    if (!link.idle) {
+      return;
+    }
+    link.idle = false;
+    link.idleSince = 0;
+    note(link.seat, 'live: back in the group');
+    rollup();
+  }
+
   function rollup() {
     var open = 0;
+    var openLive = 0;
+    var dormant = 0;
     var live = 0;
     var detail = [];
     links.forEach(function (link) {
       if (isOpen(link)) {
         open += 1;
+        if (link.idle) {
+          dormant += 1;
+        } else {
+          openLive += 1;
+        }
       }
       if (link.pc !== null) {
         live += 1;
@@ -576,10 +686,18 @@
         offerer: link.offerer,
         epoch: link.myEpoch,
         theirEpoch: link.theirEpoch,
+        sentCtrl: link.sentCtrl,
+        recvCtrl: link.recvCtrl,
+        sentState: link.sentState,
+        recvState: link.recvState,
+        idle: link.idle,
+        healthy: isHealthy(link),
       });
     });
     window.__bt.links = detail;
     window.__bt.open = open;
+    window.__bt.live = openLive;
+    window.__bt.idle = dormant;
     window.__bt.peers = links.size;
     if (open > 0) {
       window.__bt.state = 'open';
@@ -638,14 +756,28 @@
       fail(link, name + ' channel: ' + describe(e));
     };
     channel.onmessage = function (event) {
+      if (link.idle) {
+        // Dormant: the room no longer names this seat, so its samples are not
+        // ours to draw. Counted apart from `received` so that stays a rate of
+        // samples the game can use.
+        window.__bt.idleDropped += 1;
+        if (name === 'state') {
+          link.recvState += 1;
+        } else {
+          link.recvCtrl += 1;
+        }
+        return;
+      }
       if (name === 'state') {
         window.__bt.received += 1;
+        link.recvState += 1;
         window.__bt.buffered = channel.bufferedAmount;
         if (window.__bt.received % 20 === 0) {
           sample();
         }
       } else {
         window.__bt.receivedCtrl += 1;
+        link.recvCtrl += 1;
       }
       // The game's bytes. This file does not look at them: `island-wire` owns
       // the format, and all the shim knows is which seat and which channel.
@@ -696,7 +828,29 @@
     pc.onconnectionstatechange = function () {
       note(link.seat, 'connection ' + pc.connectionState);
       if (pc.connectionState === 'failed') {
-        fail(link, 'connection failed');
+        if (!PERSIST) {
+          fail(link, 'connection failed');
+        } else {
+          // The channel is gone; the room's set is not. Forget the link so the
+          // next group, or the nudge below, starts a fresh negotiation, and say
+          // so — the far side may still be holding its half.
+          var wasIdle = link.idle;
+          var seat = link.seat;
+          reset(link, 'connection failed');
+          links.delete(seat);
+          seen.delete(seat);
+          sendBye(seat, link.myEpoch, BYE_REPLACED);
+          if (!wasIdle && me !== null) {
+            if (leadsOffer(seat)) {
+              var again = linkFor(seat);
+              if (again !== null) {
+                startOffer(again);
+              }
+            } else {
+              announce();
+            }
+          }
+        }
       }
       rollup();
     };
@@ -731,7 +885,7 @@
 
   function announce() {
     window.__bt.signals.announced += 1;
-    window.__btQueueSignal(frame(TAG_ANNOUNCE, sessionEpoch, null, new Uint8Array(0)));
+    window.__btQueueSignal(BROADCAST, frame(TAG_ANNOUNCE, sessionEpoch, null, new Uint8Array(0)));
   }
 
   function leadsOffer(them) {
@@ -748,6 +902,12 @@
     }
     var pc = ensurePc(link);
     link.offerer = true;
+    // A fresh attempt needs a newer epoch. Without one, a far side still holding
+    // a stale link reads the offer as a duplicate of the one it already answered
+    // and ignores it; every other value on the wire already moves forward per
+    // attempt, and this one did not.
+    link.myEpoch = (link.myEpoch % 65535) + 1;
+    window.__bt.negotiations.offered += 1;
     note(link.seat, 'offering');
     link.ctrl = wire(pc.createDataChannel('ctrl', { ordered: true }), link, 'ctrl');
     link.state = wire(
@@ -790,6 +950,7 @@
     }
     reset(link, 'taking their offer');
     var pc = ensurePc(link);
+    window.__bt.negotiations.answered += 1;
     note(link.seat, 'answering ' + msg.sdp.length + 'B sdp');
     pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp })
       .then(function () {
@@ -859,10 +1020,12 @@
       console.warn('[peer] a signal from seat ' + from + ' did not decode');
       return;
     }
-    if (group !== null && !group.members.has(from)) {
+    if (group !== null && !group.members.has(from) && !links.has(from)) {
       // The room delivers to the sender's group, so this is a set that changed
       // between the room deciding and the frame arriving. Dropping it is what
-      // the new set would have done.
+      // the new set would have done. A link we hold is the exception: a dormant
+      // one still has to hear `Bye` or a restarted offer, or persistence would
+      // keep a link nobody can use and never replace it.
       window.__bt.signals.dropped += 1;
       if (msg.tag === TAG_ANNOUNCE) {
         note(from, 'announce dropped: outside the group');
@@ -884,14 +1047,14 @@
         // A seat we have not met. At the cap it is ignored rather than told:
         // a `Bye` answered by a `Bye` from a peer that is also at its cap
         // ping-pongs, and an announce is broadcast, so it is not a request.
-        if (links.size >= MAX_LINKS) {
+        if (!makeRoom()) {
           return;
         }
       } else if (msg.tag === TAG_OFFER) {
         // They are negotiating with a seat we have no link for, so offer them
         // the courtesy of a refusal rather than a half-open connection. A
         // `Bye` is not answered with a `Bye`, which is what stops this looping.
-        if (links.size >= MAX_LINKS) {
+        if (!makeRoom()) {
           sendBye(from, msg.epoch, BYE_REPLACED);
           return;
         }
@@ -979,7 +1142,15 @@
     window.__bt.group = { epoch: epoch, members: members.slice() };
     var leaving = [];
     links.forEach(function (link, seat) {
-      if (!group.members.has(seat)) {
+      if (group.members.has(seat)) {
+        return;
+      }
+      if (PERSIST) {
+        // Persistent links (design §5): the channel stays, dormant, so walking
+        // back into view costs no handshake. Nothing is sent on it and nothing
+        // arriving on it reaches the game while the set does not name the seat.
+        setIdle(link);
+      } else {
         leaving.push(link);
       }
     });
@@ -994,7 +1165,23 @@
     if (me !== null && group.members.size > 0) {
       announce();
       group.members.forEach(function (seat) {
-        if (leadsOffer(seat) && !links.has(seat)) {
+        var held = links.get(seat);
+        if (held !== undefined) {
+          var wasIdle = held.idle;
+          setLive(held);
+          if (wasIdle && PERSIST && !isHealthy(held)) {
+            // It died while the set did not name it, so nothing noticed. Forget
+            // it and let this group start a fresh negotiation. A link that is
+            // still connecting is not stale — it has not finished its first
+            // handshake, and tearing it down here would restart every slow
+            // negotiation once per regroup.
+            reset(held, 'stale on return');
+            links.delete(seat);
+            seen.delete(seat);
+            held = undefined;
+          }
+        }
+        if (held === undefined && leadsOffer(seat)) {
           var link = linkFor(seat);
           if (link !== null) {
             startOffer(link);
@@ -1055,25 +1242,45 @@
   window.__btSendLink = function (seat, kind, bytes) {
     var link = links.get(seat);
     if (!link) {
+      refuse(seat, kind, 'no link');
+      return false;
+    }
+    if (link.idle) {
+      refuse(seat, kind, 'dormant');
       return false;
     }
     var channel = kind === LINK_STATE ? link.state : link.ctrl;
     if (!channel || channel.readyState !== 'open') {
+      refuse(seat, kind, 'closed');
       return false;
     }
     channel.send(bytes);
     if (kind === LINK_STATE) {
       window.__bt.sentState += 1;
+      link.sentState += 1;
     } else {
       window.__bt.sentCtrl += 1;
+      link.sentCtrl += 1;
     }
     return true;
   };
 
+  // Why the game's byte did not go. A link whose state flow is one-way is not a
+  // connection as far as the overlay is concerned, and "sent 0" cannot tell a
+  // missing link from a channel that has not opened.
+  function refuse(seat, kind, why) {
+    var key = seat + ':' + (kind === LINK_STATE ? 'state' : 'ctrl') + ':' + why;
+    window.__bt.refused[key] = (window.__bt.refused[key] || 0) + 1;
+  }
+
   // Whatever arrived on the data channels since the last drain, oldest first.
+  // The per-link counters in `links` are refreshed here, because the drain is
+  // the one thing that runs every frame: a link whose traffic changed but whose
+  // connection state did not would otherwise report the counts it had at open.
   window.__btDrainLinks = function () {
     var out = recv;
     recv = [];
+    rollup();
     return out;
   };
 

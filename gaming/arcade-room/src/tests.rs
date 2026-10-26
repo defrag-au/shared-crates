@@ -583,7 +583,7 @@ fn a_signal_is_counted_once_in_and_once_per_copy_out() {
     let now = h.now;
     h.client_mut(a)
         .expect("seated")
-        .send_signal(b"v=0\r\n".to_vec(), now);
+        .send_announce(b"v=0\r\n".to_vec(), now);
     h.run(100, |_, _, _| None);
 
     // Walkers names every other seat, so one frame reaches two seats.
@@ -733,6 +733,93 @@ impl RoomSim for Islands {
             _ => Vec::new(),
         })
     }
+}
+
+/// A targeted signal is delivered to its target once and to nobody else.
+///
+/// The group says who is worth a channel; it does not make every handshake in
+/// it the group's business. Before this, one offer was copied to every member
+/// and every receiver but the target decoded and dropped it.
+#[test]
+fn a_targeted_signal_reaches_only_its_target() {
+    let mut h = Harness::<Walkers>::new(1, cfg());
+    let a = h.connect("a", true, 10, 0);
+    let b = h.connect("b", true, 10, 0);
+    let c = h.connect("c", true, 10, 0);
+    h.run(1_000, |_, _, _| None);
+
+    let seat_c = h.client(c).expect("seated").seat();
+    let now = h.now;
+    h.client_mut(a)
+        .expect("seated")
+        .send_signal(seat_c, b"v=0\r\n".to_vec(), now);
+    h.run(100, |_, _, _| None);
+
+    assert_eq!(h.room.signals(), (1, 1), "one in, one copy");
+    assert_eq!(
+        h.client(a).expect("seated").signals(),
+        (1, 0),
+        "the sender counts what it sent and none of its own"
+    );
+    assert_eq!(
+        h.client(b).expect("seated").signals(),
+        (0, 0),
+        "a member of the group that is not the target heard nothing"
+    );
+    assert_eq!(
+        h.client(c).expect("seated").signals(),
+        (0, 1),
+        "the target heard it once"
+    );
+}
+
+/// A targeted signal goes to its sender's group and to anyone who names the
+/// sender, and no further — the same reach the broadcast path uses, as a
+/// membership test. The second half is not decoration: a capped distance set is
+/// not symmetric, and the far end of an asymmetric pair still has to answer.
+#[test]
+fn a_targeted_signal_outside_the_reach_set_is_dropped() {
+    let mut room = Room::<Islands>::new(1, cfg());
+    for conn in 1..=3 {
+        room.open(conn);
+    }
+    for (conn, name) in [(1, "a"), (2, "b"), (3, "c")] {
+        room.message(conn, &crate::client::hello::<Islands>(name, true), 0);
+    }
+    room.drain();
+
+    let heard = |room: &mut Room<Islands>, from_conn: u64, to: Seat| {
+        room.message(
+            from_conn,
+            &ToRoom::SignalTo {
+                to,
+                bytes: b"v=0\r\n".to_vec(),
+            }
+            .encode(),
+            1_000,
+        );
+        room.drain()
+            .into_iter()
+            .filter_map(|out| match (out.to, ToClient::decode(&out.bytes)) {
+                (To::One(conn), Ok(ToClient::Signal { from, .. })) => Some((conn, from)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(heard(&mut room, 1, 1), vec![(2, 0)], "0's group names 1");
+    assert_eq!(
+        heard(&mut room, 2, 0),
+        vec![(1, 1)],
+        "1 reaches 0 through 0's group, though 1 names nobody"
+    );
+    assert!(heard(&mut room, 1, 2).is_empty(), "0 does not name 2");
+    assert!(heard(&mut room, 3, 1).is_empty(), "2 is in nobody's group");
+    assert_eq!(
+        room.signals(),
+        (4, 2),
+        "every attempt is counted in, and only the two deliveries out"
+    );
 }
 
 /// A signal goes to its sender's group and to anyone who names the sender, and

@@ -573,8 +573,33 @@ mod tests {
     #[test]
     fn the_browser_half_offers_on_the_group() {
         assert!(
-            PEER_JS.contains("leadsOffer(seat) && !links.has(seat)"),
+            PEER_JS.contains("held === undefined && leadsOffer(seat)"),
             "a group naming an unlinked seat no longer starts an offer"
+        );
+    }
+
+    /// Persistence keeps a link the room has stopped naming (design §5). The
+    /// risk is not the channel, it is the game: a dormant link that still hands
+    /// its samples over would draw a player outside the interest set, and one
+    /// that still accepts sends would carry state the room has decided is not
+    /// worth the bytes. Both directions are refused at the shim's edge.
+    #[test]
+    fn a_dormant_link_is_silent_in_both_directions() {
+        assert!(
+            PEER_JS.contains("var PERSIST ="),
+            "the persistence switch is gone"
+        );
+        assert!(
+            PEER_JS.contains("window.__bt.idleDropped += 1;"),
+            "a dormant link's samples are handed to the game"
+        );
+        assert!(
+            PEER_JS.contains("refuse(seat, kind, 'dormant');"),
+            "a dormant link accepts the game's bytes"
+        );
+        assert!(
+            PEER_JS.contains("setIdle(link);"),
+            "a seat leaving the group is not held dormant"
         );
     }
 

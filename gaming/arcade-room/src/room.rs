@@ -369,15 +369,36 @@ impl<S: RoomSim> Room<S> {
             // of the sender's group. It never reads the body — that is
             // `arcade-peer`'s — and it does not echo to the sender.
             //
-            // Scoped rather than broadcast: with groups, an offer never leaves
-            // the pair of interest sets it belongs to, so a 64-player world
-            // pays for the peers an eye can see rather than for every seat.
+            // Broadcast is the announce: a seat that has just been named has
+            // nobody to address yet, and discovery is what a new set is for.
             (ToRoom::Signal(bytes), Some(seat)) => {
                 self.signals_in = self.signals_in.saturating_add(1);
                 for target in self.signal_targets(seat) {
                     self.signal_copies = self.signal_copies.saturating_add(1);
                     self.send(
                         target,
+                        ToClient::Signal {
+                            from: seat,
+                            bytes: bytes.clone(),
+                        },
+                    );
+                }
+            }
+            // A targeted signal goes to the one seat it names, if the pair is
+            // reachable. One copy, not one per group member: a handshake is
+            // between two seats, and copying it to the rest only made every
+            // other receiver decode and discard it.
+            (ToRoom::SignalTo { to, bytes }, Some(seat)) => {
+                self.signals_in = self.signals_in.saturating_add(1);
+                let conn = if self.reachable(seat, to) {
+                    self.seats.get(&to).and_then(|s| s.conn)
+                } else {
+                    None
+                };
+                if let Some(conn) = conn {
+                    self.signal_copies = self.signal_copies.saturating_add(1);
+                    self.send(
+                        conn,
                         ToClient::Signal {
                             from: seat,
                             bytes: bytes.clone(),
@@ -720,6 +741,28 @@ impl<S: RoomSim> Room<S> {
             .into_iter()
             .filter_map(|s| self.seats.get(&s).and_then(|i| i.conn))
             .collect()
+    }
+
+    /// Whether a signal from `seat` may reach `to`: the same union
+    /// [`Room::signal_targets`] delivers to, as a membership test. The targeted
+    /// path needs the answer, not the list, so it does not allocate one per
+    /// signal.
+    fn reachable(&self, seat: Seat, to: Seat) -> bool {
+        if seat == to {
+            return false;
+        }
+        match self.groups.get(&seat) {
+            // Before the first group, every other seated seat is reachable —
+            // what the room did before groups existed.
+            None => self.seats.contains_key(&to),
+            Some(members) => {
+                members.contains(&to)
+                    || self
+                        .groups
+                        .get(&to)
+                        .is_some_and(|theirs| theirs.contains(&seat))
+            }
+        }
     }
 
     /// Messages to send, in order.

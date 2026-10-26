@@ -345,11 +345,22 @@ impl<S: RoomSim> Client<S> {
         self.out.push(msg.encode());
     }
 
-    /// Send a signalling message to the other players here.
+    /// Send a signalling message to one other player.
     ///
-    /// The room stamps this seat as the sender, so the bytes carry no identity
-    /// of their own and a peer cannot claim another's seat by writing it down.
-    pub fn send_signal(&mut self, bytes: Vec<u8>, now: u64) {
+    /// The room stamps this seat as the sender and routes the body to `to`
+    /// alone, provided it considers the pair reachable — one of the two sets
+    /// names the other. The bytes carry no identity of their own and a peer
+    /// cannot claim another's seat by writing it down.
+    pub fn send_signal(&mut self, to: Seat, bytes: Vec<u8>, now: u64) {
+        self.signals_sent = self.signals_sent.saturating_add(1);
+        self.send(ToRoom::SignalTo { to, bytes }, now);
+    }
+
+    /// Send a signalling message to everyone who can reach this seat.
+    ///
+    /// Only discovery uses this: an announce is how a peer learns who else is
+    /// here, so it has nobody to name yet. Everything after it is targeted.
+    pub fn send_announce(&mut self, bytes: Vec<u8>, now: u64) {
         self.signals_sent = self.signals_sent.saturating_add(1);
         self.send(ToRoom::Signal(bytes), now);
     }

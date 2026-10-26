@@ -33,10 +33,20 @@ pub enum ToRoom {
     Hash { tick: u64, hash: u64 },
     /// For measuring the round trip.
     Ping { client_ms: u64 },
-    /// A signalling message for the other players here: an offer, an answer, a
-    /// candidate or a goodbye. The room stamps the sender's seat and broadcasts
-    /// it; what the bytes mean is `arcade-peer`'s business, not the room's.
+    /// A signalling message for everyone in this seat's interest set: an
+    /// announce, which has nobody to name yet. The room stamps the sender's
+    /// seat and copies it to the seats that can reach the sender; what the
+    /// bytes mean is `arcade-peer`'s business, not the room's.
     Signal(Vec<u8>),
+    /// A signalling message for one other player: an offer, an answer, a
+    /// candidate or a goodbye.
+    ///
+    /// The room stamps the sender's seat, checks that the pair is reachable
+    /// (either seat names the other), and delivers **one** copy. Without this
+    /// every pairwise signal was copied to the whole group and discarded by
+    /// every receiver but its target — measured at 190–935 discarded signals
+    /// per page in a thirteen-peer mesh (`docs/P2P_OVERLAY_DESIGN.md` §9).
+    SignalTo { to: Seat, bytes: Vec<u8> },
 }
 
 /// From a room to a client.
@@ -170,6 +180,11 @@ impl ToRoom {
                 w.u8(5);
                 w.bytes16(bytes);
             }
+            Self::SignalTo { to, bytes } => {
+                w.u8(6);
+                w.u16(*to);
+                w.bytes16(bytes);
+            }
         }
         w.0
     }
@@ -204,6 +219,10 @@ impl ToRoom {
                 client_ms: r.u64()?,
             },
             5 => Self::Signal(r.bytes16()?),
+            6 => Self::SignalTo {
+                to: r.u16()?,
+                bytes: r.bytes16()?,
+            },
             t => return Err(WireError::UnknownTag(t)),
         };
         r.done()?;
@@ -512,6 +531,14 @@ mod tests {
             ToRoom::Ping { client_ms: 7 },
             ToRoom::Signal(b"v=0\r\na=setup:actpass\r\n".to_vec()),
             ToRoom::Signal(Vec::new()),
+            ToRoom::SignalTo {
+                to: 9,
+                bytes: b"v=0\r\na=setup:actpass\r\n".to_vec(),
+            },
+            ToRoom::SignalTo {
+                to: 0,
+                bytes: Vec::new(),
+            },
         ];
         for m in to_room {
             assert_eq!(ToRoom::decode(&m.encode()), Ok(m));
