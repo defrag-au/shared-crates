@@ -11,6 +11,7 @@
 
 pub mod dex;
 pub mod naming;
+pub mod published;
 pub mod registry;
 pub mod utils;
 

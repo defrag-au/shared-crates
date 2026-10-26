@@ -67,6 +67,13 @@
 // always sends just behind it — and a set change is exactly that, so the window
 // is what stops the shim re-offering to a seat it is about to drop.
 //
+// The cheap repair, tried first on `disconnected`, is an ICE **restart**: the end
+// that offered asks for new candidates on the connection both ends already have
+// (`TAG_RESTART`), the far side answers without a reset, and the channels — and
+// anything buffered on them — stay where they are. The offer reuses the attempt's
+// epoch deliberately: a higher one means "start over", which would tear down the
+// very channels the restart is there to keep.
+//
 // ## Announcing
 //
 // `Announce` is broadcast, and the room stamps the sender. A peer that joined
@@ -110,6 +117,11 @@
   var TAG_ANSWER = 3;
   var TAG_CANDIDATE = 4;
   var TAG_BYE = 5;
+  // An offer for the connection both ends already have: new ICE credentials,
+  // same `RTCPeerConnection`, same channels. It carries the epoch of the attempt
+  // it belongs to — a higher epoch means "start over", which is the teardown this
+  // exists to avoid — and is answered with a plain Answer.
+  var TAG_RESTART = 6;
 
   var MAX_SDP = 8192;
   var MAX_CANDIDATE = 512;
@@ -140,6 +152,12 @@
   // together — the burst §9 measures. The rest wait their turn and start as the
   // ones in flight settle: connected, expired, or reset.
   var MAX_NEGOTIATING = 4;
+
+  // How often the same link may be restarted. A path that flaps reports
+  // `disconnected` on each one, and a restart per flap is a handshake's worth of
+  // messages for a blip. The stale timer is the backstop if a restart does not
+  // take: past it the link is torn down and offered again.
+  var RESTART_EVERY_MS = 5000;
 
   // ── ICE ──────────────────────────────────────────────────────────────────
   //
@@ -436,12 +454,21 @@
     signals: { announced: 0, announces: 0, dropped: 0 },
     // Negotiations started, cumulative: `offered` by this page, `answered` for
     // a peer that offered, and `expired` offers abandoned unanswered; `failed` is
-    // links the browser gave up on and the shim renegotiated. `peak` is
+    // links the browser gave up on and the shim renegotiated; `restarts` is ICE
+    // restarts this page asked for, `restartAnswered` the ones it answered. `peak` is
     // the most offers this page ever ran at once, which is what the queue behind
     // `MAX_NEGOTIATING` is there to bound. The number
     // persistence exists to stop moving when the room's set changes and nothing
     // else did.
-    negotiations: { offered: 0, answered: 0, expired: 0, failed: 0, peak: 0 },
+    negotiations: {
+      offered: 0,
+      answered: 0,
+      expired: 0,
+      failed: 0,
+      restarts: 0,
+      restartAnswered: 0,
+      peak: 0,
+    },
     // Game bytes that arrived on a dormant link, and bytes the game offered one.
     // Both are dropped: a dormant link is open and silent.
     idleDropped: 0,
@@ -614,7 +641,7 @@
       if (msg.to === null) {
         return null;
       }
-      if (tag === TAG_OFFER || tag === TAG_ANSWER) {
+      if (tag === TAG_OFFER || tag === TAG_RESTART || tag === TAG_ANSWER) {
         msg.sdp = blob(MAX_SDP);
         if (msg.sdp === null) {
           return null;
@@ -667,6 +694,12 @@
       // link — and how long that suspicion is given. The sweep gives up after it.
       staleSince: 0,
       staleFor: 0,
+      // When this link last asked for an ICE restart, so a flapping path cannot
+      // ask once per flap.
+      restartedAt: 0,
+      // How many times a channel has opened on this record. A restart leaves it
+      // at 1; a renegotiation makes a new record and starts again.
+      opens: 0,
       // The harness closed this link's transport without telling anyone
       // (`__btDrop`). Its own events are ignored until it is renegotiated.
       silent: false,
@@ -791,6 +824,7 @@
         recvCtrl: link.recvCtrl,
         sentState: link.sentState,
         recvState: link.recvState,
+        opens: link.opens,
         idle: link.idle,
         healthy: isHealthy(link),
       });
@@ -842,6 +876,7 @@
     link.offerSince = 0;
     link.staleSince = 0;
     link.staleFor = 0;
+    link.restartedAt = 0;
     link.silent = false;
     link.remoteSet = false;
     link.pending = [];
@@ -897,6 +932,7 @@
     channel.binaryType = 'arraybuffer';
     channel.onopen = function () {
       note(link.seat, name + ' open');
+      link.opens += 1;
       rollup();
     };
     channel.onclose = function () {
@@ -990,8 +1026,11 @@
       if (pc.connectionState === 'failed') {
         dropDead(link, 'connection failed');
       } else if (pc.connectionState === 'disconnected') {
-        // May come back on its own; `sweepStale` gives it `LINK_STALE_MS`.
+        // May come back on its own. The stale timer is the backstop; the end
+        // that offered asks ICE to try a new path first, because that is the
+        // cheap repair and it leaves the channels alone.
         suspect(link, LINK_STALE_MS);
+        startRestart(link);
       } else {
         link.staleSince = 0;
         link.staleFor = 0;
@@ -1075,6 +1114,45 @@
       .catch(function (e) {
         fail(link, 'offer: ' + describe(e));
       });
+  }
+
+  // Ask ICE to try again on the connection this pair already has.
+  //
+  // Only the end that offered does this: it is the same rule that decides who
+  // offers, so two ends cannot restart at each other. The offer carries the
+  // attempt's epoch unchanged, which is what stops the far side's `deliver`
+  // treating it as a restart of the *negotiation* and resetting the channels this
+  // exists to keep. Nothing here is timed by `OFFER_MS`: a restart that does not
+  // take is caught by the stale timer, which tears the link down properly.
+  function startRestart(link) {
+    if (!link.offerer || link.pc === null || link.offerSince !== 0) {
+      return false;
+    }
+    if (!isOpen(link)) {
+      // Channels already gone: there is no association left to keep, and the
+      // settle timer is about to tear the link down properly.
+      return false;
+    }
+    var now = performance.now();
+    if (link.restartedAt !== 0 && now - link.restartedAt < RESTART_EVERY_MS) {
+      return false;
+    }
+    link.restartedAt = now;
+    window.__bt.negotiations.restarts += 1;
+    note(link.seat, 'restarting ice');
+    var pc = link.pc;
+    pc.restartIce();
+    pc.createOffer()
+      .then(function (offer) {
+        return pc.setLocalDescription(offer);
+      })
+      .then(function () {
+        sendBlob(TAG_RESTART, link, pc.localDescription.sdp, MAX_SDP);
+      })
+      .catch(function (e) {
+        fail(link, 'restart: ' + describe(e));
+      });
+    return true;
   }
 
   function onAnnounce(link) {
@@ -1212,6 +1290,40 @@
       });
   }
 
+  // Answer a restart on the connection both ends already have.
+  //
+  // No `reset`, which is the whole point: the offer carries new ICE credentials
+  // for an existing association, and applying it keeps the channels. A restart
+  // for a link whose browser half is already gone is ignored — there is nothing
+  // to restart, and the end that asked will reach its stale timer and start over.
+  function onRestart(link, msg) {
+    if (link.pc === null || link.pc.connectionState === 'closed') {
+      // Nothing to restart. The end that asked reaches its stale timer and
+      // starts over, which is the only repair available from here.
+      return;
+    }
+    window.__bt.negotiations.restartAnswered += 1;
+    link.offerer = false;
+    link.offerSince = 0;
+    note(link.seat, 'restart taken ' + msg.sdp.length + 'B sdp');
+    var pc = link.pc;
+    pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp })
+      .then(function () {
+        link.remoteSet = true;
+        flush(link);
+        return pc.createAnswer();
+      })
+      .then(function (answer) {
+        return pc.setLocalDescription(answer);
+      })
+      .then(function () {
+        sendBlob(TAG_ANSWER, link, pc.localDescription.sdp, MAX_SDP);
+      })
+      .catch(function (e) {
+        fail(link, 'restart answer: ' + describe(e));
+      });
+  }
+
   function onAnswer(link, msg) {
     if (!link.pc || !link.offerer) {
       note(link.seat, 'answer ignored: not the offerer');
@@ -1331,6 +1443,8 @@
       onAnnounce(link);
     } else if (msg.tag === TAG_OFFER) {
       onOffer(link, msg);
+    } else if (msg.tag === TAG_RESTART) {
+      onRestart(link, msg);
     } else if (msg.tag === TAG_ANSWER) {
       onAnswer(link, msg);
     } else if (msg.tag === TAG_CANDIDATE) {
@@ -1648,6 +1762,19 @@
         done('error');
       });
     });
+  };
+
+  // Ask for an ICE restart on a live link, as the `disconnected` handler does on
+  // its own. A harness seam like `__btDrop`: a path that goes quiet without
+  // closing its channels cannot be staged from a page, so this is how
+  // `p2p-ice-restart.dsl` exercises the signalling and the answer that keeps the
+  // channels.
+  window.__btRestart = function (seat) {
+    var link = links.get(seat);
+    if (!link) {
+      return false;
+    }
+    return startRestart(link);
   };
 
   // Simulate the far side's browser going away without a `Bye`: close this

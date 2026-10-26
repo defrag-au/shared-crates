@@ -747,7 +747,7 @@ pub static ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
     // Removed 2026-10-27: the per-seller prefix entry in
     // ADDRESS_PREFIX_REGISTRY already names the address, and a full address
     // carrying a customer's stake is what the stake registry's wrong "Wayup"
-    // entry was inferred from. See the exclusions at the end of STAKE_REGISTRY.
+    // entry was inferred from. See STAKE_EXCLUSIONS.
     "addr1v87m5srrtx52s8jdragjl8wle0eq57dzv2n62nxh3nx65dq0edwwu" => AC::Script(SC::Marketplace { marketplace: MP::Wayup, purpose: Purpose::Sale, kind: MarketplaceType::Wayup, fee_calculation: wayup_fee_calculation }),
     "addr1xx2l3rxnj5cuvj58fxnztewnlxneejzayqqakg7c2xkkt0gejuwlk348lfs3mh65tm5ym27hg9z5cjphv6w7sv3dwxqsk9as6l" => AC::Script(SC::Minter(Minter::JpgStore)),
     "addr1z98ps3vxeewk94rwp5dtxvzlr4aczync78p8am9l9w4vcn04fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwq2zuf48" => AC::Script(SC::Staking { label: "The Vault", project: "CNFT Tools" }),
@@ -774,7 +774,7 @@ pub static ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
     // The Splash-family instinct was right too. snek.fun is a Splash Protocol
     // product, which is why it delegates to the LBSP credential — and why
     // naming it from that stake credential produced "DexHunter" in the first
-    // place. See STAKE_REGISTRY's exclusions: the stake identifies a staking
+    // place. See STAKE_EXCLUSIONS: the stake identifies a staking
     // arrangement, never an operator.
     //
     // Mechanics, graduation rate and the datum layout:
@@ -1510,57 +1510,70 @@ pub static STAKE_REGISTRY: Map<&'static str, StakeService> = phf_map! {
                  carrying no other registered label",
     },
 
-    // ── Deliberately NOT registered ─────────────────────────────────────────
-    //
-    // Two credentials look like obvious additions and are not, because more
-    // than one entity's contracts delegate to them. `a_registered_credential_
-    // is_claimed_by_exactly_one_entity` enforces this; the note is here so the
-    // absence reads as a decision rather than an oversight.
-    //
-    //   stake17xe0d2lkpnx7jt4wrgh5lhm97t40vgydsukx7rje0nqskpc5zugc3
-    //     Fourteen distinct payment scripts delegate here, registered under
-    //     BOTH "Splash" and "DexHunter". This is not a transcription slip —
-    //     it is Spectrum/Splash's LBSP ("Liquidity Bootstrapping Stake Pool")
-    //     credential, the protocol's documented mechanism for delegating
-    //     contract-locked ADA to its own stake pool. Every validator in the
-    //     family shares it BY DESIGN, and the credential's controlled stake
-    //     (~16.4M ADA) is delegated to Spectrum Finance's pool.
-    //
-    //     So the credential identifies a STAKING ARRANGEMENT, not an operator,
-    //     and no label can be correct: the addresses behind it span pools, a
-    //     launchpad-shaped contract holding a thousand tokens at full supply,
-    //     and whatever else the protocol deploys next. Naming it would repeat
-    //     the 168 Mekka counterparties wrongly labelled "Splash", noted on
-    //     ADDRESS_PREFIX_REGISTRY.
-    //
-    //     Any DEX whose contracts delegate to a protocol-wide staking script
-    //     is unregisterable for the same reason; expect this to be the rule
-    //     for DEXes rather than the exception.
-    //
-    //   stake1u8653j3mcjks5d304g6eexryse7ma22erw8p05fsvefem8qklu7w7
-    //     Three scripts, registered under both "The Vault" staking and "Wayup"
-    //     sale. Same problem, smaller blast radius.
-    //
-    //   stake1uxwcw3rr36r8q9e5egy3e74cmazpjvx4t5ajsq50xhm568celda4g
-    //     WAS registered here as "Wayup" ("delegation shared by two
-    //     registered Wayup sale scripts"), and is a PERSON: `$curiousfutures`,
-    //     confirmed by its owner 2026-10-27. A KEY stake credential (header
-    //     e1), and Koios lists 18 payment addresses on it, wallets and
-    //     scripts. The two "Wayup sale scripts" were that seller's Wayup
-    //     LISTINGS: Wayup issues a sale address per seller carrying the
-    //     seller's own stake key (ADDRESS_PREFIX_REGISTRY says so), so a
-    //     stake reached by Wayup sale addresses is a Wayup CUSTOMER, never
-    //     Wayup. Named, it put a person's holdings on screens as a venue
-    //     ($Aliens' TOKEN ARENA: `[Wayup]`, 1.1% of the supply).
-    //
-    //     The rule it breaks: never infer a stake service from addresses
-    //     that only a prefix or a per-customer contract reaches.
+    // Credentials that look like obvious additions and are not: see
+    // [`STAKE_EXCLUSIONS`], which records each with its reason.
 };
 
 /// Look up a service by its stake credential (bech32 `stake1…`).
 pub fn lookup_stake(stake: &str) -> Option<&'static StakeService> {
     STAKE_REGISTRY.get(stake)
 }
+
+/// A stake credential deliberately NOT in [`STAKE_REGISTRY`], and why.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StakeExclusion {
+    pub stake: &'static str,
+    /// The evidence it is not one service's: what reaches it, and what it
+    /// turned out to be.
+    pub reason: &'static str,
+}
+
+/// Stake credentials that look like services and are not.
+///
+/// A record, not a comment, so the absence reads as a decision rather than an
+/// oversight, travels with the published table (`published`), and is CHECKED:
+/// a key here can never also be registered. Each is a credential more than
+/// one party reaches, which `a_registered_credential_is_claimed_by_exactly_
+/// one_entity` refuses to name, or one that was named wrongly once.
+pub static STAKE_EXCLUSIONS: &[StakeExclusion] = &[
+    // Spectrum/Splash's LBSP ("Liquidity Bootstrapping Stake Pool")
+    // credential, the protocol's documented mechanism for delegating
+    // contract-locked ADA to its own stake pool. Every validator in the
+    // family shares it BY DESIGN, and its controlled stake (~16.4M ADA) is
+    // delegated to Spectrum Finance's pool. So it identifies a STAKING
+    // ARRANGEMENT, not an operator: the addresses behind it span pools, a
+    // launchpad (snek.fun's curve), and whatever the protocol deploys next.
+    // Naming it would repeat the 168 Mekka counterparties wrongly labelled
+    // "Splash", noted on ADDRESS_PREFIX_REGISTRY. Any DEX whose contracts
+    // delegate to a protocol-wide staking script is unregisterable for the
+    // same reason; expect that to be the rule for DEXes.
+    StakeExclusion {
+        stake: "stake17xe0d2lkpnx7jt4wrgh5lhm97t40vgydsukx7rje0nqskpc5zugc3",
+        reason: "Splash/Spectrum's LBSP staking credential: fourteen payment \
+                 scripts registered under both Splash and DexHunter delegate \
+                 here by design, so it names a staking arrangement, not an \
+                 operator",
+    },
+    StakeExclusion {
+        stake: "stake1u8653j3mcjks5d304g6eexryse7ma22erw8p05fsvefem8qklu7w7",
+        reason: "three scripts registered under both The Vault staking and \
+                 Wayup sale delegate here; a credential two entities reach \
+                 names neither",
+    },
+    // WAS registered as "Wayup" ("delegation shared by two registered Wayup
+    // sale scripts"). Named, it put a person's holdings on screens as a venue
+    // ($Aliens' TOKEN ARENA: `[Wayup]`, 1.1% of the supply). The rule it
+    // broke: never infer a stake service from addresses that only a prefix or
+    // a per-customer contract reaches.
+    StakeExclusion {
+        stake: "stake1uxwcw3rr36r8q9e5egy3e74cmazpjvx4t5ajsq50xhm568celda4g",
+        reason: "a person's wallet (handle $curiousfutures), confirmed by its \
+                 owner 2026-10-27: a key stake credential with 18 payment \
+                 addresses. Listed once as Wayup because two of its addresses \
+                 are that seller's Wayup listings, which carry the seller's \
+                 own stake key",
+    },
+];
 
 // ── Lookup functions ─────────────────────────────────────────────────────────
 

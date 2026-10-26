@@ -19,7 +19,8 @@
 //! offer from A and an offer from B, and *both* answers reach both of them. Each
 //! has one link to C and would apply both answers to it — the first wins and the
 //! second is a `setRemoteDescription` in the wrong state. So the pairwise
-//! messages ([`Signal::Offer`], `Answer`, `Candidate`, `Bye`) carry a `to`, and
+//! messages ([`Signal::Offer`], `Answer`, `Candidate`, `Bye`, and the
+//! `Restart` that renegotiates ICE without a teardown) carry a `to`, and
 //! a receiver drops anything not addressed to it. The pair is `(from, to)`, and
 //! `from` is the room's, so a peer cannot impersonate another; a wrong `to` only
 //! misdelivers the sender's own message. `Announce` is genuinely broadcast and
@@ -40,6 +41,16 @@
 //! comment says as much: creating an offer on the master is "only really for
 //! the sake of politeness, as rtc couple implementation handles the slave
 //! attempting to create an offer".
+//!
+//! ## When a link dies
+//!
+//! A link can die without ICE saying so, and a `failed` connection used to be
+//! terminal without persistence. The shim now has one exit — reset, tell the far
+//! side, offer again — with an ICE **restart** as the cheap case: a
+//! [`Signal::Restart`] carries new credentials for the connection both ends
+//! already have, so the channels survive. It reuses the attempt's epoch
+//! deliberately: a higher epoch means "start over", and starting over would
+//! tear down the very channels the restart exists to keep.
 
 /// A player's stable id in a world. The same `u16` the room seats people by:
 /// an alias here so this crate need not depend on `arcade-room`.
@@ -91,6 +102,16 @@ pub enum Signal {
         to: Seat,
         sdp: Vec<u8>,
     },
+    /// An offer that restarts ICE on the connection both ends already have: new
+    /// credentials, the same `RTCPeerConnection` and the same data channels. It
+    /// carries the epoch of the attempt it belongs to rather than a new one — a
+    /// higher epoch means "start over", which is the teardown this exists to
+    /// avoid — and the far side answers it with an ordinary [`Signal::Answer`].
+    Restart {
+        epoch: u16,
+        to: Seat,
+        sdp: Vec<u8>,
+    },
     Answer {
         epoch: u16,
         to: Seat,
@@ -118,6 +139,12 @@ impl Signal {
             }
             Self::Offer { epoch, to, sdp } => {
                 w.u8(TAG_OFFER);
+                w.u16(*epoch);
+                w.u16(*to);
+                w.blob(sdp);
+            }
+            Self::Restart { epoch, to, sdp } => {
+                w.u8(TAG_RESTART);
                 w.u16(*epoch);
                 w.u16(*to);
                 w.blob(sdp);
@@ -159,6 +186,11 @@ impl Signal {
                 to: r.u16()?,
                 sdp: r.blob(MAX_SDP)?,
             },
+            TAG_RESTART => Self::Restart {
+                epoch,
+                to: r.u16()?,
+                sdp: r.blob(MAX_SDP)?,
+            },
             TAG_ANSWER => Self::Answer {
                 epoch,
                 to: r.u16()?,
@@ -184,6 +216,7 @@ impl Signal {
         match self {
             Self::Announce { epoch }
             | Self::Offer { epoch, .. }
+            | Self::Restart { epoch, .. }
             | Self::Answer { epoch, .. }
             | Self::Candidate { epoch, .. }
             | Self::Bye { epoch, .. } => *epoch,
@@ -195,6 +228,7 @@ impl Signal {
         match self {
             Self::Announce { .. } => None,
             Self::Offer { to, .. }
+            | Self::Restart { to, .. }
             | Self::Answer { to, .. }
             | Self::Candidate { to, .. }
             | Self::Bye { to, .. } => Some(*to),
@@ -247,6 +281,7 @@ const TAG_OFFER: u8 = 2;
 const TAG_ANSWER: u8 = 3;
 const TAG_CANDIDATE: u8 = 4;
 const TAG_BYE: u8 = 5;
+const TAG_RESTART: u8 = 6;
 
 #[derive(Default)]
 struct Writer {
@@ -337,6 +372,11 @@ mod tests {
                 to: 7,
                 sdp: b"v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n".to_vec(),
             },
+            Signal::Restart {
+                epoch: 3,
+                to: 7,
+                sdp: b"v=0\r\na=ice-ufrag:CvWn\r\n".to_vec(),
+            },
             Signal::Answer {
                 epoch: 3,
                 to: 7,
@@ -376,6 +416,15 @@ mod tests {
             }
             .encode(),
             [TAG_OFFER, 3, 0, 7, 0, 2, 0, b'h', b'i']
+        );
+        assert_eq!(
+            Signal::Restart {
+                epoch: 3,
+                to: 7,
+                sdp: b"hi".to_vec()
+            }
+            .encode(),
+            [TAG_RESTART, 3, 0, 7, 0, 2, 0, b'h', b'i']
         );
         assert_eq!(
             Signal::Bye {
@@ -614,6 +663,7 @@ mod tests {
             ("TAG_ANSWER", TAG_ANSWER),
             ("TAG_CANDIDATE", TAG_CANDIDATE),
             ("TAG_BYE", TAG_BYE),
+            ("TAG_RESTART", TAG_RESTART),
         ] {
             assert!(
                 PEER_JS.contains(&format!("var {name} = {value};")),
