@@ -18,6 +18,13 @@ publish = false
 # egui-widgets' `chain` feature, so the two renderers gate the same way.
 chain = ["dep:chain-heartbeat"]
 
+# The trading views: a price chart and its life strip, stat tiles, a change
+# chip, a buy/sell split bar, an activity feed, a holders board and map, a
+# token header, and the treemap they are built on. OFF by default: a mint
+# surface has no market, and the catalogue stays market-free for it. The
+# equivalent of egui-widgets' trading modules, gated so a game pays nothing.
+trading = []
+
 [dependencies]
 macroquad = "0.4"
 # How every label is drawn and measured: exact sizes, rasterised at the device

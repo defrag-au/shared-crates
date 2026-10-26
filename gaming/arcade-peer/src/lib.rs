@@ -634,6 +634,33 @@ mod tests {
         );
     }
 
+    /// A channel's `error` event is the transport dying, not a fault in the
+    /// page: when one end's ICE goes it fires on the end that is still healthy,
+    /// and `fail` never clears. Reporting it left `error` set for the rest of a
+    /// run after a link had been repaired, so the next reader saw a failure that
+    /// was already fixed. Found by the cross-region mesh's repair phase (§12.2):
+    /// the link came back in 4.9 s with `failed: 1`, `offered: 4` and `error`
+    /// still naming an `RTCErrorEvent`.
+    #[test]
+    fn the_browser_half_does_not_call_a_dead_channel_an_error() {
+        let handler = PEER_JS
+            .split("channel.onerror = function")
+            .nth(1)
+            .expect("the channel has no error handler");
+        let body = handler
+            .split("channel.onmessage")
+            .next()
+            .expect("the error handler never ends");
+        assert!(
+            !body.contains("fail(link"),
+            "a channel error is reported as a page failure, which no repair clears"
+        );
+        assert!(
+            body.contains("suspect(link, LINK_SETTLE_MS)"),
+            "a channel that errors under a live link is not treated as suspect"
+        );
+    }
+
     /// §12.2 decides whether colo belongs in the interest set, and it needs the
     /// path a link is actually using. A shim with no `getStats` can only report
     /// that a link is open, which is the same answer for a peer next door and a

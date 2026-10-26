@@ -984,8 +984,18 @@
       }
       rollup();
     };
-    channel.onerror = function (e) {
-      fail(link, name + ' channel: ' + describe(e));
+    channel.onerror = function () {
+      // A channel error is the transport dying, not a fault in this page: the
+      // far side's ICE going raises one here, and it fires on the half that is
+      // still healthy. `fail` never clears, so reporting it left `error` set for
+      // the rest of a run after a link had already been repaired — a state the
+      // design reads as a failure. Let an error settle exactly as a close does;
+      // the repair is `dropDead`'s job.
+      var current = name === 'state' ? link.state : link.ctrl;
+      if (current === channel && !link.silent) {
+        suspect(link, LINK_SETTLE_MS);
+      }
+      rollup();
     };
     channel.onmessage = function (event) {
       if (link.idle) {

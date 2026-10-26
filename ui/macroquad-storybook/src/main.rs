@@ -13,6 +13,7 @@
 mod chain_fixture;
 mod gamekit_stories;
 mod route_stories;
+mod trading_stories;
 
 use chain_fixture::{ChainSim, Scenario};
 use gamekit_stories::{KitStory, KitView};
@@ -28,6 +29,7 @@ use macroquad_widgets::{
     quantity_stepper, squad_picker, theme, wallet_connect, wallet_list,
 };
 use route_stories::RouteStory;
+use trading_stories::{TradingStory, TradingView};
 use ui_theme::{TextSize, Token};
 
 const SIDEBAR_W: f32 = 210.0;
@@ -126,6 +128,8 @@ enum Body {
     Kit(Box<KitStory>),
     /// A route graph and its strip, driven by the storybook clock.
     Route(Box<RouteStory>),
+    /// A trading view, driven by the storybook clock.
+    Trading(Box<TradingStory>),
 }
 
 /// A floating stick the reader can drag with the mouse, beside fixed samples
@@ -150,6 +154,7 @@ enum Kind {
     Stick,
     Kit,
     Route,
+    Trading,
 }
 
 struct Story {
@@ -254,6 +259,7 @@ impl Story {
             Body::Stick(_) => Kind::Stick,
             Body::Kit(_) => Kind::Kit,
             Body::Route(_) => Kind::Route,
+            Body::Trading(_) => Kind::Trading,
         }
     }
 
@@ -273,6 +279,14 @@ impl Story {
                 view,
                 (0..6).map(placeholder_art).collect(),
             ))),
+        }
+    }
+
+    fn trading(name: &'static str, view: TradingView) -> Self {
+        Self {
+            category: "trading",
+            name,
+            body: Body::Trading(Box::new(TradingStory::new(view))),
         }
     }
 
@@ -690,6 +704,26 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::route("filling", RouteStory::filling()),
         Story::route("closed unfilled", RouteStory::ended(false)),
         Story::route("failed on chain", RouteStory::ended(true)),
+        // Trading views. The market data is a layout fixture, not a token's
+        // history — see `trading_stories`.
+        Story::trading("price chart · sliding", TradingView::Chart),
+        Story::trading("price chart · phone", TradingView::ChartPhone),
+        Story::trading("price chart · scrub", TradingView::ChartScrub),
+        Story::trading("price chart · new high", TradingView::ChartHigh),
+        Story::trading("life strip · brush", TradingView::Strip),
+        Story::trading("life strip · phone", TradingView::StripPhone),
+        Story::trading("life strip · pending", TradingView::StripPending),
+        Story::trading("stat tiles", TradingView::Stats),
+        Story::trading("split bar", TradingView::Split),
+        Story::trading("change chip", TradingView::Change),
+        Story::trading("feed · arriving", TradingView::Feed),
+        Story::trading("feed · scrolled back", TradingView::FeedScrolled),
+        Story::trading("holder board", TradingView::Board),
+        Story::trading("holder board · partial", TradingView::BoardPartial),
+        Story::trading("holder map", TradingView::Map),
+        Story::trading("token header · replay", TradingView::Header),
+        Story::trading("token header · live", TradingView::HeaderLive),
+        Story::trading("treemap", TradingView::Treemap),
     ]
 }
 
@@ -1067,7 +1101,7 @@ impl Storybook {
         );
         y += 20.0;
         let help = match self.stories[sel].kind() {
-            Kind::Kit | Kind::Route => format!(
+            Kind::Kit | Kind::Route | Kind::Trading => format!(
                 "arrows / click to switch  ·  t = theme: {}  ·  p pause · . step · s slow  ·  {}",
                 p.theme.name,
                 self.clock.label()
@@ -1108,6 +1142,18 @@ impl Storybook {
                         screen_height() - y - 20.0,
                     );
                     story.draw(p, area, &g, dt, t);
+                }
+            }
+            Kind::Trading => {
+                let (t, g) = (self.clock.t, self.gesture);
+                if let Body::Trading(story) = &mut self.stories[sel].body {
+                    let area = Rect::new(
+                        x0,
+                        y,
+                        screen_width() - x0 - 20.0,
+                        screen_height() - y - 20.0,
+                    );
+                    story.draw(p, area, &g, t);
                 }
             }
         }
@@ -1695,10 +1741,15 @@ async fn main() {
     loop {
         let theme = book.current_theme();
         let gesture = gestures.update();
-        let p = Painter::new(font.as_ref(), mono.as_ref(), theme, gesture.tap);
+        // Tick BEFORE drawing, so an animated widget reads the same moment the
+        // story draws: with `--shot` the clock is fixed and the capture is
+        // repeatable, which only holds if `Painter::time` is the story's clock
+        // rather than the wall's.
+        book.dt = book.clock.tick(get_frame_time());
+        let p =
+            Painter::new(font.as_ref(), mono.as_ref(), theme, gesture.tap).at_time(book.clock.t);
         book.pending_swipe = gesture.swipe;
         book.gesture = gesture;
-        book.dt = book.clock.tick(get_frame_time());
 
         // Snapshot mode draws into an offscreen target and reads *that*, not
         // the window. `get_screen_data` reads the front buffer, which an

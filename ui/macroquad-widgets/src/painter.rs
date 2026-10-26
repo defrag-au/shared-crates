@@ -143,6 +143,39 @@ impl<'a> Painter<'a> {
         self.measure_in(self.mono, s, size)
     }
 
+    /// `s`, cut with an ellipsis to fit `max_w` in the proportional face.
+    ///
+    /// The one cut every host was writing for itself — seven copies across the
+    /// two estates, each with its own idea of where the ellipsis goes. A label
+    /// too long for its box is shortened, never allowed to run over its
+    /// neighbour; an empty result is a label with no room at all.
+    pub fn fit(&self, s: &str, size: f32, max_w: f32) -> String {
+        self.fit_in(self.font, s, size, max_w)
+    }
+
+    /// [`Painter::fit`] in the monospace face.
+    pub fn fit_mono(&self, s: &str, size: f32, max_w: f32) -> String {
+        self.fit_in(self.mono, s, size, max_w)
+    }
+
+    fn fit_in(&self, font: Option<&Font>, s: &str, size: f32, max_w: f32) -> String {
+        if self.measure_in(font, s, size).width <= max_w {
+            return s.to_string();
+        }
+        let mut out = String::new();
+        for ch in s.chars() {
+            let mut candidate = out.clone();
+            candidate.push(ch);
+            candidate.push('…');
+            if self.measure_in(font, &candidate, size).width > max_w {
+                break;
+            }
+            out.push(ch);
+        }
+        out.push('…');
+        out
+    }
+
     /// Baseline `y` that vertically centres text (at `size`) within a band of
     /// `height` starting at `top` — **independent of the string's own glyphs**.
     ///

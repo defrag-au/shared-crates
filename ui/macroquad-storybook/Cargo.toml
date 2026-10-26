@@ -17,7 +17,7 @@ macroquad = "0.4"
 # `chain` on, so the chain-tempo widgets have somewhere to be developed. The
 # storybook is where a widget gets built and reviewed before an app consumes it,
 # so it enables every feature the crate has.
-macroquad-widgets = { path = "../macroquad-widgets", features = ["chain"] }
+macroquad-widgets = { path = "../macroquad-widgets", features = ["chain", "trading"] }
 # The game-feel kit's stories ("gamekit" in the sidebar).
 macroquad-gamekit = { path = "../../gaming/macroquad-gamekit" }
 # The shared vocabulary the stories speak: `Token` to name a palette entry and

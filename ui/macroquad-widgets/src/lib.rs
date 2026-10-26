@@ -32,6 +32,37 @@ mod squad_picker;
 mod wallet_connect;
 mod wallet_list;
 
+// The trading views. Gated as a feature rather than a separate crate: they are
+// still VM-in/actions-out widgets for a buyer-facing surface, and the renderer
+// symmetry is with `egui-widgets`' trading modules. `format`, `market_ink` and
+// `marks` are infrastructure (no widget), listed as such in the catalogue.
+#[cfg(feature = "trading")]
+mod change_chip;
+#[cfg(feature = "trading")]
+mod feed;
+#[cfg(feature = "trading")]
+pub mod format;
+#[cfg(feature = "trading")]
+mod holder_board;
+#[cfg(feature = "trading")]
+mod holder_map;
+#[cfg(feature = "trading")]
+mod life_strip;
+#[cfg(feature = "trading")]
+pub mod market_ink;
+#[cfg(feature = "trading")]
+mod marks;
+#[cfg(feature = "trading")]
+mod price_chart;
+#[cfg(feature = "trading")]
+mod split_bar;
+#[cfg(feature = "trading")]
+mod stat_tiles;
+#[cfg(feature = "trading")]
+mod token_header;
+#[cfg(feature = "trading")]
+mod treemap;
+
 pub use assets::{Asset, Loader, Progress, draw_loading};
 #[cfg(feature = "chain")]
 pub use block_pulse::{
@@ -85,4 +116,35 @@ pub use wallet_connect::{
 };
 pub use wallet_list::{
     WalletListAction, WalletListResponse, WalletListState, WalletListVm, WalletRow, wallet_list,
+};
+
+#[cfg(feature = "trading")]
+pub use change_chip::{ChangeChipVm, change_chip};
+#[cfg(feature = "trading")]
+pub use feed::{FEED_ROW_H, FEED_ROW_STEP, FeedRow, FeedVm, feed, feed_row};
+#[cfg(feature = "trading")]
+pub use holder_board::{
+    BoardRow, HolderBoardVm, Holding, HoldingKind, holder_board, holding_chip, holding_colour,
+};
+#[cfg(feature = "trading")]
+pub use holder_map::{HolderMapLayout, HolderMapState, HolderMapVm, MapGroup, MapTile, holder_map};
+#[cfg(feature = "trading")]
+pub use life_strip::{LifeBucket, LifeStripVm, life_strip, price_band};
+#[cfg(feature = "trading")]
+pub use market_ink::MarketInk;
+#[cfg(feature = "trading")]
+pub use price_chart::{
+    ChartLabels, ChartPoint, PriceChartVm, TradeMark, TradeSide, TradeSize, View, beat_at_x,
+    chart_view, price_chart, time_at_x,
+};
+#[cfg(feature = "trading")]
+pub use split_bar::{SplitBarVm, split_bar};
+#[cfg(feature = "trading")]
+pub use stat_tiles::{StatMark, StatTile, StatTilesVm, stat_tiles};
+#[cfg(feature = "trading")]
+pub use token_header::{HeaderRects, TokenHeaderVm, TokenLogo, header_rects, token_header};
+#[cfg(feature = "trading")]
+pub use treemap::{
+    DEFAULT_MAX_ASPECT, SEEN_AREA, Tree, TreemapGroup, TreemapState, TreemapTile, TreemapVm, keep,
+    treemap,
 };
