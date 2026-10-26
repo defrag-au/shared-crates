@@ -1123,3 +1123,105 @@ fn every_published_pair_can_be_started_by_its_lower_seat() {
         }
     }
 }
+
+/// Two seated peers, with the connection numbers and seats `a` and `b` are.
+fn two_seats(cfg: RoomConfig) -> Room<Islands> {
+    let mut room = Room::<Islands>::new(1, cfg);
+    for conn in 1..=2 {
+        room.open(conn);
+    }
+    for (conn, name) in [(1, "a"), (2, "b")] {
+        room.message(conn, &crate::client::hello::<Islands>(name, true), 0);
+    }
+    room.drain();
+    room
+}
+
+fn targeted(to: Seat) -> Vec<u8> {
+    ToRoom::SignalTo {
+        to,
+        bytes: b"v=0\r\n".to_vec(),
+    }
+    .encode()
+}
+
+/// A connection may spend a burst of signals and the rate that refills it, and
+/// no more. Over budget is a refusal: the object has already paid to receive
+/// and decode the frame, and a flood does not stop on its own (design §9).
+#[test]
+fn a_signal_flood_is_refused() {
+    let room_cfg = RoomConfig {
+        signal_hz: 0,
+        signal_burst: 3,
+        ..cfg()
+    };
+    let mut room = two_seats(room_cfg);
+
+    for _ in 0..3 {
+        room.message(1, &targeted(1), 0);
+    }
+    assert_eq!(room.signals(), (3, 3), "the burst is carried");
+
+    room.drain();
+    room.message(1, &targeted(1), 0);
+    let out = room.drain();
+    assert_eq!(room.signals(), (3, 3), "the fourth was carried anyway");
+    assert_eq!(room.stats().rate_refused, 1);
+    assert!(
+        out.iter().any(|o| o.to == To::One(1)
+            && o.close
+            && matches!(ToClient::decode(&o.bytes), Ok(ToClient::Refused { .. }))),
+        "a flood was not refused"
+    );
+}
+
+/// The bucket comes back, so a connection that was quiet is not punished for
+/// it: two signals, a second later two more, all four carried.
+#[test]
+fn a_bucket_refills_at_its_rate() {
+    let room_cfg = RoomConfig {
+        signal_hz: 2,
+        signal_burst: 2,
+        ..cfg()
+    };
+    let mut room = two_seats(room_cfg);
+
+    for _ in 0..2 {
+        room.message(1, &targeted(1), 0);
+    }
+    for _ in 0..2 {
+        room.message(1, &targeted(1), 1_000);
+    }
+
+    assert_eq!(room.signals(), (4, 4), "the refill did not arrive");
+    assert_eq!(room.stats().rate_refused, 0);
+}
+
+/// The two planes have separate budgets: an input flood cannot spend the
+/// handshake's, and a handshake's burst cannot starve a player's inputs.
+#[test]
+fn the_two_planes_have_separate_budgets() {
+    let room_cfg = RoomConfig {
+        frame_hz: 0,
+        frame_burst: 1,
+        ..cfg()
+    };
+    let mut room = two_seats(room_cfg);
+
+    // The one frame this connection may send.
+    room.message(1, &ToRoom::Ping { client_ms: 1 }.encode(), 0);
+    // Signals are the other bucket's business, and all five go.
+    for _ in 0..5 {
+        room.message(1, &targeted(1), 0);
+    }
+    assert_eq!(room.signals(), (5, 5), "signals spent the input budget");
+
+    room.drain();
+    room.message(1, &ToRoom::Ping { client_ms: 2 }.encode(), 0);
+    let out = room.drain();
+    assert_eq!(room.stats().rate_refused, 1);
+    assert!(
+        out.iter().any(|o| o.to == To::One(1) && o.close),
+        "a second input frame was not refused"
+    );
+}
