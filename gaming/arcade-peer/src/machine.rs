@@ -34,6 +34,14 @@
 //! retiring it in favour of "a restart is an offer" is a separate change to the
 //! wire and to the scenarios that count restarts.
 //!
+//! # Telemetry
+//!
+//! A link's path is a decision too. [`PairRow`] is the browser's candidate-pair
+//! report as data — every row, with its state — and the machine picks the one
+//! carrying the link and converts the round trip to tenths of a millisecond.
+//! [`Path`] is the answer, and [`Action::Path`] hands it back for the readout.
+//! Nothing in the machine branches on it.
+//!
 //! # Persistence
 //!
 //! Dormant links (`?persist=1`) are not modelled yet: leaving the set closes the
@@ -74,6 +82,16 @@ pub const LINK_STALE_MS: u64 = 10_000;
 /// rather than bounding a working set.
 pub const MAX_DEFERRED: usize = 256;
 
+/// The most candidate-pair rows one report may carry. A browser reports one row
+/// per local/remote pair, which is a dozen for a page that gathered host,
+/// server-reflexive and relay candidates at once; this bounds a malformed one.
+pub const MAX_PAIRS: usize = 64;
+
+/// How often one link may be asked to restart its ICE. A restart is the cheap
+/// repair, not a retry loop: one that does not take falls through to the stale
+/// timer, which is the repair that costs the channels.
+pub const RESTART_EVERY_MS: u64 = 5_000;
+
 /// The browser's connection state, as it reports it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PcState {
@@ -91,8 +109,67 @@ pub enum Channel {
     State,
 }
 
+/// One end of a candidate pair, as the browser's report names it. `relay` on
+/// either end is what makes a round trip longer than the distance between the
+/// two players, and is what `p2p-turn.dsl` turns on.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CandidateType {
+    /// The report held no candidate for this side of the pair.
+    #[default]
+    Unknown,
+    Host,
+    /// Server reflexive: the address a STUN server saw.
+    Srflx,
+    /// Peer reflexive: an address learned from the far side's checks.
+    Prflx,
+    Relay,
+}
+
+/// A candidate pair's state in the browser's report. Only a `succeeded` pair
+/// can be carrying the link; a report always holds the failed and in-progress
+/// ones beside it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PairState {
+    Unknown,
+    Waiting,
+    InProgress,
+    Failed,
+    Succeeded,
+    Frozen,
+}
+
+/// One row of a browser's candidate-pair report, as reported. Which row is the
+/// path is the machine's decision, not the browser's.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PairRow {
+    pub state: PairState,
+    /// Chrome marks the pair in use `selected`.
+    pub selected: bool,
+    /// Older builds and other browsers mark it `nominated` instead.
+    pub nominated: bool,
+    pub bytes_sent: u64,
+    /// `currentRoundTripTime`, in seconds, as the browser measured it.
+    pub rtt_seconds: Option<f64>,
+    pub local: CandidateType,
+    pub remote: CandidateType,
+}
+
+/// A link's chosen path, as the last report described it. Telemetry: nothing in
+/// the machine branches on it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Path {
+    /// Tenths of a millisecond: loopback reads 0.1–0.5, and rounding to whole
+    /// milliseconds would call every local pair zero.
+    pub rtt_tenths: Option<u16>,
+    pub local: CandidateType,
+    pub remote: CandidateType,
+}
+
 /// Everything that can move the machine.
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// `PartialEq` but not `Eq`: a stats report carries the browser's own
+/// `currentRoundTripTime`, which is a float.
+#[derive(Clone, Debug, PartialEq)]
 pub enum Event {
     /// The room seated this page. A new seat is a new session.
     Joined(Seat),
@@ -120,6 +197,14 @@ pub enum Event {
     RolledBack { seat: Seat },
     /// One of the async SDP calls failed.
     SdpError { seat: Seat, why: String },
+    /// A `getStats` report's candidate pairs, as the browser measured them.
+    /// Which pair is the link, and what its round trip is in tenths of a
+    /// millisecond, is this machine's to decide.
+    StatsReport { seat: Seat, pairs: Vec<PairRow> },
+    /// The page asked for an ICE restart on a link — the harness seam, and the
+    /// same request [`Machine::restart`] takes. Whether it is this end's to ask
+    /// is the machine's to judge.
+    Restart { seat: Seat },
     /// The frame clock: sweep deadlines.
     Tick,
 }
@@ -133,7 +218,9 @@ pub enum Action {
         seat: Seat,
         restart: bool,
     },
-    /// `createAnswer` + `setLocalDescription`.
+    /// `createAnswer` + `setLocalDescription`. Whether it answers a restart is
+    /// the machine's bookkeeping — the page's counters come from [`Action::Stats`],
+    /// not from the shim counting the actions it ran.
     Answer {
         seat: Seat,
     },
@@ -164,6 +251,16 @@ pub enum Action {
         seat: Seat,
         what: String,
     },
+    /// The path the link is running on, for the readout. The machine has already
+    /// decided it; the browser only assigns it.
+    Path {
+        seat: Seat,
+        path: Path,
+    },
+    /// The counters, whenever they move. Not addressed to a link: this is the
+    /// page's readout, and under `?machine=1` it is the machine's numbers rather
+    /// than a second set the shim kept beside them.
+    Stats(Stats),
 }
 
 /// Counters the scenarios read. One source of truth, in the machine.
@@ -173,7 +270,10 @@ pub struct Stats {
     pub answered: u32,
     pub expired: u32,
     pub failed: u32,
+    /// Restarts this page asked for.
     pub restarts: u32,
+    /// Restarts this page answered.
+    pub restart_answered: u32,
     pub ignored: u32,
     /// The most offers this page had in flight at once.
     pub peak: u32,
@@ -213,7 +313,16 @@ pub struct Link {
     pub ctrl: bool,
     pub state: bool,
     pub pc: PcState,
+    /// Restarts this link has been through, asked or taken.
     pub restarts: u16,
+    /// We asked for an ICE restart and the offer it produced has not been sent.
+    pub restart_asked: bool,
+    /// We applied their restart, so the answer we send is a restart's answer
+    /// rather than one to a new attempt.
+    pub restart_taken: bool,
+    /// When this link last asked for a restart, for the rate limit.
+    pub restart_since: u64,
+    pub path: Path,
 }
 
 impl Link {
@@ -236,6 +345,10 @@ impl Link {
             state: false,
             pc: PcState::New,
             restarts: 0,
+            restart_asked: false,
+            restart_taken: false,
+            restart_since: 0,
+            path: Path::default(),
         }
     }
 
@@ -252,6 +365,12 @@ impl Link {
         self.state = false;
         self.opens = 0;
         self.pc = PcState::New;
+        // A fresh attempt is a new browser half, so a restart owed on the old
+        // one is moot and the path describes a transport that is gone. The rate
+        // limit is kept: it belongs to the link, not to the attempt.
+        self.restart_asked = false;
+        self.restart_taken = false;
+        self.path = Path::default();
     }
 
     fn open(&self) -> bool {
@@ -328,8 +447,53 @@ impl Machine {
         }]
     }
 
+    /// Ask for an ICE restart on a live link: new credentials, the same
+    /// connection, the same data channels.
+    ///
+    /// Only the leading end asks, which is the rule that decides who offers —
+    /// two ends cannot restart at each other. Nothing here is timed by
+    /// [`OFFER_MS`]: a restart that does not take falls through to the stale
+    /// timer, which tears the link down properly and costs the channels, so
+    /// retrying one on the offer deadline would spend the repair that exists to
+    /// keep them.
+    pub fn restart(&mut self, now_ms: u64, seat: Seat) -> Vec<Action> {
+        let Some(link) = self.links.get(&seat) else {
+            return Vec::new();
+        };
+        // `polite` is `!leads_offer(me, seat)`, so this is the leading end.
+        if !link.open() || link.polite || link.restart_asked {
+            return Vec::new();
+        }
+        if link.restart_since > 0 && now_ms.saturating_sub(link.restart_since) < RESTART_EVERY_MS {
+            return Vec::new();
+        }
+        let link = self.links.get_mut(&seat).expect("checked above");
+        link.restart_since = now_ms;
+        link.restart_asked = true;
+        link.restarts += 1;
+        self.stats.restarts += 1;
+        vec![Action::Negotiate {
+            seat,
+            restart: true,
+        }]
+    }
+
     /// Apply one event. Returns everything the host must do, in order.
+    ///
+    /// The counters are published from here rather than from each site that
+    /// bumps one: a `Stats` action is appended whenever a reduction moved them,
+    /// so a new counter cannot be added and forgotten on the other side of the
+    /// seam.
     pub fn on(&mut self, event: Event, now_ms: u64) -> Vec<Action> {
+        let before = self.stats;
+        let mut actions = self.reduce(event, now_ms);
+        if self.stats != before {
+            actions.push(Action::Stats(self.stats));
+        }
+        actions
+    }
+
+    fn reduce(&mut self, event: Event, now_ms: u64) -> Vec<Action> {
         match event {
             Event::Joined(seat) => {
                 // A seat change is a new session: the room's old set and every
@@ -405,20 +569,36 @@ impl Machine {
                 }]
             }
             Event::LocalOffer { seat, sdp } => {
-                let epoch = {
+                let (epoch, restart) = {
                     let Some(link) = self.links.get_mut(&seat) else {
                         return Vec::new();
                     };
-                    link.making_offer = true;
-                    link.offer_since = now_ms;
-                    link.epoch
+                    // A restart's offer is not a new attempt: it carries the
+                    // epoch of the one it repairs and it is not counted as an
+                    // offer. What it must not do is start the offer clock.
+                    let restart = std::mem::take(&mut link.restart_asked);
+                    if !restart {
+                        link.making_offer = true;
+                        link.offer_since = now_ms;
+                    }
+                    (link.epoch, restart)
                 };
-                self.stats.offered += 1;
-                self.stats.peak = self.stats.peak.max(self.offering());
-                let signal = Signal::Offer {
-                    epoch,
-                    to: seat,
-                    sdp,
+                if !restart {
+                    self.stats.offered += 1;
+                    self.stats.peak = self.stats.peak.max(self.offering());
+                }
+                let signal = if restart {
+                    Signal::Restart {
+                        epoch,
+                        to: seat,
+                        sdp,
+                    }
+                } else {
+                    Signal::Offer {
+                        epoch,
+                        to: seat,
+                        sdp,
+                    }
                 };
                 vec![Action::Send {
                     to: Some(seat),
@@ -426,12 +606,17 @@ impl Machine {
                 }]
             }
             Event::LocalAnswer { seat, sdp } => {
-                let Some(link) = self.links.get_mut(&seat) else {
-                    return Vec::new();
+                let (epoch, restart) = {
+                    let Some(link) = self.links.get_mut(&seat) else {
+                        return Vec::new();
+                    };
+                    (link.epoch, std::mem::take(&mut link.restart_taken))
                 };
-                self.stats.answered += 1;
+                if !restart {
+                    self.stats.answered += 1;
+                }
                 let signal = Signal::Answer {
-                    epoch: link.epoch,
+                    epoch,
                     to: seat,
                     sdp,
                 };
@@ -459,6 +644,8 @@ impl Machine {
                 }
                 actions
             }
+            Event::StatsReport { seat, pairs } => self.on_stats(seat, &pairs),
+            Event::Restart { seat } => self.restart(now_ms, seat),
             Event::RolledBack { seat } => {
                 if let Some(link) = self.links.get_mut(&seat) {
                     link.making_offer = false;
@@ -717,10 +904,16 @@ impl Machine {
         if epoch < link.their_epoch {
             return Vec::new();
         }
+        if link.pc == PcState::Closed {
+            // Nothing to restart. The end that asked reaches its stale timer and
+            // starts over, which is the only repair available from here.
+            return Vec::new();
+        }
         link.remote_set = false;
-        self.stats.restarts += 1;
-        let seat = link.seat;
+        link.restart_taken = true;
         link.restarts += 1;
+        self.stats.restart_answered += 1;
+        let seat = link.seat;
         vec![
             Action::Note {
                 seat,
@@ -782,6 +975,31 @@ impl Machine {
         }]
     }
 
+    /// The browser's own view of the path, reduced here rather than in the
+    /// shim: which of the pairs it reported is the one carrying the link, and
+    /// what it costs in tenths of a millisecond.
+    fn on_stats(&mut self, seat: Seat, pairs: &[PairRow]) -> Vec<Action> {
+        let Some(link) = self.links.get_mut(&seat) else {
+            return Vec::new();
+        };
+        let Some(pair) = best_pair(pairs) else {
+            // A report with no succeeded pair is ordinary: the candidate checks
+            // are still running, and the last good sample still describes the
+            // path the link was on.
+            return Vec::new();
+        };
+        let path = Path {
+            rtt_tenths: pair.rtt_seconds.and_then(tenths),
+            local: pair.local,
+            remote: pair.remote,
+        };
+        if link.path == path {
+            return Vec::new();
+        }
+        link.path = path;
+        vec![Action::Path { seat, path }]
+    }
+
     fn on_bye(&mut self, from: Seat, epoch: u16, now_ms: u64) -> Vec<Action> {
         let Some(link) = self.links.get(&from) else {
             return Vec::new();
@@ -819,10 +1037,12 @@ impl Machine {
                 // for new ICE credentials first, because that repair keeps the
                 // channels.
                 self.suspect(seat, LINK_STALE_MS, now_ms);
-                vec![Action::Note {
+                let mut actions = vec![Action::Note {
                     seat,
                     what: "connection disconnected".into(),
-                }]
+                }];
+                actions.extend(self.restart(now_ms, seat));
+                actions
             }
             _ => {
                 if let Some(link) = self.links.get_mut(&seat) {
@@ -925,7 +1145,7 @@ impl Machine {
                     what: "signals replayed: the set names it now".into(),
                 });
             }
-            actions.extend(self.on(
+            actions.extend(self.reduce(
                 Event::Signal {
                     from: item.from,
                     bytes: item.bytes,
@@ -1010,6 +1230,34 @@ impl Machine {
     }
 }
 
+/// The pair carrying the link, from a report the browser handed over whole.
+///
+/// Chrome marks the pair in use `selected`; older builds and other browsers use
+/// `nominated`, so the marks are a score rather than a flag, and the pair that
+/// has carried the most bytes breaks a tie. Only a `succeeded` pair can carry
+/// anything — a report always holds the failed and in-progress ones beside it —
+/// which is why the filter lives here and not in the shim.
+fn best_pair(pairs: &[PairRow]) -> Option<&PairRow> {
+    pairs
+        .iter()
+        .filter(|pair| pair.state == PairState::Succeeded)
+        .max_by_key(|pair| {
+            let marks = u8::from(pair.selected) * 2 + u8::from(pair.nominated);
+            (marks, pair.bytes_sent)
+        })
+}
+
+/// Tenths of a millisecond from the browser's seconds. A negative or
+/// non-finite sample is not a round trip, so it is not reported rather than
+/// reported as zero.
+fn tenths(seconds: f64) -> Option<u16> {
+    let tenths = (seconds * 10_000.0).round();
+    if !tenths.is_finite() || !(0.0..=f64::from(u16::MAX)).contains(&tenths) {
+        return None;
+    }
+    Some(tenths as u16)
+}
+
 // ── The executor seam ────────────────────────────────────────────────────────
 //
 // The machine lives in Rust and the `RTCPeerConnection` lives in the browser, so
@@ -1019,6 +1267,7 @@ impl Machine {
 // `\r\n` and a text format would double every one of them.
 //
 // `Action::Send` never crosses: the host turns it into a room message directly.
+// Every action but `Action::Stats` starts tag, seat — the counters name no link.
 const EVENT_CANDIDATE: u8 = 1;
 const EVENT_PC: u8 = 2;
 const EVENT_CHANNEL_OPEN: u8 = 3;
@@ -1028,6 +1277,8 @@ const EVENT_LOCAL_ANSWER: u8 = 6;
 const EVENT_REMOTE_SET: u8 = 7;
 const EVENT_ROLLED_BACK: u8 = 8;
 const EVENT_SDP_ERROR: u8 = 9;
+const EVENT_STATS: u8 = 10;
+const EVENT_RESTART: u8 = 11;
 
 const ACTION_NEGOTIATE: u8 = 1;
 const ACTION_ANSWER: u8 = 2;
@@ -1036,6 +1287,8 @@ const ACTION_ADD_CANDIDATE: u8 = 4;
 const ACTION_ROLLBACK: u8 = 5;
 const ACTION_CLOSE: u8 = 6;
 const ACTION_NOTE: u8 = 7;
+const ACTION_PATH: u8 = 8;
+const ACTION_STATS: u8 = 9;
 
 /// The longest note or failure reason the seam carries. A browser's error text
 /// is short; this bounds a malformed sender rather than a working message.
@@ -1064,6 +1317,62 @@ impl Channel {
         }
     }
 }
+
+impl CandidateType {
+    fn code(self) -> u8 {
+        match self {
+            Self::Unknown => 0,
+            Self::Host => 1,
+            Self::Srflx => 2,
+            Self::Prflx => 3,
+            Self::Relay => 4,
+        }
+    }
+
+    fn from_code(code: u8) -> Option<Self> {
+        match code {
+            0 => Some(Self::Unknown),
+            1 => Some(Self::Host),
+            2 => Some(Self::Srflx),
+            3 => Some(Self::Prflx),
+            4 => Some(Self::Relay),
+            _ => None,
+        }
+    }
+}
+
+impl PairState {
+    /// Only a test builds a report by hand; the shim writes the real one.
+    #[cfg(test)]
+    fn code(self) -> u8 {
+        match self {
+            Self::Unknown => 0,
+            Self::Waiting => 1,
+            Self::InProgress => 2,
+            Self::Failed => 3,
+            Self::Succeeded => 4,
+            Self::Frozen => 5,
+        }
+    }
+
+    fn from_code(code: u8) -> Option<Self> {
+        match code {
+            0 => Some(Self::Unknown),
+            1 => Some(Self::Waiting),
+            2 => Some(Self::InProgress),
+            3 => Some(Self::Failed),
+            4 => Some(Self::Succeeded),
+            5 => Some(Self::Frozen),
+            _ => None,
+        }
+    }
+}
+
+/// One row's flags: which of the two marks the report carries, and whether it
+/// measured a round trip at all.
+const PAIR_SELECTED: u8 = 1;
+const PAIR_NOMINATED: u8 = 2;
+const PAIR_RTT: u8 = 4;
 
 /// Decode what the browser observed since the last frame. An unknown tag is an
 /// error rather than a skip: the two halves are built together, and a mismatch
@@ -1110,6 +1419,35 @@ pub fn decode_events(bytes: &[u8]) -> Result<Vec<Event>, crate::SignalError> {
                 seat,
                 why: String::from_utf8_lossy(&reader.blob(MAX_TEXT)?).into_owned(),
             },
+            EVENT_STATS => {
+                let rows = usize::from(reader.u16()?);
+                if rows > MAX_PAIRS {
+                    return Err(crate::SignalError::TooLong);
+                }
+                let mut pairs = Vec::with_capacity(rows);
+                for _ in 0..rows {
+                    let flags = reader.u8()?;
+                    let state =
+                        PairState::from_code(reader.u8()?).ok_or(crate::SignalError::TooLong)?;
+                    let bytes_sent = reader.u64()?;
+                    let rtt_seconds = reader.f64()?;
+                    let local = CandidateType::from_code(reader.u8()?)
+                        .ok_or(crate::SignalError::TooLong)?;
+                    let remote = CandidateType::from_code(reader.u8()?)
+                        .ok_or(crate::SignalError::TooLong)?;
+                    pairs.push(PairRow {
+                        state,
+                        selected: flags & PAIR_SELECTED != 0,
+                        nominated: flags & PAIR_NOMINATED != 0,
+                        bytes_sent,
+                        rtt_seconds: (flags & PAIR_RTT != 0).then_some(rtt_seconds),
+                        local,
+                        remote,
+                    });
+                }
+                Event::StatsReport { seat, pairs }
+            }
+            EVENT_RESTART => Event::Restart { seat },
             other => return Err(crate::SignalError::UnknownTag(other)),
         };
         events.push(event);
@@ -1156,6 +1494,27 @@ pub fn encode_actions(actions: &[Action]) -> Vec<u8> {
                 writer.u16(*seat);
                 writer.blob(what.as_bytes());
             }
+            Action::Path { seat, path } => {
+                writer.u8(ACTION_PATH);
+                writer.u16(*seat);
+                writer.u8(u8::from(path.rtt_tenths.is_some()));
+                writer.u16(path.rtt_tenths.unwrap_or(0));
+                writer.u8(path.local.code());
+                writer.u8(path.remote.code());
+            }
+            Action::Stats(stats) => {
+                // Field order is `Stats`'s declaration order, and the shim's
+                // `applyStats` reads the same eight in the same order.
+                writer.u8(ACTION_STATS);
+                writer.u32(stats.offered);
+                writer.u32(stats.answered);
+                writer.u32(stats.expired);
+                writer.u32(stats.failed);
+                writer.u32(stats.restarts);
+                writer.u32(stats.restart_answered);
+                writer.u32(stats.ignored);
+                writer.u32(stats.peak);
+            }
             Action::Send { .. } => {}
         }
     }
@@ -1170,6 +1529,21 @@ fn decode_actions(bytes: &[u8]) -> Vec<Action> {
     let mut actions = Vec::new();
     while !reader.at_end() {
         let tag = reader.u8().expect("tag");
+        // `Stats` is the page's own counters and names no link, so it is the one
+        // action that does not start tag, seat.
+        if tag == ACTION_STATS {
+            actions.push(Action::Stats(Stats {
+                offered: reader.u32().expect("offered"),
+                answered: reader.u32().expect("answered"),
+                expired: reader.u32().expect("expired"),
+                failed: reader.u32().expect("failed"),
+                restarts: reader.u32().expect("restarts"),
+                restart_answered: reader.u32().expect("restart answered"),
+                ignored: reader.u32().expect("ignored"),
+                peak: reader.u32().expect("peak"),
+            }));
+            continue;
+        }
         let seat = reader.u16().expect("seat");
         actions.push(match tag {
             ACTION_NEGOTIATE => Action::Negotiate {
@@ -1192,6 +1566,22 @@ fn decode_actions(bytes: &[u8]) -> Vec<Action> {
                 seat,
                 what: String::from_utf8(reader.blob(MAX_TEXT).expect("note")).expect("utf8"),
             },
+            ACTION_PATH => {
+                let has_rtt = reader.u8().expect("rtt flag") != 0;
+                let rtt = reader.u16().expect("rtt");
+                let local =
+                    CandidateType::from_code(reader.u8().expect("local")).expect("local type");
+                let remote =
+                    CandidateType::from_code(reader.u8().expect("remote")).expect("remote type");
+                Action::Path {
+                    seat,
+                    path: Path {
+                        rtt_tenths: has_rtt.then_some(rtt),
+                        local,
+                        remote,
+                    },
+                }
+            }
             other => panic!("unknown action tag {other}"),
         });
     }
@@ -1259,6 +1649,64 @@ mod tests {
         actions
             .iter()
             .find(|action| matches!(action, Action::Accept { .. }))
+    }
+
+    /// The one signal an action list asks the host to send, decoded.
+    fn sent(actions: &[Action]) -> Option<Signal> {
+        actions.iter().find_map(|action| match action {
+            Action::Send { bytes, .. } => Signal::decode(bytes).ok(),
+            _ => None,
+        })
+    }
+
+    /// A machine with one link to `them`, open on both channels and connected —
+    /// the state every restart case starts from. Built by whichever path the
+    /// seats allow, because both ends need a link for the two halves of a restart.
+    fn opened(me: Seat, them: Seat) -> Machine {
+        let mut machine = machine(me);
+        machine.on(group(1, &[me, them]), 10);
+        if machine.link(them).is_none() {
+            machine.connect(them);
+        }
+        let epoch = machine.link(them).expect("a link").epoch;
+        machine.on(
+            Event::LocalOffer {
+                seat: them,
+                sdp: b"offer".to_vec(),
+            },
+            20,
+        );
+        machine.on(answer(them, me, epoch), 30);
+        machine.on(
+            Event::RemoteSet {
+                seat: them,
+                answer: true,
+            },
+            31,
+        );
+        machine.on(
+            Event::Pc {
+                seat: them,
+                state: PcState::Connected,
+            },
+            32,
+        );
+        machine.on(
+            Event::ChannelOpen {
+                seat: them,
+                which: Channel::Ctrl,
+            },
+            33,
+        );
+        machine.on(
+            Event::ChannelOpen {
+                seat: them,
+                which: Channel::State,
+            },
+            34,
+        );
+        assert!(machine.link(them).expect("a link").open());
+        machine
     }
 
     /// The room's set and the signals it implies arrive on different frames, and
@@ -1568,6 +2016,29 @@ mod tests {
                 seat: 7,
                 what: "offer expired".into(),
             },
+            Action::Path {
+                seat: 9,
+                path: Path {
+                    rtt_tenths: Some(12),
+                    local: CandidateType::Relay,
+                    remote: CandidateType::Host,
+                },
+            },
+            Action::Path {
+                seat: 10,
+                path: Path::default(),
+            },
+            Action::Stats(Stats {
+                offered: 3,
+                answered: 2,
+                expired: 1,
+                failed: 1,
+                restarts: 1,
+                restart_answered: 1,
+                ignored: 4,
+                peak: 2,
+            }),
+            Action::Stats(Stats::default()),
         ];
         let encoded = encode_actions(&actions);
         assert_eq!(decode_actions(&encoded), actions);
@@ -1648,5 +2119,442 @@ mod tests {
         writer.u8(99);
         writer.u16(1);
         assert!(decode_events(&writer.into_bytes()).is_err());
+    }
+
+    fn pair(
+        state: PairState,
+        selected: bool,
+        nominated: bool,
+        bytes_sent: u64,
+        rtt_seconds: Option<f64>,
+        local: CandidateType,
+        remote: CandidateType,
+    ) -> PairRow {
+        PairRow {
+            state,
+            selected,
+            nominated,
+            bytes_sent,
+            rtt_seconds,
+            local,
+            remote,
+        }
+    }
+
+    /// The report is the browser's; which row is the link is ours. A failed pair
+    /// with more bytes on it than the live one must not win, and the round trip
+    /// is rounded here rather than there.
+    #[test]
+    fn the_report_is_reduced_to_the_pair_carrying_the_link() {
+        let mut machine = opened(0, 1);
+
+        let actions = machine.on(
+            Event::StatsReport {
+                seat: 1,
+                pairs: vec![
+                    pair(
+                        PairState::Failed,
+                        false,
+                        false,
+                        9_000,
+                        Some(2.0),
+                        CandidateType::Relay,
+                        CandidateType::Relay,
+                    ),
+                    pair(
+                        PairState::Succeeded,
+                        false,
+                        true,
+                        900,
+                        Some(0.05),
+                        CandidateType::Srflx,
+                        CandidateType::Host,
+                    ),
+                    pair(
+                        PairState::Succeeded,
+                        true,
+                        false,
+                        100,
+                        Some(0.0123),
+                        CandidateType::Host,
+                        CandidateType::Srflx,
+                    ),
+                ],
+            },
+            1_000,
+        );
+
+        let expected = Path {
+            rtt_tenths: Some(123),
+            local: CandidateType::Host,
+            remote: CandidateType::Srflx,
+        };
+        assert_eq!(
+            actions,
+            vec![Action::Path {
+                seat: 1,
+                path: expected
+            }],
+            "the report was reduced to the wrong pair"
+        );
+        assert_eq!(machine.link(1).expect("a link").path, expected);
+
+        // A report that says nothing new is not worth a frame's action.
+        let again = machine.on(
+            Event::StatsReport {
+                seat: 1,
+                pairs: vec![pair(
+                    PairState::Succeeded,
+                    true,
+                    false,
+                    200,
+                    Some(0.0123),
+                    CandidateType::Host,
+                    CandidateType::Srflx,
+                )],
+            },
+            2_000,
+        );
+        assert!(again.is_empty(), "an unchanged path was re-reported");
+    }
+
+    /// A pair that never succeeded carries nothing, and a report full of them is
+    /// the ordinary state of a connection whose checks are still running.
+    #[test]
+    fn a_report_with_no_succeeded_pair_leaves_the_path_alone() {
+        let mut machine = opened(0, 1);
+        let actions = machine.on(
+            Event::StatsReport {
+                seat: 1,
+                pairs: vec![pair(
+                    PairState::Waiting,
+                    false,
+                    false,
+                    0,
+                    None,
+                    CandidateType::Host,
+                    CandidateType::Host,
+                )],
+            },
+            1_000,
+        );
+        assert!(actions.is_empty());
+        assert_eq!(machine.link(1).expect("a link").path, Path::default());
+    }
+
+    /// A restart repairs the connection both ends already hold. The offer it
+    /// produces is a `Restart`, not an offer, and it is not counted as one — a
+    /// far side that read it as a new attempt would tear down the channels the
+    /// restart exists to keep.
+    #[test]
+    fn a_restart_repairs_the_live_connection_and_is_not_an_offer() {
+        let mut machine = opened(0, 1);
+        let epoch = machine.link(1).expect("a link").epoch;
+        let offered = machine.stats.offered;
+
+        let asked = machine.restart(10_000, 1);
+        assert_eq!(
+            asked,
+            vec![Action::Negotiate {
+                seat: 1,
+                restart: true
+            }]
+        );
+        assert_eq!(machine.stats.restarts, 1);
+
+        let restart_offer = machine.on(
+            Event::LocalOffer {
+                seat: 1,
+                sdp: b"restart".to_vec(),
+            },
+            10_010,
+        );
+        let Some(Signal::Restart {
+            epoch: carried,
+            to: 1,
+            ..
+        }) = sent(&restart_offer)
+        else {
+            panic!("a restart was sent as something else: {restart_offer:?}");
+        };
+        assert_eq!(carried, epoch, "a restart moved the attempt's epoch");
+        assert_eq!(
+            machine.stats.offered, offered,
+            "a restart was counted as an offer"
+        );
+    }
+
+    /// The other half: a restart is answered on the connection already up, and
+    /// answering one is not answering a new offer.
+    #[test]
+    fn the_far_side_answers_a_restart_without_answering_a_new_offer() {
+        let mut machine = opened(1, 0);
+        let epoch = machine.link(0).expect("a link").epoch;
+        let answered = machine.stats.answered;
+
+        let taken = machine.on(
+            signal(
+                0,
+                Signal::Restart {
+                    epoch,
+                    to: 1,
+                    sdp: b"restart".to_vec(),
+                },
+            ),
+            10_000,
+        );
+        assert!(matches!(
+            accepted(&taken),
+            Some(Action::Accept { answer: false, .. })
+        ));
+        assert_eq!(machine.stats.restart_answered, 1);
+
+        // Answering a restart is still an answer here; what must not move is
+        // the counter, which the machine keeps rather than the page.
+        let reply = machine.on(
+            Event::RemoteSet {
+                seat: 0,
+                answer: false,
+            },
+            10_001,
+        );
+        assert!(
+            reply.iter().any(|action| matches!(action, Action::Answer { .. })),
+            "a restart's offer was never answered"
+        );
+
+        machine.on(
+            Event::LocalAnswer {
+                seat: 0,
+                sdp: b"answer".to_vec(),
+            },
+            10_002,
+        );
+        assert_eq!(
+            machine.stats.answered, answered,
+            "answering a restart was counted as answering an offer"
+        );
+    }
+
+    /// One end restarts, and not on every frame: a restart is the cheap repair,
+    /// and one that does not take falls through to the stale timer instead.
+    #[test]
+    fn only_the_leading_end_restarts_and_not_on_every_frame() {
+        let mut polite = opened(1, 0);
+        assert!(
+            polite.restart(10_000, 0).is_empty(),
+            "the backing-off end asked to restart"
+        );
+
+        let mut leader = opened(0, 1);
+        assert_eq!(leader.restart(10_000, 1).len(), 1);
+        assert!(
+            leader.restart(10_000, 1).is_empty(),
+            "a restart was asked for while one was outstanding"
+        );
+
+        // The first restart's offer comes back, which is what lets another be
+        // asked at all. Inside the window it is still refused.
+        leader.on(
+            Event::LocalOffer {
+                seat: 1,
+                sdp: b"restart".to_vec(),
+            },
+            10_010,
+        );
+        assert!(
+            leader.restart(10_000 + RESTART_EVERY_MS - 1, 1).is_empty(),
+            "a restart was asked for inside the rate limit"
+        );
+        assert_eq!(leader.restart(10_000 + RESTART_EVERY_MS, 1).len(), 1);
+    }
+
+    /// A connection the browser reports as disconnected is asked to restart
+    /// first: that repair keeps the channels, and the stale timer is what a
+    /// restart that does not take falls through to.
+    #[test]
+    fn a_disconnected_connection_is_asked_to_restart_first() {
+        let mut machine = opened(0, 1);
+        let actions = machine.on(
+            Event::Pc {
+                seat: 1,
+                state: PcState::Disconnected,
+            },
+            10_000,
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|action| matches!(action, Action::Negotiate { restart: true, .. })),
+            "a disconnected link was left to the stale timer"
+        );
+
+        // The polite end cannot ask, so it waits out the timer instead.
+        let mut polite = opened(1, 0);
+        assert!(
+            !polite
+                .on(
+                    Event::Pc {
+                        seat: 0,
+                        state: PcState::Disconnected,
+                    },
+                    10_000,
+                )
+                .iter()
+                .any(|action| matches!(action, Action::Negotiate { .. }))
+        );
+    }
+
+    /// The seam is two encodings written in two languages. A tag that moves on one
+    /// side and not the other is not a compile error: the browser decodes the
+    /// next action as a different one, or refuses the frame and the link never
+    /// starts at all. This pins every tag on both sides.
+    #[test]
+    fn the_browser_half_uses_the_seams_tags() {
+        let js = crate::PEER_JS;
+        for (name, value) in [
+            ("ME_CANDIDATE", EVENT_CANDIDATE),
+            ("ME_PC", EVENT_PC),
+            ("ME_CHANNEL_OPEN", EVENT_CHANNEL_OPEN),
+            ("ME_CHANNEL_CLOSED", EVENT_CHANNEL_CLOSED),
+            ("ME_LOCAL_OFFER", EVENT_LOCAL_OFFER),
+            ("ME_LOCAL_ANSWER", EVENT_LOCAL_ANSWER),
+            ("ME_REMOTE_SET", EVENT_REMOTE_SET),
+            ("ME_ROLLED_BACK", EVENT_ROLLED_BACK),
+            ("ME_SDP_ERROR", EVENT_SDP_ERROR),
+            ("ME_STATS", EVENT_STATS),
+            ("ME_RESTART", EVENT_RESTART),
+            ("MA_NEGOTIATE", ACTION_NEGOTIATE),
+            ("MA_ANSWER", ACTION_ANSWER),
+            ("MA_ACCEPT", ACTION_ACCEPT),
+            ("MA_ADD_CANDIDATE", ACTION_ADD_CANDIDATE),
+            ("MA_ROLLBACK", ACTION_ROLLBACK),
+            ("MA_CLOSE", ACTION_CLOSE),
+            ("MA_NOTE", ACTION_NOTE),
+            ("MA_PATH", ACTION_PATH),
+            ("MA_STATS", ACTION_STATS),
+        ] {
+            assert!(
+                js.contains(&format!("var {name} = {value};")),
+                "`{name}` is {value} here and something else in the shim"
+            );
+        }
+        assert!(
+            js.contains(&format!("var MAX_PAIRS = {MAX_PAIRS};")),
+            "the shim's row cap and the decoder's disagree"
+        );
+    }
+
+    /// The two things the seam was extended for: the shim reports the whole
+    /// candidate-pair list and the restart ask, and assigns what comes back. A
+    /// shim that still ranked the pairs itself would be right until it disagreed.
+    #[test]
+    fn the_shim_reports_the_path_and_the_restart_ask() {
+        let js = crate::PEER_JS;
+        assert!(
+            js.contains("machineStats(link.seat, report)"),
+            "a machine build still reduces the report itself"
+        );
+        assert!(
+            js.contains("window.__btSampleStats = function"),
+            "the machine has no way to ask for a path sample"
+        );
+        assert!(
+            js.contains("machineEmit(ME_RESTART, seat, null)"),
+            "a restart request never reaches the machine"
+        );
+        assert!(
+            js.contains("function machinePath("),
+            "the path the machine decided is never assigned to the link"
+        );
+    }
+
+    /// The counters are published from one place, so a counter that moves cannot
+    /// be a counter the page never hears about — and one that does not move is
+    /// not worth a frame's action.
+    #[test]
+    fn the_counters_are_published_when_they_move_and_only_then() {
+        let mut machine = machine(0);
+        machine.on(group(1, &[0, 1]), 10);
+
+        let offered = machine.on(
+            Event::LocalOffer {
+                seat: 1,
+                sdp: b"offer".to_vec(),
+            },
+            20,
+        );
+        assert_eq!(
+            offered.last(),
+            Some(&Action::Stats(Stats {
+                offered: 1,
+                peak: 1,
+                ..Stats::default()
+            })),
+            "the offer was not published: {offered:?}"
+        );
+
+        // A frame that decides nothing publishes nothing.
+        let idle = machine.on(Event::Tick, 21);
+        assert!(
+            idle.iter().all(|action| !matches!(action, Action::Stats(_))),
+            "an unchanged set of counters was re-published"
+        );
+    }
+
+    #[test]
+    fn a_stats_report_decodes_with_its_rows() {
+        let mut writer = crate::Writer::default();
+        writer.u8(EVENT_STATS);
+        writer.u16(2);
+        writer.u16(2);
+        writer.u8(PAIR_SELECTED | PAIR_RTT);
+        writer.u8(PairState::Succeeded.code());
+        writer.u64(4_096);
+        writer.f64(0.0123);
+        writer.u8(CandidateType::Host.code());
+        writer.u8(CandidateType::Srflx.code());
+        writer.u8(0);
+        writer.u8(PairState::Failed.code());
+        writer.u64(0);
+        writer.f64(0.0);
+        writer.u8(CandidateType::Relay.code());
+        writer.u8(CandidateType::Relay.code());
+
+        let events = decode_events(&writer.into_bytes()).expect("a well-formed report");
+        let [Event::StatsReport { seat, pairs }] = events.as_slice() else {
+            panic!("not a stats report: {events:?}");
+        };
+        assert_eq!(*seat, 2);
+        assert_eq!(
+            pairs.as_slice(),
+            &[
+                pair(
+                    PairState::Succeeded,
+                    true,
+                    false,
+                    4_096,
+                    Some(0.0123),
+                    CandidateType::Host,
+                    CandidateType::Srflx,
+                ),
+                pair(
+                    PairState::Failed,
+                    false,
+                    false,
+                    0,
+                    None,
+                    CandidateType::Relay,
+                    CandidateType::Relay,
+                ),
+            ]
+        );
+
+        // The row count is bounded before it is trusted.
+        let mut over = crate::Writer::default();
+        over.u8(EVENT_STATS);
+        over.u16(2);
+        over.u16(MAX_PAIRS as u16 + 1);
+        assert!(decode_events(&over.into_bytes()).is_err());
     }
 }

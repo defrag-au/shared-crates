@@ -1587,6 +1587,8 @@
   var ME_REMOTE_SET = 7;
   var ME_ROLLED_BACK = 8;
   var ME_SDP_ERROR = 9;
+  var ME_STATS = 10;
+  var ME_RESTART = 11;
 
   var MA_NEGOTIATE = 1;
   var MA_ANSWER = 2;
@@ -1595,6 +1597,8 @@
   var MA_ROLLBACK = 5;
   var MA_CLOSE = 6;
   var MA_NOTE = 7;
+  var MA_PATH = 8;
+  var MA_STATS = 9;
 
   function machineWriter() {
     var parts = [];
@@ -1612,6 +1616,20 @@
         var take = Math.min(body.length, 65535);
         writer.u16(take);
         parts.push(body.subarray(0, take));
+        return writer;
+      },
+      // A stats report carries the browser's own counters and round-trip
+      // measurement, so the seam carries them at the width the browser uses.
+      u64: function (value) {
+        var bytes = new Uint8Array(8);
+        new DataView(bytes.buffer).setBigUint64(0, BigInt(Math.max(0, Math.floor(value))), true);
+        parts.push(bytes);
+        return writer;
+      },
+      f64: function (value) {
+        var bytes = new Uint8Array(8);
+        new DataView(bytes.buffer).setFloat64(0, value, true);
+        parts.push(bytes);
         return writer;
       },
       done: function () {
@@ -1680,6 +1698,7 @@
       rttMs: null,
       local: null,
       remote: null,
+      sampling: false,
     };
     links.set(seat, link);
     return link;
@@ -1705,6 +1724,12 @@
       });
     };
     pc.onconnectionstatechange = function () {
+      if (link.silent) {
+        // `__btDrop` stands in for a browser that went away: its own transport
+        // closing is not news to send. The shim ignores a silent link's events
+        // too, and the seam must mean the same thing to both halves.
+        return;
+      }
       machineEmit(ME_PC, link.seat, function (writer) {
         writer.u8(pcCode(pc.connectionState));
       });
@@ -1730,6 +1755,9 @@
     };
     channel.onclose = function () {
       closed();
+      if (link.silent) {
+        return;
+      }
       machineEmit(ME_CHANNEL_CLOSED, link.seat, function (writer) {
         writer.u8(which);
       });
@@ -1758,11 +1786,15 @@
       machineWire(pc.createDataChannel('state', { ordered: false, maxRetransmits: 0 }), link, 1);
     }
     if (restart) {
+      // A restart repairs the attempt that is already live: the offer it
+      // produces goes back as a `Restart` signal so the far side answers it on
+      // the connection it already holds. The counters are the machine's — see
+      // `MA_STATS` below.
       pc.restartIce();
-      window.__bt.negotiations.restarts += 1;
+      note(seat, 'restarting ice');
+    } else {
+      note(seat, 'offering');
     }
-    window.__bt.negotiations.offered += 1;
-    note(seat, restart ? 'restarting ice' : 'offering');
     pc.createOffer()
       .then(function (offer) {
         return pc.setLocalDescription(offer);
@@ -1783,7 +1815,6 @@
       return;
     }
     var pc = link.pc;
-    window.__bt.negotiations.answered += 1;
     pc.createAnswer()
       .then(function (answer) {
         return pc.setLocalDescription(answer);
@@ -1857,6 +1888,21 @@
     rollup();
   }
 
+  // The machine decided which pair the link is on, and what it costs. This only
+  // assigns it: `rollup` writes the readout, and the readout is one shape in
+  // both modes, so a scenario reads `rttMs` either way.
+  function machinePath(seat, tenths, local, remote) {
+    var link = links.get(seat);
+    if (!link) {
+      return;
+    }
+    if (tenths !== null) {
+      link.rttMs = tenths / 10;
+    }
+    link.local = pairCandidateName(local);
+    link.remote = pairCandidateName(remote);
+  }
+
   function machineApply(bytes) {
     var at = 0;
     function take8() {
@@ -1867,6 +1913,11 @@
       at += 2;
       return value;
     }
+    function take32() {
+      var value = bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24);
+      at += 4;
+      return value >>> 0;
+    }
     function takeText() {
       var length = take16();
       var body = bytes.subarray(at, at + length);
@@ -1875,6 +1926,20 @@
     }
     while (at < bytes.length) {
       var tag = take8();
+      // `Stats` names no link, so it is the one action that is not tag, seat.
+      // The field order is `arcade_peer::machine::Stats`'s declaration order.
+      if (tag === MA_STATS) {
+        var counters = window.__bt.negotiations;
+        counters.offered = take32();
+        counters.answered = take32();
+        counters.expired = take32();
+        counters.failed = take32();
+        counters.restarts = take32();
+        counters.restartAnswered = take32();
+        counters.ignored = take32();
+        counters.peak = take32();
+        continue;
+      }
       var seat = take16();
       if (tag === MA_NEGOTIATE) {
         machineNegotiate(seat, take8() !== 0);
@@ -1891,6 +1956,12 @@
         machineClose(seat);
       } else if (tag === MA_NOTE) {
         note(seat, takeText());
+      } else if (tag === MA_PATH) {
+        var hasRtt = take8() !== 0;
+        var tenths = take16();
+        var local = take8();
+        var remote = take8();
+        machinePath(seat, hasRtt ? tenths : null, local, remote);
       } else {
         break;
       }
@@ -1919,6 +1990,13 @@
   // What the machine decided must happen next.
   window.__btApply = function (bytes) {
     machineApply(bytes);
+  };
+
+  // The machine's frame asks for a path sample with its own clock, so a capture
+  // and a live run sample on the same schedule and nothing here reads the wall
+  // clock on its own.
+  window.__btSampleStats = function (now) {
+    samplePaths(now);
   };
 
   // ── Entry points ─────────────────────────────────────────────────────────
@@ -2104,6 +2182,10 @@
   var PATH_EVERY_MS = 1000;
   var lastPath = 0;
 
+  // The most rows one report may carry, matching `arcade_peer::machine::MAX_PAIRS`:
+  // the decoder refuses a report wider than this rather than trusting its count.
+  var MAX_PAIRS = 64;
+
   function samplePaths(now) {
     if (now - lastPath < PATH_EVERY_MS) {
       return;
@@ -2117,6 +2199,12 @@
       link.sampling = true;
       link.pc.getStats().then(function (report) {
         link.sampling = false;
+        if (MACHINE) {
+          // Report, do not decide: which row is the link, and what its round
+          // trip is, belongs to `arcade_peer::machine`.
+          machineStats(link.seat, report);
+          return;
+        }
         var best = null;
         report.forEach(function (stat) {
           if (stat.type !== 'candidate-pair' || stat.state !== 'succeeded') {
@@ -2165,6 +2253,94 @@
     }
     var candidate = report.get(id);
     return candidate && candidate.candidateType ? candidate.candidateType : null;
+  }
+
+  // Every candidate pair the report holds, as the browser measured it. Nothing
+  // is filtered or ranked here: a failed pair can carry more bytes than the
+  // live one, and which row wins is a rule the machine's tests pin.
+  function machineStats(seat, report) {
+    var rows = [];
+    report.forEach(function (stat) {
+      if (stat.type !== 'candidate-pair' || rows.length >= MAX_PAIRS) {
+        return;
+      }
+      rows.push({
+        state: pairStateCode(stat.state),
+        selected: stat.selected === true,
+        nominated: stat.nominated === true,
+        bytesSent: stat.bytesSent || 0,
+        rtt: typeof stat.currentRoundTripTime === 'number' ? stat.currentRoundTripTime : null,
+        local: pairCandidateCode(report, stat.localCandidateId),
+        remote: pairCandidateCode(report, stat.remoteCandidateId),
+      });
+    });
+    if (rows.length === 0) {
+      return;
+    }
+    machineEmit(ME_STATS, seat, function (writer) {
+      writer.u16(rows.length);
+      for (var i = 0; i < rows.length; i += 1) {
+        var row = rows[i];
+        var flags = (row.selected ? 1 : 0) | (row.nominated ? 2 : 0) | (row.rtt === null ? 0 : 4);
+        writer.u8(flags);
+        writer.u8(row.state);
+        writer.u64(row.bytesSent);
+        writer.f64(row.rtt === null ? 0 : row.rtt);
+        writer.u8(row.local);
+        writer.u8(row.remote);
+      }
+    });
+  }
+
+  // The report's own vocabulary, as the codes `arcade_peer::machine` decodes.
+  // `in-progress` is the current spelling and `inprogress` the older one, and
+  // both mean the checks are running.
+  function pairStateCode(state) {
+    switch (state) {
+      case 'waiting':
+        return 1;
+      case 'in-progress':
+      case 'inprogress':
+        return 2;
+      case 'failed':
+        return 3;
+      case 'succeeded':
+        return 4;
+      case 'frozen':
+        return 5;
+      default:
+        return 0;
+    }
+  }
+
+  function pairCandidateCode(report, id) {
+    switch (pairCandidateType(report, id)) {
+      case 'host':
+        return 1;
+      case 'srflx':
+        return 2;
+      case 'prflx':
+        return 3;
+      case 'relay':
+        return 4;
+      default:
+        return 0;
+    }
+  }
+
+  function pairCandidateName(code) {
+    switch (code) {
+      case 1:
+        return 'host';
+      case 2:
+        return 'srflx';
+      case 3:
+        return 'prflx';
+      case 4:
+        return 'relay';
+      default:
+        return null;
+    }
   }
 
   // Whatever has arrived since the last drain, handed to the links. Called by
@@ -2364,6 +2540,13 @@
   // `p2p-ice-restart.dsl` exercises the signalling and the answer that keeps the
   // channels.
   window.__btRestart = function (seat) {
+    if (MACHINE) {
+      // An ICE restart is a decision like any other, so the page reports the ask
+      // and the machine applies the rules: only the leading end restarts, and not
+      // more often than `RESTART_EVERY_MS`.
+      machineEmit(ME_RESTART, seat, null);
+      return true;
+    }
     var link = links.get(seat);
     if (!link) {
       return false;

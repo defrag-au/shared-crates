@@ -308,6 +308,23 @@ impl Writer {
         self.bytes.extend_from_slice(&v.to_le_bytes());
     }
 
+    pub(crate) fn u32(&mut self, v: u32) {
+        self.bytes.extend_from_slice(&v.to_le_bytes());
+    }
+
+    /// Only a test builds an event stream by hand; the shim writes the real one.
+    #[cfg(test)]
+    pub(crate) fn u64(&mut self, v: u64) {
+        self.bytes.extend_from_slice(&v.to_le_bytes());
+    }
+
+    /// A browser's own measurement, carried as the bits it produced: the value
+    /// is rounded where it is used, not where it is reported.
+    #[cfg(test)]
+    pub(crate) fn f64(&mut self, v: f64) {
+        self.u64(v.to_bits());
+    }
+
     /// A length-prefixed body. No escaping, which is the point: SDP is full of
     /// `\r\n` and JSON would double every one of them.
     pub(crate) fn blob(&mut self, body: &[u8]) {
@@ -352,6 +369,24 @@ impl<'a> Reader<'a> {
     pub(crate) fn u16(&mut self) -> Result<u16, SignalError> {
         let b = self.take(2)?;
         Ok(u16::from_le_bytes([b[0], b[1]]))
+    }
+
+    pub(crate) fn u64(&mut self) -> Result<u64, SignalError> {
+        let mut word = [0u8; 8];
+        word.copy_from_slice(self.take(8)?);
+        Ok(u64::from_le_bytes(word))
+    }
+
+    /// Only a test decodes an action stream; the shim reads it in JavaScript.
+    #[cfg(test)]
+    pub(crate) fn u32(&mut self) -> Result<u32, SignalError> {
+        let mut word = [0u8; 4];
+        word.copy_from_slice(self.take(4)?);
+        Ok(u32::from_le_bytes(word))
+    }
+
+    pub(crate) fn f64(&mut self) -> Result<f64, SignalError> {
+        Ok(f64::from_bits(self.u64()?))
     }
 
     pub(crate) fn blob(&mut self, max: usize) -> Result<Vec<u8>, SignalError> {

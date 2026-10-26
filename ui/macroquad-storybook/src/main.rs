@@ -26,7 +26,7 @@ use macroquad_widgets::{
     StepperAction, StickView, SwipeDir, Theme, TrainRider, TrainState, WalletAction,
     WalletConnectVm, WalletItem, WalletListAction, WalletListState, WalletListVm, WalletRow,
     WalletState, block_pulse, block_train, floating_stick, mint_checkout, order_fulfilment,
-    quantity_stepper, squad_picker, theme, wallet_connect, wallet_list,
+    quantity_stepper, segmented, segmented_pills, squad_picker, theme, wallet_connect, wallet_list,
 };
 use route_stories::RouteStory;
 use trading_stories::{TradingStory, TradingView};
@@ -113,6 +113,8 @@ enum ChainView {
 
 enum Body {
     Buttons,
+    /// A segmented control, in the track shape or the pill one.
+    Segmented { pills: bool },
     // Boxed: `ChainStory` holds a whole `Heartbeat` (a 256-slot ring plus the
     // scripted feed) inline, which every other variant would otherwise pay for.
     Chain(Box<ChainStory>),
@@ -144,6 +146,7 @@ struct StickStory {
 #[derive(Clone, Copy)]
 enum Kind {
     Buttons,
+    Segmented,
     Chain,
     Stepper,
     Wallet,
@@ -222,6 +225,14 @@ impl Story {
         }
     }
 
+    fn segmented(category: &'static str, name: &'static str, pills: bool) -> Self {
+        Self {
+            category,
+            name,
+            body: Body::Segmented { pills },
+        }
+    }
+
     fn wallet(category: &'static str, name: &'static str, state: WalletState) -> Self {
         Self {
             category,
@@ -249,6 +260,7 @@ impl Story {
     fn kind(&self) -> Kind {
         match self.body {
             Body::Buttons => Kind::Buttons,
+            Body::Segmented { .. } => Kind::Segmented,
             Body::Chain(_) => Kind::Chain,
             Body::Stepper(_) => Kind::Stepper,
             Body::Wallet(_) => Kind::Wallet,
@@ -438,6 +450,8 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
     vec![
         Story::buttons("atoms", "buttons"),
         Story::stepper("atoms", "quantity stepper", 2),
+        Story::segmented("atoms", "segmented · track", false),
+        Story::segmented("atoms", "segmented · pills", true),
         Story::stick("input", "floating stick"),
         Story::wallet(
             "wallet",
@@ -1117,6 +1131,22 @@ impl Storybook {
                     self.last_action = Some(a);
                 }
                 self.echo(p, x0);
+            }
+            Kind::Segmented => {
+                let options = ["1H", "24H", "7D", "30D", "ALL"];
+                let pills = matches!(self.stories[sel].body, Body::Segmented { pills: true });
+                // The pill row is a chart's span picker: five chips and their
+                // gaps, at the size the arena draws them. The track is the
+                // heavier control, for a whole pane.
+                let row = match pills {
+                    true => Rect::new(x0, y, 5.0 * 34.0 + 4.0 * 4.0, 16.0),
+                    false => Rect::new(x0, y, col_w.min(340.0), 28.0),
+                };
+                if pills {
+                    segmented_pills(p, row, &options, 1);
+                } else {
+                    let _ = segmented(p, row, &options, 1, true);
+                }
             }
             Kind::Chain => self.draw_chain(p, sel, x0, y),
             Kind::Stepper => self.draw_stepper(p, sel, x0, y),
