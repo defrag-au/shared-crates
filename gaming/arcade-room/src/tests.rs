@@ -3,8 +3,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::room::{Room, RoomConfig, To};
-use crate::sim::{Change, RoomSim, Seat};
+use crate::room::{PAIR_GRACE_MS, Room, RoomConfig, To};
+use crate::sim::{Change, INTEREST_MAX, RoomSim, Seat};
 use crate::testkit::{BotState, Harness};
 use crate::wire::{ToClient, ToRoom};
 
@@ -694,9 +694,10 @@ fn a_group_is_the_seats_the_world_says_are_near() {
     );
 }
 
-/// Three seats and a deliberately asymmetric interest set: seat 0 sees 1, and 1
-/// sees nobody. Enough to pin group-scoped delivery and the union that makes an
-/// asymmetric pair work.
+/// Three seats and interest sets that are mutual for one pair and one-way for
+/// the third: 0 and 1 name each other, and 2 names 0 while 0 does not name 2.
+/// Enough to pin that the published group is the mutual core — the pair links,
+/// the one-way pick does not — and that delivery goes no further than it.
 #[derive(Clone)]
 struct Islands {
     tick: u64,
@@ -730,6 +731,8 @@ impl RoomSim for Islands {
     fn interest(&self, seat: Seat, _k: usize, _held: &[Seat]) -> Option<Vec<Seat>> {
         Some(match seat {
             0 => vec![1],
+            1 => vec![0],
+            2 => vec![0],
             _ => Vec::new(),
         })
     }
@@ -773,10 +776,10 @@ fn a_targeted_signal_reaches_only_its_target() {
     );
 }
 
-/// A targeted signal goes to its sender's group and to anyone who names the
-/// sender, and no further — the same reach the broadcast path uses, as a
-/// membership test. The second half is not decoration: a capped distance set is
-/// not symmetric, and the far end of an asymmetric pair still has to answer.
+/// A targeted signal goes to its sender's group and no further. Because the
+/// group is mutual (see [`Room::regroup`]), an answer travels the same path: a
+/// seat that named another without being named back is in no group, and the
+/// room does not carry its signal.
 #[test]
 fn a_targeted_signal_outside_the_reach_set_is_dropped() {
     let mut room = Room::<Islands>::new(1, cfg());
@@ -811,10 +814,13 @@ fn a_targeted_signal_outside_the_reach_set_is_dropped() {
     assert_eq!(
         heard(&mut room, 2, 0),
         vec![(1, 1)],
-        "1 reaches 0 through 0's group, though 1 names nobody"
+        "1's answer reaches 0, because the pair is mutual"
     );
     assert!(heard(&mut room, 1, 2).is_empty(), "0 does not name 2");
-    assert!(heard(&mut room, 3, 1).is_empty(), "2 is in nobody's group");
+    assert!(
+        heard(&mut room, 3, 0).is_empty(),
+        "2 named 0, but 0 never named 2, so 2 is in nobody's group"
+    );
     assert_eq!(
         room.signals(),
         (4, 2),
@@ -822,11 +828,152 @@ fn a_targeted_signal_outside_the_reach_set_is_dropped() {
     );
 }
 
-/// A signal goes to its sender's group and to anyone who names the sender, and
-/// no further. The second half is not decoration: a capped distance set is not
-/// symmetric, and the far end of an asymmetric pair still has to answer.
+/// Two seats that name each other at first and then stop, without either
+/// leaving the world: the shape a pair takes when it walks apart.
+#[derive(Clone)]
+struct Fading {
+    tick: u64,
+}
+
+impl RoomSim for Fading {
+    const GAME: &'static str = "fading";
+    const VERSION: u32 = 1;
+    const TICK_HZ: u32 = 60;
+    const MAX_SEATS: usize = 4;
+    const INPUT_BYTES: usize = 1;
+
+    fn new(_seed: u64) -> Self {
+        Self { tick: 0 }
+    }
+    fn tick(&self) -> u64 {
+        self.tick
+    }
+    fn step(&mut self, _changes: &[Change]) {
+        self.tick += 1;
+    }
+    fn hash(&self) -> u64 {
+        self.tick
+    }
+    fn snapshot(&self) -> Vec<u8> {
+        Vec::new()
+    }
+    fn restore(_bytes: &[u8]) -> Result<Self, String> {
+        Ok(Self { tick: 0 })
+    }
+    fn interest(&self, seat: Seat, _k: usize, _held: &[Seat]) -> Option<Vec<Seat>> {
+        // In range for the first second of world time, then apart for good. The
+        // room publishes the mutual core, so a one-way pick would publish
+        // nothing even while the pair is in range.
+        Some(match (seat, self.tick < 60) {
+            (0, true) => vec![1],
+            (1, true) => vec![0],
+            _ => Vec::new(),
+        })
+    }
+}
+
+/// A `Bye` is written when a link fails, which can be half a minute after the
+/// room stopped naming the pair. The room carries it anyway, for
+/// [`PAIR_GRACE_MS`] — otherwise a seat holding a dormant link (design §5)
+/// never hears that the far side tore its end down.
 #[test]
-fn a_signal_reaches_its_groups_union_and_no_further() {
+fn a_pair_the_sets_dropped_is_still_routable_for_its_grace() {
+    let mut h = Harness::<Fading>::new(1, cfg());
+    let a = h.connect("a", true, 10, 0);
+    let b = h.connect("b", true, 10, 0);
+    h.run(1_000, |_, _, _| None);
+
+    let seat_b = h.client(b).expect("seated").seat();
+    assert_eq!(
+        h.client(a)
+            .expect("seated")
+            .group()
+            .map(|(_, m)| m.to_vec()),
+        Some(vec![seat_b]),
+        "named while they are in range"
+    );
+
+    // Past the fade and a regroup interval. Both seats stay in the world; only
+    // the set changes.
+    h.run(6_000, |_, _, _| None);
+    assert_eq!(
+        h.client(a)
+            .expect("seated")
+            .group()
+            .map(|(_, m)| m.to_vec()),
+        Some(Vec::new()),
+        "the room stopped naming the pair"
+    );
+
+    let now = h.now;
+    h.client_mut(a)
+        .expect("seated")
+        .send_signal(seat_b, b"bye".to_vec(), now);
+    h.run(100, |_, _, _| None);
+
+    assert_eq!(
+        h.client(b).expect("seated").signals().1,
+        1,
+        "the bye arrived after the set had moved on"
+    );
+    assert_eq!(
+        h.room.signals_after_drop(),
+        1,
+        "and it was carried by the grace, not by the set"
+    );
+}
+
+/// The grace ends, and after it the room is as strict as it was: a set that
+/// moved on is the answer, and a peer cannot use a stale pair to keep talking.
+#[test]
+fn the_grace_expires() {
+    let mut h = Harness::<Fading>::new(1, cfg());
+    let a = h.connect("a", true, 10, 0);
+    let b = h.connect("b", true, 10, 0);
+    h.run(1_000, |_, _, _| None);
+    let seat_b = h.client(b).expect("seated").seat();
+
+    h.run(6_000, |_, _, _| None);
+    let heard = h.client(b).expect("seated").signals().1;
+    assert_eq!(
+        h.client(a)
+            .expect("seated")
+            .group()
+            .map(|(_, m)| m.to_vec()),
+        Some(Vec::new())
+    );
+
+    h.run(PAIR_GRACE_MS + 1_000, |_, _, _| None);
+
+    let now = h.now;
+    h.client_mut(a)
+        .expect("seated")
+        .send_signal(seat_b, b"bye".to_vec(), now);
+    h.run(100, |_, _, _| None);
+
+    assert_eq!(
+        h.client(b).expect("seated").signals().1,
+        heard,
+        "a signal outlived its grace"
+    );
+    assert_eq!(
+        h.room.signals_after_drop(),
+        0,
+        "nothing was carried by a grace"
+    );
+}
+
+/// The published group is the mutual core of the seats' interest sets, not each
+/// seat's own ranking.
+///
+/// A capped nearest-k is one-way whenever a crowd is bigger than k: one end can
+/// name the other while the other's twelve leave it out. Publishing that
+/// ranking would give a pair that no end can start — the client offers from the
+/// lower seat, and the lower seat is the one that does not know the higher — so
+/// the room keeps only what both ends named. The pair links or the pair does
+/// not; nothing is left half-published for a client to wedge on.
+#[test]
+fn a_group_is_the_mutual_core_of_the_interest_sets() {
     let mut room = Room::<Islands>::new(1, cfg());
     for conn in 1..=3 {
         room.open(conn);
@@ -834,35 +981,103 @@ fn a_signal_reaches_its_groups_union_and_no_further() {
     for (conn, name) in [(1, "a"), (2, "b"), (3, "c")] {
         room.message(conn, &crate::client::hello::<Islands>(name, true), 0);
     }
+    room.poll(1_000);
 
+    // One pass: a connection's `Welcome` is written before any `Group` that
+    // can name it, so the seat is known by the time its group arrives.
     let mut seat_of = BTreeMap::new();
+    let mut groups: BTreeMap<Seat, Vec<Seat>> = BTreeMap::new();
     for out in room.drain() {
-        if let (To::One(conn), Ok(ToClient::Welcome { seat, .. })) =
-            (out.to, ToClient::decode(&out.bytes))
-        {
-            seat_of.insert(conn, seat);
+        match (out.to, ToClient::decode(&out.bytes)) {
+            (To::One(conn), Ok(ToClient::Welcome { seat, .. })) => {
+                seat_of.insert(conn, seat);
+            }
+            (To::One(conn), Ok(ToClient::Group { members, .. })) => {
+                let seat = *seat_of.get(&conn).expect("welcomed before grouped");
+                groups.insert(seat, members);
+            }
+            _ => {}
         }
     }
-    for (conn, seat) in [(1, 0), (2, 1), (3, 2)] {
-        assert_eq!(seat_of.get(&conn), Some(&seat), "seated in hello order");
+    assert_eq!(seat_of.len(), 3, "seated in hello order");
+
+    assert_eq!(
+        groups.get(&0).map(Vec::as_slice),
+        Some(&[1][..]),
+        "0 and 1 named each other"
+    );
+    assert_eq!(
+        groups.get(&1).map(Vec::as_slice),
+        Some(&[0][..]),
+        "so the pair is published at both ends"
+    );
+    assert!(
+        groups.get(&2).is_some_and(Vec::is_empty),
+        "2 named 0 and 0 did not name 2, so 2 is in nobody's group"
+    );
+
+    for (seat, members) in &groups {
+        assert!(
+            members.len() <= INTEREST_MAX,
+            "{seat} has {} members, over the cap",
+            members.len()
+        );
+        for other in members {
+            assert!(
+                groups
+                    .get(other)
+                    .is_some_and(|theirs| theirs.contains(seat)),
+                "{seat} names {other} but is not named back"
+            );
+        }
+    }
+}
+
+/// The client's start rule is "the lower seat offers", so a pair only gets a
+/// link if the lower seat's group names the higher. Publishing each seat's own
+/// ranking broke that: the higher seat could name the lower and be the only one
+/// that did, and then neither end would start — the follower is not the leader,
+/// and the leader does not know the follower. The mutual core drops the
+/// half-pair instead of leaving it to wedge.
+#[test]
+fn every_published_pair_can_be_started_by_its_lower_seat() {
+    let mut room = Room::<Islands>::new(1, cfg());
+    for conn in 1..=3 {
+        room.open(conn);
+    }
+    for (conn, name) in [(1, "a"), (2, "b"), (3, "c")] {
+        room.message(conn, &crate::client::hello::<Islands>(name, true), 0);
+    }
+    room.poll(1_000);
+
+    let mut seat_of = BTreeMap::new();
+    let mut groups: BTreeMap<Seat, Vec<Seat>> = BTreeMap::new();
+    for out in room.drain() {
+        match (out.to, ToClient::decode(&out.bytes)) {
+            (To::One(conn), Ok(ToClient::Welcome { seat, .. })) => {
+                seat_of.insert(conn, seat);
+            }
+            (To::One(conn), Ok(ToClient::Group { members, .. })) => {
+                let seat = *seat_of.get(&conn).expect("welcomed before grouped");
+                groups.insert(seat, members);
+            }
+            _ => {}
+        }
     }
 
-    let heard = |room: &mut Room<Islands>, from: u64| {
-        room.message(from, &ToRoom::Signal(b"v=0\r\n".to_vec()).encode(), 1_000);
-        room.drain()
-            .into_iter()
-            .filter_map(|out| match (out.to, ToClient::decode(&out.bytes)) {
-                (To::One(conn), Ok(ToClient::Signal { from, .. })) => Some((conn, from)),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-    };
-
-    assert_eq!(heard(&mut room, 1), vec![(2, 0)], "0's group is 1");
-    assert_eq!(
-        heard(&mut room, 2),
-        vec![(1, 1)],
-        "1's reply reaches 0 through 0's group, though 1 names nobody"
+    assert!(
+        groups.get(&2).is_some_and(Vec::is_empty),
+        "2 picked 0 and 0 did not pick back, so there is no pair to start"
     );
-    assert!(heard(&mut room, 3).is_empty(), "2 is in nobody's group");
+    for (seat, members) in &groups {
+        for other in members {
+            let (leader, follower) = ((*seat).min(*other), (*seat).max(*other));
+            assert!(
+                groups
+                    .get(&leader)
+                    .is_some_and(|m| m.contains(&follower)),
+                "{leader}'s group does not name {follower}, so neither end can start"
+            );
+        }
+    }
 }

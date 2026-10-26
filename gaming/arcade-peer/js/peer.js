@@ -338,9 +338,13 @@
     // Why the last connection failed, for a report that would otherwise say
     // only "failed".
     error: null,
-    // Pairwise signals that reached us addressed to another peer. They are the
-    // cost of broadcasting, and a count of them says the filter is working.
+    // Pairwise signals that reached us addressed to another peer. With the
+    // room routing a targeted signal to one seat this is zero, and a number
+    // that climbs means the broadcast path came back.
     ignored: 0,
+    // Signals for a pair we hold no link to: a race after a bye, or the room
+    // carrying a dropped pair's message inside its grace (§9).
+    unknown: 0,
     // Discovery, counted: announces queued for the room, announces received,
     // and signals dropped because the sender is outside this seat's group.
     // An announce is the first step of every negotiation, so when a seat the
@@ -1035,9 +1039,9 @@
     if (msg.tag === TAG_ANNOUNCE) {
       window.__bt.signals.announces += 1;
     } else if (msg.to !== me) {
-      // Broadcast delivers every peer's pairwise signal to everyone. Only the
-      // one it names acts on it — otherwise, with three peers, B would apply
-      // C's answer to A's offer on its own link to C.
+      // Addressed to another peer. The room routes a targeted signal to one
+      // seat, so this is now only reachable with an old room or a relay in a
+      // scenario — and the count staying at zero is what says targeting holds.
       window.__bt.ignored += 1;
       return;
     }
@@ -1059,9 +1063,10 @@
           return;
         }
       } else {
-        // An answer, candidate or bye for a pair we are not in: another
-        // receiver's copy of a broadcast, or a race after a bye.
-        window.__bt.ignored += 1;
+        // An answer, candidate or bye for a pair we are not in: a race after a
+        // bye, or a message the room carried under a dropped pair's grace (§9).
+        // Not a misdelivery, so it is counted apart from `ignored`.
+        window.__bt.unknown += 1;
         return;
       }
       link = linkFor(from);

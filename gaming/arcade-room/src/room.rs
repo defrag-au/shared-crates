@@ -120,6 +120,14 @@ pub struct Room<S: RoomSim> {
     /// rule.
     signals_in: u32,
     signal_copies: u32,
+    /// Frames delivered only because the pair was inside [`PAIR_GRACE_MS`]: the
+    /// room stopped naming it, and this was the `Bye` or candidate that had
+    /// already been written. The measurement the grace exists to make possible.
+    signals_grace: u32,
+    /// Pairs the room has stopped naming, and the `now` until which it still
+    /// carries a signal between them. Keyed by the ordered pair so either
+    /// direction finds it.
+    recent: BTreeMap<(Seat, Seat), u64>,
 }
 
 /// Verifies a session token from a hello, returning who it names (a stable
@@ -160,6 +168,29 @@ const SAVE_MAGIC: &[u8] = b"ARM1";
 /// held for its grace regardless.
 pub(crate) const GROUP_EVERY_SECS: u64 = 5;
 
+/// How long a pair the room has stopped naming stays routable, in ms.
+///
+/// A `Bye` is sent when a link *fails*, and a WebRTC link can take half a
+/// minute to admit that: ICE consent gives up only after ~30 s without an
+/// acknowledgement. A pair can therefore have walked out of both sets and still
+/// produce a `Bye`, a final candidate or an answer that was already in flight,
+/// and without this the room refuses to carry it — the receiver holding a
+/// dormant link (design §5) never hears that the far side has torn its end
+/// down. Sixty seconds is twice the ICE failure window and twelve regroup
+/// intervals. Memory is a rounding error against the room's own traffic: the
+/// worst measured churn is 36 dropped pairs a second in a 64-seat crowd, so
+/// ~2,000 entries at steady state, pruned on every regroup.
+///
+/// This is promptness, not correctness. Both ends of a broken link notice on
+/// their own eventually; the grace is what stops the far side waiting for it.
+pub(crate) const PAIR_GRACE_MS: u64 = 60_000;
+
+/// One key per unordered pair, so either end of a dropped pair finds the same
+/// grace entry.
+fn pair(a: Seat, b: Seat) -> (Seat, Seat) {
+    if a < b { (a, b) } else { (b, a) }
+}
+
 impl<S: RoomSim> Room<S> {
     pub fn new(seed: u64, cfg: RoomConfig) -> Self {
         Self::around(S::new(seed), cfg)
@@ -183,6 +214,8 @@ impl<S: RoomSim> Room<S> {
             grouped_at: 0,
             signals_in: 0,
             signal_copies: 0,
+            signals_grace: 0,
+            recent: BTreeMap::new(),
         }
     }
 
@@ -190,6 +223,12 @@ impl<S: RoomSim> Room<S> {
     /// them. A readout and a measurement, not an input to anything.
     pub fn signals(&self) -> (u32, u32) {
         (self.signals_in, self.signal_copies)
+    }
+
+    /// Of those copies, how many were carried only because the pair was inside
+    /// its grace after the room stopped naming it.
+    pub fn signals_after_drop(&self) -> u32 {
+        self.signals_grace
     }
 
     /// Seats taken by a new arrival since the last call, with the key each
@@ -390,12 +429,20 @@ impl<S: RoomSim> Room<S> {
             // other receiver decode and discard it.
             (ToRoom::SignalTo { to, bytes }, Some(seat)) => {
                 self.signals_in = self.signals_in.saturating_add(1);
-                let conn = if self.reachable(seat, to) {
+                let named = self.named(seat, to);
+                // A pair the sets have dropped is still reachable for
+                // `PAIR_GRACE_MS`, so a `Bye` written after the link failed
+                // arrives instead of being refused by a set that moved on.
+                let carried = named || self.in_grace(seat, to, now);
+                let conn = if carried {
                     self.seats.get(&to).and_then(|s| s.conn)
                 } else {
                     None
                 };
                 if let Some(conn) = conn {
+                    if !named {
+                        self.signals_grace = self.signals_grace.saturating_add(1);
+                    }
                     self.signal_copies = self.signal_copies.saturating_add(1);
                     self.send(
                         conn,
@@ -565,7 +612,7 @@ impl<S: RoomSim> Room<S> {
     /// has. Called by every other method; the edge also calls it on a timer
     /// as a backstop.
     pub fn poll(&mut self, now: u64) {
-        self.regroup();
+        self.regroup(now);
         let expired: Vec<Seat> = self
             .seats
             .iter()
@@ -660,7 +707,7 @@ impl<S: RoomSim> Room<S> {
     /// holds, so a stale answer cannot name a ghost. A sim with no opinion
     /// (`interest` returning `None`) gets the whole room, which is what every
     /// game had before groups existed.
-    fn regroup(&mut self) {
+    fn regroup(&mut self, now: u64) {
         let every = u64::from(S::TICK_HZ).max(1) * GROUP_EVERY_SECS;
         let due = self.sim.tick().saturating_sub(self.grouped_at) >= every;
         // Every seat having a set, rather than as many sets as seats: a join
@@ -671,9 +718,9 @@ impl<S: RoomSim> Room<S> {
             return;
         }
         self.grouped_at = self.sim.tick();
+        self.recent.retain(|_, until| *until > now);
         let seated: Vec<Seat> = self.seats.keys().copied().collect();
-        let mut next = BTreeMap::new();
-        let mut changed = Vec::new();
+        let mut directed: BTreeMap<Seat, Vec<Seat>> = BTreeMap::new();
         for seat in &seated {
             // What this seat was last told, so the sim can keep an incumbent
             // rather than re-rank the crowd from scratch: a fresh ranking churns
@@ -686,10 +733,48 @@ impl<S: RoomSim> Room<S> {
                     .collect(),
                 None => seated.iter().copied().filter(|s| s != seat).collect(),
             };
-            if self.groups.get(seat) != Some(&members) {
+            directed.insert(*seat, members);
+        }
+
+        // Publish the mutual core, not each seat's ranking.
+        //
+        // A capped nearest-k is one-way whenever a crowd is bigger than k: A's
+        // twelve can exclude B while B's include A. A one-way pair has no end
+        // that may start — the leader (lower seat) does not know the follower,
+        // and the follower is not the leader — so it never negotiates, and the
+        // end that ranked the other is the one left stale. Keeping only what
+        // both ends name makes the group the whole answer to who links with
+        // whom, keeps every seat at or below `INTEREST_MAX`, and means the set
+        // a player draws is also the set that draws them.
+        //
+        // The filter reads the *unfiltered* sets, so it is one simultaneous
+        // pass rather than a cascade: an edge survives iff both directions were
+        // named before anything was removed.
+        let mut next = directed.clone();
+        for (seat, members) in next.iter_mut() {
+            members.retain(|other| {
+                directed
+                    .get(other)
+                    .is_some_and(|theirs| theirs.contains(seat))
+            });
+        }
+
+        let mut changed = Vec::new();
+        let mut dropped: Vec<(Seat, Seat)> = Vec::new();
+        for (seat, members) in &next {
+            let last = self.groups.get(seat).map_or(&[][..], Vec::as_slice);
+            for gone in last {
+                if !members.contains(gone) {
+                    dropped.push((*seat, *gone));
+                }
+            }
+            if self.groups.get(seat) != Some(members) {
                 changed.push((*seat, members.clone()));
             }
-            next.insert(*seat, members);
+        }
+        for (a, b) in dropped {
+            self.recent
+                .insert(pair(a, b), now.saturating_add(PAIR_GRACE_MS));
         }
         self.groups = next;
         if changed.is_empty() {
@@ -710,14 +795,11 @@ impl<S: RoomSim> Room<S> {
         }
     }
 
-    /// The connections a signal from `seat` goes to: its own group, plus every
-    /// seat that names `seat` in theirs.
+    /// The connections a broadcast from `seat` goes to: its group.
     ///
-    /// The union is not belt-and-braces. A distance set capped at
-    /// [`INTEREST_MAX`] is not symmetric — A's twelve nearest can exclude B
-    /// while B's include A — and a pair where only one end knows the other still
-    /// has to negotiate: A offers because it sees B, and B's answer has to reach
-    /// A.
+    /// Sets are mutual (see [`Room::regroup`]), so "the seats this one named" and
+    /// "the seats that named this one" are the same list — the reverse scan that
+    /// used to be needed for an asymmetric pair went with the asymmetry.
     ///
     /// Before the first group has been computed (a signal racing a hello) this
     /// falls back to every other seated connection, which is what the room did
@@ -731,23 +813,15 @@ impl<S: RoomSim> Room<S> {
                 .map(|(id, _)| *id)
                 .collect();
         };
-        let mut reaches = members.clone();
-        for (other, theirs) in &self.groups {
-            if *other != seat && theirs.contains(&seat) && !reaches.contains(other) {
-                reaches.push(*other);
-            }
-        }
-        reaches
-            .into_iter()
-            .filter_map(|s| self.seats.get(&s).and_then(|i| i.conn))
+        members
+            .iter()
+            .filter_map(|s| self.seats.get(s).and_then(|i| i.conn))
             .collect()
     }
 
-    /// Whether a signal from `seat` may reach `to`: the same union
-    /// [`Room::signal_targets`] delivers to, as a membership test. The targeted
-    /// path needs the answer, not the list, so it does not allocate one per
-    /// signal.
-    fn reachable(&self, seat: Seat, to: Seat) -> bool {
+    /// Whether the sets name the pair. The relation is mutual (see
+    /// [`Room::regroup`]), so one direction answers for both.
+    fn named(&self, seat: Seat, to: Seat) -> bool {
         if seat == to {
             return false;
         }
@@ -755,14 +829,16 @@ impl<S: RoomSim> Room<S> {
             // Before the first group, every other seated seat is reachable —
             // what the room did before groups existed.
             None => self.seats.contains_key(&to),
-            Some(members) => {
-                members.contains(&to)
-                    || self
-                        .groups
-                        .get(&to)
-                        .is_some_and(|theirs| theirs.contains(&seat))
-            }
+            Some(members) => members.contains(&to),
         }
+    }
+
+    /// Whether the pair was named recently enough that a signal between them is
+    /// still worth carrying.
+    fn in_grace(&self, seat: Seat, to: Seat, now: u64) -> bool {
+        self.recent
+            .get(&pair(seat, to))
+            .is_some_and(|until| *until > now)
     }
 
     /// Messages to send, in order.
