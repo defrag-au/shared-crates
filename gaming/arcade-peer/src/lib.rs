@@ -56,6 +56,10 @@
 /// an alias here so this crate need not depend on `arcade-room`.
 pub type Seat = u16;
 
+/// The negotiation state machine: every decision the browser half used to take
+/// in JavaScript, as a pure function of events and an injected clock.
+pub mod machine;
+
 /// Bumped when the layout below changes. The room and both ends of a link must
 /// agree; a mismatch is refused rather than misread.
 ///
@@ -658,6 +662,35 @@ mod tests {
         assert!(
             body.contains("suspect(link, LINK_SETTLE_MS)"),
             "a channel that errors under a live link is not treated as suspect"
+        );
+    }
+
+    /// The room's set and the signals it implies arrive on different frames, so
+    /// a seat returning to a group can offer before the other end has been told
+    /// the set names it. Holding only the offer was not enough: the candidates
+    /// that followed it were refused by the same guard and dropped, and by the
+    /// time the held offer was replayed the sender's gather had finished — so
+    /// the pair had a description, no candidates, and sat in `new` until ICE's
+    /// own ~18 s timeout. Found by the cross-region churn run (design §12.2).
+    #[test]
+    fn the_browser_half_holds_every_signal_that_lands_before_the_set() {
+        assert!(
+            PEER_JS.contains("deferred.push({ from: from, bytes: bytes, at: performance.now() })"),
+            "a signal from a seat the set has not named yet is dropped again"
+        );
+        assert!(
+            PEER_JS.contains(
+                "msg.tag === TAG_OFFER || msg.tag === TAG_ANSWER || msg.tag === TAG_CANDIDATE"
+            ),
+            "only the offer is held, so the candidates around it are lost"
+        );
+        assert!(
+            PEER_JS.contains("signals replayed: the set names it now"),
+            "nothing replays a held signal when the set arrives"
+        );
+        assert!(
+            PEER_JS.contains("now - item.at < DEFER_MS"),
+            "a held signal never expires, so a stale one could be applied"
         );
     }
 

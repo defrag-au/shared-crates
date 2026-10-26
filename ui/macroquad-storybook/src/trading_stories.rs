@@ -321,6 +321,7 @@ impl TradingStory {
                         rows: &rows,
                         age: (t as f32) % 2.0,
                         scrolled,
+                        ink,
                     },
                     Rect::new(x, y + 20.0, w.min(350.0), 5.0 * FEED_ROW_STEP),
                 );

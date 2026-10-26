@@ -237,6 +237,21 @@
   // closes with no `Bye` behind it is a peer that died mid-connection.
   var LINK_SETTLE_MS = 1000;
 
+  // How long an offer refused for being from a seat outside the room's set is
+  // held before it is dropped. The room's set and the signals it implies arrive
+  // on different frames, so a seat returning to a group can offer before the
+  // other end has been told the group names it. That offer used to be discarded,
+  // and the pair waited for `OFFER_MS` (12 s) to try again; holding it for a
+  // moment and replaying it when the set arrives makes the return cost a round
+  // trip. Long enough to cover a room message to every seat, short enough that
+  // a genuinely stale offer is not applied.
+  var DEFER_MS = 2000;
+
+  // The buffer's bound. A gather is tens of candidates, and only signals that
+  // arrived inside `DEFER_MS` survive, so this is a guard against a malformed
+  // sender rather than a working limit.
+  var MAX_DEFERRED = 256;
+
   // How long a join waits for the room's list. Under `wrangler dev` the mint is
   // a round trip to Cloudflare Realtime and back, and a longer budget would be
   // a visible delay at the door for a relay that may not be needed. Past it the
@@ -429,6 +444,13 @@
 
   // Seats waiting for an offer slot (`MAX_NEGOTIATING`), in arrival order.
   var queue = [];
+
+  // Offers, answers and candidates refused because the sender was not in this
+  // seat's set yet: `{from, bytes, at}`. Replayed in arrival order when the set
+  // names the sender, expired after `DEFER_MS`. Every pairwise kind is held,
+  // because a description without the candidates around it is a link that never
+  // starts.
+  var deferred = [];
 
   // The room's interest set for this seat: who it is worth keeping a channel
   // to. Null until the room has said; before then every peer, which is what
@@ -1453,7 +1475,19 @@
       // one still has to hear `Bye` or a restarted offer, or persistence would
       // keep a link nobody can use and never replace it.
       window.__bt.signals.dropped += 1;
-      if (msg.tag === TAG_ANNOUNCE) {
+      if (msg.tag === TAG_OFFER || msg.tag === TAG_ANSWER || msg.tag === TAG_CANDIDATE) {
+        // The set that names the sender has not arrived yet. Hold the whole
+        // pairwise stream — not just the offer — and replay it from
+        // `__btGroup`. A candidate arrives either side of the description it
+        // belongs to, and one dropped here is one the far side never gathers
+        // again: the offerer's gather is already finished by the time a replayed
+        // offer lands, so the pair sat in `new` until ICE's own timeout.
+        deferred.push({ from: from, bytes: bytes, at: performance.now() });
+        if (deferred.length > MAX_DEFERRED) {
+          deferred.shift();
+        }
+        note(from, 'signal deferred: set has not arrived');
+      } else if (msg.tag === TAG_ANNOUNCE) {
         note(from, 'announce dropped: outside the group');
       }
       return;
@@ -1619,6 +1653,25 @@
         }
       });
     }
+    // An offer that arrived before this set did, from a seat the set now names.
+    // `deliver` re-checks the filter, so the replay is refused again for any
+    // seat the set still does not name.
+    if (deferred.length > 0) {
+      var replay = deferred.filter(function (item) {
+        return group.members.has(item.from) || links.has(item.from);
+      });
+      deferred = deferred.filter(function (item) {
+        return !(group.members.has(item.from) || links.has(item.from));
+      });
+      var told = {};
+      for (var d = 0; d < replay.length; d += 1) {
+        if (!told[replay[d].from]) {
+          told[replay[d].from] = true;
+          note(replay[d].from, 'signals replayed: the set names it now');
+        }
+        deliver(replay[d].from, replay[d].bytes);
+      }
+    }
     rollup();
     return true;
   };
@@ -1744,6 +1797,11 @@
       }
     }
     var now = performance.now();
+    if (deferred.length > 0) {
+      deferred = deferred.filter(function (item) {
+        return now - item.at < DEFER_MS;
+      });
+    }
     sweepStale(now);
     sweepOffers(now);
     samplePaths(now);

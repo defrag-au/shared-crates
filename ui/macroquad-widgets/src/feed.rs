@@ -10,6 +10,7 @@
 use macroquad::prelude::*;
 use ui_theme::TextSize;
 
+use crate::market_ink::MarketInk;
 use crate::marks::pill_label;
 use crate::painter::{Line, Painter, draw_rounded_rect};
 use crate::theme::with_alpha;
@@ -51,6 +52,9 @@ pub struct FeedVm<'a> {
     pub age: f32,
     /// The scrolled-back pill, when the reader has pulled the feed back.
     pub scrolled: Option<&'a str>,
+    /// The pill's ink is [`MarketInk::crown`] — the same attention colour the
+    /// chart's scrub and the life strip's drag use.
+    pub ink: MarketInk,
 }
 
 /// Draw one row, faded by `fade`.
@@ -139,14 +143,7 @@ pub fn feed(p: &Painter, vm: &FeedVm, area: Rect) {
             );
             feed_row(p, row, r, 1.0);
         }
-        pill_label(
-            p,
-            label,
-            area.center().x,
-            area.y - 15.0,
-            area,
-            p.theme.color.accent_yellow,
-        );
+        pill_label(p, label, area.center().x, area.y - 15.0, area, vm.ink.crown);
         return;
     }
     // The rest step down a slot first, then the newest slides in from the
