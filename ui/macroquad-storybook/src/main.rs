@@ -1618,8 +1618,10 @@ impl Storybook {
 }
 
 fn window_conf() -> Conf {
+    // Fully qualified: this file has its own `Args` for `--story`/`--shot`.
+    let args = macroquad_gamekit::harness::Args::read();
     Conf {
-        window_title: "macroquad-widgets storybook".to_owned(),
+        window_title: args.window_title("macroquad-widgets storybook"),
         window_width: 1000,
         window_height: 760,
         window_resizable: true,

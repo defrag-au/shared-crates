@@ -17,7 +17,7 @@ use macroquad_cnft::{
     ArtLoader, ArtTile, HoldingsLoader, ImageSize, LoadState, OWNERSHIP_BASE, PolicyId, Source,
     TileStyle, art_url,
 };
-use macroquad_gamekit::harness::flag;
+use macroquad_gamekit::harness::{Args, flag};
 use macroquad_gamekit::{
     Align, Backdrop, Frame, Game, MeasureAt, RichText, TextStyle, app, load_font, stroke_rounded,
 };
@@ -127,8 +127,9 @@ impl Game for Screen {
 }
 
 fn window_conf() -> Conf {
+    let args = Args::read();
     Conf {
-        window_title: "macroquad-cnft holdings".to_owned(),
+        window_title: args.window_title("macroquad-cnft holdings"),
         window_width: DESIGN.x as i32,
         window_height: DESIGN.y as i32,
         high_dpi: true,

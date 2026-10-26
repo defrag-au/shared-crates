@@ -15,7 +15,7 @@
 //! is gamekit's; see its `ANIMATION.md` for what to look for.
 
 use macroquad::prelude::*;
-use macroquad_gamekit::harness::SheetSprite;
+use macroquad_gamekit::harness::{Args, SheetSprite};
 use macroquad_gamekit::motion::Cycle;
 use macroquad_gamekit::{Backdrop, Frame, Game, SpriteFile, app};
 
@@ -143,8 +143,9 @@ fn backdrop(files: &[SpriteFile]) -> Backdrop {
 }
 
 fn window_conf() -> Conf {
+    let args = Args::read();
     Conf {
-        window_title: "sprite-view".to_string(),
+        window_title: args.window_title("sprite-view"),
         window_width: 1280,
         window_height: 800,
         high_dpi: true,

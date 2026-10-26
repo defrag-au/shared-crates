@@ -1,0 +1,56 @@
+{
+  "id": "urn:skill:game-spike",
+  "type": "https://ocfl.io/1.1/spec/#inventory",
+  "digestAlgorithm": "sha512",
+  "head": "v3",
+  "manifest": {
+    "23cb7013c336e7adf05667aeaf15a2664f3086f988dccb069ca9230b84adf39dc5c11c44ff1a1dcfee6b03a7f3243fcf356e60194bea652bc1cfda236a471b66": [
+      "v3/content/SKILL.md"
+    ],
+    "24749058ee6cb514ba787688c49eab578cc8461e76b6c6d8ec098d57749ea1d31f2aa43beb705954b3707162b2ea8b310af01e80d924be7073e709308e5cfd5f": [
+      "v1/content/SKILL.md"
+    ],
+    "b68d0b2d899434d26c20ad2d75306d47003564a0a05bbb33fa2382f2f23d1f0a41972b3d381b5107793ec52c84b0c45d1fa62db5e0d47afb53b8081dde3f36ff": [
+      "v2/content/SKILL.md"
+    ]
+  },
+  "versions": {
+    "v1": {
+      "created": "2026-10-25T06:37:14Z",
+      "state": {
+        "24749058ee6cb514ba787688c49eab578cc8461e76b6c6d8ec098d57749ea1d31f2aa43beb705954b3707162b2ea8b310af01e80d924be7073e709308e5cfd5f": [
+          "SKILL.md"
+        ]
+      },
+      "message": "first published version",
+      "user": {
+        "name": "damo"
+      }
+    },
+    "v2": {
+      "created": "2026-10-25T10:23:36Z",
+      "state": {
+        "b68d0b2d899434d26c20ad2d75306d47003564a0a05bbb33fa2382f2f23d1f0a41972b3d381b5107793ec52c84b0c45d1fa62db5e0d47afb53b8081dde3f36ff": [
+          "SKILL.md"
+        ]
+      },
+      "user": {
+        "name": "Damon Oehlman",
+        "address": "https://github.com/defrag-au/shared-crates"
+      }
+    },
+    "v3": {
+      "created": "2026-10-26T00:15:54Z",
+      "state": {
+        "23cb7013c336e7adf05667aeaf15a2664f3086f988dccb069ca9230b84adf39dc5c11c44ff1a1dcfee6b03a7f3243fcf356e60194bea652bc1cfda236a471b66": [
+          "SKILL.md"
+        ]
+      },
+      "message": "document the window title marker for automated runs",
+      "user": {
+        "name": "Damon Oehlman",
+        "address": "https://github.com/defrag-au/shared-crates"
+      }
+    }
+  }
+}
