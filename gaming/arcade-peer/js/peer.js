@@ -212,6 +212,12 @@
   // are the A/B, and the eviction rule below is what the run is judging.
   var PERSIST = /[?&]persist=1/.test(window.location.search || '');
 
+  // `?machine=1` hands every negotiation decision to `arcade_peer::machine`: the
+  // shim reports what the browser did and runs what Rust returns, and its own
+  // negotiation code is not reached. The flag is read here and in Rust from the
+  // same query; neither side tells the other.
+  var MACHINE = /[?&]machine=1/.test(window.location.search || '');
+
   // How long an offer may go unanswered before the attempt is abandoned and
   // retried. Longer than a handshake takes on any path that connects at all
   // (loopback measures ~100 ms; a TURN relay adds round trips, not tens of
@@ -1559,11 +1565,380 @@
     }
   }
 
+  // ── The Rust machine's executor (`?machine=1`) ───────────────────────────
+  //
+  // Every negotiation decision lives in `arcade_peer::machine`. This half keeps
+  // the `RTCPeerConnection`, reports what the browser did as events, and runs
+  // what Rust returns. It decides nothing: where the two disagree, the machine
+  // is right.
+  //
+  // The wire is one tag byte, a seat, then fields — the same length-prefixed
+  // shape `Signal` uses. `arcade-peer`'s tests pin both directions.
+  var machineEvents = [];
+  var machineText = new TextEncoder();
+  var machineReader = new TextDecoder();
+
+  var ME_CANDIDATE = 1;
+  var ME_PC = 2;
+  var ME_CHANNEL_OPEN = 3;
+  var ME_CHANNEL_CLOSED = 4;
+  var ME_LOCAL_OFFER = 5;
+  var ME_LOCAL_ANSWER = 6;
+  var ME_REMOTE_SET = 7;
+  var ME_ROLLED_BACK = 8;
+  var ME_SDP_ERROR = 9;
+
+  var MA_NEGOTIATE = 1;
+  var MA_ANSWER = 2;
+  var MA_ACCEPT = 3;
+  var MA_ADD_CANDIDATE = 4;
+  var MA_ROLLBACK = 5;
+  var MA_CLOSE = 6;
+  var MA_NOTE = 7;
+
+  function machineWriter() {
+    var parts = [];
+    var writer = {
+      u8: function (value) {
+        parts.push(new Uint8Array([value & 0xff]));
+        return writer;
+      },
+      u16: function (value) {
+        parts.push(new Uint8Array([value & 0xff, (value >> 8) & 0xff]));
+        return writer;
+      },
+      blob: function (bytes) {
+        var body = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+        var take = Math.min(body.length, 65535);
+        writer.u16(take);
+        parts.push(body.subarray(0, take));
+        return writer;
+      },
+      done: function () {
+        var total = 0;
+        for (var i = 0; i < parts.length; i += 1) {
+          total += parts[i].length;
+        }
+        var out = new Uint8Array(total);
+        var at = 0;
+        for (var j = 0; j < parts.length; j += 1) {
+          out.set(parts[j], at);
+          at += parts[j].length;
+        }
+        return out;
+      },
+    };
+    return writer;
+  }
+
+  function machineEmit(tag, seat, fill) {
+    var writer = machineWriter();
+    writer.u8(tag);
+    writer.u16(seat);
+    if (fill) {
+      fill(writer);
+    }
+    machineEvents.push(writer.done());
+  }
+
+  function pcCode(state) {
+    switch (state) {
+      case 'connecting':
+        return 1;
+      case 'connected':
+        return 2;
+      case 'disconnected':
+        return 3;
+      case 'failed':
+        return 4;
+      case 'closed':
+        return 5;
+      default:
+        return 0;
+    }
+  }
+
+  function machineLink(seat) {
+    var link = links.get(seat);
+    if (link) {
+      return link;
+    }
+    link = {
+      seat: seat,
+      pc: null,
+      ctrl: null,
+      state: null,
+      offerer: false,
+      myEpoch: 0,
+      theirEpoch: 0,
+      sentState: 0,
+      sentCtrl: 0,
+      recvState: 0,
+      recvCtrl: 0,
+      opens: 0,
+      idle: false,
+      rttMs: null,
+      local: null,
+      remote: null,
+    };
+    links.set(seat, link);
+    return link;
+  }
+
+  function machineEnsure(link) {
+    if (link.pc) {
+      return link.pc;
+    }
+    var options = { iceServers: ICE.servers };
+    if (RELAY) {
+      options.iceTransportPolicy = 'relay';
+    }
+    var pc = new RTCPeerConnection(options);
+    link.pc = pc;
+    pc.onicecandidate = function (event) {
+      if (!event.candidate) {
+        return;
+      }
+      countCandidate(event.candidate);
+      machineEmit(ME_CANDIDATE, link.seat, function (writer) {
+        writer.blob(machineText.encode(JSON.stringify(event.candidate.toJSON())));
+      });
+    };
+    pc.onconnectionstatechange = function () {
+      machineEmit(ME_PC, link.seat, function (writer) {
+        writer.u8(pcCode(pc.connectionState));
+      });
+    };
+    pc.ondatachannel = function (event) {
+      machineWire(event.channel, link, event.channel.label === 'ctrl' ? 0 : 1);
+    };
+    return pc;
+  }
+
+  // The channels themselves are `wire`'s: it owns the counters, the receive
+  // queue and the dormant-link rule, none of which the machine cares about. The
+  // open and close events are added here because the machine does.
+  function machineWire(channel, link, which) {
+    wire(channel, link, which === 0 ? 'ctrl' : 'state');
+    var opened = channel.onopen;
+    var closed = channel.onclose;
+    channel.onopen = function () {
+      opened();
+      machineEmit(ME_CHANNEL_OPEN, link.seat, function (writer) {
+        writer.u8(which);
+      });
+    };
+    channel.onclose = function () {
+      closed();
+      machineEmit(ME_CHANNEL_CLOSED, link.seat, function (writer) {
+        writer.u8(which);
+      });
+    };
+    if (which === 0) {
+      link.ctrl = channel;
+    } else {
+      link.state = channel;
+    }
+    return channel;
+  }
+
+  function machineSdpError(seat, why) {
+    machineEmit(ME_SDP_ERROR, seat, function (writer) {
+      writer.blob(machineText.encode(why));
+    });
+  }
+
+  function machineNegotiate(seat, restart) {
+    var link = machineLink(seat);
+    var pc = machineEnsure(link);
+    if (!link.ctrl) {
+      machineWire(pc.createDataChannel('ctrl', { ordered: true }), link, 0);
+    }
+    if (!link.state) {
+      machineWire(pc.createDataChannel('state', { ordered: false, maxRetransmits: 0 }), link, 1);
+    }
+    if (restart) {
+      pc.restartIce();
+      window.__bt.negotiations.restarts += 1;
+    }
+    window.__bt.negotiations.offered += 1;
+    note(seat, restart ? 'restarting ice' : 'offering');
+    pc.createOffer()
+      .then(function (offer) {
+        return pc.setLocalDescription(offer);
+      })
+      .then(function () {
+        machineEmit(ME_LOCAL_OFFER, seat, function (writer) {
+          writer.blob(machineText.encode(pc.localDescription.sdp));
+        });
+      })
+      .catch(function (e) {
+        machineSdpError(seat, 'offer: ' + describe(e));
+      });
+  }
+
+  function machineAnswer(seat) {
+    var link = links.get(seat);
+    if (!link || !link.pc) {
+      return;
+    }
+    var pc = link.pc;
+    window.__bt.negotiations.answered += 1;
+    pc.createAnswer()
+      .then(function (answer) {
+        return pc.setLocalDescription(answer);
+      })
+      .then(function () {
+        machineEmit(ME_LOCAL_ANSWER, seat, function (writer) {
+          writer.blob(machineText.encode(pc.localDescription.sdp));
+        });
+      })
+      .catch(function (e) {
+        machineSdpError(seat, 'answer: ' + describe(e));
+      });
+  }
+
+  function machineAccept(seat, answer, sdp) {
+    // The answering end has no connection until the first offer arrives: the
+    // machine's link record is Rust's, and this is where the browser half is
+    // created for it.
+    var link = machineLink(seat);
+    var pc = machineEnsure(link);
+    pc.setRemoteDescription({ type: answer ? 'answer' : 'offer', sdp: sdp })
+      .then(function () {
+        machineEmit(ME_REMOTE_SET, seat, function (writer) {
+          writer.u8(answer ? 1 : 0);
+        });
+      })
+      .catch(function (e) {
+        machineSdpError(seat, (answer ? 'answer: ' : 'offer: ') + describe(e));
+      });
+  }
+
+  function machineAddCandidate(seat, text) {
+    var link = links.get(seat);
+    if (!link || !link.pc) {
+      return;
+    }
+    var candidate;
+    try {
+      candidate = JSON.parse(text);
+    } catch (e) {
+      console.warn('[peer] seat ' + seat + ' sent an unreadable candidate');
+      return;
+    }
+    link.pc.addIceCandidate(candidate).catch(function (e) {
+      console.warn('[peer] seat ' + seat + ' candidate: ' + describe(e));
+    });
+  }
+
+  function machineRollback(seat) {
+    var link = links.get(seat);
+    if (!link || !link.pc) {
+      return;
+    }
+    link.pc
+      .setLocalDescription({ type: 'rollback' })
+      .then(function () {
+        machineEmit(ME_ROLLED_BACK, seat, null);
+      })
+      .catch(function (e) {
+        machineSdpError(seat, 'rollback: ' + describe(e));
+      });
+  }
+
+  function machineClose(seat) {
+    var link = links.get(seat);
+    if (!link) {
+      return;
+    }
+    reset(link, 'closed by the machine');
+    links.delete(seat);
+    rollup();
+  }
+
+  function machineApply(bytes) {
+    var at = 0;
+    function take8() {
+      return bytes[at++];
+    }
+    function take16() {
+      var value = bytes[at] | (bytes[at + 1] << 8);
+      at += 2;
+      return value;
+    }
+    function takeText() {
+      var length = take16();
+      var body = bytes.subarray(at, at + length);
+      at += length;
+      return machineReader.decode(body);
+    }
+    while (at < bytes.length) {
+      var tag = take8();
+      var seat = take16();
+      if (tag === MA_NEGOTIATE) {
+        machineNegotiate(seat, take8() !== 0);
+      } else if (tag === MA_ANSWER) {
+        machineAnswer(seat);
+      } else if (tag === MA_ACCEPT) {
+        var answer = take8() !== 0;
+        machineAccept(seat, answer, takeText());
+      } else if (tag === MA_ADD_CANDIDATE) {
+        machineAddCandidate(seat, takeText());
+      } else if (tag === MA_ROLLBACK) {
+        machineRollback(seat);
+      } else if (tag === MA_CLOSE) {
+        machineClose(seat);
+      } else if (tag === MA_NOTE) {
+        note(seat, takeText());
+      } else {
+        break;
+      }
+    }
+  }
+
+  // What the browser observed since the last frame, in the order it happened.
+  window.__btEvents = function () {
+    if (machineEvents.length === 0) {
+      return new Uint8Array(0);
+    }
+    var total = 0;
+    for (var i = 0; i < machineEvents.length; i += 1) {
+      total += machineEvents[i].length;
+    }
+    var out = new Uint8Array(total);
+    var at = 0;
+    for (var j = 0; j < machineEvents.length; j += 1) {
+      out.set(machineEvents[j], at);
+      at += machineEvents[j].length;
+    }
+    machineEvents = [];
+    return out;
+  };
+
+  // What the machine decided must happen next.
+  window.__btApply = function (bytes) {
+    machineApply(bytes);
+  };
+
   // ── Entry points ─────────────────────────────────────────────────────────
 
   // The room has seated us. Called from Rust whenever the seat changes, so it
   // must be cheap and idempotent for the seat it is already on.
   window.__btJoin = function (seat) {
+    if (MACHINE) {
+      // The machine is told by Rust. This only records the seat, because every
+      // counter and report reads it.
+      if (me === seat) {
+        return false;
+      }
+      me = seat;
+      window.__bt.me = seat;
+      links.clear();
+      seen.clear();
+      queue = [];
+      return true;
+    }
     if (me === seat || pendingJoin === seat) {
       return false;
     }
@@ -1598,6 +1973,15 @@
   // worth having, so the leader opens it without waiting to be announced at.
   // The announce stays as the nudge for a page whose group has not arrived.
   window.__btGroup = function (epoch, members) {
+    if (MACHINE) {
+      // Recorded for the readout; the machine decides what it means.
+      if (group !== null && epoch <= group.epoch) {
+        return false;
+      }
+      group = { epoch: epoch, members: new Set(members) };
+      window.__bt.group = { epoch: epoch, members: members.slice() };
+      return true;
+    }
     if (group !== null && epoch <= group.epoch) {
       return false;
     }
@@ -1789,6 +2173,10 @@
   // the deadline is judged against the link's state once this frame's signals
   // have had their say.
   window.__btDrain = function () {
+    if (MACHINE) {
+      // The machine ticks from Rust; none of the shim's sweeps run in this mode.
+      return;
+    }
     var inbox = window.__btInbox;
     if (inbox && inbox.length > 0) {
       var take = inbox.splice(0, inbox.length);

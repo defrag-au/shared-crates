@@ -127,7 +127,9 @@ pub use holder_board::{
     BoardRow, HolderBoardVm, Holding, HoldingKind, holder_board, holding_chip, holding_colour,
 };
 #[cfg(feature = "trading")]
-pub use holder_map::{HolderMapLayout, HolderMapState, HolderMapVm, MapGroup, MapTile, holder_map};
+pub use holder_map::{
+    GROUPS, HolderMapLayout, HolderMapState, HolderMapVm, MapGroup, MapTile, group_of, holder_map,
+};
 #[cfg(feature = "trading")]
 pub use life_strip::{LifeBucket, LifeStripVm, life_strip, price_band};
 #[cfg(feature = "trading")]
