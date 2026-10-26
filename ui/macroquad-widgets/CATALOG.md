@@ -8,7 +8,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p macroquad-widgets --test catalog`
 Note: these are MACROQUAD widgets. They cannot use wasm-bindgen, so they do not
 interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime pairs.
 
-28 widgets.
+29 widgets.
 
 | module | what it is |
 |---|---|
@@ -16,6 +16,7 @@ interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime p
 | `block_pulse` | `BlockPulse` — the chain's heartbeat on one line: a dot that pops on each new block, a ring filling towards "a block has probably landed", and the time since the last one |
 | `block_train` | `BlockTrain` — recent blocks spaced by real time, with the wait since the last one growing at the right edge |
 | `button` | `Button` atom — a rounded, accent button with idle / hover / pressed / disabled states and three weights (filled / tonal / ghost) |
+| `callout` | `Callout` — one sentence about what just happened, in the colour that says how it went, with an optional action at its end |
 | `change_chip` | `ChangeChip` — a price's change as an arrow and a signed percentage, with the stretch it is measured over under it |
 | `choice_stepper` | `ChoiceStepper` molecule — `LABEL  [‹] value [›]`, for picking one of a list too long for a row of buttons |
 | `detail_sheet` | `DetailSheet` — the detail behind a headline, out of the way until asked for: a modal on a wide screen, a sheet sliding up from the bottom on a phone |

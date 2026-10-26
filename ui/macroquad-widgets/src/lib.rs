@@ -13,6 +13,7 @@ mod block_pulse;
 #[cfg(feature = "chain")]
 mod block_train;
 mod button;
+mod callout;
 mod choice_stepper;
 // Host-owned helpers, not widgets: these hold state across frames, which the
 // charter forbids inside a widget precisely so it lives somewhere named.
@@ -75,6 +76,7 @@ pub use block_train::{
     TrainState, block_train, rider_depth, riders,
 };
 pub use button::{Button, ButtonVariant};
+pub use callout::{CalloutTone, CalloutVm, callout, tone_ink};
 pub use choice_stepper::{ChoiceStepperVm, choice_stepper};
 pub use detail_sheet::{
     BOTTOM_SHEET_BELOW, DetailRow, DetailSheetVm, RowTone, SheetForm, SheetResponse, SheetState,
@@ -111,6 +113,10 @@ pub use squad_picker::{
     squad_picker,
 };
 pub use theme::Theme;
+/// The ramp step a VM names. Re-exported because a `CalloutVm` carries one:
+/// a host that depends on this crate alone can name its step without also
+/// depending on `ui-theme`.
+pub use ui_theme::TextSize;
 pub use wallet_connect::{
     WalletAction, WalletConnectVm, WalletItem, WalletResponse, WalletState, wallet_connect,
 };

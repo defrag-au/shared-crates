@@ -345,6 +345,24 @@ impl<S: RoomSim> Room<S> {
             .map(|(seat, s)| (*seat, s.player.as_str()))
     }
 
+    /// Each seat's interest set as last published, and the epoch naming it.
+    ///
+    /// This is what the peer plane is built from: a seat's signal reaches the
+    /// seats its own set names, and the sets are mutual. Read-only — the room
+    /// recomputes it on the regroup interval and nothing else writes it. A
+    /// monitor reads it to say how many links a world *expects*, which is the
+    /// number a link count is only meaningful against.
+    pub fn groups(&self) -> impl Iterator<Item = (Seat, &[Seat])> {
+        self.groups
+            .iter()
+            .map(|(seat, members)| (*seat, members.as_slice()))
+    }
+
+    /// The epoch naming the sets [`groups`](Self::groups) returns.
+    pub fn group_epoch(&self) -> u32 {
+        self.group_epoch
+    }
+
     /// Tell the world something the host knows from outside it (a server's
     /// progress towards its goals) as a [`Change::World`] at the next tick.
     pub fn world_fact(&mut self, bytes: Vec<u8>) {
@@ -612,7 +630,11 @@ impl<S: RoomSim> Room<S> {
         let Some(c) = self.conns.get_mut(&conn) else {
             return false;
         };
-        let bucket = if signal { &mut c.signals } else { &mut c.frames };
+        let bucket = if signal {
+            &mut c.signals
+        } else {
+            &mut c.frames
+        };
         if bucket.spend(hz, burst, now) {
             return true;
         }

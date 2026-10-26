@@ -19,14 +19,15 @@ use chain_fixture::{ChainSim, Scenario};
 use gamekit_stories::{KitStory, KitView};
 use macroquad::prelude::*;
 use macroquad_widgets::{
-    BlockPulseVm, BlockTrainVm, Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility,
-    FloatingStick, FulfilmentAction, FulfilmentStatus, FulfilmentTx, Gesture, Gestures,
-    MintCheckoutVm, OrderFulfilmentVm, OrderStatus, Painter, PulseDetail, PulseTicker,
-    QuantityStepperVm, RiderState, SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerVm,
-    StepperAction, StickView, SwipeDir, Theme, TrainRider, TrainState, WalletAction,
+    BlockPulseVm, BlockTrainVm, Button, ButtonVariant, CalloutTone, CalloutVm, CheckoutAction,
+    CheckoutState, Eligibility, FloatingStick, FulfilmentAction, FulfilmentStatus, FulfilmentTx,
+    Gesture, Gestures, MintCheckoutVm, OrderFulfilmentVm, OrderStatus, Painter, PulseDetail,
+    PulseTicker, QuantityStepperVm, RiderState, SquadCandidate, SquadCommit, SquadPickerAction,
+    SquadPickerVm, StepperAction, StickView, SwipeDir, Theme, TrainRider, TrainState, WalletAction,
     WalletConnectVm, WalletItem, WalletListAction, WalletListState, WalletListVm, WalletRow,
-    WalletState, block_pulse, block_train, floating_stick, mint_checkout, order_fulfilment,
-    quantity_stepper, segmented, segmented_pills, squad_picker, theme, wallet_connect, wallet_list,
+    WalletState, block_pulse, block_train, callout, floating_stick, mint_checkout,
+    order_fulfilment, quantity_stepper, segmented, segmented_pills, squad_picker, theme,
+    wallet_connect, wallet_list,
 };
 use route_stories::RouteStory;
 use trading_stories::{TradingStory, TradingView};
@@ -114,7 +115,15 @@ enum ChainView {
 enum Body {
     Buttons,
     /// A segmented control, in the track shape or the pill one.
-    Segmented { pills: bool },
+    Segmented {
+        pills: bool,
+    },
+    /// The callout's six tones, with or without an action, or one row per ramp
+    /// step.
+    Callout {
+        action: bool,
+        sizes: bool,
+    },
     // Boxed: `ChainStory` holds a whole `Heartbeat` (a 256-slot ring plus the
     // scripted feed) inline, which every other variant would otherwise pay for.
     Chain(Box<ChainStory>),
@@ -147,6 +156,7 @@ struct StickStory {
 enum Kind {
     Buttons,
     Segmented,
+    Callout,
     Chain,
     Stepper,
     Wallet,
@@ -233,6 +243,14 @@ impl Story {
         }
     }
 
+    fn callout(category: &'static str, name: &'static str, action: bool, sizes: bool) -> Self {
+        Self {
+            category,
+            name,
+            body: Body::Callout { action, sizes },
+        }
+    }
+
     fn wallet(category: &'static str, name: &'static str, state: WalletState) -> Self {
         Self {
             category,
@@ -261,6 +279,7 @@ impl Story {
         match self.body {
             Body::Buttons => Kind::Buttons,
             Body::Segmented { .. } => Kind::Segmented,
+            Body::Callout { .. } => Kind::Callout,
             Body::Chain(_) => Kind::Chain,
             Body::Stepper(_) => Kind::Stepper,
             Body::Wallet(_) => Kind::Wallet,
@@ -452,6 +471,9 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::stepper("atoms", "quantity stepper", 2),
         Story::segmented("atoms", "segmented · track", false),
         Story::segmented("atoms", "segmented · pills", true),
+        Story::callout("atoms", "callout · tones", false, false),
+        Story::callout("atoms", "callout · with an action", true, false),
+        Story::callout("atoms", "callout · sizes", false, true),
         Story::stick("input", "floating stick"),
         Story::wallet(
             "wallet",
@@ -1146,6 +1168,62 @@ impl Storybook {
                     segmented_pills(p, row, &options, 1);
                 } else {
                     let _ = segmented(p, row, &options, 1, true);
+                }
+            }
+            Kind::Callout => {
+                let action = matches!(self.stories[sel].body, Body::Callout { action: true, .. });
+                let sizes = matches!(self.stories[sel].body, Body::Callout { sizes: true, .. });
+                let mut ry = y;
+                if sizes {
+                    // The four steps the adopting surfaces already drew at, so
+                    // a host picks its own and the adoption is not a restyle.
+                    for (label, step) in [
+                        ("Base", TextSize::Base),
+                        ("Md", TextSize::Md),
+                        ("Xl", TextSize::Xl),
+                        ("Xl2", TextSize::Xl2),
+                    ] {
+                        let row = Rect::new(x0 + 44.0, ry, col_w.min(420.0) - 44.0, 24.0);
+                        p.text_mid(
+                            label,
+                            x0,
+                            row.y + row.h * 0.5,
+                            p.size(TextSize::Xs),
+                            p.theme.color.text_muted,
+                        );
+                        let vm = CalloutVm {
+                            tone: CalloutTone::Positive,
+                            text: "LANDED in block 10,441,882",
+                            action: None,
+                            size: step,
+                        };
+                        let _ = callout(p, &vm, row);
+                        ry += 34.0;
+                    }
+                } else {
+                    // The sentences five surfaces actually draw, one per tone.
+                    let rows = [
+                        ("SENT · 0f3a…9c2e", CalloutTone::Normal),
+                        ("waiting on the batcher", CalloutTone::Muted),
+                        (
+                            "IN BLOCK 10,441,882 · minswap-v2 filling",
+                            CalloutTone::Busy,
+                        ),
+                        ("LANDED in block 10,441,882", CalloutTone::Positive),
+                        ("settled, but one order unfilled", CalloutTone::Warn),
+                        ("could not open the block feed", CalloutTone::Negative),
+                    ];
+                    for (text, tone) in rows {
+                        let vm = CalloutVm {
+                            tone,
+                            text,
+                            action: action.then_some("Try again"),
+                            size: TextSize::Base,
+                        };
+                        let row = Rect::new(x0, ry, col_w.min(420.0), 22.0);
+                        let _ = callout(p, &vm, row);
+                        ry += 30.0;
+                    }
                 }
             }
             Kind::Chain => self.draw_chain(p, sel, x0, y),

@@ -736,6 +736,36 @@ fn a_group_is_the_seats_the_world_says_are_near() {
     );
 }
 
+/// A monitor reads the sets the room published, not the sim's idea of who is
+/// near: the same memberships the clients were sent, under one epoch. This is
+/// the number a link count is only meaningful against.
+#[test]
+fn the_published_groups_are_readable_after_a_regroup() {
+    let mut h = Harness::<Walkers>::new(15, cfg());
+    let a = h.connect("a", true, 20, 0);
+    let b = h.connect("b", true, 20, 0);
+    h.run(1_200, |_, _, _| None);
+    let (a_seat, b_seat) = (
+        h.client(a).expect("playing").seat(),
+        h.client(b).expect("playing").seat(),
+    );
+
+    let published: Vec<(Seat, Vec<Seat>)> = h
+        .room
+        .groups()
+        .map(|(seat, members)| (seat, members.to_vec()))
+        .collect();
+    assert_eq!(
+        published,
+        vec![(a_seat, vec![b_seat]), (b_seat, vec![a_seat])],
+        "the room's own sets do not name the pair"
+    );
+    assert!(
+        h.room.group_epoch() > 0,
+        "the sets are not named by an epoch"
+    );
+}
+
 /// Three seats and interest sets that are mutual for one pair and one-way for
 /// the third: 0 and 1 name each other, and 2 names 0 while 0 does not name 2.
 /// Enough to pin that the published group is the mutual core — the pair links,
@@ -1115,9 +1145,7 @@ fn every_published_pair_can_be_started_by_its_lower_seat() {
         for other in members {
             let (leader, follower) = ((*seat).min(*other), (*seat).max(*other));
             assert!(
-                groups
-                    .get(&leader)
-                    .is_some_and(|m| m.contains(&follower)),
+                groups.get(&leader).is_some_and(|m| m.contains(&follower)),
                 "{leader}'s group does not name {follower}, so neither end can start"
             );
         }

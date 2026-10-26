@@ -2319,7 +2319,9 @@ mod tests {
             10_001,
         );
         assert!(
-            reply.iter().any(|action| matches!(action, Action::Answer { .. })),
+            reply
+                .iter()
+                .any(|action| matches!(action, Action::Answer { .. })),
             "a restart's offer was never answered"
         );
 
@@ -2497,7 +2499,8 @@ mod tests {
         // A frame that decides nothing publishes nothing.
         let idle = machine.on(Event::Tick, 21);
         assert!(
-            idle.iter().all(|action| !matches!(action, Action::Stats(_))),
+            idle.iter()
+                .all(|action| !matches!(action, Action::Stats(_))),
             "an unchanged set of counters was re-published"
         );
     }
