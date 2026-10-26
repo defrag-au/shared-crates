@@ -575,6 +575,64 @@ mod tests {
         );
     }
 
+    /// One function scope: a second `function` declaration of the same name is
+    /// not an error, it silently replaces the first. That is how a `getStats`
+    /// helper called `candidateType` replaced the counter's, and every gathered
+    /// candidate started being counted as `null` — a run of `p2p-turn.dsl` was
+    /// the only thing that noticed.
+    #[test]
+    fn the_browser_half_declares_each_helper_once() {
+        let mut seen: Vec<String> = Vec::new();
+        for line in PEER_JS.lines() {
+            let Some(rest) = line.trim_start().strip_prefix("function ") else {
+                continue;
+            };
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            // `function (` is an anonymous expression; a declaration names a
+            // function and opens its arguments.
+            if name.is_empty() || !rest[name.len()..].starts_with('(') {
+                continue;
+            }
+            assert!(
+                !seen.contains(&name),
+                "`{name}` is declared twice, and the second declaration silently replaces the first"
+            );
+            seen.push(name);
+        }
+        assert!(seen.len() > 50, "the scan found {seen:?}");
+    }
+
+    /// §12.2 decides whether colo belongs in the interest set, and it needs the
+    /// path a link is actually using. A shim with no `getStats` can only report
+    /// that a link is open, which is the same answer for a peer next door and a
+    /// peer on another continent.
+    #[test]
+    fn the_browser_half_samples_the_path() {
+        assert!(
+            PEER_JS.contains("getStats()"),
+            "no candidate-pair statistics, so a report cannot say how far a peer is"
+        );
+        assert!(
+            PEER_JS.contains("candidate-pair"),
+            "the sample does not read the pair in use"
+        );
+        assert!(
+            PEER_JS.contains("currentRoundTripTime"),
+            "the sample does not read the round trip"
+        );
+        assert!(
+            PEER_JS.contains("pairCandidateType"),
+            "the sample does not say whether the pair is direct or relayed"
+        );
+        assert!(
+            PEER_JS.contains("    samplePaths(now);"),
+            "the per-frame sweep never samples, so nothing is ever filled in"
+        );
+    }
+
     /// TURN's credentials are short-lived and cannot ship in this file, so the
     /// shim asks the room for them (`GET /ice`). A shim that stops asking still
     /// connects — it simply never relays — which is the failure this pins.

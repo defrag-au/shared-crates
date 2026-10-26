@@ -199,6 +199,30 @@ pub struct Room<S: RoomSim> {
 /// id, such as `discord:<user id>`), or `None` when it does not verify.
 pub type Identify = Box<dyn Fn(&str) -> Option<String>>;
 
+/// What a room received, by kind. [`RoomStats::frames_in`] counts every frame,
+/// including one that does not decode; these count the ones that did.
+///
+/// They exist for one number: the per-player rate into the object
+/// (`docs/P2P_OVERLAY_DESIGN.md` §12.1). `inputs` beside `heartbeats` is what
+/// decides whether the design's rate split buys anything — a player holding a
+/// direction sends one input frame and then heartbeats, so the two counts say
+/// how much of the advertised ten a second is a change and how much is the
+/// client saying it is still here.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Inbound {
+    pub hellos: u64,
+    /// Input frames carrying a change.
+    pub inputs: u64,
+    /// Input frames carrying none: [`Client::poll`](crate::Client::poll)'s
+    /// heartbeat, which is what a quiet player costs.
+    pub heartbeats: u64,
+    pub pings: u64,
+    pub hashes: u64,
+    /// Both signalling forms — broadcast and targeted — because the peer plane
+    /// spends them the same way.
+    pub signals: u64,
+}
+
 /// What the room has seen, for logs and tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RoomStats {
@@ -213,6 +237,13 @@ pub struct RoomStats {
     /// Connections turned away for flooding: more signalling or more frames
     /// than [`RoomConfig`] allows.
     pub rate_refused: u64,
+    /// Frames and bytes received, counted as they arrive and before decoding:
+    /// the connection's cost to the object, whether or not the frame was
+    /// readable.
+    pub frames_in: u64,
+    pub bytes_in: u64,
+    /// The same frames by kind, after decoding.
+    pub inbound: Inbound,
 }
 
 const SAVE_MAGIC: &[u8] = b"ARM1";
@@ -421,12 +452,17 @@ impl<S: RoomSim> Room<S> {
 
     /// A frame from `conn`.
     pub fn message(&mut self, conn: ConnId, bytes: &[u8], now: u64) {
+        // Counted first, and before the connection is looked up: the object
+        // received the frame, whatever became of it.
+        self.stats.frames_in = self.stats.frames_in.saturating_add(1);
+        self.stats.bytes_in = self.stats.bytes_in.saturating_add(bytes.len() as u64);
         let Some(c) = self.conns.get(&conn).cloned() else {
             return;
         };
         let Ok(msg) = ToRoom::decode(bytes) else {
             return;
         };
+        self.count_in(&msg);
         if !self.within_rate(conn, &msg, now) {
             return;
         }
@@ -532,6 +568,26 @@ impl<S: RoomSim> Room<S> {
             _ => {}
         }
         self.poll(now);
+    }
+
+    /// Count a decoded frame by kind.
+    ///
+    /// Before the rate check, so a refused frame is still attributed: the room
+    /// received it and read it, which is the cost being measured.
+    fn count_in(&mut self, msg: &ToRoom) {
+        let n = &mut self.stats.inbound;
+        match msg {
+            ToRoom::Hello { .. } => n.hellos = n.hellos.saturating_add(1),
+            ToRoom::Inputs(changes) if changes.is_empty() => {
+                n.heartbeats = n.heartbeats.saturating_add(1);
+            }
+            ToRoom::Inputs(_) => n.inputs = n.inputs.saturating_add(1),
+            ToRoom::Ping { .. } => n.pings = n.pings.saturating_add(1),
+            ToRoom::Hash { .. } => n.hashes = n.hashes.saturating_add(1),
+            ToRoom::Signal(_) | ToRoom::SignalTo { .. } => {
+                n.signals = n.signals.saturating_add(1);
+            }
+        }
     }
 
     /// Spend from the right bucket, and refuse the connection if it is empty.

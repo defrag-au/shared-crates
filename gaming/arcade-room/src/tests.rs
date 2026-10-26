@@ -1225,3 +1225,100 @@ fn the_two_planes_have_separate_budgets() {
         "a second input frame was not refused"
     );
 }
+
+/// Every frame the object receives is counted, and every frame it can read is
+/// attributed to a kind. The breakdown is what §12.1's number is made of: a
+/// heartbeat beside an input is the difference between a player saying it is
+/// still here and a player changing what they are doing.
+#[test]
+fn the_room_counts_what_each_connection_sends() {
+    let mut room = two_seats(cfg());
+    let before = room.stats();
+
+    room.message(1, &ToRoom::Inputs(Vec::new()).encode(), 0);
+    room.message(1, &ToRoom::Inputs(vec![(1, vec![1, 2])]).encode(), 0);
+    room.message(1, &ToRoom::Ping { client_ms: 1 }.encode(), 0);
+    room.message(1, &ToRoom::Hash { tick: 0, hash: 0 }.encode(), 0);
+    room.message(1, &targeted(1), 0);
+    // A frame that does not decode is the object's cost too, and belongs to no
+    // kind: it is the difference between the total and the breakdown.
+    room.message(1, &[0xff], 0);
+
+    let stats = room.stats();
+    assert_eq!(stats.frames_in - before.frames_in, 6, "{stats:?}");
+    assert_eq!(stats.inbound.heartbeats - before.inbound.heartbeats, 1);
+    assert_eq!(stats.inbound.inputs - before.inbound.inputs, 1);
+    assert_eq!(stats.inbound.pings - before.inbound.pings, 1);
+    assert_eq!(stats.inbound.hashes - before.inbound.hashes, 1);
+    assert_eq!(stats.inbound.signals - before.inbound.signals, 1);
+    assert_eq!(
+        stats.inbound.hellos, 2,
+        "both seats' hellos were counted: {stats:?}"
+    );
+    let counted = stats.inbound.hellos
+        + stats.inbound.inputs
+        + stats.inbound.heartbeats
+        + stats.inbound.pings
+        + stats.inbound.hashes
+        + stats.inbound.signals;
+    assert_eq!(
+        counted,
+        stats.frames_in - 1,
+        "the breakdown is every frame but the unreadable one: {stats:?}"
+    );
+}
+
+/// What one player costs the room: a heartbeat every `HEARTBEAT_MS`, a ping
+/// every two seconds and a hash every second, all on the input plane. **About
+/// eleven a second is the floor, and it is the heartbeat** — a player holding a
+/// direction sends one input for the press, not sixty, because
+/// [`Client::input`](crate::Client::input) sends on change and a held stick does
+/// not change. This is §12.1's measurement, pinned so a change to the client's
+/// pacing has to come with a new number.
+#[test]
+fn a_player_costs_the_room_about_eleven_frames_a_second() {
+    let bots = 4;
+    let seconds = 20;
+    let mut h = Harness::<Walkers>::new(7, cfg());
+    for i in 0..bots {
+        h.connect(&format!("p{i}"), true, 30, 10);
+    }
+    // Settle: the hellos and the world starting.
+    h.run(2_000, |_, _, _| None);
+    let joined = h.room.stats();
+    assert_eq!(joined.inbound.hellos, bots as u64, "{joined:?}");
+
+    // Twenty seconds of nobody pressing anything.
+    let before = h.room.stats();
+    h.run(seconds * 1_000, |_, _, _| None);
+    let quiet = h.room.stats();
+    let rate = (quiet.frames_in - before.frames_in) / (bots as u64 * seconds);
+    assert!(
+        (9..=13).contains(&rate),
+        "a quiet player sent {rate} frames a second: {quiet:?}"
+    );
+    assert_eq!(
+        quiet.inbound.inputs, before.inbound.inputs,
+        "nobody moved, so no input carried a change: {quiet:?}"
+    );
+    let heartbeats =
+        (quiet.inbound.heartbeats - before.inbound.heartbeats) / (bots as u64 * seconds);
+    assert!(
+        (8..=11).contains(&heartbeats),
+        "the heartbeat alone was {heartbeats} a second: {quiet:?}"
+    );
+
+    // Twenty more, steering twice a second.
+    let before = h.room.stats();
+    h.run(seconds * 1_000, |i, _, now| wander(i, now));
+    let moving = h.room.stats();
+    let rate = (moving.frames_in - before.frames_in) / (bots as u64 * seconds);
+    assert!(
+        (9..=15).contains(&rate),
+        "a moving player sent {rate} frames a second: {moving:?}"
+    );
+    assert!(
+        moving.inbound.inputs - before.inbound.inputs > 100,
+        "a change was sent each time the stick moved: {moving:?}"
+    );
+}

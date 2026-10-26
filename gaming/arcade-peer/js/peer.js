@@ -74,6 +74,15 @@
 // epoch deliberately: a higher one means "start over", which would tear down the
 // very channels the restart is there to keep.
 //
+// ## What the path is worth
+//
+// A peer one hop away and a peer on another continent are the same 20 Hz
+// stream; what differs is the confirmed stream's round trip. `__btDrain` samples
+// each link's nominated candidate pair once a second and leaves the round trip
+// and both candidates' types on the link, so a report can say "direct, 4.2 ms"
+// rather than assuming it. Design §12.2 is the measurement that decides whether
+// colo belongs in the interest set, and this is its instrument.
+//
 // ## Announcing
 //
 // `Announce` is broadcast, and the room stamps the sender. A peer that joined
@@ -717,6 +726,13 @@
       recvCtrl: 0,
       sentState: 0,
       recvState: 0,
+      // The nominated candidate pair, sampled once a second (see
+      // `samplePaths`). `null` until a report lands: a connection has no round
+      // trip to report until its checks have succeeded.
+      rttMs: null,
+      local: null,
+      remote: null,
+      sampling: false,
     };
     links.set(seat, link);
     return link;
@@ -827,6 +843,12 @@
         opens: link.opens,
         idle: link.idle,
         healthy: isHealthy(link),
+        // The path this link is actually using: tenths of a millisecond of
+        // round trip, and whether each end is a local address, a mapped one or
+        // a relay. `null` until the first sample.
+        rttMs: link.rttMs,
+        local: link.local,
+        remote: link.remote,
       });
     });
     window.__bt.links = detail;
@@ -1583,6 +1605,82 @@
     return true;
   }
 
+  // ── Path quality ─────────────────────────────────────────────────────────
+  //
+  // Candidate-pair round trip per link, sampled once a second from the
+  // browser's own stats. It is the one number that says whether a peer is next
+  // door or on another continent — the stream is 20 Hz either way — and §12.2 of
+  // the design turns on it.
+  //
+  // Sampled rather than asked for on demand because `getStats` is a promise: a
+  // report taken at the moment of an assertion could only be awaited by the
+  // caller, and the game's frame loop cannot wait a frame for telemetry.
+  var PATH_EVERY_MS = 1000;
+  var lastPath = 0;
+
+  function samplePaths(now) {
+    if (now - lastPath < PATH_EVERY_MS) {
+      return;
+    }
+    lastPath = now;
+    links.forEach(function (link) {
+      // One report in flight per link: a slow report must not queue another.
+      if (link.pc === null || link.sampling) {
+        return;
+      }
+      link.sampling = true;
+      link.pc.getStats().then(function (report) {
+        link.sampling = false;
+        var best = null;
+        report.forEach(function (stat) {
+          if (stat.type !== 'candidate-pair' || stat.state !== 'succeeded') {
+            return;
+          }
+          // Chrome marks the pair in use `selected`; older builds and other
+          // browsers use `nominated`. Take the most marked, then the one that
+          // has actually carried bytes.
+          var score = (stat.selected ? 2 : 0) + (stat.nominated ? 1 : 0);
+          if (best === null || score > best.score ||
+              (score === best.score &&
+               (stat.bytesSent || 0) > (best.stat.bytesSent || 0))) {
+            best = { score: score, stat: stat };
+          }
+        });
+        if (best === null) {
+          return;
+        }
+        var pair = best.stat;
+        if (typeof pair.currentRoundTripTime === 'number') {
+          // Tenths of a millisecond: loopback reads 0.1–0.5, and rounding to
+          // whole milliseconds would call every local pair zero.
+          link.rttMs = Math.round(pair.currentRoundTripTime * 10000) / 10;
+        }
+        link.local = pairCandidateType(report, pair.localCandidateId);
+        link.remote = pairCandidateType(report, pair.remoteCandidateId);
+      }).catch(function () {
+        // The connection went away between the call and the report, which its
+        // own state already says. A rejected sample is not an error.
+        link.sampling = false;
+      });
+    });
+  }
+
+  // `host`, `srflx`, `prflx` or `relay`: whether this end of a pair is a local
+  // address, a mapped one, or a TURN relay. A `relay` on either end explains a
+  // round trip that is nowhere near the two players' distance, and is what
+  // `p2p-turn.dsl` proves.
+  //
+  // Named apart from `candidateType` above on purpose: this file is one
+  // function scope, so a second declaration of that name silently replaced the
+  // counter's and every gathered candidate was counted as `null`.
+  function pairCandidateType(report, id) {
+    if (!id) {
+      return null;
+    }
+    var candidate = report.get(id);
+    return candidate && candidate.candidateType ? candidate.candidateType : null;
+  }
+
   // Whatever has arrived since the last drain, handed to the links. Called by
   // `probe_peer_out` once a frame. The sweep runs after the inbox: an answer
   // that arrives on the frame an offer would have expired is worth applying, so
@@ -1599,6 +1697,7 @@
     var now = performance.now();
     sweepStale(now);
     sweepOffers(now);
+    samplePaths(now);
     pumpQueue();
   };
 
