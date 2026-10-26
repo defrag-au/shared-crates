@@ -605,6 +605,35 @@ mod tests {
         assert!(seen.len() > 50, "the scan found {seen:?}");
     }
 
+    /// An offer the far side answered belongs to ICE; an offer it did not is
+    /// ours to retry. One deadline for both reset the connection every twelve
+    /// seconds — shorter than ICE's own give-up — so a pair that could never
+    /// connect re-offered forever and `negotiations.failed` never counted one
+    /// (design §15). This pins the two deadlines.
+    #[test]
+    fn the_browser_half_gives_an_answered_offer_time_to_fail() {
+        assert!(
+            PEER_JS.contains("var ANSWER_MS = answerMs("),
+            "an answered attempt has no deadline of its own"
+        );
+        assert!(
+            PEER_JS.contains("var answered = link.remoteSet;"),
+            "the sweep cannot tell an answered attempt from an unanswered one"
+        );
+        assert!(
+            PEER_JS.contains("answered ? ANSWER_MS : OFFER_MS"),
+            "both cases share one deadline again"
+        );
+        assert!(
+            PEER_JS.contains("'no path after the answer'"),
+            "an answered attempt that never connects is not named"
+        );
+        assert!(
+            PEER_JS.contains("link.pc.signalingState !== 'have-local-offer'"),
+            "a late answer is applied to a connection with no offer outstanding"
+        );
+    }
+
     /// §12.2 decides whether colo belongs in the interest set, and it needs the
     /// path a link is actually using. A shim with no `getStats` can only report
     /// that a link is open, which is the same answer for a peer next door and a

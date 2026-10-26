@@ -218,6 +218,11 @@
   // seconds), and short enough that a lost signal costs a retry rather than a
   // stare. `?offerMs=<ms>` overrides it; `?offerMs=0` turns expiry off.
   var OFFER_MS = offerMs(window.location.search);
+  // How long an attempt the far side has **answered** may take to connect. Longer
+  // than ICE's own give-up (~30 s) on purpose: `ICE failed` is the report worth
+  // having, and it reaches `dropDead` by itself. This is the backstop for a
+  // browser that never says anything. `?answerMs=<ms>` overrides it; `0` waits.
+  var ANSWER_MS = answerMs(window.location.search);
 
   // How long a link may sit `disconnected` before it is treated as dead. ICE
   // reports `disconnected` for a path that may come back — a wifi hiccup, a
@@ -281,6 +286,15 @@
     var match = /[?&]staleMs=(\d+)/.exec(search || '');
     if (!match) {
       return 10000;
+    }
+    var ms = parseInt(match[1], 10);
+    return ms > 0 ? ms : Infinity;
+  }
+
+  function answerMs(search) {
+    var match = /[?&]answerMs=(\d+)/.exec(search || '');
+    if (!match) {
+      return 30000;
     }
     var ms = parseInt(match[1], 10);
     return ms > 0 ? ms : Infinity;
@@ -1222,14 +1236,20 @@
     }
   }
 
-  // Abandon an offer the far side never answered.
+  // Abandon an attempt that is going nowhere.
   //
-  // The attempt is torn down and the pair told, because the far side may be
-  // holding its half of a negotiation whose answer was lost, and a `Bye` is
-  // cheaper than waiting for it to notice. Then the ordinary paths take over: the
-  // leader offers again on a newer epoch, and the follower announces so the
-  // leader does. `reset` clears `offerSince`, so this cannot fire twice for one
-  // attempt.
+  // Two deadlines, because there are two ways an attempt fails and only one of
+  // them is ours to time. An offer **nobody answered** is a lost signal: the
+  // fault is here, and `OFFER_MS` retries it. An offer the far side **answered**
+  // is no longer ours to judge — ICE decides, and it says `failed` in about
+  // thirty seconds — so `ANSWER_MS` is only the backstop for a browser that
+  // never says anything.
+  //
+  // One deadline used to do both, at twelve seconds. That is shorter than ICE's
+  // own give-up, so a pair whose answer arrived and whose checks could not
+  // succeed was reset before it could fail: it re-offered every twelve seconds
+  // forever, and `failed` — the counter that exists to notice a dead link —
+  // never counted one (design §15).
   function sweepOffer(link, now) {
     if (link.offerSince === 0) {
       return;
@@ -1239,14 +1259,20 @@
       link.offerSince = 0;
       return;
     }
-    if (now - link.offerSince < OFFER_MS) {
+    var answered = link.remoteSet;
+    if (now - link.offerSince < (answered ? ANSWER_MS : OFFER_MS)) {
       return;
     }
     var seat = link.seat;
     var epoch = link.myEpoch;
-    window.__bt.negotiations.expired += 1;
-    note(seat, 'offer expired');
-    reset(link, 'offer expired');
+    var why = answered ? 'no path after the answer' : 'offer expired';
+    if (answered) {
+      window.__bt.negotiations.failed += 1;
+    } else {
+      window.__bt.negotiations.expired += 1;
+    }
+    note(seat, why);
+    reset(link, why);
     sendBye(seat, epoch, BYE_REPLACED);
     if (me === null || link.idle) {
       return;
@@ -1349,6 +1375,19 @@
   function onAnswer(link, msg) {
     if (!link.pc || !link.offerer) {
       note(link.seat, 'answer ignored: not the offerer');
+      return;
+    }
+    // An answer is only good for an offer that is still outstanding. One that
+    // arrives after the attempt it belongs to was reset — expiry, an ICE
+    // failure, a restart — lands on either a connection in `stable` (the new
+    // offer has not been written yet) or one that has already been answered,
+    // and `setRemoteDescription` throws "called in wrong state". The throw used
+    // to reach `fail`, which tore down the *new* attempt: a reset storm that
+    // only became reachable once an answered offer was given time to fail
+    // (design §15). The far side re-answers every offer it receives, so
+    // dropping this one loses nothing.
+    if (link.pc.signalingState !== 'have-local-offer') {
+      note(link.seat, 'answer ignored: no offer outstanding');
       return;
     }
     note(link.seat, 'answer taken ' + msg.sdp.length + 'B sdp');
