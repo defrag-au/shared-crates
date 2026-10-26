@@ -1010,6 +1010,194 @@ impl Machine {
     }
 }
 
+// ── The executor seam ────────────────────────────────────────────────────────
+//
+// The machine lives in Rust and the `RTCPeerConnection` lives in the browser, so
+// two things cross a byte seam each frame: the events the browser observed, and
+// the actions it must run. One tag byte, a seat, then the fields — the same
+// length-prefixed shape `Signal` uses, and for the same reason: SDP is full of
+// `\r\n` and a text format would double every one of them.
+//
+// `Action::Send` never crosses: the host turns it into a room message directly.
+const EVENT_CANDIDATE: u8 = 1;
+const EVENT_PC: u8 = 2;
+const EVENT_CHANNEL_OPEN: u8 = 3;
+const EVENT_CHANNEL_CLOSED: u8 = 4;
+const EVENT_LOCAL_OFFER: u8 = 5;
+const EVENT_LOCAL_ANSWER: u8 = 6;
+const EVENT_REMOTE_SET: u8 = 7;
+const EVENT_ROLLED_BACK: u8 = 8;
+const EVENT_SDP_ERROR: u8 = 9;
+
+const ACTION_NEGOTIATE: u8 = 1;
+const ACTION_ANSWER: u8 = 2;
+const ACTION_ACCEPT: u8 = 3;
+const ACTION_ADD_CANDIDATE: u8 = 4;
+const ACTION_ROLLBACK: u8 = 5;
+const ACTION_CLOSE: u8 = 6;
+const ACTION_NOTE: u8 = 7;
+
+/// The longest note or failure reason the seam carries. A browser's error text
+/// is short; this bounds a malformed sender rather than a working message.
+const MAX_TEXT: usize = 1024;
+
+impl PcState {
+    fn from_code(code: u8) -> Option<Self> {
+        match code {
+            0 => Some(Self::New),
+            1 => Some(Self::Connecting),
+            2 => Some(Self::Connected),
+            3 => Some(Self::Disconnected),
+            4 => Some(Self::Failed),
+            5 => Some(Self::Closed),
+            _ => None,
+        }
+    }
+}
+
+impl Channel {
+    fn from_code(code: u8) -> Option<Self> {
+        match code {
+            0 => Some(Self::Ctrl),
+            1 => Some(Self::State),
+            _ => None,
+        }
+    }
+}
+
+/// Decode what the browser observed since the last frame. An unknown tag is an
+/// error rather than a skip: the two halves are built together, and a mismatch
+/// is a version skew worth seeing.
+pub fn decode_events(bytes: &[u8]) -> Result<Vec<Event>, crate::SignalError> {
+    let mut reader = crate::Reader::new(bytes);
+    let mut events = Vec::new();
+    while !reader.at_end() {
+        let tag = reader.u8()?;
+        let seat = reader.u16()?;
+        let event = match tag {
+            EVENT_CANDIDATE => Event::CandidateGathered {
+                seat,
+                candidate: reader.blob(crate::MAX_CANDIDATE)?,
+            },
+            EVENT_PC => {
+                let code = reader.u8()?;
+                let state = PcState::from_code(code).ok_or(crate::SignalError::UnknownTag(code))?;
+                Event::Pc { seat, state }
+            }
+            EVENT_CHANNEL_OPEN | EVENT_CHANNEL_CLOSED => {
+                let code = reader.u8()?;
+                let which = Channel::from_code(code).ok_or(crate::SignalError::UnknownTag(code))?;
+                if tag == EVENT_CHANNEL_OPEN {
+                    Event::ChannelOpen { seat, which }
+                } else {
+                    Event::ChannelClosed { seat, which }
+                }
+            }
+            EVENT_LOCAL_OFFER => Event::LocalOffer {
+                seat,
+                sdp: reader.blob(crate::MAX_SDP)?,
+            },
+            EVENT_LOCAL_ANSWER => Event::LocalAnswer {
+                seat,
+                sdp: reader.blob(crate::MAX_SDP)?,
+            },
+            EVENT_REMOTE_SET => Event::RemoteSet {
+                seat,
+                answer: reader.u8()? != 0,
+            },
+            EVENT_ROLLED_BACK => Event::RolledBack { seat },
+            EVENT_SDP_ERROR => Event::SdpError {
+                seat,
+                why: String::from_utf8_lossy(&reader.blob(MAX_TEXT)?).into_owned(),
+            },
+            other => return Err(crate::SignalError::UnknownTag(other)),
+        };
+        events.push(event);
+    }
+    Ok(events)
+}
+
+/// Encode what the browser must do next. `Action::Send` is the host's, and is
+/// dropped here rather than silently sent to the wrong side.
+pub fn encode_actions(actions: &[Action]) -> Vec<u8> {
+    let mut writer = crate::Writer::default();
+    for action in actions {
+        match action {
+            Action::Negotiate { seat, restart } => {
+                writer.u8(ACTION_NEGOTIATE);
+                writer.u16(*seat);
+                writer.u8(u8::from(*restart));
+            }
+            Action::Answer { seat } => {
+                writer.u8(ACTION_ANSWER);
+                writer.u16(*seat);
+            }
+            Action::Accept { seat, answer, sdp } => {
+                writer.u8(ACTION_ACCEPT);
+                writer.u16(*seat);
+                writer.u8(u8::from(*answer));
+                writer.blob(sdp);
+            }
+            Action::AddCandidate { seat, candidate } => {
+                writer.u8(ACTION_ADD_CANDIDATE);
+                writer.u16(*seat);
+                writer.blob(candidate);
+            }
+            Action::Rollback { seat } => {
+                writer.u8(ACTION_ROLLBACK);
+                writer.u16(*seat);
+            }
+            Action::Close { seat } => {
+                writer.u8(ACTION_CLOSE);
+                writer.u16(*seat);
+            }
+            Action::Note { seat, what } => {
+                writer.u8(ACTION_NOTE);
+                writer.u16(*seat);
+                writer.blob(what.as_bytes());
+            }
+            Action::Send { .. } => {}
+        }
+    }
+    writer.into_bytes()
+}
+
+/// The other half, for the tests: the browser decodes this in JavaScript, and a
+/// round trip here is what says the two encodings agree.
+#[cfg(test)]
+fn decode_actions(bytes: &[u8]) -> Vec<Action> {
+    let mut reader = crate::Reader::new(bytes);
+    let mut actions = Vec::new();
+    while !reader.at_end() {
+        let tag = reader.u8().expect("tag");
+        let seat = reader.u16().expect("seat");
+        actions.push(match tag {
+            ACTION_NEGOTIATE => Action::Negotiate {
+                seat,
+                restart: reader.u8().expect("restart") != 0,
+            },
+            ACTION_ANSWER => Action::Answer { seat },
+            ACTION_ACCEPT => Action::Accept {
+                seat,
+                answer: reader.u8().expect("answer") != 0,
+                sdp: reader.blob(crate::MAX_SDP).expect("sdp"),
+            },
+            ACTION_ADD_CANDIDATE => Action::AddCandidate {
+                seat,
+                candidate: reader.blob(crate::MAX_CANDIDATE).expect("candidate"),
+            },
+            ACTION_ROLLBACK => Action::Rollback { seat },
+            ACTION_CLOSE => Action::Close { seat },
+            ACTION_NOTE => Action::Note {
+                seat,
+                what: String::from_utf8(reader.blob(MAX_TEXT).expect("note")).expect("utf8"),
+            },
+            other => panic!("unknown action tag {other}"),
+        });
+    }
+    actions
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1352,5 +1540,113 @@ mod tests {
                 .iter()
                 .any(|action| matches!(action, Action::Close { seat: 1 }))
         );
+    }
+
+    /// The seam is two encodings that must agree. This round trip is the whole
+    /// contract: every action the machine can return survives it, except `Send`,
+    /// which the host consumes rather than the browser.
+    #[test]
+    fn the_actions_round_trip_through_the_executor_seam() {
+        let actions = vec![
+            Action::Negotiate {
+                seat: 3,
+                restart: false,
+            },
+            Action::Answer { seat: 1 },
+            Action::Accept {
+                seat: 2,
+                answer: true,
+                sdp: b"v=0\r\n".to_vec(),
+            },
+            Action::AddCandidate {
+                seat: 4,
+                candidate: b"candidate:1 1 udp 1 1.2.3.4 5 typ host".to_vec(),
+            },
+            Action::Rollback { seat: 5 },
+            Action::Close { seat: 6 },
+            Action::Note {
+                seat: 7,
+                what: "offer expired".into(),
+            },
+        ];
+        let encoded = encode_actions(&actions);
+        assert_eq!(decode_actions(&encoded), actions);
+    }
+
+    #[test]
+    fn a_send_action_is_the_hosts_and_never_crosses_the_seam() {
+        let encoded = encode_actions(&[Action::Send {
+            to: Some(1),
+            bytes: b"x".to_vec(),
+        }]);
+        assert!(encoded.is_empty(), "{encoded:?}");
+    }
+
+    #[test]
+    fn the_browser_events_decode_in_order() {
+        // Built by hand, the way the shim writes them: tag, seat, then fields.
+        let mut writer = crate::Writer::default();
+        writer.u8(EVENT_PC);
+        writer.u16(2);
+        writer.u8(2);
+        writer.u8(EVENT_CHANNEL_OPEN);
+        writer.u16(2);
+        writer.u8(0);
+        writer.u8(EVENT_LOCAL_OFFER);
+        writer.u16(2);
+        writer.blob(b"v=0\r\n");
+        writer.u8(EVENT_REMOTE_SET);
+        writer.u16(2);
+        writer.u8(1);
+        writer.u8(EVENT_ROLLED_BACK);
+        writer.u16(2);
+        writer.u8(EVENT_SDP_ERROR);
+        writer.u16(2);
+        writer.blob(b"called in wrong state");
+
+        let events = decode_events(&writer.into_bytes()).expect("a well-formed stream");
+        assert_eq!(
+            events,
+            vec![
+                Event::Pc {
+                    seat: 2,
+                    state: PcState::Connected
+                },
+                Event::ChannelOpen {
+                    seat: 2,
+                    which: Channel::Ctrl
+                },
+                Event::LocalOffer {
+                    seat: 2,
+                    sdp: b"v=0\r\n".to_vec()
+                },
+                Event::RemoteSet {
+                    seat: 2,
+                    answer: true
+                },
+                Event::RolledBack { seat: 2 },
+                Event::SdpError {
+                    seat: 2,
+                    why: "called in wrong state".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_truncated_event_stream_is_refused() {
+        let mut writer = crate::Writer::default();
+        writer.u8(EVENT_LOCAL_OFFER);
+        writer.u16(1);
+        writer.u16(64); // says 64 bytes follow; none do
+        assert!(decode_events(&writer.into_bytes()).is_err());
+    }
+
+    #[test]
+    fn an_unknown_event_tag_is_refused_rather_than_skipped() {
+        let mut writer = crate::Writer::default();
+        writer.u8(99);
+        writer.u16(1);
+        assert!(decode_events(&writer.into_bytes()).is_err());
     }
 }

@@ -60,6 +60,13 @@ pub type Seat = u16;
 /// in JavaScript, as a pure function of events and an injected clock.
 pub mod machine;
 
+/// A candidate line, parsed: which end of a path is a relay, and which attempt
+/// a candidate belongs to.
+pub mod candidate;
+
+/// The ICE server list a connection is built with.
+pub mod ice;
+
 /// Bumped when the layout below changes. The room and both ends of a link must
 /// agree; a mismatch is refused rather than misread.
 ///
@@ -288,22 +295,22 @@ const TAG_BYE: u8 = 5;
 const TAG_RESTART: u8 = 6;
 
 #[derive(Default)]
-struct Writer {
+pub(crate) struct Writer {
     bytes: Vec<u8>,
 }
 
 impl Writer {
-    fn u8(&mut self, v: u8) {
+    pub(crate) fn u8(&mut self, v: u8) {
         self.bytes.push(v);
     }
 
-    fn u16(&mut self, v: u16) {
+    pub(crate) fn u16(&mut self, v: u16) {
         self.bytes.extend_from_slice(&v.to_le_bytes());
     }
 
     /// A length-prefixed body. No escaping, which is the point: SDP is full of
     /// `\r\n` and JSON would double every one of them.
-    fn blob(&mut self, body: &[u8]) {
+    pub(crate) fn blob(&mut self, body: &[u8]) {
         // Both callers cap well below this. Cutting rather than wrapping keeps
         // a caller's mistake from producing a frame that decodes as something
         // else entirely.
@@ -311,15 +318,19 @@ impl Writer {
         self.u16(take as u16);
         self.bytes.extend_from_slice(&body[..take]);
     }
+
+    pub(crate) fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
 }
 
-struct Reader<'a> {
+pub(crate) struct Reader<'a> {
     bytes: &'a [u8],
     at: usize,
 }
 
 impl<'a> Reader<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
+    pub(crate) fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, at: 0 }
     }
 
@@ -330,16 +341,20 @@ impl<'a> Reader<'a> {
         Ok(slice)
     }
 
-    fn u8(&mut self) -> Result<u8, SignalError> {
+    pub(crate) fn at_end(&self) -> bool {
+        self.at >= self.bytes.len()
+    }
+
+    pub(crate) fn u8(&mut self) -> Result<u8, SignalError> {
         Ok(self.take(1)?[0])
     }
 
-    fn u16(&mut self) -> Result<u16, SignalError> {
+    pub(crate) fn u16(&mut self) -> Result<u16, SignalError> {
         let b = self.take(2)?;
         Ok(u16::from_le_bytes([b[0], b[1]]))
     }
 
-    fn blob(&mut self, max: usize) -> Result<Vec<u8>, SignalError> {
+    pub(crate) fn blob(&mut self, max: usize) -> Result<Vec<u8>, SignalError> {
         let len = usize::from(self.u16()?);
         if len > max {
             return Err(SignalError::TooLong);
