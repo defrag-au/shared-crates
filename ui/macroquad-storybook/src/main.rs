@@ -141,7 +141,7 @@ enum Body {
     Route(Box<RouteStory>),
     /// A trading view, driven by the storybook clock.
     Trading(Box<TradingStory>),
-    /// The operator panel, whose buttons are live.
+    /// The operator panel, whose commands are live.
     Admin(Box<AdminStory>),
 }
 
@@ -149,11 +149,21 @@ enum Body {
 /// echo, the way a host would report what a command did.
 struct AdminStory {
     snapshot: arcade_admin_quad::Snapshot,
+    /// The sample history a host would keep: one reading a quarter second, so
+    /// the story shows the same sparklines a game does rather than a fixture
+    /// shape invented for the picture.
+    frame_trend: Vec<f32>,
+    rtt_trend: Vec<f32>,
+    player_trend: Vec<f32>,
     commands: Vec<arcade_admin_quad::Command>,
     outcome: Option<arcade_admin_quad::Outcome>,
-    /// The modal's motion. Opened all the way, so a capture is the settled
-    /// card; Close shuts it and a tap on the stage opens it again.
+    /// The panel's motion. Opened all the way, so a capture is the settled
+    /// console; `CLOSE` shuts it and a tap on the stage opens it again.
     sheet: SheetState,
+    /// Whether the story is given a desktop's width. The panel is laid out in
+    /// window points now, so the wide form is the one a person sees; the narrow
+    /// one is the same console on a phone.
+    wide: bool,
     /// The rect the panel is given; the cramped one is there to prove a short
     /// panel says what it left out instead of quietly drawing half of itself.
     height: f32,
@@ -331,12 +341,13 @@ impl Story {
         }
     }
 
-    fn admin(name: &'static str, height: f32) -> Self {
+    fn admin(name: &'static str, height: f32, wide: bool) -> Self {
         Self {
             category: "admin",
             name,
             body: Body::Admin(Box::new(AdminStory {
                 sheet: SheetState::new().opened(),
+                wide,
                 snapshot: arcade_admin_quad::Snapshot {
                     client: arcade_admin_quad::ClientCost {
                         fps: 59.6,
@@ -363,6 +374,33 @@ impl Story {
                         age_ms: 1_200,
                     }),
                 },
+                frame_trend: (0..60)
+                    .map(|i| {
+                        16.0 + (i as f32 * 0.35).sin() * 1.8 + if i == 42 { 18.0 } else { 0.0 }
+                    })
+                    .collect(),
+                // A gap in the middle: the line breaks, which is what a pair
+                // that stopped reporting looks like.
+                rtt_trend: (0..60)
+                    .map(|i| {
+                        if (20..=21).contains(&i) {
+                            f32::NAN
+                        } else {
+                            12.0 + (i as f32 * 0.22).cos() * 1.5
+                        }
+                    })
+                    .collect(),
+                player_trend: (0..60)
+                    .map(|i| {
+                        if i < 20 {
+                            10.0
+                        } else if i < 40 {
+                            11.0
+                        } else {
+                            12.0
+                        }
+                    })
+                    .collect(),
                 commands: vec![
                     arcade_admin_quad::Command {
                         id: "resync",
@@ -809,8 +847,11 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::kit("rounded art", KitView::Art),
         Story::kit("preloader", KitView::Preload),
         Story::kit("card face", KitView::Face),
-        Story::admin("operator panel", 430.0),
-        Story::admin("operator panel · cramped", 300.0),
+        Story::admin("operator panel", 640.0, true),
+        // Tall enough for the one-column form: a portrait phone's 16 facts,
+        // its sparklines and the commands.
+        Story::admin("operator panel · phone", 640.0, false),
+        Story::admin("operator panel · cramped", 300.0, true),
         Story::route("two-way split", RouteStory::split()),
         Story::route("declined split", RouteStory::declined()),
         Story::route("single venue", RouteStory::single()),
@@ -1343,16 +1384,28 @@ impl Storybook {
                 }
             }
             Kind::Admin => {
-                let story_height = match &self.stories[sel].body {
-                    Body::Admin(story) => story.height,
-                    _ => 430.0,
+                let (story_height, wide) = match &self.stories[sel].body {
+                    Body::Admin(story) => (story.height, story.wide),
+                    _ => (430.0, false),
                 };
-                let area = Rect::new(x0, y, col_w.min(360.0), story_height);
+                let width = if wide {
+                    screen_width() - x0 - 20.0
+                } else {
+                    col_w.min(360.0)
+                };
+                let area = Rect::new(x0, y, width, story_height);
                 if let Body::Admin(story) = &mut self.stories[sel].body {
+                    let trends = arcade_admin_quad::Trends {
+                        frame_ms: &story.frame_trend,
+                        rtt_ms: &story.rtt_trend,
+                        players: &story.player_trend,
+                        span_secs: 15,
+                    };
                     let panel = arcade_admin_quad::Panel {
                         snapshot: &story.snapshot,
                         commands: &story.commands,
                         outcome: story.outcome.as_ref(),
+                        trends: Some(&trends),
                     };
                     let reply = arcade_admin_quad::show_sheet(p, &panel, &story.sheet, area);
                     if reply.close {
