@@ -1098,10 +1098,6 @@ impl QueryOptions {
 pub struct KoiosApi {
     client: HttpClient,
     base_url: String,
-    /// The bearer token `client` authenticates with, kept so a request the
-    /// JSON client cannot send — `/submittx` takes a raw CBOR body — can
-    /// authenticate the same way.
-    api_key: Option<String>,
 }
 
 pub struct KupoApi {
@@ -1204,7 +1200,6 @@ impl Default for KoiosApi {
         Self {
             client: HttpClient::new().with_timeout(KOIOS_REQUEST_TIMEOUT),
             base_url: BASE_URL.to_string(),
-            api_key: None,
         }
     }
 }
@@ -1228,7 +1223,6 @@ impl KoiosApi {
         Self {
             client: client.with_timeout(KOIOS_REQUEST_TIMEOUT),
             base_url: base_url.into(),
-            api_key,
         }
     }
 
