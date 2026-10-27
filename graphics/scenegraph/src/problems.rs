@@ -1076,12 +1076,7 @@ mod tests {
 
     fn fonts() -> Fonts {
         let mut f = Fonts::new();
-        f.insert(
-            "ibm",
-            crate::NOTO_SANS_BOLD,
-            Vec::new(),
-        )
-        .unwrap();
+        f.insert("ibm", crate::NOTO_SANS_BOLD, Vec::new()).unwrap();
         f
     }
 

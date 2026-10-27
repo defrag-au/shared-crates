@@ -344,11 +344,7 @@ mod tests {
     fn small_text_shows_where_it_is() {
         let mut fonts = crate::Fonts::new();
         fonts
-            .insert(
-                "ibm",
-                crate::NOTO_SANS_BOLD,
-                Vec::new(),
-            )
+            .insert("ibm", crate::NOTO_SANS_BOLD, Vec::new())
             .unwrap();
         let src = "sg1\nsign Quad 2x1 c=222222\ntiny Label font=ibm size=0.02 \"hi\" p=sign t=0.3,0.2,0.01\nwall Quad 1x1 c=777777 t=-0.5,0,1\nhid Label font=ibm size=0.02 \"no\" t=-0.5,0,0.5\ncam Camera eye=0,0,4 at=0,0,0\n";
         let l = Scene::from_dump(src)

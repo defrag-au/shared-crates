@@ -235,11 +235,7 @@ fn room_draw_list_roundtrip_scene() {
 
 fn ibm() -> Fonts {
     let mut f = Fonts::new();
-    f.insert(
-        "ibm",
-        scenegraph::NOTO_SANS_BOLD,
-        Vec::new(),
-    )
-    .unwrap();
+    f.insert("ibm", scenegraph::NOTO_SANS_BOLD, Vec::new())
+        .unwrap();
     f
 }

@@ -12,11 +12,7 @@ fn palace() -> World {
 fn ibm() -> Fonts {
     let mut fonts = Fonts::new();
     fonts
-        .insert(
-            "ibm",
-            scenegraph::NOTO_SANS_BOLD,
-            Vec::new(),
-        )
+        .insert("ibm", scenegraph::NOTO_SANS_BOLD, Vec::new())
         .unwrap();
     fonts
 }

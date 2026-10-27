@@ -644,11 +644,7 @@ mod tests {
             .unwrap();
         let mut fonts = Fonts::new();
         fonts
-            .insert(
-                "ibm",
-                crate::NOTO_SANS_BOLD,
-                Vec::new(),
-            )
+            .insert("ibm", crate::NOTO_SANS_BOLD, Vec::new())
             .unwrap();
         let d = s
             .draw_list_with(&Geometry::new(), &Materials::new(), &mut fonts)

@@ -2,39 +2,42 @@
 
 Named scene graph. The document is the frame: if a draw call can exist
 outside the graph, stop. Read the dump grammar before editing a scene.
-Authoring an **app** (folder of dumps, not this crate) uses the
-`scene-dump` skill, `scene-gauntlet`, `scene-play` and `scene-mq`.
+
+The family, in `graphics/`: this crate (pure), `sceneanim` (clips),
+`sceneinput` (pointer), `scenedrv` (drivers), `sceneworld` (paged worlds),
+`sceneapp` (dump folders, replay, gauntlet), and the edge crates
+`scenegraph-mq` (macroquad), `scenegraph-wgpu` (wgpu, egui) and
+`scene-pane` (a scene on a macroquad-gamekit stage). Games, their registry,
+the `scene-gauntlet` binary and the clients live with the app that ships
+them (augminted-bots: `scenegames`, `scene-mq`, `scene-play`, `scene-view`,
+and the `scene-dump` authoring skill).
 
 ## Commands
 
 ```sh
 cargo test -p scenegraph
-cargo test -p scenegames                                 # dump-folder gauntlet, games included
-cargo run -p scenegames --bin scene-gauntlet -- DIR [--bless]
-cargo run -p scene-play -- DIR [--images IMAGE_DIR]      # wgpu pane
-cargo run -p scene-mq -- --app ttt|tet|DIR [--soak N]    # macroquad client (and web build)
+cargo test -p scenegraph --features gltf   # glTF importer: models, rigs, clips (Khronos fixtures)
+cargo test -p scenegraph-mq                # backend parity with scenegraph-wgpu, headless
+cargo test -p scenegraph-wgpu              # GPU raster; skips without an adapter
+cargo test -p sceneapp                     # fixture folders scored without a game
 cargo test -p sceneworld --test profile -- --nocapture   # flatten census
-cargo test -p scene-view                                 # pane includes perf dump
-cargo test -p scenegraph --features wgpu   # GPU raster optional; skip if no adapter
-cargo test -p scenegraph --features macroquad,wgpu  # backend parity, headless: census, matrix, pick
-cargo test -p scenegraph --features gltf   # glTF → Geometry importer
-cargo clippy -p scenegraph --all-targets
-cargo run -p scene-view                    # native dump + raster pane
-cargo run -p scene-view -- --plan PLAN.json --assets DIR [--job N] [--showcase]
-                                           # one compositor job as sg1; --showcase poses explode then orbit
-cargo run -p scene-view -- --gltf FILE.glb # glTF node tree → parented sg1 (not the runtime document)
+cargo clippy -p scenegraph --all-targets --all-features -- -D warnings
+cargo check --target wasm32-unknown-unknown -p scenegraph --features gltf -p scenegraph-mq
 ```
 
-Default features are pure. `macroquad` and `wgpu`/`egui` are backends over
-the same [`DrawList`]. Do not mix draw APIs. Both project with
-`DrawList::view_proj` (the `hit` matrix; `mq::view_proj_glam`). A
-macroquad client holds one `mq::Renderer` and calls `draw_list_to` into a
-depth target (`sample_count: 0`, drawn with `flip_y`). A change to what
-either backend submits must keep `mq::plan(..).census()` equal to
-`gpu::census` (`SubmitCensus`: triangles per texture key and sdf).
-Default features must run on `wasm32-unknown-unknown`: no wall clock
-(`Instant::now` panics there; flatten timing goes through `Stopwatch`,
-which reads 0), no I/O, no wasm-bindgen.
+This crate is pure; the renderers are edge crates over the same
+[`DrawList`]. Do not mix draw APIs. Both project with
+`DrawList::view_proj` (the `hit` matrix; `scenegraph_mq::view_proj_glam`).
+A macroquad client holds one `scenegraph_mq::Renderer` and calls
+`draw_list_to` into a depth target (`sample_count: 0`, drawn with
+`flip_y`). A change to what either backend submits must keep
+`scenegraph_mq::plan(..).census()` equal to `scenegraph_wgpu::census`
+([`SubmitCensus`]: triangles per texture key and sdf); `scenegraph-mq`'s
+parity tests pin it. This crate, with `gltf`, must run on
+`wasm32-unknown-unknown`: no wall clock (`Instant::now` panics there;
+flatten timing goes through `Stopwatch`, which reads 0), no I/O, no
+wasm-bindgen. The stock face is [`NOTO_SANS_BOLD`] (OFL,
+`assets/NotoSans-OFL.txt`); tests use it rather than a path.
 
 ## Invariants
 
@@ -88,7 +91,7 @@ which reads 0), no I/O, no wasm-bindgen.
    Several clips overlay with `pose_layers`; inspect is a mixer chain
    (lift, then fade). Reverse fades text out before the card returns.
 8. **No shader source in the graph.** `sh=` / [`Shade`] selects a closed
-   model. GPU programs live in backends (`gpu.rs` WGSL, `mq.rs` GLSL ES
+   model. GPU programs live in backends (`scenegraph-wgpu` WGSL, `scenegraph-mq` GLSL ES
    100: alpha discard at 0.031, MSDF median with a fixed band — no
    `fwidth` on WebGL1). Lambert is both backends: per-fragment on wgpu,
    CPU per-vertex in `mq::plan`. Custom looks belong to an app backend,
@@ -246,7 +249,9 @@ print-b Unlit m=front-b mb=back-b
 
 ## Definition of done
 
-- `cargo test -p scenegraph` green, clippy silent on default features.
+- `cargo test -p scenegraph --features gltf` and `cargo test -p
+  scenegraph-mq` green (the second is the backend parity); clippy silent
+  with `--all-features`; the wasm32 check above passes.
 - A scene, pose, or pick change that could move a dump has a before/after
   dump in the summary (same discipline as `deck_sim` curves). Raster is
   for humans; dumps are for agents. Do not take a screenshot to decide

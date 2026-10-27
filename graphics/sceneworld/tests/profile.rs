@@ -16,11 +16,7 @@ fn palace_flatten_census() {
 
     let mut fonts = Fonts::new();
     fonts
-        .insert(
-            "ibm",
-            scenegraph::NOTO_SANS_BOLD,
-            Vec::new(),
-        )
+        .insert("ibm", scenegraph::NOTO_SANS_BOLD, Vec::new())
         .unwrap();
     let geom = Geometry::new();
     let mats = Materials::new();

@@ -2,19 +2,17 @@
 
 A scene **app** is a folder of dumps. This crate loads it and scores it. It
 holds no game rules and depends on no game: a game crate decides what a pick
-or a key does, behind [`Game`]. The registry that knows the games, and the
-`scene-gauntlet` binary, are `scenegames`. Runners are `scene-play` (wgpu)
-and `scene-mq` (macroquad). Authoring contract: `.grok/skills/scene-dump`.
+or a key does, behind [`Game`], and the consumer passes one in as
+`NewGame`. The registry that knows a repository's games, the
+`scene-gauntlet` binary and the clients belong to that repository (in
+augminted-bots: `scenegames`, `scene-play` on wgpu, `scene-mq` on
+macroquad, and the `scene-dump` authoring skill).
 
 ## Commands
 
 ```sh
-cargo test -p sceneapp
-cargo test -p scenegames                                  # every folder, games included
-cargo run -p scenegames --bin scene-gauntlet -- games/_spikes/apps/scene-play/apps/ttt
-cargo run -p scenegames --bin scene-gauntlet -- DIR --emit    # write scene.sg1 / after.sg1 / delta.sgd1 from the game
-cargo run -p scenegames --bin scene-gauntlet -- DIR --bless   # rewrite replay.rp1 from a run
-cargo clippy -p sceneapp --all-targets
+cargo test -p sceneapp       # tests/fixtures/apps/{room,table,gallery,ttt}, scored without a game
+cargo clippy -p sceneapp --all-targets -- -D warnings
 ```
 
 ## Folder
@@ -31,15 +29,15 @@ after.sg1          # rest after one ply (or clock.n ticks)
 delta.sgd1         # named +/~/- of rest → after
 clock.tk1          # shell playhead. Not a node. Gauntlet drives `n` steps of `dt`.
 replay.rp1         # a whole game: steps, each with hit, outcome, cues, delta
-well.tw1 | board.tt1   # game state: the version selects the game (scenegames)
+well.tw1 | board.tt1   # game state: the version selects the game (the consumer's registry)
 models/KEY.glb     # binary glTF, interned as model KEY (`Mesh Geom g=KEY`)
 images/KEY.png     # decoded into `App::images` (`m=KEY`): contrast reads the texels
 ```
 
 `App::load(dir)` reads disk; `App::from_source(label, read)` reads through a
 function and does no I/O, so a wasm client embeds its folders. It reads no
-models: such a client calls `App::add_model(key, bytes)` for each, as
-scene-mq does from `embedded::MODELS`.
+models or images: such a client calls `App::add_model(key, bytes)` and
+`App::add_image(key, bytes)` for each.
 
 A model is one node: `scenegraph::model_from_gltf` bakes the file's node
 transforms into its parts, one per surface (split under 65,535 vertices),
@@ -58,7 +56,7 @@ once at the first that showed it, as `PROBLEM @clip.an1 t=SECONDS`. The
 
 ## Who decides a move
 
-The game. With a game (`scenegames::find`), the gauntlet checks
+The game. With a game (the consumer's registry finds it), the gauntlet checks
 `emit == scene.sg1`, a session hit is `Game::pick_at(hit, at)`, `clock.n` is
 that many `Game::tick`s, and `replay.rp1` plays from the game's start.
 

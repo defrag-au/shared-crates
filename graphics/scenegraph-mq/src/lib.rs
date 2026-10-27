@@ -685,7 +685,11 @@ mod parity_tests {
         let mut geom = Geometry::new();
         geom.insert_tet("tet").unwrap();
         let cases: [(&str, &str, Option<&str>); 4] = [
-            ("room", include_str!("../../scenegraph/tests/golden/room.sg1"), None),
+            (
+                "room",
+                include_str!("../../scenegraph/tests/golden/room.sg1"),
+                None,
+            ),
             (
                 "cards",
                 include_str!("../../scenegraph/tests/golden/cards.sg1"),

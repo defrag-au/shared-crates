@@ -129,9 +129,7 @@ mod tests {
         let app = App::from_source("mem", |name| match name {
             // The fixture folder's room: the golden one's tet floats
             // (`floating`), which its census tests do not mind.
-            "scene.sg1" => {
-                Some(include_str!("../tests/fixtures/apps/room/scene.sg1").to_string())
-            }
+            "scene.sg1" => Some(include_str!("../tests/fixtures/apps/room/scene.sg1").to_string()),
             _ => None,
         })
         .unwrap();

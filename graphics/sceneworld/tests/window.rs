@@ -238,11 +238,7 @@ fn east_door_does_not_block_a_ray() {
     let scene = w.emit().unwrap();
     let mut fonts = Fonts::new();
     fonts
-        .insert(
-            "ibm",
-            scenegraph::NOTO_SANS_BOLD,
-            Vec::new(),
-        )
+        .insert("ibm", scenegraph::NOTO_SANS_BOLD, Vec::new())
         .unwrap();
     let list = scene
         .draw_list_with(&Geometry::new(), &Materials::new(), &mut fonts)

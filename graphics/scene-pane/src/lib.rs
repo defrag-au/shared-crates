@@ -18,8 +18,8 @@
 
 use macroquad::prelude::*;
 use macroquad_gamekit::harness::report;
-use scenegraph_mq::{self as mq, Renderer};
 use scenegraph::{DrawList, Fonts, Geometry, Images, Kind, Materials, Scene};
+use scenegraph_mq::{self as mq, Renderer};
 use sceneinput::{Event, Session, step};
 
 /// What the last [`ScenePane::draw`] cost, in microseconds, and what it drew.

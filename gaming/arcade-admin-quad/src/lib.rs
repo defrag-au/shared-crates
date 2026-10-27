@@ -144,41 +144,33 @@ pub struct Row {
 
 /// The panel's lines, in the order they are drawn.
 ///
+/// **Ordered by what a glance needs, because a short card truncates from the
+/// end.** A 320x224 canvas holds about nine of these beside a command; the nine
+/// it keeps are the ones that say whether the world is healthy, and the counters
+/// that only matter when it is not are what `+N more` stands for.
+///
 /// One fact per line rather than a sentence per section: the panel is read at a
 /// glance, and two columns of label-and-value is what a glance can take. A world
 /// that has not been heard from is one line saying so, rather than a block of
 /// zeroes that reads like an empty world.
 pub fn rows(snapshot: &Snapshot) -> Vec<Row> {
     let pair = |label: &'static str, value: String| Row { label, value };
+    let net = snapshot.net;
     let mut rows = vec![
         pair("fps", format!("{:.0}", snapshot.client.fps)),
         pair("frame", format!("{:.1} ms", snapshot.client.frame_ms)),
         pair("worst", format!("{:.1} ms", snapshot.client.worst_ms)),
-        pair("memory", memory(snapshot.client.memory_bytes)),
+        pair(
+            "links",
+            if net.links_expected > 0 {
+                format!("{} of {}", net.links_open, net.links_expected)
+            } else {
+                format!("{}", net.links_open)
+            },
+        ),
+        pair("rtt", tenths(net.rtt_tenths)),
+        pair("failed", format!("{}", net.failed)),
     ];
-
-    let net = snapshot.net;
-    rows.push(pair(
-        "links",
-        if net.links_expected > 0 {
-            format!("{} of {}", net.links_open, net.links_expected)
-        } else {
-            format!("{}", net.links_open)
-        },
-    ));
-    rows.push(pair("relayed", format!("{}", net.links_relayed)));
-    rows.push(pair("rtt", tenths(net.rtt_tenths)));
-    rows.push(pair(
-        "answered",
-        // A ratio nobody has started is not 0 of 0 — that reads as a failure.
-        if net.offered > 0 {
-            format!("{} of {}", net.answered, net.offered)
-        } else {
-            "—".into()
-        },
-    ));
-    rows.push(pair("failed", format!("{}", net.failed)));
-    rows.push(pair("churn", format!("{}", net.churn)));
 
     match &snapshot.world {
         // Short enough to sit beside its label in a narrow column; a value that
@@ -191,14 +183,14 @@ pub fn rows(snapshot: &Snapshot) -> Vec<Row> {
             if world.connected != world.players {
                 rows.push(pair("live", format!("{}", world.connected)));
             }
+            rows.push(pair(
+                "colo",
+                world.colo.clone().unwrap_or_else(|| "—".into()),
+            ));
             rows.push(pair("tick", format!("{}", world.tick)));
             rows.push(pair(
                 "state",
                 if world.running { "running" } else { "paused" }.into(),
-            ));
-            rows.push(pair(
-                "colo",
-                world.colo.clone().unwrap_or_else(|| "—".into()),
             ));
             rows.push(pair(
                 "echo",
@@ -206,6 +198,20 @@ pub fn rows(snapshot: &Snapshot) -> Vec<Row> {
             ));
         }
     }
+
+    // The drill-down: what a healthy panel leaves to `+N more`.
+    rows.push(pair("relayed", format!("{}", net.links_relayed)));
+    rows.push(pair(
+        "answered",
+        // A ratio nobody has started is not 0 of 0 — that reads as a failure.
+        if net.offered > 0 {
+            format!("{} of {}", net.answered, net.offered)
+        } else {
+            "—".into()
+        },
+    ));
+    rows.push(pair("churn", format!("{}", net.churn)));
+    rows.push(pair("memory", memory(snapshot.client.memory_bytes)));
     rows
 }
 
@@ -490,7 +496,7 @@ fn action_band(painter: &Painter, panel: &Panel<'_>) -> f32 {
     let row_h = small * 2.2;
     let buttons = panel.commands.len() as f32 * (row_h + 6.0);
     let outcome = if panel.outcome.is_some() {
-        small * 1.55
+        small * ROW_STEP_FACTOR
     } else {
         0.0
     };

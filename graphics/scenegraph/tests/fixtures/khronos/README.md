@@ -4,8 +4,11 @@ Copied unmodified from
 [KhronosGroup/glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets)
 (upstream `Models/<Name>/glTF-Binary/<Name>.glb`, here `Models/<Name>/<Name>.glb`),
 with each model's `LICENSE.md` and `metadata.json`. `Models/` and `LICENSES/`
-sit as they do upstream, so each licence file's relative links still resolve. They are fixtures for the scenegraph's
-glTF path: small, well known, and each with a property worth testing.
+sit as they do upstream, so each licence file's relative links still resolve.
+They are test fixtures for the scenegraph's glTF path (`gltf_import.rs`)
+and the backend parity test (`scenegraph-mq`, with
+`tests/golden/yard.sg1`): small, well known, and each with a property worth
+testing.
 
 | Model | Size | Licence | Why it is here |
 |---|---|---|---|
@@ -21,4 +24,3 @@ Excluded:
 Attribution for the CC-BY items is as listed above and in each
 `metadata.json`. To use a model in an app folder, copy its `.glb` into that
 folder's `models/` as `KEY.glb`, and credit it in a `models/README.md` there.
-`apps/scene-play/apps/yard/` holds all four. See the scene-dump skill.

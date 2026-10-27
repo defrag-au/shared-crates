@@ -136,11 +136,7 @@ fn gallery() -> (Scene, scenegraph::DrawList) {
         Materials::from_dump(include_str!("../../scenegraph/tests/golden/gallery.mt1")).unwrap();
     let mut fonts = Fonts::new();
     fonts
-        .insert(
-            "ibm",
-            scenegraph::NOTO_SANS_BOLD,
-            Vec::new(),
-        )
+        .insert("ibm", scenegraph::NOTO_SANS_BOLD, Vec::new())
         .unwrap();
     let list = scene
         .draw_list_with(&Geometry::new(), &mats, &mut fonts)
@@ -231,11 +227,7 @@ fn combat() -> (Scene, scenegraph::DrawList) {
         Materials::from_dump(include_str!("../../scenegraph/tests/golden/table.mt1")).unwrap();
     let mut fonts = Fonts::new();
     fonts
-        .insert(
-            "ibm",
-            scenegraph::NOTO_SANS_BOLD,
-            Vec::new(),
-        )
+        .insert("ibm", scenegraph::NOTO_SANS_BOLD, Vec::new())
         .unwrap();
     let list = scene
         .draw_list_with(&Geometry::new(), &mats, &mut fonts)

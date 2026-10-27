@@ -211,10 +211,7 @@ fn parse_op(line: &str) -> Result<Op, Error> {
     let (kind, kv) = split_op(line)?;
     match kind.as_str() {
         "mark" => {
-            let node = kv
-                .get("node")
-                .cloned()
-                .ok_or(Error::MarkNeedsNode)?;
+            let node = kv.get("node").cloned().ok_or(Error::MarkNeedsNode)?;
             let text = kv.get("text").cloned().ok_or(Error::MarkNeedsText)?;
             let size = match kv.get("size") {
                 Some(s) => s
@@ -339,7 +336,9 @@ fn skip_ws(it: &mut std::iter::Peekable<std::str::Chars<'_>>) {
 }
 
 fn dump_text(s: &str, out: &mut String) {
-    if s.chars().any(|c| c.is_whitespace() || matches!(c, '"' | '\\')) {
+    if s.chars()
+        .any(|c| c.is_whitespace() || matches!(c, '"' | '\\'))
+    {
         out.push('"');
         for c in s.chars() {
             match c {

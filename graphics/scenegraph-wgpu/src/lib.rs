@@ -1111,12 +1111,7 @@ fn push_batch(batches: &mut Vec<Batch>, key: Option<String>, first: u32, count: 
     });
 }
 
-fn push_mesh_batches(
-    batches: &mut Vec<Batch>,
-    mesh: &WorldMesh,
-    first: u32,
-    total: u32,
-) {
+fn push_mesh_batches(batches: &mut Vec<Batch>, mesh: &WorldMesh, first: u32, total: u32) {
     let rim = mesh.rim_index.filter(|&i| i > 0 && i < total);
     let back = mesh.back_index.filter(|&i| i > 0 && i < total);
     match (rim, back) {
@@ -1245,11 +1240,7 @@ fn write_mip(queue: &wgpu::Queue, tex: &wgpu::Texture, mip: u32, w: u32, h: u32,
     }
 }
 
-fn upload_rgba_nomip(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    img: &RgbaImage,
-) -> CachedTex {
+fn upload_rgba_nomip(device: &wgpu::Device, queue: &wgpu::Queue, img: &RgbaImage) -> CachedTex {
     let tex = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("sg-font"),
         size: wgpu::Extent3d {
@@ -1275,11 +1266,7 @@ fn upload_rgba_nomip(
     }
 }
 
-fn upload_rgba(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    img: &RgbaImage,
-) -> CachedTex {
+fn upload_rgba(device: &wgpu::Device, queue: &wgpu::Queue, img: &RgbaImage) -> CachedTex {
     let levels = mip_levels(img.width, img.height);
     let tex = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("sg-img"),
@@ -1486,7 +1473,8 @@ mod tests {
             eprintln!("skip: no wgpu adapter");
             return;
         };
-        let scene = Scene::from_dump(include_str!("../../scenegraph/tests/golden/room.sg1")).unwrap();
+        let scene =
+            Scene::from_dump(include_str!("../../scenegraph/tests/golden/room.sg1")).unwrap();
         let mut geom = Geometry::new();
         geom.insert_tet("tet").unwrap();
         let rgba = gpu
@@ -1514,11 +1502,13 @@ mod tests {
             eprintln!("skip: no wgpu adapter");
             return;
         };
-        let scene = Scene::from_dump(include_str!("../../scenegraph/tests/golden/cards.sg1")).unwrap();
+        let scene =
+            Scene::from_dump(include_str!("../../scenegraph/tests/golden/cards.sg1")).unwrap();
         let mut images = Images::new();
         images.insert_solid("front-a", [220, 40, 40]).unwrap();
         images.insert_solid("front-b", [40, 80, 220]).unwrap();
-        let mats = Materials::from_dump(include_str!("../../scenegraph/tests/golden/surfaces.mt1")).unwrap();
+        let mats = Materials::from_dump(include_str!("../../scenegraph/tests/golden/surfaces.mt1"))
+            .unwrap();
         let rgba = gpu
             .rasterize(
                 &scene,
@@ -1560,11 +1550,7 @@ mod tests {
         let scene = Scene::from_dump(src).unwrap();
         let mut fonts = Fonts::new();
         fonts
-            .insert(
-                "ibm",
-                scenegraph::NOTO_SANS_BOLD,
-                Vec::new(),
-            )
+            .insert("ibm", scenegraph::NOTO_SANS_BOLD, Vec::new())
             .unwrap();
         let rgba = gpu
             .rasterize(
