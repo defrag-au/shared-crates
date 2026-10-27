@@ -1,4 +1,4 @@
-use crate::{HttpError, HttpMethod, ResponseDetails};
+use crate::{HttpError, HttpMethod, RawResponse, ResponseDetails};
 use futures::future::{Either, select};
 use gloo_net::http::Request;
 use serde::{Serialize, de::DeserializeOwned};
@@ -7,7 +7,7 @@ use std::future::Future;
 use std::pin::pin;
 use std::time::Duration;
 use tracing::debug;
-use worker_stack::worker::Delay;
+use worker_stack::worker::{Delay, Fetch, Headers, Method, Request as WorkerRequest, RequestInit};
 
 /// Resolve `request`, or fail with [`HttpError::Timeout`] once `timeout` elapses.
 ///
@@ -218,4 +218,46 @@ pub(crate) async fn make_request_text_with_details<T: Serialize>(
         status_code,
         headers,
     })
+}
+
+/// POST raw bytes under the caller's content type, through the Worker `Fetch`
+/// API.
+///
+/// gloo's builder takes a `JsValue` body, which is why the JSON helpers are the
+/// only thing it serves; `Fetch` takes `Bytes` directly and is already a
+/// dependency here for timers. The response body comes back as text and the
+/// status is not interpreted: a rejected submit's reason is in the body.
+pub(crate) async fn post_bytes(
+    default_headers: &HashMap<String, String>,
+    url: &str,
+    content_type: &str,
+    body: &[u8],
+) -> Result<RawResponse, HttpError> {
+    let headers = Headers::new();
+    headers
+        .set("Content-Type", content_type)
+        .map_err(|e| HttpError::Custom(format!("setting Content-Type: {e}")))?;
+    for (key, value) in default_headers {
+        headers
+            .set(key, value)
+            .map_err(|e| HttpError::Custom(format!("setting {key}: {e}")))?;
+    }
+
+    let mut init = RequestInit::new();
+    init.method = Method::Post;
+    init.headers = headers;
+    init.body = Some(body.to_vec().into());
+
+    let request = WorkerRequest::new_with_init(url, &init)
+        .map_err(|e| HttpError::Custom(format!("building the request: {e}")))?;
+    let mut response = Fetch::Request(request)
+        .send()
+        .await
+        .map_err(|e| HttpError::Custom(format!("sending the request: {e}")))?;
+
+    let status_code = response.status_code();
+    let body = response.text().await.unwrap_or_default();
+    debug!("Got raw response: status {status_code}");
+
+    Ok(RawResponse { status_code, body })
 }

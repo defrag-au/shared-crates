@@ -56,6 +56,17 @@
 /// an alias here so this crate need not depend on `arcade-room`.
 pub type Seat = u16;
 
+/// The negotiation state machine: every decision the browser half used to take
+/// in JavaScript, as a pure function of events and an injected clock.
+pub mod machine;
+
+/// A candidate line, parsed: which end of a path is a relay, and which attempt
+/// a candidate belongs to.
+pub mod candidate;
+
+/// The ICE server list a connection is built with.
+pub mod ice;
+
 /// Bumped when the layout below changes. The room and both ends of a link must
 /// agree; a mismatch is refused rather than misread.
 ///
@@ -284,22 +295,39 @@ const TAG_BYE: u8 = 5;
 const TAG_RESTART: u8 = 6;
 
 #[derive(Default)]
-struct Writer {
+pub(crate) struct Writer {
     bytes: Vec<u8>,
 }
 
 impl Writer {
-    fn u8(&mut self, v: u8) {
+    pub(crate) fn u8(&mut self, v: u8) {
         self.bytes.push(v);
     }
 
-    fn u16(&mut self, v: u16) {
+    pub(crate) fn u16(&mut self, v: u16) {
         self.bytes.extend_from_slice(&v.to_le_bytes());
+    }
+
+    pub(crate) fn u32(&mut self, v: u32) {
+        self.bytes.extend_from_slice(&v.to_le_bytes());
+    }
+
+    /// Only a test builds an event stream by hand; the shim writes the real one.
+    #[cfg(test)]
+    pub(crate) fn u64(&mut self, v: u64) {
+        self.bytes.extend_from_slice(&v.to_le_bytes());
+    }
+
+    /// A browser's own measurement, carried as the bits it produced: the value
+    /// is rounded where it is used, not where it is reported.
+    #[cfg(test)]
+    pub(crate) fn f64(&mut self, v: f64) {
+        self.u64(v.to_bits());
     }
 
     /// A length-prefixed body. No escaping, which is the point: SDP is full of
     /// `\r\n` and JSON would double every one of them.
-    fn blob(&mut self, body: &[u8]) {
+    pub(crate) fn blob(&mut self, body: &[u8]) {
         // Both callers cap well below this. Cutting rather than wrapping keeps
         // a caller's mistake from producing a frame that decodes as something
         // else entirely.
@@ -307,15 +335,19 @@ impl Writer {
         self.u16(take as u16);
         self.bytes.extend_from_slice(&body[..take]);
     }
+
+    pub(crate) fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
 }
 
-struct Reader<'a> {
+pub(crate) struct Reader<'a> {
     bytes: &'a [u8],
     at: usize,
 }
 
 impl<'a> Reader<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
+    pub(crate) fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, at: 0 }
     }
 
@@ -326,16 +358,38 @@ impl<'a> Reader<'a> {
         Ok(slice)
     }
 
-    fn u8(&mut self) -> Result<u8, SignalError> {
+    pub(crate) fn at_end(&self) -> bool {
+        self.at >= self.bytes.len()
+    }
+
+    pub(crate) fn u8(&mut self) -> Result<u8, SignalError> {
         Ok(self.take(1)?[0])
     }
 
-    fn u16(&mut self) -> Result<u16, SignalError> {
+    pub(crate) fn u16(&mut self) -> Result<u16, SignalError> {
         let b = self.take(2)?;
         Ok(u16::from_le_bytes([b[0], b[1]]))
     }
 
-    fn blob(&mut self, max: usize) -> Result<Vec<u8>, SignalError> {
+    pub(crate) fn u64(&mut self) -> Result<u64, SignalError> {
+        let mut word = [0u8; 8];
+        word.copy_from_slice(self.take(8)?);
+        Ok(u64::from_le_bytes(word))
+    }
+
+    /// Only a test decodes an action stream; the shim reads it in JavaScript.
+    #[cfg(test)]
+    pub(crate) fn u32(&mut self) -> Result<u32, SignalError> {
+        let mut word = [0u8; 4];
+        word.copy_from_slice(self.take(4)?);
+        Ok(u32::from_le_bytes(word))
+    }
+
+    pub(crate) fn f64(&mut self) -> Result<f64, SignalError> {
+        Ok(f64::from_bits(self.u64()?))
+    }
+
+    pub(crate) fn blob(&mut self, max: usize) -> Result<Vec<u8>, SignalError> {
         let len = usize::from(self.u16()?);
         if len > max {
             return Err(SignalError::TooLong);
@@ -572,6 +626,149 @@ mod tests {
         assert!(
             PEER_JS.contains("window.__btIceProbe = function"),
             "no ICE diagnostic, so a run cannot tell a configured list from an answered one"
+        );
+    }
+
+    /// One function scope: a second `function` declaration of the same name is
+    /// not an error, it silently replaces the first. That is how a `getStats`
+    /// helper called `candidateType` replaced the counter's, and every gathered
+    /// candidate started being counted as `null` — a run of `p2p-turn.dsl` was
+    /// the only thing that noticed.
+    #[test]
+    fn the_browser_half_declares_each_helper_once() {
+        let mut seen: Vec<String> = Vec::new();
+        for line in PEER_JS.lines() {
+            let Some(rest) = line.trim_start().strip_prefix("function ") else {
+                continue;
+            };
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            // `function (` is an anonymous expression; a declaration names a
+            // function and opens its arguments.
+            if name.is_empty() || !rest[name.len()..].starts_with('(') {
+                continue;
+            }
+            assert!(
+                !seen.contains(&name),
+                "`{name}` is declared twice, and the second declaration silently replaces the first"
+            );
+            seen.push(name);
+        }
+        assert!(seen.len() > 50, "the scan found {seen:?}");
+    }
+
+    /// An offer the far side answered belongs to ICE; an offer it did not is
+    /// ours to retry. One deadline for both reset the connection every twelve
+    /// seconds — shorter than ICE's own give-up — so a pair that could never
+    /// connect re-offered forever and `negotiations.failed` never counted one
+    /// (design §15). This pins the two deadlines.
+    #[test]
+    fn the_browser_half_gives_an_answered_offer_time_to_fail() {
+        assert!(
+            PEER_JS.contains("var ANSWER_MS = answerMs("),
+            "an answered attempt has no deadline of its own"
+        );
+        assert!(
+            PEER_JS.contains("var answered = link.remoteSet;"),
+            "the sweep cannot tell an answered attempt from an unanswered one"
+        );
+        assert!(
+            PEER_JS.contains("answered ? ANSWER_MS : OFFER_MS"),
+            "both cases share one deadline again"
+        );
+        assert!(
+            PEER_JS.contains("'no path after the answer'"),
+            "an answered attempt that never connects is not named"
+        );
+        assert!(
+            PEER_JS.contains("link.pc.signalingState !== 'have-local-offer'"),
+            "a late answer is applied to a connection with no offer outstanding"
+        );
+    }
+
+    /// A channel's `error` event is the transport dying, not a fault in the
+    /// page: when one end's ICE goes it fires on the end that is still healthy,
+    /// and `fail` never clears. Reporting it left `error` set for the rest of a
+    /// run after a link had been repaired, so the next reader saw a failure that
+    /// was already fixed. Found by the cross-region mesh's repair phase (§12.2):
+    /// the link came back in 4.9 s with `failed: 1`, `offered: 4` and `error`
+    /// still naming an `RTCErrorEvent`.
+    #[test]
+    fn the_browser_half_does_not_call_a_dead_channel_an_error() {
+        let handler = PEER_JS
+            .split("channel.onerror = function")
+            .nth(1)
+            .expect("the channel has no error handler");
+        let body = handler
+            .split("channel.onmessage")
+            .next()
+            .expect("the error handler never ends");
+        assert!(
+            !body.contains("fail(link"),
+            "a channel error is reported as a page failure, which no repair clears"
+        );
+        assert!(
+            body.contains("suspect(link, LINK_SETTLE_MS)"),
+            "a channel that errors under a live link is not treated as suspect"
+        );
+    }
+
+    /// The room's set and the signals it implies arrive on different frames, so
+    /// a seat returning to a group can offer before the other end has been told
+    /// the set names it. Holding only the offer was not enough: the candidates
+    /// that followed it were refused by the same guard and dropped, and by the
+    /// time the held offer was replayed the sender's gather had finished — so
+    /// the pair had a description, no candidates, and sat in `new` until ICE's
+    /// own ~18 s timeout. Found by the cross-region churn run (design §12.2).
+    #[test]
+    fn the_browser_half_holds_every_signal_that_lands_before_the_set() {
+        assert!(
+            PEER_JS.contains("deferred.push({ from: from, bytes: bytes, at: performance.now() })"),
+            "a signal from a seat the set has not named yet is dropped again"
+        );
+        assert!(
+            PEER_JS.contains(
+                "msg.tag === TAG_OFFER || msg.tag === TAG_ANSWER || msg.tag === TAG_CANDIDATE"
+            ),
+            "only the offer is held, so the candidates around it are lost"
+        );
+        assert!(
+            PEER_JS.contains("signals replayed: the set names it now"),
+            "nothing replays a held signal when the set arrives"
+        );
+        assert!(
+            PEER_JS.contains("now - item.at < DEFER_MS"),
+            "a held signal never expires, so a stale one could be applied"
+        );
+    }
+
+    /// §12.2 decides whether colo belongs in the interest set, and it needs the
+    /// path a link is actually using. A shim with no `getStats` can only report
+    /// that a link is open, which is the same answer for a peer next door and a
+    /// peer on another continent.
+    #[test]
+    fn the_browser_half_samples_the_path() {
+        assert!(
+            PEER_JS.contains("getStats()"),
+            "no candidate-pair statistics, so a report cannot say how far a peer is"
+        );
+        assert!(
+            PEER_JS.contains("candidate-pair"),
+            "the sample does not read the pair in use"
+        );
+        assert!(
+            PEER_JS.contains("currentRoundTripTime"),
+            "the sample does not read the round trip"
+        );
+        assert!(
+            PEER_JS.contains("pairCandidateType"),
+            "the sample does not say whether the pair is direct or relayed"
+        );
+        assert!(
+            PEER_JS.contains("    samplePaths(now);"),
+            "the per-frame sweep never samples, so nothing is ever filled in"
         );
     }
 

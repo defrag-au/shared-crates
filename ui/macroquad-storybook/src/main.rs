@@ -13,21 +13,24 @@
 mod chain_fixture;
 mod gamekit_stories;
 mod route_stories;
+mod trading_stories;
 
 use chain_fixture::{ChainSim, Scenario};
 use gamekit_stories::{KitStory, KitView};
 use macroquad::prelude::*;
 use macroquad_widgets::{
-    BlockPulseVm, BlockTrainVm, Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility,
-    FloatingStick, FulfilmentAction, FulfilmentStatus, FulfilmentTx, Gesture, Gestures,
-    MintCheckoutVm, OrderFulfilmentVm, OrderStatus, Painter, PulseDetail, PulseTicker,
-    QuantityStepperVm, RiderState, SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerVm,
-    StepperAction, StickView, SwipeDir, Theme, TrainRider, TrainState, WalletAction,
-    WalletConnectVm, WalletItem, WalletListAction, WalletListState, WalletListVm, WalletRow,
-    WalletState, block_pulse, block_train, floating_stick, mint_checkout, order_fulfilment,
-    quantity_stepper, squad_picker, theme, wallet_connect, wallet_list,
+    BlockPulseVm, BlockTrainVm, Button, ButtonVariant, CalloutTone, CalloutVm, CheckoutAction,
+    CheckoutState, Eligibility, FloatingStick, FulfilmentAction, FulfilmentStatus, FulfilmentTx,
+    Gesture, Gestures, MintCheckoutVm, OrderFulfilmentVm, OrderStatus, Painter, PulseDetail,
+    PulseTicker, QuantityStepperVm, RiderState, SheetState, SquadCandidate, SquadCommit,
+    SquadPickerAction, SquadPickerVm, StepperAction, StickView, SwipeDir, Theme, TrainRider,
+    TrainState, WalletAction, WalletConnectVm, WalletItem, WalletListAction, WalletListState,
+    WalletListVm, WalletRow, WalletState, block_pulse, block_train, callout, floating_stick,
+    mint_checkout, order_fulfilment, quantity_stepper, segmented, segmented_pills, squad_picker,
+    theme, wallet_connect, wallet_list,
 };
 use route_stories::RouteStory;
+use trading_stories::{TradingStory, TradingView};
 use ui_theme::{TextSize, Token};
 
 const SIDEBAR_W: f32 = 210.0;
@@ -111,6 +114,16 @@ enum ChainView {
 
 enum Body {
     Buttons,
+    /// A segmented control, in the track shape or the pill one.
+    Segmented {
+        pills: bool,
+    },
+    /// The callout's six tones, with or without an action, or one row per ramp
+    /// step.
+    Callout {
+        action: bool,
+        sizes: bool,
+    },
     // Boxed: `ChainStory` holds a whole `Heartbeat` (a 256-slot ring plus the
     // scripted feed) inline, which every other variant would otherwise pay for.
     Chain(Box<ChainStory>),
@@ -126,6 +139,24 @@ enum Body {
     Kit(Box<KitStory>),
     /// A route graph and its strip, driven by the storybook clock.
     Route(Box<RouteStory>),
+    /// A trading view, driven by the storybook clock.
+    Trading(Box<TradingStory>),
+    /// The operator panel, whose buttons are live.
+    Admin(Box<AdminStory>),
+}
+
+/// The operator panel with a game's numbers in it and its buttons wired to an
+/// echo, the way a host would report what a command did.
+struct AdminStory {
+    snapshot: arcade_admin_quad::Snapshot,
+    commands: Vec<arcade_admin_quad::Command>,
+    outcome: Option<arcade_admin_quad::Outcome>,
+    /// The modal's motion. Opened all the way, so a capture is the settled
+    /// card; Close shuts it and a tap on the stage opens it again.
+    sheet: SheetState,
+    /// The rect the panel is given; the cramped one is there to prove a short
+    /// panel says what it left out instead of quietly drawing half of itself.
+    height: f32,
 }
 
 /// A floating stick the reader can drag with the mouse, beside fixed samples
@@ -140,6 +171,8 @@ struct StickStory {
 #[derive(Clone, Copy)]
 enum Kind {
     Buttons,
+    Segmented,
+    Callout,
     Chain,
     Stepper,
     Wallet,
@@ -150,6 +183,8 @@ enum Kind {
     Stick,
     Kit,
     Route,
+    Trading,
+    Admin,
 }
 
 struct Story {
@@ -217,6 +252,22 @@ impl Story {
         }
     }
 
+    fn segmented(category: &'static str, name: &'static str, pills: bool) -> Self {
+        Self {
+            category,
+            name,
+            body: Body::Segmented { pills },
+        }
+    }
+
+    fn callout(category: &'static str, name: &'static str, action: bool, sizes: bool) -> Self {
+        Self {
+            category,
+            name,
+            body: Body::Callout { action, sizes },
+        }
+    }
+
     fn wallet(category: &'static str, name: &'static str, state: WalletState) -> Self {
         Self {
             category,
@@ -244,6 +295,8 @@ impl Story {
     fn kind(&self) -> Kind {
         match self.body {
             Body::Buttons => Kind::Buttons,
+            Body::Segmented { .. } => Kind::Segmented,
+            Body::Callout { .. } => Kind::Callout,
             Body::Chain(_) => Kind::Chain,
             Body::Stepper(_) => Kind::Stepper,
             Body::Wallet(_) => Kind::Wallet,
@@ -254,6 +307,8 @@ impl Story {
             Body::Stick(_) => Kind::Stick,
             Body::Kit(_) => Kind::Kit,
             Body::Route(_) => Kind::Route,
+            Body::Trading(_) => Kind::Trading,
+            Body::Admin(_) => Kind::Admin,
         }
     }
 
@@ -273,6 +328,72 @@ impl Story {
                 view,
                 (0..6).map(placeholder_art).collect(),
             ))),
+        }
+    }
+
+    fn admin(name: &'static str, height: f32) -> Self {
+        Self {
+            category: "admin",
+            name,
+            body: Body::Admin(Box::new(AdminStory {
+                sheet: SheetState::new().opened(),
+                snapshot: arcade_admin_quad::Snapshot {
+                    client: arcade_admin_quad::ClientCost {
+                        fps: 59.6,
+                        frame_ms: 16.8,
+                        worst_ms: 41.2,
+                        memory_bytes: Some(412 * 1024 * 1024),
+                    },
+                    net: arcade_admin_quad::NetHealth {
+                        links_open: 3,
+                        links_expected: 4,
+                        links_relayed: 1,
+                        rtt_tenths: Some(124),
+                        churn: 2,
+                        offered: 7,
+                        answered: 7,
+                        failed: 1,
+                    },
+                    world: Some(arcade_admin_quad::World {
+                        players: 12,
+                        connected: 11,
+                        tick: 40_112,
+                        running: true,
+                        colo: Some("BNE".into()),
+                        age_ms: 1_200,
+                    }),
+                },
+                commands: vec![
+                    arcade_admin_quad::Command {
+                        id: "resync",
+                        label: "Resync",
+                        enabled: true,
+                        destructive: false,
+                    },
+                    arcade_admin_quad::Command {
+                        id: "restart",
+                        label: "Restart world",
+                        enabled: true,
+                        destructive: true,
+                    },
+                    arcade_admin_quad::Command {
+                        id: "broadcast",
+                        label: "Broadcast",
+                        enabled: false,
+                        destructive: false,
+                    },
+                ],
+                outcome: None,
+                height,
+            })),
+        }
+    }
+
+    fn trading(name: &'static str, view: TradingView) -> Self {
+        Self {
+            category: "trading",
+            name,
+            body: Body::Trading(Box::new(TradingStory::new(view))),
         }
     }
 
@@ -424,6 +545,11 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
     vec![
         Story::buttons("atoms", "buttons"),
         Story::stepper("atoms", "quantity stepper", 2),
+        Story::segmented("atoms", "segmented · track", false),
+        Story::segmented("atoms", "segmented · pills", true),
+        Story::callout("atoms", "callout · tones", false, false),
+        Story::callout("atoms", "callout · with an action", true, false),
+        Story::callout("atoms", "callout · sizes", false, true),
         Story::stick("input", "floating stick"),
         Story::wallet(
             "wallet",
@@ -683,6 +809,8 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::kit("rounded art", KitView::Art),
         Story::kit("preloader", KitView::Preload),
         Story::kit("card face", KitView::Face),
+        Story::admin("operator panel", 430.0),
+        Story::admin("operator panel · cramped", 300.0),
         Story::route("two-way split", RouteStory::split()),
         Story::route("declined split", RouteStory::declined()),
         Story::route("single venue", RouteStory::single()),
@@ -690,6 +818,26 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::route("filling", RouteStory::filling()),
         Story::route("closed unfilled", RouteStory::ended(false)),
         Story::route("failed on chain", RouteStory::ended(true)),
+        // Trading views. The market data is a layout fixture, not a token's
+        // history — see `trading_stories`.
+        Story::trading("price chart · sliding", TradingView::Chart),
+        Story::trading("price chart · phone", TradingView::ChartPhone),
+        Story::trading("price chart · scrub", TradingView::ChartScrub),
+        Story::trading("price chart · new high", TradingView::ChartHigh),
+        Story::trading("life strip · brush", TradingView::Strip),
+        Story::trading("life strip · phone", TradingView::StripPhone),
+        Story::trading("life strip · pending", TradingView::StripPending),
+        Story::trading("stat tiles", TradingView::Stats),
+        Story::trading("split bar", TradingView::Split),
+        Story::trading("change chip", TradingView::Change),
+        Story::trading("feed · arriving", TradingView::Feed),
+        Story::trading("feed · scrolled back", TradingView::FeedScrolled),
+        Story::trading("holder board", TradingView::Board),
+        Story::trading("holder board · partial", TradingView::BoardPartial),
+        Story::trading("holder map", TradingView::Map),
+        Story::trading("token header · replay", TradingView::Header),
+        Story::trading("token header · live", TradingView::HeaderLive),
+        Story::trading("treemap", TradingView::Treemap),
     ]
 }
 
@@ -1067,7 +1215,7 @@ impl Storybook {
         );
         y += 20.0;
         let help = match self.stories[sel].kind() {
-            Kind::Kit | Kind::Route => format!(
+            Kind::Kit | Kind::Route | Kind::Trading => format!(
                 "arrows / click to switch  ·  t = theme: {}  ·  p pause · . step · s slow  ·  {}",
                 p.theme.name,
                 self.clock.label()
@@ -1083,6 +1231,78 @@ impl Storybook {
                     self.last_action = Some(a);
                 }
                 self.echo(p, x0);
+            }
+            Kind::Segmented => {
+                let options = ["1H", "24H", "7D", "30D", "ALL"];
+                let pills = matches!(self.stories[sel].body, Body::Segmented { pills: true });
+                // The pill row is a chart's span picker: five chips and their
+                // gaps, at the size the arena draws them. The track is the
+                // heavier control, for a whole pane.
+                let row = match pills {
+                    true => Rect::new(x0, y, 5.0 * 34.0 + 4.0 * 4.0, 16.0),
+                    false => Rect::new(x0, y, col_w.min(340.0), 28.0),
+                };
+                if pills {
+                    segmented_pills(p, row, &options, 1);
+                } else {
+                    let _ = segmented(p, row, &options, 1, true);
+                }
+            }
+            Kind::Callout => {
+                let action = matches!(self.stories[sel].body, Body::Callout { action: true, .. });
+                let sizes = matches!(self.stories[sel].body, Body::Callout { sizes: true, .. });
+                let mut ry = y;
+                if sizes {
+                    // The four steps the adopting surfaces already drew at, so
+                    // a host picks its own and the adoption is not a restyle.
+                    for (label, step) in [
+                        ("Base", TextSize::Base),
+                        ("Md", TextSize::Md),
+                        ("Xl", TextSize::Xl),
+                        ("Xl2", TextSize::Xl2),
+                    ] {
+                        let row = Rect::new(x0 + 44.0, ry, col_w.min(420.0) - 44.0, 24.0);
+                        p.text_mid(
+                            label,
+                            x0,
+                            row.y + row.h * 0.5,
+                            p.size(TextSize::Xs),
+                            p.theme.color.text_muted,
+                        );
+                        let vm = CalloutVm {
+                            tone: CalloutTone::Positive,
+                            text: "LANDED in block 10,441,882",
+                            action: None,
+                            size: step,
+                        };
+                        let _ = callout(p, &vm, row);
+                        ry += 34.0;
+                    }
+                } else {
+                    // The sentences five surfaces actually draw, one per tone.
+                    let rows = [
+                        ("SENT · 0f3a…9c2e", CalloutTone::Normal),
+                        ("waiting on the batcher", CalloutTone::Muted),
+                        (
+                            "IN BLOCK 10,441,882 · minswap-v2 filling",
+                            CalloutTone::Busy,
+                        ),
+                        ("LANDED in block 10,441,882", CalloutTone::Positive),
+                        ("settled, but one order unfilled", CalloutTone::Warn),
+                        ("could not open the block feed", CalloutTone::Negative),
+                    ];
+                    for (text, tone) in rows {
+                        let vm = CalloutVm {
+                            tone,
+                            text,
+                            action: action.then_some("Try again"),
+                            size: TextSize::Base,
+                        };
+                        let row = Rect::new(x0, ry, col_w.min(420.0), 22.0);
+                        let _ = callout(p, &vm, row);
+                        ry += 30.0;
+                    }
+                }
             }
             Kind::Chain => self.draw_chain(p, sel, x0, y),
             Kind::Stepper => self.draw_stepper(p, sel, x0, y),
@@ -1108,6 +1328,49 @@ impl Storybook {
                         screen_height() - y - 20.0,
                     );
                     story.draw(p, area, &g, dt, t);
+                }
+            }
+            Kind::Trading => {
+                let (t, g) = (self.clock.t, self.gesture);
+                if let Body::Trading(story) = &mut self.stories[sel].body {
+                    let area = Rect::new(
+                        x0,
+                        y,
+                        screen_width() - x0 - 20.0,
+                        screen_height() - y - 20.0,
+                    );
+                    story.draw(p, area, &g, t);
+                }
+            }
+            Kind::Admin => {
+                let story_height = match &self.stories[sel].body {
+                    Body::Admin(story) => story.height,
+                    _ => 430.0,
+                };
+                let area = Rect::new(x0, y, col_w.min(360.0), story_height);
+                if let Body::Admin(story) = &mut self.stories[sel].body {
+                    let panel = arcade_admin_quad::Panel {
+                        snapshot: &story.snapshot,
+                        commands: &story.commands,
+                        outcome: story.outcome.as_ref(),
+                    };
+                    let reply = arcade_admin_quad::show_sheet(p, &panel, &story.sheet, area);
+                    if reply.close {
+                        story.sheet.close();
+                    } else if !story.sheet.visible() && p.tap.is_some() {
+                        story.sheet.open();
+                    }
+                    if let Some(id) = reply.pressed {
+                        let ok = story
+                            .commands
+                            .iter()
+                            .find(|c| c.id == id)
+                            .is_some_and(|c| c.enabled);
+                        story.outcome = Some(arcade_admin_quad::Outcome {
+                            text: format!("{id}: {}", if ok { "done" } else { "refused" }),
+                            ok,
+                        });
+                    }
                 }
             }
         }
@@ -1695,10 +1958,15 @@ async fn main() {
     loop {
         let theme = book.current_theme();
         let gesture = gestures.update();
-        let p = Painter::new(font.as_ref(), mono.as_ref(), theme, gesture.tap);
+        // Tick BEFORE drawing, so an animated widget reads the same moment the
+        // story draws: with `--shot` the clock is fixed and the capture is
+        // repeatable, which only holds if `Painter::time` is the story's clock
+        // rather than the wall's.
+        book.dt = book.clock.tick(get_frame_time());
+        let p =
+            Painter::new(font.as_ref(), mono.as_ref(), theme, gesture.tap).at_time(book.clock.t);
         book.pending_swipe = gesture.swipe;
         book.gesture = gesture;
-        book.dt = book.clock.tick(get_frame_time());
 
         // Snapshot mode draws into an offscreen target and reads *that*, not
         // the window. `get_screen_data` reads the front buffer, which an

@@ -1,4 +1,4 @@
-use crate::{HttpError, HttpMethod, ResponseDetails};
+use crate::{HttpError, HttpMethod, RawResponse, ResponseDetails};
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
 use serde::{Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
@@ -153,4 +153,34 @@ pub(crate) async fn make_request_text_with_details<T: Serialize>(
         status_code,
         headers,
     })
+}
+
+/// POST raw bytes under the caller's content type.
+///
+/// Not built on `request_builder`, which pins `Content-Type: application/json`;
+/// setting it twice would send two values. The status is returned rather than
+/// raised for the same reason the Worker submit path does not retry: a rejected
+/// transaction carries its reason in the body.
+pub(crate) async fn post_bytes(
+    client: &reqwest::Client,
+    default_headers: &HashMap<String, String>,
+    timeout: Option<Duration>,
+    url: &str,
+    content_type: &str,
+    body: &[u8],
+) -> Result<RawResponse, HttpError> {
+    let mut builder = client.post(url).header(CONTENT_TYPE, content_type);
+    if let Some(timeout) = timeout {
+        builder = builder.timeout(timeout);
+    }
+    for (key, value) in default_headers {
+        builder = builder.header(key, value);
+    }
+
+    let response = builder.body(body.to_vec()).send().await?;
+    let status_code = response.status().as_u16();
+    let body = response.text().await?;
+    debug!("Got raw response: status {status_code}");
+
+    Ok(RawResponse { status_code, body })
 }

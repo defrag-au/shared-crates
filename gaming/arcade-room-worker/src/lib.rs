@@ -121,6 +121,90 @@ struct Live<S: RoomSim> {
     was_running: bool,
 }
 
+/// `GET /status/<world>.json`: a world as a monitor draws it.
+///
+/// Everything here is something the room already knows. Two fields are worth
+/// explaining:
+///
+/// * `groups` is the only thing a client cannot work out for itself — each
+///   seat's published interest set, which is what the peer plane is built from.
+///   It is what turns "how many links were seen" into "how many were expected".
+/// * `colo` is the game's to fill. The object knows where it runs only if the
+///   game looked it up, so it is an `Option` rather than a guess, and `null`
+///   means "not asked yet" rather than "unknown region".
+///
+/// `present` is the "a status probe reads and never makes a world" rule made
+/// visible: asking about a world nobody has played answers with a report whose
+/// `present` is false, and still starts nothing.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StatusReport {
+    pub game: &'static str,
+    pub version: u32,
+    pub present: bool,
+    pub tick: u64,
+    pub running: bool,
+    pub seated: usize,
+    pub real_connected: usize,
+    pub group_epoch: u32,
+    pub groups: Vec<GroupReport>,
+    /// Ticks the room has confirmed since it started.
+    pub ticks: u64,
+    /// Connections turned away for flooding: the one counter a monitor is
+    /// looking for when a world is misbehaving.
+    pub rate_refused: u64,
+    pub colo: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GroupReport {
+    pub seat: u16,
+    pub members: Vec<u16>,
+}
+
+impl StatusReport {
+    /// A world that is not here, and deliberately not started.
+    fn absent<S: RoomSim>(colo: Option<String>) -> Self {
+        Self {
+            game: S::GAME,
+            version: S::VERSION,
+            present: false,
+            tick: 0,
+            running: false,
+            seated: 0,
+            real_connected: 0,
+            group_epoch: 0,
+            groups: Vec::new(),
+            ticks: 0,
+            rate_refused: 0,
+            colo,
+        }
+    }
+
+    fn of<S: RoomSim>(room: &Room<S>, colo: Option<String>) -> Self {
+        let stats = room.stats();
+        Self {
+            game: S::GAME,
+            version: S::VERSION,
+            present: true,
+            tick: room.sim().tick(),
+            running: room.running(),
+            seated: room.seated(),
+            real_connected: room.real_connected(),
+            group_epoch: room.group_epoch(),
+            groups: room
+                .groups()
+                .map(|(seat, members)| GroupReport {
+                    seat,
+                    members: members.to_vec(),
+                })
+                .collect(),
+            ticks: stats.ticks,
+            rate_refused: stats.rate_refused,
+            colo,
+        }
+    }
+}
+
 /// The Durable Object's state for one world. Held by the class
 /// [`world_object!`] declares.
 pub struct RoomHost<S: RoomSim> {
@@ -204,6 +288,24 @@ impl<S: RoomSim> RoomHost<S> {
         Ok(true)
     }
 
+    /// This world as a monitor reads it, JSON: [`StatusReport`].
+    ///
+    /// Same rule as the text form — **it reads and never makes a world**. Public
+    /// so a game whose object knows something the room does not (the Cloudflare
+    /// location it runs in) can answer the request itself.
+    pub async fn status(&self, colo: Option<String>) -> Result<Response> {
+        let live = self.ensure(None).await?;
+        if !live {
+            return Response::from_json(&StatusReport::absent::<S>(colo));
+        }
+        let composed = {
+            let live = self.live.borrow();
+            let live = live.as_ref().expect("live");
+            StatusReport::of(&live.room, colo)
+        };
+        Response::from_json(&composed)
+    }
+
     /// `/<world>` with `Upgrade: websocket`: seat a connection.
     /// `/<world>/status`: the room's counters, as text. [`connect`] sends
     /// both.
@@ -218,7 +320,11 @@ impl<S: RoomSim> RoomHost<S> {
         let url = req.url()?;
         let mut parts = url.path().trim_start_matches('/').split('/');
         let world = parts.next().filter(|w| !w.is_empty()).unwrap_or("main");
-        let status = parts.next() == Some("status");
+        let kind = parts.next();
+        if kind == Some("status.json") {
+            return self.status(None).await;
+        }
+        let status = kind == Some("status");
         let live = self.ensure((!status).then_some(world)).await?;
         if status {
             if !live {
@@ -424,13 +530,18 @@ impl<S: RoomSim> RoomHost<S> {
     }
 }
 
-/// Route `GET …/ws/<world>` (a WebSocket upgrade) and `GET …/status/<world>`
-/// to the world's shard, in the Durable Object namespace bound as `binding`.
-/// World names are letters, digits, `-` and `_`, up to 32 of them.
+/// Route `GET …/ws/<world>`, `GET …/status/<world>` (text) and
+/// `GET …/status/<world>.json` (a [`StatusReport`]) to the world's shard, in the
+/// Durable Object namespace bound as `binding`. World names are letters, digits,
+/// `-` and `_`, up to 32 of them — a `.json` suffix is therefore unambiguous.
 pub async fn connect<S: RoomSim>(req: Request, env: &Env, binding: &str) -> Result<Response> {
     let url = req.url()?;
     let mut parts = url.path().rsplit('/');
-    let world = parts.next().unwrap_or_default().to_string();
+    let mut world = parts.next().unwrap_or_default().to_string();
+    let json = world.ends_with(".json");
+    if json {
+        world.truncate(world.len() - ".json".len());
+    }
     let kind = parts.next().unwrap_or_default();
     let valid = !world.is_empty()
         && world.len() <= 32
@@ -444,10 +555,10 @@ pub async fn connect<S: RoomSim>(req: Request, env: &Env, binding: &str) -> Resu
         .durable_object(binding)?
         .id_from_name(&shard_name::<S>(&world))?
         .get_stub()?;
-    let path = if kind == "status" {
-        format!("https://world/{world}/status")
-    } else {
-        format!("https://world/{world}")
+    let path = match kind {
+        "status" if json => format!("https://world/{world}/status.json"),
+        "status" => format!("https://world/{world}/status"),
+        _ => format!("https://world/{world}"),
     };
     let mut forward = Request::new(&path, worker::Method::Get)?;
     for (k, v) in req.headers() {

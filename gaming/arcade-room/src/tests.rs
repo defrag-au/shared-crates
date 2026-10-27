@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use crate::room::{PAIR_GRACE_MS, Room, RoomConfig, To};
-use crate::sim::{Change, INTEREST_MAX, RoomSim, Seat};
+use crate::sim::{Change, INTEREST_MAX, RoomSim, Schema, Seat};
 use crate::testkit::{BotState, Harness};
 use crate::wire::{ToClient, ToRoom};
 
@@ -26,6 +26,10 @@ impl RoomSim for Walkers {
     const TICK_HZ: u32 = 60;
     const MAX_SEATS: usize = 64;
     const INPUT_BYTES: usize = 2;
+    const SCHEMA: Schema = Schema {
+        wire: 7,
+        hash: 0xfeed_face_dead_beef,
+    };
 
     fn new(_seed: u64) -> Self {
         Self {
@@ -140,6 +144,44 @@ impl RoomSim for Walkers {
         near.sort_by_key(|(d2, other)| (*d2, *other));
         Some(near.into_iter().take(k).map(|(_, other)| other).collect())
     }
+}
+
+/// The welcome carries the peer-plane format the game declares, so a client
+/// can compare it with its own before any peer's bytes reach a decoder
+/// (design §10). The room never parses it.
+#[test]
+fn the_welcome_carries_the_games_schema() {
+    let mut h = Harness::<Walkers>::new(1, cfg());
+    h.connect("a", true, 10, 0);
+    h.run(100, |_, _, _| None);
+
+    assert_eq!(
+        h.client(0).expect("seated").schema(),
+        <Walkers as RoomSim>::SCHEMA,
+        "the schema a client is told is not the one the game declared"
+    );
+}
+
+/// `UNKNOWN` agrees with everything, which is what lets a room that predates
+/// the schema seat a client that has one. Two declared formats must match on
+/// both numbers.
+#[test]
+fn an_undeclared_schema_agrees_with_everything() {
+    let ours = Schema {
+        wire: 1,
+        hash: 0xabcd,
+    };
+    assert!(Schema::UNKNOWN.agrees(ours));
+    assert!(ours.agrees(Schema::UNKNOWN));
+    assert!(ours.agrees(ours));
+    assert!(!ours.agrees(Schema {
+        wire: 2,
+        hash: 0xabcd
+    }));
+    assert!(!ours.agrees(Schema {
+        wire: 1,
+        hash: 0xabce
+    }));
 }
 
 fn cfg() -> RoomConfig {
@@ -694,6 +736,36 @@ fn a_group_is_the_seats_the_world_says_are_near() {
     );
 }
 
+/// A monitor reads the sets the room published, not the sim's idea of who is
+/// near: the same memberships the clients were sent, under one epoch. This is
+/// the number a link count is only meaningful against.
+#[test]
+fn the_published_groups_are_readable_after_a_regroup() {
+    let mut h = Harness::<Walkers>::new(15, cfg());
+    let a = h.connect("a", true, 20, 0);
+    let b = h.connect("b", true, 20, 0);
+    h.run(1_200, |_, _, _| None);
+    let (a_seat, b_seat) = (
+        h.client(a).expect("playing").seat(),
+        h.client(b).expect("playing").seat(),
+    );
+
+    let published: Vec<(Seat, Vec<Seat>)> = h
+        .room
+        .groups()
+        .map(|(seat, members)| (seat, members.to_vec()))
+        .collect();
+    assert_eq!(
+        published,
+        vec![(a_seat, vec![b_seat]), (b_seat, vec![a_seat])],
+        "the room's own sets do not name the pair"
+    );
+    assert!(
+        h.room.group_epoch() > 0,
+        "the sets are not named by an epoch"
+    );
+}
+
 /// Three seats and interest sets that are mutual for one pair and one-way for
 /// the third: 0 and 1 name each other, and 2 names 0 while 0 does not name 2.
 /// Enough to pin that the published group is the mutual core — the pair links,
@@ -1073,11 +1145,208 @@ fn every_published_pair_can_be_started_by_its_lower_seat() {
         for other in members {
             let (leader, follower) = ((*seat).min(*other), (*seat).max(*other));
             assert!(
-                groups
-                    .get(&leader)
-                    .is_some_and(|m| m.contains(&follower)),
+                groups.get(&leader).is_some_and(|m| m.contains(&follower)),
                 "{leader}'s group does not name {follower}, so neither end can start"
             );
         }
     }
+}
+
+/// Two seated peers, with the connection numbers and seats `a` and `b` are.
+fn two_seats(cfg: RoomConfig) -> Room<Islands> {
+    let mut room = Room::<Islands>::new(1, cfg);
+    for conn in 1..=2 {
+        room.open(conn);
+    }
+    for (conn, name) in [(1, "a"), (2, "b")] {
+        room.message(conn, &crate::client::hello::<Islands>(name, true), 0);
+    }
+    room.drain();
+    room
+}
+
+fn targeted(to: Seat) -> Vec<u8> {
+    ToRoom::SignalTo {
+        to,
+        bytes: b"v=0\r\n".to_vec(),
+    }
+    .encode()
+}
+
+/// A connection may spend a burst of signals and the rate that refills it, and
+/// no more. Over budget is a refusal: the object has already paid to receive
+/// and decode the frame, and a flood does not stop on its own (design §9).
+#[test]
+fn a_signal_flood_is_refused() {
+    let room_cfg = RoomConfig {
+        signal_hz: 0,
+        signal_burst: 3,
+        ..cfg()
+    };
+    let mut room = two_seats(room_cfg);
+
+    for _ in 0..3 {
+        room.message(1, &targeted(1), 0);
+    }
+    assert_eq!(room.signals(), (3, 3), "the burst is carried");
+
+    room.drain();
+    room.message(1, &targeted(1), 0);
+    let out = room.drain();
+    assert_eq!(room.signals(), (3, 3), "the fourth was carried anyway");
+    assert_eq!(room.stats().rate_refused, 1);
+    assert!(
+        out.iter().any(|o| o.to == To::One(1)
+            && o.close
+            && matches!(ToClient::decode(&o.bytes), Ok(ToClient::Refused { .. }))),
+        "a flood was not refused"
+    );
+}
+
+/// The bucket comes back, so a connection that was quiet is not punished for
+/// it: two signals, a second later two more, all four carried.
+#[test]
+fn a_bucket_refills_at_its_rate() {
+    let room_cfg = RoomConfig {
+        signal_hz: 2,
+        signal_burst: 2,
+        ..cfg()
+    };
+    let mut room = two_seats(room_cfg);
+
+    for _ in 0..2 {
+        room.message(1, &targeted(1), 0);
+    }
+    for _ in 0..2 {
+        room.message(1, &targeted(1), 1_000);
+    }
+
+    assert_eq!(room.signals(), (4, 4), "the refill did not arrive");
+    assert_eq!(room.stats().rate_refused, 0);
+}
+
+/// The two planes have separate budgets: an input flood cannot spend the
+/// handshake's, and a handshake's burst cannot starve a player's inputs.
+#[test]
+fn the_two_planes_have_separate_budgets() {
+    let room_cfg = RoomConfig {
+        frame_hz: 0,
+        frame_burst: 1,
+        ..cfg()
+    };
+    let mut room = two_seats(room_cfg);
+
+    // The one frame this connection may send.
+    room.message(1, &ToRoom::Ping { client_ms: 1 }.encode(), 0);
+    // Signals are the other bucket's business, and all five go.
+    for _ in 0..5 {
+        room.message(1, &targeted(1), 0);
+    }
+    assert_eq!(room.signals(), (5, 5), "signals spent the input budget");
+
+    room.drain();
+    room.message(1, &ToRoom::Ping { client_ms: 2 }.encode(), 0);
+    let out = room.drain();
+    assert_eq!(room.stats().rate_refused, 1);
+    assert!(
+        out.iter().any(|o| o.to == To::One(1) && o.close),
+        "a second input frame was not refused"
+    );
+}
+
+/// Every frame the object receives is counted, and every frame it can read is
+/// attributed to a kind. The breakdown is what §12.1's number is made of: a
+/// heartbeat beside an input is the difference between a player saying it is
+/// still here and a player changing what they are doing.
+#[test]
+fn the_room_counts_what_each_connection_sends() {
+    let mut room = two_seats(cfg());
+    let before = room.stats();
+
+    room.message(1, &ToRoom::Inputs(Vec::new()).encode(), 0);
+    room.message(1, &ToRoom::Inputs(vec![(1, vec![1, 2])]).encode(), 0);
+    room.message(1, &ToRoom::Ping { client_ms: 1 }.encode(), 0);
+    room.message(1, &ToRoom::Hash { tick: 0, hash: 0 }.encode(), 0);
+    room.message(1, &targeted(1), 0);
+    // A frame that does not decode is the object's cost too, and belongs to no
+    // kind: it is the difference between the total and the breakdown.
+    room.message(1, &[0xff], 0);
+
+    let stats = room.stats();
+    assert_eq!(stats.frames_in - before.frames_in, 6, "{stats:?}");
+    assert_eq!(stats.inbound.heartbeats - before.inbound.heartbeats, 1);
+    assert_eq!(stats.inbound.inputs - before.inbound.inputs, 1);
+    assert_eq!(stats.inbound.pings - before.inbound.pings, 1);
+    assert_eq!(stats.inbound.hashes - before.inbound.hashes, 1);
+    assert_eq!(stats.inbound.signals - before.inbound.signals, 1);
+    assert_eq!(
+        stats.inbound.hellos, 2,
+        "both seats' hellos were counted: {stats:?}"
+    );
+    let counted = stats.inbound.hellos
+        + stats.inbound.inputs
+        + stats.inbound.heartbeats
+        + stats.inbound.pings
+        + stats.inbound.hashes
+        + stats.inbound.signals;
+    assert_eq!(
+        counted,
+        stats.frames_in - 1,
+        "the breakdown is every frame but the unreadable one: {stats:?}"
+    );
+}
+
+/// What one player costs the room: a heartbeat every `HEARTBEAT_MS`, a ping
+/// every two seconds and a hash every second, all on the input plane. **About
+/// eleven a second is the floor, and it is the heartbeat** — a player holding a
+/// direction sends one input for the press, not sixty, because
+/// [`Client::input`](crate::Client::input) sends on change and a held stick does
+/// not change. This is §12.1's measurement, pinned so a change to the client's
+/// pacing has to come with a new number.
+#[test]
+fn a_player_costs_the_room_about_eleven_frames_a_second() {
+    let bots = 4;
+    let seconds = 20;
+    let mut h = Harness::<Walkers>::new(7, cfg());
+    for i in 0..bots {
+        h.connect(&format!("p{i}"), true, 30, 10);
+    }
+    // Settle: the hellos and the world starting.
+    h.run(2_000, |_, _, _| None);
+    let joined = h.room.stats();
+    assert_eq!(joined.inbound.hellos, bots as u64, "{joined:?}");
+
+    // Twenty seconds of nobody pressing anything.
+    let before = h.room.stats();
+    h.run(seconds * 1_000, |_, _, _| None);
+    let quiet = h.room.stats();
+    let rate = (quiet.frames_in - before.frames_in) / (bots as u64 * seconds);
+    assert!(
+        (9..=13).contains(&rate),
+        "a quiet player sent {rate} frames a second: {quiet:?}"
+    );
+    assert_eq!(
+        quiet.inbound.inputs, before.inbound.inputs,
+        "nobody moved, so no input carried a change: {quiet:?}"
+    );
+    let heartbeats =
+        (quiet.inbound.heartbeats - before.inbound.heartbeats) / (bots as u64 * seconds);
+    assert!(
+        (8..=11).contains(&heartbeats),
+        "the heartbeat alone was {heartbeats} a second: {quiet:?}"
+    );
+
+    // Twenty more, steering twice a second.
+    let before = h.room.stats();
+    h.run(seconds * 1_000, |i, _, now| wander(i, now));
+    let moving = h.room.stats();
+    let rate = (moving.frames_in - before.frames_in) / (bots as u64 * seconds);
+    assert!(
+        (9..=15).contains(&rate),
+        "a moving player sent {rate} frames a second: {moving:?}"
+    );
+    assert!(
+        moving.inbound.inputs - before.inbound.inputs > 100,
+        "a change was sent each time the stick moved: {moving:?}"
+    );
 }

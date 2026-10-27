@@ -255,6 +255,10 @@ arcade-room-quad = { path = "gaming/arcade-room-quad" }
 # The peer plane beside a room: the signalling protocol between players, who
 # offers, and the browser half that owns RTCPeerConnection.
 arcade-peer = { path = "gaming/arcade-peer" }
+# The operator panel a game shows itself through: the client's cost, the peer
+# plane, the world, and the game's own commands. Renders with macroquad; decides
+# nothing. The `-quad` suffix is the convention `arcade-room-quad` set.
+arcade-admin-quad = { path = "gaming/arcade-admin-quad" }
 # TURN credentials for that peer plane: the `id:token` pair a mint is signed
 # with, the shape Cloudflare Realtime answers, and when a mint goes stale. Pure
 # shapes, no transport — the Worker that mints composes its own fetch.

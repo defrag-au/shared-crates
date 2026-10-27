@@ -5,7 +5,7 @@
 //! message is small and fixed in shape, and a malformed frame from a client
 //! must be refused, never misread.
 
-use crate::sim::{Change, Seat};
+use crate::sim::{Change, Schema, Seat};
 
 /// From a client to its room.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -59,6 +59,10 @@ pub enum ToClient {
         tick_hz: u32,
         /// Where the room's clock was when it sent this.
         room_tick: u64,
+        /// The peer-plane format the room was built with, so a client that
+        /// speaks another one can refuse the overlay rather than misread it
+        /// (`docs/P2P_OVERLAY_DESIGN.md` §10).
+        schema: Schema,
         snapshot: Vec<u8>,
     },
     /// Not seated, and why. The room closes the connection after this.
@@ -238,12 +242,15 @@ impl ToClient {
                 seat,
                 tick_hz,
                 room_tick,
+                schema,
                 snapshot,
             } => {
                 w.u8(1);
                 w.u16(*seat);
                 w.u32(*tick_hz);
                 w.u64(*room_tick);
+                w.u32(schema.wire);
+                w.u64(schema.hash);
                 w.blob(snapshot);
             }
             Self::Refused { reason } => {
@@ -302,6 +309,10 @@ impl ToClient {
                 seat: r.u16()?,
                 tick_hz: r.u32()?,
                 room_tick: r.u64()?,
+                schema: Schema {
+                    wire: r.u32()?,
+                    hash: r.u64()?,
+                },
                 snapshot: r.blob()?,
             },
             2 => Self::Refused { reason: r.str()? },
@@ -548,6 +559,10 @@ mod tests {
                 seat: 17,
                 tick_hz: 60,
                 room_tick: 1234,
+                schema: Schema {
+                    wire: 4,
+                    hash: 0x1234_5678_9abc_def0,
+                },
                 snapshot: vec![9; 3000],
             },
             ToClient::Refused {

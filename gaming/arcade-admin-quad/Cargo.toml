@@ -1,0 +1,14 @@
+[package]
+name = "arcade-admin-quad"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "The operator panel an arcade game can show: what the client costs, what the peer plane is doing, what the world looks like, and the game's own commands. Drawn with macroquad, decided by the game."
+
+[dependencies]
+# Pinned to the same 0.4 line the widgets crate uses, and patched to the glyph
+# atlas fix by the workspace's `[patch.crates-io]`.
+macroquad = "0.4"
+macroquad-widgets = { workspace = true }

@@ -74,6 +74,15 @@
 // epoch deliberately: a higher one means "start over", which would tear down the
 // very channels the restart is there to keep.
 //
+// ## What the path is worth
+//
+// A peer one hop away and a peer on another continent are the same 20 Hz
+// stream; what differs is the confirmed stream's round trip. `__btDrain` samples
+// each link's nominated candidate pair once a second and leaves the round trip
+// and both candidates' types on the link, so a report can say "direct, 4.2 ms"
+// rather than assuming it. Design §12.2 is the measurement that decides whether
+// colo belongs in the interest set, and this is its instrument.
+//
 // ## Announcing
 //
 // `Announce` is broadcast, and the room stamps the sender. A peer that joined
@@ -203,12 +212,23 @@
   // are the A/B, and the eviction rule below is what the run is judging.
   var PERSIST = /[?&]persist=1/.test(window.location.search || '');
 
+  // `?machine=1` hands every negotiation decision to `arcade_peer::machine`: the
+  // shim reports what the browser did and runs what Rust returns, and its own
+  // negotiation code is not reached. The flag is read here and in Rust from the
+  // same query; neither side tells the other.
+  var MACHINE = /[?&]machine=1/.test(window.location.search || '');
+
   // How long an offer may go unanswered before the attempt is abandoned and
   // retried. Longer than a handshake takes on any path that connects at all
   // (loopback measures ~100 ms; a TURN relay adds round trips, not tens of
   // seconds), and short enough that a lost signal costs a retry rather than a
   // stare. `?offerMs=<ms>` overrides it; `?offerMs=0` turns expiry off.
   var OFFER_MS = offerMs(window.location.search);
+  // How long an attempt the far side has **answered** may take to connect. Longer
+  // than ICE's own give-up (~30 s) on purpose: `ICE failed` is the report worth
+  // having, and it reaches `dropDead` by itself. This is the backstop for a
+  // browser that never says anything. `?answerMs=<ms>` overrides it; `0` waits.
+  var ANSWER_MS = answerMs(window.location.search);
 
   // How long a link may sit `disconnected` before it is treated as dead. ICE
   // reports `disconnected` for a path that may come back — a wifi hiccup, a
@@ -222,6 +242,21 @@
   // crash and the shim re-offers to a seat it is about to drop. A channel that
   // closes with no `Bye` behind it is a peer that died mid-connection.
   var LINK_SETTLE_MS = 1000;
+
+  // How long an offer refused for being from a seat outside the room's set is
+  // held before it is dropped. The room's set and the signals it implies arrive
+  // on different frames, so a seat returning to a group can offer before the
+  // other end has been told the group names it. That offer used to be discarded,
+  // and the pair waited for `OFFER_MS` (12 s) to try again; holding it for a
+  // moment and replaying it when the set arrives makes the return cost a round
+  // trip. Long enough to cover a room message to every seat, short enough that
+  // a genuinely stale offer is not applied.
+  var DEFER_MS = 2000;
+
+  // The buffer's bound. A gather is tens of candidates, and only signals that
+  // arrived inside `DEFER_MS` survive, so this is a guard against a malformed
+  // sender rather than a working limit.
+  var MAX_DEFERRED = 256;
 
   // How long a join waits for the room's list. Under `wrangler dev` the mint is
   // a round trip to Cloudflare Realtime and back, and a longer budget would be
@@ -272,6 +307,15 @@
     var match = /[?&]staleMs=(\d+)/.exec(search || '');
     if (!match) {
       return 10000;
+    }
+    var ms = parseInt(match[1], 10);
+    return ms > 0 ? ms : Infinity;
+  }
+
+  function answerMs(search) {
+    var match = /[?&]answerMs=(\d+)/.exec(search || '');
+    if (!match) {
+      return 30000;
     }
     var ms = parseInt(match[1], 10);
     return ms > 0 ? ms : Infinity;
@@ -406,6 +450,13 @@
 
   // Seats waiting for an offer slot (`MAX_NEGOTIATING`), in arrival order.
   var queue = [];
+
+  // Offers, answers and candidates refused because the sender was not in this
+  // seat's set yet: `{from, bytes, at}`. Replayed in arrival order when the set
+  // names the sender, expired after `DEFER_MS`. Every pairwise kind is held,
+  // because a description without the candidates around it is a link that never
+  // starts.
+  var deferred = [];
 
   // The room's interest set for this seat: who it is worth keeping a channel
   // to. Null until the room has said; before then every peer, which is what
@@ -717,6 +768,13 @@
       recvCtrl: 0,
       sentState: 0,
       recvState: 0,
+      // The nominated candidate pair, sampled once a second (see
+      // `samplePaths`). `null` until a report lands: a connection has no round
+      // trip to report until its checks have succeeded.
+      rttMs: null,
+      local: null,
+      remote: null,
+      sampling: false,
     };
     links.set(seat, link);
     return link;
@@ -827,6 +885,12 @@
         opens: link.opens,
         idle: link.idle,
         healthy: isHealthy(link),
+        // The path this link is actually using: tenths of a millisecond of
+        // round trip, and whether each end is a local address, a mapped one or
+        // a relay. `null` until the first sample.
+        rttMs: link.rttMs,
+        local: link.local,
+        remote: link.remote,
       });
     });
     window.__bt.links = detail;
@@ -948,8 +1012,18 @@
       }
       rollup();
     };
-    channel.onerror = function (e) {
-      fail(link, name + ' channel: ' + describe(e));
+    channel.onerror = function () {
+      // A channel error is the transport dying, not a fault in this page: the
+      // far side's ICE going raises one here, and it fires on the half that is
+      // still healthy. `fail` never clears, so reporting it left `error` set for
+      // the rest of a run after a link had already been repaired — a state the
+      // design reads as a failure. Let an error settle exactly as a close does;
+      // the repair is `dropDead`'s job.
+      var current = name === 'state' ? link.state : link.ctrl;
+      if (current === channel && !link.silent) {
+        suspect(link, LINK_SETTLE_MS);
+      }
+      rollup();
     };
     channel.onmessage = function (event) {
       if (link.idle) {
@@ -1200,14 +1274,20 @@
     }
   }
 
-  // Abandon an offer the far side never answered.
+  // Abandon an attempt that is going nowhere.
   //
-  // The attempt is torn down and the pair told, because the far side may be
-  // holding its half of a negotiation whose answer was lost, and a `Bye` is
-  // cheaper than waiting for it to notice. Then the ordinary paths take over: the
-  // leader offers again on a newer epoch, and the follower announces so the
-  // leader does. `reset` clears `offerSince`, so this cannot fire twice for one
-  // attempt.
+  // Two deadlines, because there are two ways an attempt fails and only one of
+  // them is ours to time. An offer **nobody answered** is a lost signal: the
+  // fault is here, and `OFFER_MS` retries it. An offer the far side **answered**
+  // is no longer ours to judge — ICE decides, and it says `failed` in about
+  // thirty seconds — so `ANSWER_MS` is only the backstop for a browser that
+  // never says anything.
+  //
+  // One deadline used to do both, at twelve seconds. That is shorter than ICE's
+  // own give-up, so a pair whose answer arrived and whose checks could not
+  // succeed was reset before it could fail: it re-offered every twelve seconds
+  // forever, and `failed` — the counter that exists to notice a dead link —
+  // never counted one (design §15).
   function sweepOffer(link, now) {
     if (link.offerSince === 0) {
       return;
@@ -1217,14 +1297,20 @@
       link.offerSince = 0;
       return;
     }
-    if (now - link.offerSince < OFFER_MS) {
+    var answered = link.remoteSet;
+    if (now - link.offerSince < (answered ? ANSWER_MS : OFFER_MS)) {
       return;
     }
     var seat = link.seat;
     var epoch = link.myEpoch;
-    window.__bt.negotiations.expired += 1;
-    note(seat, 'offer expired');
-    reset(link, 'offer expired');
+    var why = answered ? 'no path after the answer' : 'offer expired';
+    if (answered) {
+      window.__bt.negotiations.failed += 1;
+    } else {
+      window.__bt.negotiations.expired += 1;
+    }
+    note(seat, why);
+    reset(link, why);
     sendBye(seat, epoch, BYE_REPLACED);
     if (me === null || link.idle) {
       return;
@@ -1329,6 +1415,19 @@
       note(link.seat, 'answer ignored: not the offerer');
       return;
     }
+    // An answer is only good for an offer that is still outstanding. One that
+    // arrives after the attempt it belongs to was reset — expiry, an ICE
+    // failure, a restart — lands on either a connection in `stable` (the new
+    // offer has not been written yet) or one that has already been answered,
+    // and `setRemoteDescription` throws "called in wrong state". The throw used
+    // to reach `fail`, which tore down the *new* attempt: a reset storm that
+    // only became reachable once an answered offer was given time to fail
+    // (design §15). The far side re-answers every offer it receives, so
+    // dropping this one loses nothing.
+    if (link.pc.signalingState !== 'have-local-offer') {
+      note(link.seat, 'answer ignored: no offer outstanding');
+      return;
+    }
     note(link.seat, 'answer taken ' + msg.sdp.length + 'B sdp');
     link.pc
       .setRemoteDescription({ type: 'answer', sdp: msg.sdp })
@@ -1382,7 +1481,19 @@
       // one still has to hear `Bye` or a restarted offer, or persistence would
       // keep a link nobody can use and never replace it.
       window.__bt.signals.dropped += 1;
-      if (msg.tag === TAG_ANNOUNCE) {
+      if (msg.tag === TAG_OFFER || msg.tag === TAG_ANSWER || msg.tag === TAG_CANDIDATE) {
+        // The set that names the sender has not arrived yet. Hold the whole
+        // pairwise stream — not just the offer — and replay it from
+        // `__btGroup`. A candidate arrives either side of the description it
+        // belongs to, and one dropped here is one the far side never gathers
+        // again: the offerer's gather is already finished by the time a replayed
+        // offer lands, so the pair sat in `new` until ICE's own timeout.
+        deferred.push({ from: from, bytes: bytes, at: performance.now() });
+        if (deferred.length > MAX_DEFERRED) {
+          deferred.shift();
+        }
+        note(from, 'signal deferred: set has not arrived');
+      } else if (msg.tag === TAG_ANNOUNCE) {
         note(from, 'announce dropped: outside the group');
       }
       return;
@@ -1454,11 +1565,458 @@
     }
   }
 
+  // ── The Rust machine's executor (`?machine=1`) ───────────────────────────
+  //
+  // Every negotiation decision lives in `arcade_peer::machine`. This half keeps
+  // the `RTCPeerConnection`, reports what the browser did as events, and runs
+  // what Rust returns. It decides nothing: where the two disagree, the machine
+  // is right.
+  //
+  // The wire is one tag byte, a seat, then fields — the same length-prefixed
+  // shape `Signal` uses. `arcade-peer`'s tests pin both directions.
+  var machineEvents = [];
+  var machineText = new TextEncoder();
+  var machineReader = new TextDecoder();
+
+  var ME_CANDIDATE = 1;
+  var ME_PC = 2;
+  var ME_CHANNEL_OPEN = 3;
+  var ME_CHANNEL_CLOSED = 4;
+  var ME_LOCAL_OFFER = 5;
+  var ME_LOCAL_ANSWER = 6;
+  var ME_REMOTE_SET = 7;
+  var ME_ROLLED_BACK = 8;
+  var ME_SDP_ERROR = 9;
+  var ME_STATS = 10;
+  var ME_RESTART = 11;
+
+  var MA_NEGOTIATE = 1;
+  var MA_ANSWER = 2;
+  var MA_ACCEPT = 3;
+  var MA_ADD_CANDIDATE = 4;
+  var MA_ROLLBACK = 5;
+  var MA_CLOSE = 6;
+  var MA_NOTE = 7;
+  var MA_PATH = 8;
+  var MA_STATS = 9;
+
+  function machineWriter() {
+    var parts = [];
+    var writer = {
+      u8: function (value) {
+        parts.push(new Uint8Array([value & 0xff]));
+        return writer;
+      },
+      u16: function (value) {
+        parts.push(new Uint8Array([value & 0xff, (value >> 8) & 0xff]));
+        return writer;
+      },
+      blob: function (bytes) {
+        var body = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+        var take = Math.min(body.length, 65535);
+        writer.u16(take);
+        parts.push(body.subarray(0, take));
+        return writer;
+      },
+      // A stats report carries the browser's own counters and round-trip
+      // measurement, so the seam carries them at the width the browser uses.
+      u64: function (value) {
+        var bytes = new Uint8Array(8);
+        new DataView(bytes.buffer).setBigUint64(0, BigInt(Math.max(0, Math.floor(value))), true);
+        parts.push(bytes);
+        return writer;
+      },
+      f64: function (value) {
+        var bytes = new Uint8Array(8);
+        new DataView(bytes.buffer).setFloat64(0, value, true);
+        parts.push(bytes);
+        return writer;
+      },
+      done: function () {
+        var total = 0;
+        for (var i = 0; i < parts.length; i += 1) {
+          total += parts[i].length;
+        }
+        var out = new Uint8Array(total);
+        var at = 0;
+        for (var j = 0; j < parts.length; j += 1) {
+          out.set(parts[j], at);
+          at += parts[j].length;
+        }
+        return out;
+      },
+    };
+    return writer;
+  }
+
+  function machineEmit(tag, seat, fill) {
+    var writer = machineWriter();
+    writer.u8(tag);
+    writer.u16(seat);
+    if (fill) {
+      fill(writer);
+    }
+    machineEvents.push(writer.done());
+  }
+
+  function pcCode(state) {
+    switch (state) {
+      case 'connecting':
+        return 1;
+      case 'connected':
+        return 2;
+      case 'disconnected':
+        return 3;
+      case 'failed':
+        return 4;
+      case 'closed':
+        return 5;
+      default:
+        return 0;
+    }
+  }
+
+  function machineLink(seat) {
+    var link = links.get(seat);
+    if (link) {
+      return link;
+    }
+    link = {
+      seat: seat,
+      pc: null,
+      ctrl: null,
+      state: null,
+      offerer: false,
+      myEpoch: 0,
+      theirEpoch: 0,
+      sentState: 0,
+      sentCtrl: 0,
+      recvState: 0,
+      recvCtrl: 0,
+      opens: 0,
+      idle: false,
+      rttMs: null,
+      local: null,
+      remote: null,
+      sampling: false,
+    };
+    links.set(seat, link);
+    return link;
+  }
+
+  function machineEnsure(link) {
+    if (link.pc) {
+      return link.pc;
+    }
+    var options = { iceServers: ICE.servers };
+    if (RELAY) {
+      options.iceTransportPolicy = 'relay';
+    }
+    var pc = new RTCPeerConnection(options);
+    link.pc = pc;
+    pc.onicecandidate = function (event) {
+      if (!event.candidate) {
+        return;
+      }
+      countCandidate(event.candidate);
+      machineEmit(ME_CANDIDATE, link.seat, function (writer) {
+        writer.blob(machineText.encode(JSON.stringify(event.candidate.toJSON())));
+      });
+    };
+    pc.onconnectionstatechange = function () {
+      if (link.silent) {
+        // `__btDrop` stands in for a browser that went away: its own transport
+        // closing is not news to send. The shim ignores a silent link's events
+        // too, and the seam must mean the same thing to both halves.
+        return;
+      }
+      machineEmit(ME_PC, link.seat, function (writer) {
+        writer.u8(pcCode(pc.connectionState));
+      });
+    };
+    pc.ondatachannel = function (event) {
+      machineWire(event.channel, link, event.channel.label === 'ctrl' ? 0 : 1);
+    };
+    return pc;
+  }
+
+  // The channels themselves are `wire`'s: it owns the counters, the receive
+  // queue and the dormant-link rule, none of which the machine cares about. The
+  // open and close events are added here because the machine does.
+  function machineWire(channel, link, which) {
+    wire(channel, link, which === 0 ? 'ctrl' : 'state');
+    var opened = channel.onopen;
+    var closed = channel.onclose;
+    channel.onopen = function () {
+      opened();
+      machineEmit(ME_CHANNEL_OPEN, link.seat, function (writer) {
+        writer.u8(which);
+      });
+    };
+    channel.onclose = function () {
+      closed();
+      if (link.silent) {
+        return;
+      }
+      machineEmit(ME_CHANNEL_CLOSED, link.seat, function (writer) {
+        writer.u8(which);
+      });
+    };
+    if (which === 0) {
+      link.ctrl = channel;
+    } else {
+      link.state = channel;
+    }
+    return channel;
+  }
+
+  function machineSdpError(seat, why) {
+    machineEmit(ME_SDP_ERROR, seat, function (writer) {
+      writer.blob(machineText.encode(why));
+    });
+  }
+
+  function machineNegotiate(seat, restart) {
+    var link = machineLink(seat);
+    var pc = machineEnsure(link);
+    if (!link.ctrl) {
+      machineWire(pc.createDataChannel('ctrl', { ordered: true }), link, 0);
+    }
+    if (!link.state) {
+      machineWire(pc.createDataChannel('state', { ordered: false, maxRetransmits: 0 }), link, 1);
+    }
+    if (restart) {
+      // A restart repairs the attempt that is already live: the offer it
+      // produces goes back as a `Restart` signal so the far side answers it on
+      // the connection it already holds. The counters are the machine's — see
+      // `MA_STATS` below.
+      pc.restartIce();
+      note(seat, 'restarting ice');
+    } else {
+      note(seat, 'offering');
+    }
+    pc.createOffer()
+      .then(function (offer) {
+        return pc.setLocalDescription(offer);
+      })
+      .then(function () {
+        machineEmit(ME_LOCAL_OFFER, seat, function (writer) {
+          writer.blob(machineText.encode(pc.localDescription.sdp));
+        });
+      })
+      .catch(function (e) {
+        machineSdpError(seat, 'offer: ' + describe(e));
+      });
+  }
+
+  function machineAnswer(seat) {
+    var link = links.get(seat);
+    if (!link || !link.pc) {
+      return;
+    }
+    var pc = link.pc;
+    pc.createAnswer()
+      .then(function (answer) {
+        return pc.setLocalDescription(answer);
+      })
+      .then(function () {
+        machineEmit(ME_LOCAL_ANSWER, seat, function (writer) {
+          writer.blob(machineText.encode(pc.localDescription.sdp));
+        });
+      })
+      .catch(function (e) {
+        machineSdpError(seat, 'answer: ' + describe(e));
+      });
+  }
+
+  function machineAccept(seat, answer, sdp) {
+    // The answering end has no connection until the first offer arrives: the
+    // machine's link record is Rust's, and this is where the browser half is
+    // created for it.
+    var link = machineLink(seat);
+    var pc = machineEnsure(link);
+    pc.setRemoteDescription({ type: answer ? 'answer' : 'offer', sdp: sdp })
+      .then(function () {
+        machineEmit(ME_REMOTE_SET, seat, function (writer) {
+          writer.u8(answer ? 1 : 0);
+        });
+      })
+      .catch(function (e) {
+        machineSdpError(seat, (answer ? 'answer: ' : 'offer: ') + describe(e));
+      });
+  }
+
+  function machineAddCandidate(seat, text) {
+    var link = links.get(seat);
+    if (!link || !link.pc) {
+      return;
+    }
+    var candidate;
+    try {
+      candidate = JSON.parse(text);
+    } catch (e) {
+      console.warn('[peer] seat ' + seat + ' sent an unreadable candidate');
+      return;
+    }
+    link.pc.addIceCandidate(candidate).catch(function (e) {
+      console.warn('[peer] seat ' + seat + ' candidate: ' + describe(e));
+    });
+  }
+
+  function machineRollback(seat) {
+    var link = links.get(seat);
+    if (!link || !link.pc) {
+      return;
+    }
+    link.pc
+      .setLocalDescription({ type: 'rollback' })
+      .then(function () {
+        machineEmit(ME_ROLLED_BACK, seat, null);
+      })
+      .catch(function (e) {
+        machineSdpError(seat, 'rollback: ' + describe(e));
+      });
+  }
+
+  function machineClose(seat) {
+    var link = links.get(seat);
+    if (!link) {
+      return;
+    }
+    reset(link, 'closed by the machine');
+    links.delete(seat);
+    rollup();
+  }
+
+  // The machine decided which pair the link is on, and what it costs. This only
+  // assigns it: `rollup` writes the readout, and the readout is one shape in
+  // both modes, so a scenario reads `rttMs` either way.
+  function machinePath(seat, tenths, local, remote) {
+    var link = links.get(seat);
+    if (!link) {
+      return;
+    }
+    if (tenths !== null) {
+      link.rttMs = tenths / 10;
+    }
+    link.local = pairCandidateName(local);
+    link.remote = pairCandidateName(remote);
+  }
+
+  function machineApply(bytes) {
+    var at = 0;
+    function take8() {
+      return bytes[at++];
+    }
+    function take16() {
+      var value = bytes[at] | (bytes[at + 1] << 8);
+      at += 2;
+      return value;
+    }
+    function take32() {
+      var value = bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24);
+      at += 4;
+      return value >>> 0;
+    }
+    function takeText() {
+      var length = take16();
+      var body = bytes.subarray(at, at + length);
+      at += length;
+      return machineReader.decode(body);
+    }
+    while (at < bytes.length) {
+      var tag = take8();
+      // `Stats` names no link, so it is the one action that is not tag, seat.
+      // The field order is `arcade_peer::machine::Stats`'s declaration order.
+      if (tag === MA_STATS) {
+        var counters = window.__bt.negotiations;
+        counters.offered = take32();
+        counters.answered = take32();
+        counters.expired = take32();
+        counters.failed = take32();
+        counters.restarts = take32();
+        counters.restartAnswered = take32();
+        counters.ignored = take32();
+        counters.peak = take32();
+        continue;
+      }
+      var seat = take16();
+      if (tag === MA_NEGOTIATE) {
+        machineNegotiate(seat, take8() !== 0);
+      } else if (tag === MA_ANSWER) {
+        machineAnswer(seat);
+      } else if (tag === MA_ACCEPT) {
+        var answer = take8() !== 0;
+        machineAccept(seat, answer, takeText());
+      } else if (tag === MA_ADD_CANDIDATE) {
+        machineAddCandidate(seat, takeText());
+      } else if (tag === MA_ROLLBACK) {
+        machineRollback(seat);
+      } else if (tag === MA_CLOSE) {
+        machineClose(seat);
+      } else if (tag === MA_NOTE) {
+        note(seat, takeText());
+      } else if (tag === MA_PATH) {
+        var hasRtt = take8() !== 0;
+        var tenths = take16();
+        var local = take8();
+        var remote = take8();
+        machinePath(seat, hasRtt ? tenths : null, local, remote);
+      } else {
+        break;
+      }
+    }
+  }
+
+  // What the browser observed since the last frame, in the order it happened.
+  window.__btEvents = function () {
+    if (machineEvents.length === 0) {
+      return new Uint8Array(0);
+    }
+    var total = 0;
+    for (var i = 0; i < machineEvents.length; i += 1) {
+      total += machineEvents[i].length;
+    }
+    var out = new Uint8Array(total);
+    var at = 0;
+    for (var j = 0; j < machineEvents.length; j += 1) {
+      out.set(machineEvents[j], at);
+      at += machineEvents[j].length;
+    }
+    machineEvents = [];
+    return out;
+  };
+
+  // What the machine decided must happen next.
+  window.__btApply = function (bytes) {
+    machineApply(bytes);
+  };
+
+  // The machine's frame asks for a path sample with its own clock, so a capture
+  // and a live run sample on the same schedule and nothing here reads the wall
+  // clock on its own.
+  window.__btSampleStats = function (now) {
+    samplePaths(now);
+  };
+
   // ── Entry points ─────────────────────────────────────────────────────────
 
   // The room has seated us. Called from Rust whenever the seat changes, so it
   // must be cheap and idempotent for the seat it is already on.
   window.__btJoin = function (seat) {
+    if (MACHINE) {
+      // The machine is told by Rust. This only records the seat, because every
+      // counter and report reads it.
+      if (me === seat) {
+        return false;
+      }
+      me = seat;
+      window.__bt.me = seat;
+      links.clear();
+      seen.clear();
+      queue = [];
+      return true;
+    }
     if (me === seat || pendingJoin === seat) {
       return false;
     }
@@ -1493,6 +2051,15 @@
   // worth having, so the leader opens it without waiting to be announced at.
   // The announce stays as the nudge for a page whose group has not arrived.
   window.__btGroup = function (epoch, members) {
+    if (MACHINE) {
+      // Recorded for the readout; the machine decides what it means.
+      if (group !== null && epoch <= group.epoch) {
+        return false;
+      }
+      group = { epoch: epoch, members: new Set(members) };
+      window.__bt.group = { epoch: epoch, members: members.slice() };
+      return true;
+    }
     if (group !== null && epoch <= group.epoch) {
       return false;
     }
@@ -1548,6 +2115,25 @@
         }
       });
     }
+    // An offer that arrived before this set did, from a seat the set now names.
+    // `deliver` re-checks the filter, so the replay is refused again for any
+    // seat the set still does not name.
+    if (deferred.length > 0) {
+      var replay = deferred.filter(function (item) {
+        return group.members.has(item.from) || links.has(item.from);
+      });
+      deferred = deferred.filter(function (item) {
+        return !(group.members.has(item.from) || links.has(item.from));
+      });
+      var told = {};
+      for (var d = 0; d < replay.length; d += 1) {
+        if (!told[replay[d].from]) {
+          told[replay[d].from] = true;
+          note(replay[d].from, 'signals replayed: the set names it now');
+        }
+        deliver(replay[d].from, replay[d].bytes);
+      }
+    }
     rollup();
     return true;
   };
@@ -1583,12 +2169,190 @@
     return true;
   }
 
+  // ── Path quality ─────────────────────────────────────────────────────────
+  //
+  // Candidate-pair round trip per link, sampled once a second from the
+  // browser's own stats. It is the one number that says whether a peer is next
+  // door or on another continent — the stream is 20 Hz either way — and §12.2 of
+  // the design turns on it.
+  //
+  // Sampled rather than asked for on demand because `getStats` is a promise: a
+  // report taken at the moment of an assertion could only be awaited by the
+  // caller, and the game's frame loop cannot wait a frame for telemetry.
+  var PATH_EVERY_MS = 1000;
+  var lastPath = 0;
+
+  // The most rows one report may carry, matching `arcade_peer::machine::MAX_PAIRS`:
+  // the decoder refuses a report wider than this rather than trusting its count.
+  var MAX_PAIRS = 64;
+
+  function samplePaths(now) {
+    if (now - lastPath < PATH_EVERY_MS) {
+      return;
+    }
+    lastPath = now;
+    links.forEach(function (link) {
+      // One report in flight per link: a slow report must not queue another.
+      if (link.pc === null || link.sampling) {
+        return;
+      }
+      link.sampling = true;
+      link.pc.getStats().then(function (report) {
+        link.sampling = false;
+        if (MACHINE) {
+          // Report, do not decide: which row is the link, and what its round
+          // trip is, belongs to `arcade_peer::machine`.
+          machineStats(link.seat, report);
+          return;
+        }
+        var best = null;
+        report.forEach(function (stat) {
+          if (stat.type !== 'candidate-pair' || stat.state !== 'succeeded') {
+            return;
+          }
+          // Chrome marks the pair in use `selected`; older builds and other
+          // browsers use `nominated`. Take the most marked, then the one that
+          // has actually carried bytes.
+          var score = (stat.selected ? 2 : 0) + (stat.nominated ? 1 : 0);
+          if (best === null || score > best.score ||
+              (score === best.score &&
+               (stat.bytesSent || 0) > (best.stat.bytesSent || 0))) {
+            best = { score: score, stat: stat };
+          }
+        });
+        if (best === null) {
+          return;
+        }
+        var pair = best.stat;
+        if (typeof pair.currentRoundTripTime === 'number') {
+          // Tenths of a millisecond: loopback reads 0.1–0.5, and rounding to
+          // whole milliseconds would call every local pair zero.
+          link.rttMs = Math.round(pair.currentRoundTripTime * 10000) / 10;
+        }
+        link.local = pairCandidateType(report, pair.localCandidateId);
+        link.remote = pairCandidateType(report, pair.remoteCandidateId);
+      }).catch(function () {
+        // The connection went away between the call and the report, which its
+        // own state already says. A rejected sample is not an error.
+        link.sampling = false;
+      });
+    });
+  }
+
+  // `host`, `srflx`, `prflx` or `relay`: whether this end of a pair is a local
+  // address, a mapped one, or a TURN relay. A `relay` on either end explains a
+  // round trip that is nowhere near the two players' distance, and is what
+  // `p2p-turn.dsl` proves.
+  //
+  // Named apart from `candidateType` above on purpose: this file is one
+  // function scope, so a second declaration of that name silently replaced the
+  // counter's and every gathered candidate was counted as `null`.
+  function pairCandidateType(report, id) {
+    if (!id) {
+      return null;
+    }
+    var candidate = report.get(id);
+    return candidate && candidate.candidateType ? candidate.candidateType : null;
+  }
+
+  // Every candidate pair the report holds, as the browser measured it. Nothing
+  // is filtered or ranked here: a failed pair can carry more bytes than the
+  // live one, and which row wins is a rule the machine's tests pin.
+  function machineStats(seat, report) {
+    var rows = [];
+    report.forEach(function (stat) {
+      if (stat.type !== 'candidate-pair' || rows.length >= MAX_PAIRS) {
+        return;
+      }
+      rows.push({
+        state: pairStateCode(stat.state),
+        selected: stat.selected === true,
+        nominated: stat.nominated === true,
+        bytesSent: stat.bytesSent || 0,
+        rtt: typeof stat.currentRoundTripTime === 'number' ? stat.currentRoundTripTime : null,
+        local: pairCandidateCode(report, stat.localCandidateId),
+        remote: pairCandidateCode(report, stat.remoteCandidateId),
+      });
+    });
+    if (rows.length === 0) {
+      return;
+    }
+    machineEmit(ME_STATS, seat, function (writer) {
+      writer.u16(rows.length);
+      for (var i = 0; i < rows.length; i += 1) {
+        var row = rows[i];
+        var flags = (row.selected ? 1 : 0) | (row.nominated ? 2 : 0) | (row.rtt === null ? 0 : 4);
+        writer.u8(flags);
+        writer.u8(row.state);
+        writer.u64(row.bytesSent);
+        writer.f64(row.rtt === null ? 0 : row.rtt);
+        writer.u8(row.local);
+        writer.u8(row.remote);
+      }
+    });
+  }
+
+  // The report's own vocabulary, as the codes `arcade_peer::machine` decodes.
+  // `in-progress` is the current spelling and `inprogress` the older one, and
+  // both mean the checks are running.
+  function pairStateCode(state) {
+    switch (state) {
+      case 'waiting':
+        return 1;
+      case 'in-progress':
+      case 'inprogress':
+        return 2;
+      case 'failed':
+        return 3;
+      case 'succeeded':
+        return 4;
+      case 'frozen':
+        return 5;
+      default:
+        return 0;
+    }
+  }
+
+  function pairCandidateCode(report, id) {
+    switch (pairCandidateType(report, id)) {
+      case 'host':
+        return 1;
+      case 'srflx':
+        return 2;
+      case 'prflx':
+        return 3;
+      case 'relay':
+        return 4;
+      default:
+        return 0;
+    }
+  }
+
+  function pairCandidateName(code) {
+    switch (code) {
+      case 1:
+        return 'host';
+      case 2:
+        return 'srflx';
+      case 3:
+        return 'prflx';
+      case 4:
+        return 'relay';
+      default:
+        return null;
+    }
+  }
+
   // Whatever has arrived since the last drain, handed to the links. Called by
   // `probe_peer_out` once a frame. The sweep runs after the inbox: an answer
   // that arrives on the frame an offer would have expired is worth applying, so
   // the deadline is judged against the link's state once this frame's signals
   // have had their say.
   window.__btDrain = function () {
+    if (MACHINE) {
+      // The machine ticks from Rust; none of the shim's sweeps run in this mode.
+      return;
+    }
     var inbox = window.__btInbox;
     if (inbox && inbox.length > 0) {
       var take = inbox.splice(0, inbox.length);
@@ -1597,8 +2361,14 @@
       }
     }
     var now = performance.now();
+    if (deferred.length > 0) {
+      deferred = deferred.filter(function (item) {
+        return now - item.at < DEFER_MS;
+      });
+    }
     sweepStale(now);
     sweepOffers(now);
+    samplePaths(now);
     pumpQueue();
   };
 
@@ -1770,6 +2540,13 @@
   // `p2p-ice-restart.dsl` exercises the signalling and the answer that keeps the
   // channels.
   window.__btRestart = function (seat) {
+    if (MACHINE) {
+      // An ICE restart is a decision like any other, so the page reports the ask
+      // and the machine applies the rules: only the leading end restarts, and not
+      // more often than `RESTART_EVERY_MS`.
+      machineEmit(ME_RESTART, seat, null);
+      return true;
+    }
     var link = links.get(seat);
     if (!link) {
       return false;

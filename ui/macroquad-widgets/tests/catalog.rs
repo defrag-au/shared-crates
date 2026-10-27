@@ -16,7 +16,14 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Infrastructure rather than widgets.
-const NOT_WIDGETS: &[&str] = &["painter", "theme", "gesture"];
+const NOT_WIDGETS: &[&str] = &[
+    "painter",
+    "theme",
+    "gesture",
+    "format",
+    "market_ink",
+    "marks",
+];
 
 /// Words whose trailing dot is not a sentence end.
 const ABBREVIATIONS: &[&str] = &["e.g", "i.e", "cf", "vs", "etc", "approx", "no"];

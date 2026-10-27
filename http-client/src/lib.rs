@@ -14,6 +14,17 @@ pub struct ResponseDetails<T> {
     pub headers: std::collections::HashMap<String, String>,
 }
 
+/// A response read as text, with the status that carried it and nothing parsed.
+///
+/// No headers: the Worker response API cannot enumerate them, so offering a map
+/// that is populated on one target and empty on the other would be a trap. A
+/// caller that needs response headers is not sending a raw body.
+#[derive(Debug)]
+pub struct RawResponse {
+    pub status_code: u16,
+    pub body: String,
+}
+
 impl<T> ResponseDetails<T> {
     /// Get a specific header value (case-insensitive)
     pub fn get_header(&self, name: &str) -> Option<&String> {
@@ -179,6 +190,45 @@ impl HttpClient {
         body: &T,
     ) -> Result<R, HttpError> {
         self.request(HttpMethod::POST, url, Some(body)).await
+    }
+
+    /// POST a raw body under the content type it carries.
+    ///
+    /// The JSON helpers serialize their body, which cannot express a binary
+    /// payload — a transaction submit is CBOR, `application/cbor`. A non-2xx
+    /// answer is returned rather than raised: for a submit the body *is* the
+    /// ledger's rejection reason, and the caller is the one that knows whether
+    /// it is worth retrying.
+    pub async fn post_bytes(
+        &self,
+        url: &str,
+        content_type: &str,
+        body: &[u8],
+    ) -> Result<RawResponse, HttpError> {
+        debug!("POST {} bytes to: {url} ({content_type})", body.len());
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            native::post_bytes(
+                &self.inner,
+                &self.default_headers,
+                self.timeout,
+                url,
+                content_type,
+                body,
+            )
+            .await
+            .map_err(|e| native::name_timeout(e, self.timeout))
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            wasm::bounded(
+                self.timeout,
+                wasm::post_bytes(&self.default_headers, url, content_type, body),
+            )
+            .await
+        }
     }
 
     /// Convenience method for PUT requests with JSON body

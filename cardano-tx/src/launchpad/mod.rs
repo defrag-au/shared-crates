@@ -10,6 +10,7 @@
 //! [`crate::dex`] is the wrong home for them: every venue in `dex` is a pool
 //! with a redeemer. A cohort is an escrow with a datum.
 
+pub mod bonding;
 pub mod lumpfun;
 
 /// The order as a transaction output: an ADA payment at the cohort's shared

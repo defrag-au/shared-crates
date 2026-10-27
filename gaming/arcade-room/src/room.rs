@@ -38,6 +38,22 @@ pub struct RoomConfig {
     /// The most ticks one poll confirms. After a longer stall the world skips
     /// ahead rather than replaying it at once.
     pub max_catch_up: u64,
+    /// Signalling frames a connection may send a second, and how many it may
+    /// spend at once.
+    ///
+    /// The two numbers are shaped by what a handshake is: fifteen to forty
+    /// frames per pair, several pairs at once when a group grows, and nothing
+    /// at all once the links are up. The burst is what a thirteen-peer join
+    /// costs a page (measured at 96–240 frames); the rate is what stops a
+    /// client making the object relay for ever.
+    pub signal_hz: u32,
+    pub signal_burst: u32,
+    /// Frames a second for everything else — inputs, hashes, pings — and the
+    /// burst allowed at once. A client sends on an input change or a 100 ms
+    /// heartbeat, so sixty a second is the honest ceiling and two seconds of
+    /// slack is the burst.
+    pub frame_hz: u32,
+    pub frame_burst: u32,
 }
 
 impl Default for RoomConfig {
@@ -47,6 +63,10 @@ impl Default for RoomConfig {
             hash_every: 60,
             grace_ms: 30_000,
             max_catch_up: 300,
+            signal_hz: 128,
+            signal_burst: 512,
+            frame_hz: 120,
+            frame_burst: 240,
         }
     }
 }
@@ -71,6 +91,51 @@ pub struct Out {
 struct Conn {
     seat: Option<Seat>,
     real: bool,
+    /// Signalling and everything else, counted apart: their shapes are
+    /// opposite (§9).
+    signals: Bucket,
+    frames: Bucket,
+}
+
+/// A token bucket: `burst` frames may be spent at once, and `hz` more arrive
+/// each second.
+///
+/// Whole tokens, because a frame is the unit and time arrives in ms. A bucket
+/// starts full and its clock at zero, so the first frame simply fills it — a
+/// connection opened at an arbitrary `now` needs no clock of its own.
+#[derive(Clone, Copy, Debug)]
+struct Bucket {
+    tokens: u32,
+    /// When the tokens were last counted, in ms.
+    at: u64,
+}
+
+impl Bucket {
+    fn full(burst: u32) -> Self {
+        Self {
+            tokens: burst,
+            at: 0,
+        }
+    }
+
+    /// Take one token, or say no. Refills first, so an idle bucket comes back
+    /// full rather than a token at a time.
+    fn spend(&mut self, hz: u32, burst: u32, now: u64) -> bool {
+        let elapsed = now.saturating_sub(self.at);
+        if elapsed > 0 {
+            let refilled = elapsed.saturating_mul(u64::from(hz)) / 1_000;
+            self.tokens = self
+                .tokens
+                .saturating_add(refilled.min(u64::from(u32::MAX)) as u32)
+                .min(burst);
+            self.at = now;
+        }
+        if self.tokens == 0 {
+            return false;
+        }
+        self.tokens -= 1;
+        true
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -134,6 +199,30 @@ pub struct Room<S: RoomSim> {
 /// id, such as `discord:<user id>`), or `None` when it does not verify.
 pub type Identify = Box<dyn Fn(&str) -> Option<String>>;
 
+/// What a room received, by kind. [`RoomStats::frames_in`] counts every frame,
+/// including one that does not decode; these count the ones that did.
+///
+/// They exist for one number: the per-player rate into the object
+/// (`docs/P2P_OVERLAY_DESIGN.md` §12.1). `inputs` beside `heartbeats` is what
+/// decides whether the design's rate split buys anything — a player holding a
+/// direction sends one input frame and then heartbeats, so the two counts say
+/// how much of the advertised ten a second is a change and how much is the
+/// client saying it is still here.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Inbound {
+    pub hellos: u64,
+    /// Input frames carrying a change.
+    pub inputs: u64,
+    /// Input frames carrying none: [`Client::poll`](crate::Client::poll)'s
+    /// heartbeat, which is what a quiet player costs.
+    pub heartbeats: u64,
+    pub pings: u64,
+    pub hashes: u64,
+    /// Both signalling forms — broadcast and targeted — because the peer plane
+    /// spends them the same way.
+    pub signals: u64,
+}
+
 /// What the room has seen, for logs and tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RoomStats {
@@ -145,6 +234,16 @@ pub struct RoomStats {
     pub late_inputs: u64,
     /// Ticks confirmed.
     pub ticks: u64,
+    /// Connections turned away for flooding: more signalling or more frames
+    /// than [`RoomConfig`] allows.
+    pub rate_refused: u64,
+    /// Frames and bytes received, counted as they arrive and before decoding:
+    /// the connection's cost to the object, whether or not the frame was
+    /// readable.
+    pub frames_in: u64,
+    pub bytes_in: u64,
+    /// The same frames by kind, after decoding.
+    pub inbound: Inbound,
 }
 
 const SAVE_MAGIC: &[u8] = b"ARM1";
@@ -246,6 +345,24 @@ impl<S: RoomSim> Room<S> {
             .map(|(seat, s)| (*seat, s.player.as_str()))
     }
 
+    /// Each seat's interest set as last published, and the epoch naming it.
+    ///
+    /// This is what the peer plane is built from: a seat's signal reaches the
+    /// seats its own set names, and the sets are mutual. Read-only — the room
+    /// recomputes it on the regroup interval and nothing else writes it. A
+    /// monitor reads it to say how many links a world *expects*, which is the
+    /// number a link count is only meaningful against.
+    pub fn groups(&self) -> impl Iterator<Item = (Seat, &[Seat])> {
+        self.groups
+            .iter()
+            .map(|(seat, members)| (*seat, members.as_slice()))
+    }
+
+    /// The epoch naming the sets [`groups`](Self::groups) returns.
+    pub fn group_epoch(&self) -> u32 {
+        self.group_epoch
+    }
+
     /// Tell the world something the host knows from outside it (a server's
     /// progress towards its goals) as a [`Change::World`] at the next tick.
     pub fn world_fact(&mut self, bytes: Vec<u8>) {
@@ -339,23 +456,34 @@ impl<S: RoomSim> Room<S> {
 
     /// A new connection.
     pub fn open(&mut self, conn: ConnId) {
+        let (signals, frames) = (self.cfg.signal_burst, self.cfg.frame_burst);
         self.conns.insert(
             conn,
             Conn {
                 seat: None,
                 real: false,
+                signals: Bucket::full(signals),
+                frames: Bucket::full(frames),
             },
         );
     }
 
     /// A frame from `conn`.
     pub fn message(&mut self, conn: ConnId, bytes: &[u8], now: u64) {
+        // Counted first, and before the connection is looked up: the object
+        // received the frame, whatever became of it.
+        self.stats.frames_in = self.stats.frames_in.saturating_add(1);
+        self.stats.bytes_in = self.stats.bytes_in.saturating_add(bytes.len() as u64);
         let Some(c) = self.conns.get(&conn).cloned() else {
             return;
         };
         let Ok(msg) = ToRoom::decode(bytes) else {
             return;
         };
+        self.count_in(&msg);
+        if !self.within_rate(conn, &msg, now) {
+            return;
+        }
         match (msg, c.seat) {
             (
                 ToRoom::Hello {
@@ -460,6 +588,61 @@ impl<S: RoomSim> Room<S> {
         self.poll(now);
     }
 
+    /// Count a decoded frame by kind.
+    ///
+    /// Before the rate check, so a refused frame is still attributed: the room
+    /// received it and read it, which is the cost being measured.
+    fn count_in(&mut self, msg: &ToRoom) {
+        let n = &mut self.stats.inbound;
+        match msg {
+            ToRoom::Hello { .. } => n.hellos = n.hellos.saturating_add(1),
+            ToRoom::Inputs(changes) if changes.is_empty() => {
+                n.heartbeats = n.heartbeats.saturating_add(1);
+            }
+            ToRoom::Inputs(_) => n.inputs = n.inputs.saturating_add(1),
+            ToRoom::Ping { .. } => n.pings = n.pings.saturating_add(1),
+            ToRoom::Hash { .. } => n.hashes = n.hashes.saturating_add(1),
+            ToRoom::Signal(_) | ToRoom::SignalTo { .. } => {
+                n.signals = n.signals.saturating_add(1);
+            }
+        }
+    }
+
+    /// Spend from the right bucket, and refuse the connection if it is empty.
+    ///
+    /// A hello is not counted: a connection gets one, and a second is ignored.
+    /// Signalling and everything else have separate budgets because their
+    /// shapes are opposite — a handshake is fifteen to forty frames at once, an
+    /// input stream is a steady sixty a second — so neither can starve the
+    /// other. Over budget is a refusal, not a dropped frame: the object has
+    /// already paid to receive and decode it, and a flood does not stop on its
+    /// own.
+    fn within_rate(&mut self, conn: ConnId, msg: &ToRoom, now: u64) -> bool {
+        if matches!(msg, ToRoom::Hello { .. }) {
+            return true;
+        }
+        let signal = matches!(msg, ToRoom::Signal(_) | ToRoom::SignalTo { .. });
+        let (hz, burst, what) = if signal {
+            (self.cfg.signal_hz, self.cfg.signal_burst, "signalling")
+        } else {
+            (self.cfg.frame_hz, self.cfg.frame_burst, "input")
+        };
+        let Some(c) = self.conns.get_mut(&conn) else {
+            return false;
+        };
+        let bucket = if signal {
+            &mut c.signals
+        } else {
+            &mut c.frames
+        };
+        if bucket.spend(hz, burst, now) {
+            return true;
+        }
+        self.stats.rate_refused = self.stats.rate_refused.saturating_add(1);
+        self.refuse(conn, format!("too many {what} frames a second"));
+        false
+    }
+
     /// `conn` closed.
     pub fn close(&mut self, conn: ConnId, now: u64) {
         if let Some(Conn {
@@ -557,17 +740,14 @@ impl<S: RoomSim> Room<S> {
         s.conn = Some(conn);
         s.gone_since = None;
         s.real = real;
-        self.conns.insert(
-            conn,
-            Conn {
-                seat: Some(seat),
-                real,
-            },
-        );
+        let c = self.conns.get_mut(&conn).expect("opened before a hello");
+        c.seat = Some(seat);
+        c.real = real;
         let welcome = ToClient::Welcome {
             seat,
             tick_hz: S::TICK_HZ,
             room_tick: self.room_tick(now),
+            schema: S::SCHEMA,
             snapshot: self.sim.snapshot(),
         };
         self.send(conn, welcome);
