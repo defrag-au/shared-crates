@@ -12,5 +12,6 @@ description = "A Cloudflare Durable Object that hosts an arcade-room world: WebS
 
 [dependencies]
 arcade-room = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 # Pinned to the version worker-stack pins, so a game's worker resolves one.
 worker = { version = "=0.7.4" }

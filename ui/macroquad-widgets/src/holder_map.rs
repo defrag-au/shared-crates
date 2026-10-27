@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use macroquad::prelude::*;
 use ui_theme::{TextSize, mix};
 
-use crate::holder_board::{Holding, HoldingKind, holding_colour};
+use crate::holder_board::{Holding, HoldingKind, KindInk, holding_colour_with};
 use crate::market_ink::MarketInk;
 use crate::painter::{Painter, draw_rounded_rect};
 use crate::theme::with_alpha;
@@ -139,6 +139,9 @@ pub struct HolderMapVm<'a> {
     /// Every holding's amount together, for the shares.
     pub total: f64,
     pub ink: MarketInk,
+    /// Ink per kind, where the host's palette differs from the shared seven.
+    /// A kind not listed uses the shared colour.
+    pub kinds: &'a [KindInk],
 }
 
 /// Draw the placed tiles in `area`, and each group's name where it has room.
@@ -154,7 +157,7 @@ pub fn holder_map(p: &Painter, vm: &HolderMapVm, area: Rect) {
         if r.w < 1.0 || r.h < 1.0 {
             continue;
         }
-        let mut fill = holding_colour(vm.ink, &p.theme, tile.holding.kind);
+        let mut fill = holding_colour_with(vm.ink, &p.theme, tile.holding.kind, vm.kinds);
         if let Some((c, a)) = tile.flash {
             fill = mix(fill, c, a.clamp(0.0, 1.0));
         }
@@ -170,22 +173,21 @@ pub fn holder_map(p: &Painter, vm: &HolderMapVm, area: Rect) {
         if r.w > 52.0 && r.h > 22.0 {
             let ink = ink_on(fill, p.theme.color.bg_primary, p.theme.color.text_primary);
             let name = Rect::new(r.x + 4.0, r.y + 3.0, r.w - 8.0, 11.0);
-            p.text_in(
-                &p.fit(tile.holding.label, s, name.w),
-                name,
-                s,
-                ink,
-                crate::Align::Start,
-            );
-            if r.h > 34.0 {
-                let line = Rect::new(r.x + 4.0, r.y + 15.0, r.w - 8.0, 11.0);
-                p.text_in(
-                    &crate::format::share(tile.holding.amount / total),
-                    line,
-                    s,
-                    with_alpha(ink, 0.75),
-                    crate::Align::Start,
-                );
+            // A name that does not fit is not drawn at all: an ellipsis on a
+            // tile reads as a mistake (the rule `token_header`'s venue line
+            // already follows), and the board lists every name in full.
+            if p.measure(tile.holding.label, s).width <= name.w {
+                p.text_in(tile.holding.label, name, s, ink, crate::Align::Start);
+                if r.h > 34.0 {
+                    let line = Rect::new(r.x + 4.0, r.y + 15.0, r.w - 8.0, 11.0);
+                    p.text_in(
+                        &crate::format::share(tile.holding.amount / total),
+                        line,
+                        s,
+                        with_alpha(ink, 0.75),
+                        crate::Align::Start,
+                    );
+                }
             }
         }
     }

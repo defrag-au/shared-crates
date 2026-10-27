@@ -55,6 +55,32 @@ pub fn holding_colour(ink: MarketInk, theme: &crate::Theme, kind: HoldingKind) -
     }
 }
 
+/// One kind's ink where a host's palette differs from the shared seven.
+///
+/// The seven fields of [`MarketInk`] cover what a market view encodes
+/// *semantically* — a buy, a sell, a pool. A host whose map and feed already
+/// had a role palette of their own (a burned token's orange-red, say) names the
+/// difference here rather than bending the seven, so both views of one token
+/// keep agreeing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct KindInk {
+    pub kind: HoldingKind,
+    pub ink: Color,
+}
+
+/// A holding's colour: `kinds` first, then [`holding_colour`].
+pub fn holding_colour_with(
+    ink: MarketInk,
+    theme: &crate::Theme,
+    kind: HoldingKind,
+    kinds: &[KindInk],
+) -> Color {
+    kinds
+        .iter()
+        .find(|k| k.kind == kind)
+        .map_or_else(|| holding_colour(ink, theme, kind), |k| k.ink)
+}
+
 /// A short chip for a holding that is not a person.
 pub fn holding_chip(kind: HoldingKind) -> Option<&'static str> {
     match kind {
@@ -98,6 +124,9 @@ pub struct HolderBoardVm<'a> {
     /// Whether the client holds every holder or only the largest.
     pub complete: bool,
     pub ink: MarketInk,
+    /// Ink per kind, where the host's palette differs from the shared seven.
+    /// A kind not listed uses [`holding_colour`].
+    pub kinds: &'a [KindInk],
 }
 
 /// The board's row height.
@@ -148,7 +177,7 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
             continue;
         }
         let rect = Rect::new(area.x, y, area.w, ROW_H - 2.0);
-        let tone = holding_colour(vm.ink, &p.theme, row.holding.kind);
+        let tone = holding_colour_with(vm.ink, &p.theme, row.holding.kind, vm.kinds);
         // The share as a bar behind the row, against the largest.
         let share = (row.holding.amount / largest) as f32;
         let w = (rect.w - 4.0) * share.clamp(0.0, 1.0);

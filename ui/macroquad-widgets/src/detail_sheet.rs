@@ -40,6 +40,13 @@ const RADIUS: f32 = 18.0;
 const ROW_H: f32 = 26.0;
 const NOTE_H: f32 = 17.0;
 const CLOSE_H: f32 = 46.0;
+/// Room between a caller's content and the close band.
+const CLOSE_GAP: f32 = 14.0;
+/// A surface at least this tall affords the sheet's full spacing.
+const ROOMY_H: f32 = 600.0;
+/// The least of its spacing a sheet keeps, on a canvas a few hundred pixels
+/// tall.
+const COMPACT: f32 = 0.4;
 /// The grab handle a bottom sheet shows, and the room it takes.
 const HANDLE_W: f32 = 40.0;
 const HANDLE_SPACE: f32 = 16.0;
@@ -180,18 +187,141 @@ pub struct SheetResponse {
     pub figure: Option<Rect>,
 }
 
+/// What [`sheet_card`] drew, and the room it left for a caller's content.
+#[derive(Clone, Copy, Debug)]
+pub struct SheetCard {
+    /// The card this frame, in the motion the state is in.
+    pub rect: Rect,
+    pub form: SheetForm,
+    /// Fades a caller's own content with the sheet: nothing should be drawn at
+    /// full strength on a card that is still transparent.
+    pub alpha: f32,
+    /// Where a caller draws: inside the padding, below the handle, with the
+    /// close button's band left out at the bottom.
+    pub content: Rect,
+    /// The band the chrome kept for Close, at the card's foot. The chrome owns
+    /// the room; the caller owns the button, because whether a sheet closes on
+    /// a press is the host's decision.
+    pub close: Rect,
+}
+
+/// Vertical room a card's chrome takes outside [`SheetCard::content`]: the top
+/// padding, a bottom sheet's handle, the gap above the close band and the band
+/// itself.
+///
+/// A caller sizing a card from the height of its own content adds this once,
+/// so the two halves of the height cannot drift apart.
+pub fn sheet_chrome(form: SheetForm, area: Rect) -> f32 {
+    let handle = if form == SheetForm::Bottom {
+        HANDLE_SPACE
+    } else {
+        0.0
+    };
+    (handle + PAD + CLOSE_GAP + CLOSE_H + PAD) * density(area)
+}
+
+/// How much of its vertical spacing a sheet keeps on this surface.
+///
+/// The numbers above are written for a phone's several hundred points. A
+/// 320x224 pixel-art canvas is a whole screen too, and there that padding would
+/// be half of it — so the vertical chrome compresses with the surface. Width is
+/// rarely the scarce dimension, so horizontal padding does not move.
+fn density(area: Rect) -> f32 {
+    (area.h / ROOMY_H).clamp(COMPACT, 1.0)
+}
+
+/// Draw the modal's chrome — the scrim, the card and this frame's motion — and
+/// return the room left inside it.
+///
+/// Split out of [`detail_sheet`] because a sheet's *content* is the caller's:
+/// the price breakdown fills it with rows, the operator panel with a live
+/// readout and its buttons. The scrim, the shape (a bottom sheet on a phone, a
+/// modal on a desk) and the motion are one widget, and were written twice before
+/// this existed.
+///
+/// `height` is the card's height once open; [`SheetState`] decides where it is.
+pub fn sheet_card(
+    painter: &Painter,
+    state: &SheetState,
+    area: Rect,
+    height: f32,
+) -> Option<SheetCard> {
+    if !state.visible() {
+        return None;
+    }
+    let c = &painter.theme.color;
+    let e = state.progress();
+    let form = SheetForm::for_area(area);
+    let rect = sheet_rect(form, area, height, e);
+    let k = density(area);
+
+    // The scrim: the screen behind reads as out of reach.
+    draw_rectangle(
+        area.x,
+        area.y,
+        area.w,
+        area.h,
+        Color::new(0.0, 0.0, 0.0, 0.6 * e),
+    );
+    let alpha = if form == SheetForm::Modal { e } else { 1.0 };
+    let panel = with_alpha(c.bg_secondary, alpha);
+    match form {
+        // Square bottom corners: the sheet runs off the edge.
+        SheetForm::Bottom => {
+            draw_rounded_rect(rect.x, rect.y, rect.w, rect.h + RADIUS, RADIUS, panel)
+        }
+        SheetForm::Modal => draw_rounded_rect(rect.x, rect.y, rect.w, rect.h, RADIUS, panel),
+    }
+    draw_line(
+        rect.x + RADIUS,
+        rect.y + 0.5,
+        rect.right() - RADIUS,
+        rect.y + 0.5,
+        1.0,
+        with_alpha(c.accent, 0.35 * alpha),
+    );
+    let handle = if form == SheetForm::Bottom {
+        draw_rounded_rect(
+            rect.center().x - HANDLE_W * 0.5,
+            rect.y + 8.0,
+            HANDLE_W,
+            4.0,
+            2.0,
+            with_alpha(c.text_muted, 0.5),
+        );
+        HANDLE_SPACE * k
+    } else {
+        0.0
+    };
+
+    let top = rect.y + handle + PAD * k;
+    let close = Rect::new(
+        rect.x + PAD,
+        rect.bottom() - PAD * k - CLOSE_H * k,
+        rect.w - PAD * 2.0,
+        CLOSE_H * k,
+    );
+    Some(SheetCard {
+        rect,
+        form,
+        alpha,
+        content: Rect::new(
+            rect.x + PAD,
+            top,
+            rect.w - PAD * 2.0,
+            (close.y - CLOSE_GAP * k - top).max(0.0),
+        ),
+        close,
+    })
+}
+
 /// Room between the figure and the first row.
 const FIGURE_GAP: f32 = 10.0;
 
 /// How tall the sheet's content is, for a form.
-fn content_height(form: SheetForm, figure_h: f32, rows: usize, notes: usize) -> f32 {
+fn content_height(form: SheetForm, area: Rect, figure_h: f32, rows: usize, notes: usize) -> f32 {
     let figure = if figure_h > 0.0 {
         figure_h + FIGURE_GAP
-    } else {
-        0.0
-    };
-    let handle = if form == SheetForm::Bottom {
-        HANDLE_SPACE
     } else {
         0.0
     };
@@ -200,7 +330,7 @@ fn content_height(form: SheetForm, figure_h: f32, rows: usize, notes: usize) -> 
     } else {
         0.0
     };
-    handle + PAD + 22.0 + 10.0 + figure + rows as f32 * ROW_H + notes_h + 14.0 + CLOSE_H + PAD
+    sheet_chrome(form, area) + 22.0 + 10.0 + figure + rows as f32 * ROW_H + notes_h
 }
 
 /// Where the sheet sits at `progress` (0 shut, 1 open).
@@ -225,6 +355,15 @@ pub fn sheet_rect(form: SheetForm, area: Rect, height: f32, progress: f32) -> Re
             Rect::new(x, y, w, h)
         }
     }
+}
+
+/// The width a caller's content gets in a card of this form, before its height
+/// is known.
+///
+/// Enough for a caller to choose its own layout — one column or two — and then
+/// size the card in a single pass, instead of guessing at the card's padding.
+pub fn sheet_content_width(form: SheetForm, area: Rect) -> f32 {
+    sheet_rect(form, area, 0.0, 1.0).w - PAD * 2.0
 }
 
 /// A circled `i` centred at `at`. Returns true when tapped.
@@ -268,49 +407,17 @@ pub fn detail_sheet(
     let c = &p.theme.color;
     let e = state.progress();
     let form = SheetForm::for_area(area);
-    let h = content_height(form, vm.figure_h, vm.rows.len(), vm.notes.len());
-    let r = sheet_rect(form, area, h, e);
+    let h = content_height(form, area, vm.figure_h, vm.rows.len(), vm.notes.len());
+    let Some(card) = sheet_card(p, state, area, h) else {
+        return out;
+    };
+    let r = card.rect;
+    let alpha = card.alpha;
     out.rect = Some(r);
-
-    // The scrim: the screen behind reads as out of reach.
-    draw_rectangle(
-        area.x,
-        area.y,
-        area.w,
-        area.h,
-        Color::new(0.0, 0.0, 0.0, 0.6 * e),
-    );
-    let alpha = if form == SheetForm::Modal { e } else { 1.0 };
-    let panel = with_alpha(c.bg_secondary, alpha);
-    match form {
-        // Square bottom corners: the sheet runs off the edge.
-        SheetForm::Bottom => draw_rounded_rect(r.x, r.y, r.w, r.h + RADIUS, RADIUS, panel),
-        SheetForm::Modal => draw_rounded_rect(r.x, r.y, r.w, r.h, RADIUS, panel),
-    }
-    draw_line(
-        r.x + RADIUS,
-        r.y + 0.5,
-        r.right() - RADIUS,
-        r.y + 0.5,
-        1.0,
-        with_alpha(c.accent, 0.35 * alpha),
-    );
 
     let x = r.x + PAD;
     let right = r.right() - PAD;
-    let mut y = r.y;
-    if form == SheetForm::Bottom {
-        draw_rounded_rect(
-            r.center().x - HANDLE_W * 0.5,
-            r.y + 8.0,
-            HANDLE_W,
-            4.0,
-            2.0,
-            with_alpha(c.text_muted, 0.5),
-        );
-        y += HANDLE_SPACE;
-    }
-    y += PAD;
+    let mut y = card.content.y;
     p.text_top(
         vm.title,
         x,
@@ -344,15 +451,12 @@ pub fn detail_sheet(
             y += NOTE_H;
         }
     }
-    y += 14.0;
-
     // Only an open sheet answers taps: one closing is already on its way.
     let live = state.is_open() && e > 0.6;
-    let close = Rect::new(x, y, right - x, CLOSE_H);
     let pressed = Button::new("Close")
         .variant(ButtonVariant::Tonal)
         .enabled(live)
-        .show(p, close);
+        .show(p, card.close);
     let scrim = live && p.tap.is_some_and(|t| !r.contains(t));
     out.close = pressed || scrim;
     out
@@ -415,8 +519,8 @@ mod tests {
 
     #[test]
     fn a_figure_makes_room_and_none_makes_none() {
-        let plain = content_height(SheetForm::Bottom, 0.0, 4, 2);
-        let with = content_height(SheetForm::Bottom, 120.0, 4, 2);
+        let plain = content_height(SheetForm::Bottom, PHONE, 0.0, 4, 2);
+        let with = content_height(SheetForm::Bottom, PHONE, 120.0, 4, 2);
         assert_eq!(with - plain, 120.0 + FIGURE_GAP);
     }
 
@@ -424,5 +528,37 @@ mod tests {
     fn a_tall_sheet_never_outgrows_the_screen() {
         let r = sheet_rect(SheetForm::Bottom, PHONE, 2000.0, 1.0);
         assert!(r.y >= PHONE.y);
+    }
+
+    /// A caller that sizes a card from its own content adds [`sheet_chrome`]
+    /// once, so the helper has to be the same money the card actually spends.
+    /// Written out independently of the helper: the point is to catch a change
+    /// to a constant that the helper was not told about.
+    #[test]
+    fn the_chrome_helper_is_the_paddings_the_handle_and_the_close_band() {
+        let roomy = Rect::new(0.0, 0.0, 390.0, 844.0);
+        assert_eq!(
+            sheet_chrome(SheetForm::Bottom, roomy),
+            HANDLE_SPACE + PAD + CLOSE_GAP + CLOSE_H + PAD
+        );
+        assert_eq!(
+            sheet_chrome(SheetForm::Modal, roomy),
+            PAD + CLOSE_GAP + CLOSE_H + PAD,
+        );
+    }
+
+    /// A 320x224 canvas is a whole screen in a pixel game, and a sheet spaced for
+    /// a phone would spend half of it on chrome.
+    #[test]
+    fn a_short_surface_compresses_the_chrome_but_a_phone_does_not() {
+        let canvas = Rect::new(0.0, 0.0, 320.0, 224.0);
+        assert_eq!(
+            sheet_chrome(SheetForm::Bottom, canvas),
+            sheet_chrome(SheetForm::Bottom, PHONE) * COMPACT
+        );
+        assert_eq!(
+            sheet_chrome(SheetForm::Bottom, PHONE),
+            sheet_chrome(SheetForm::Bottom, DESK)
+        );
     }
 }

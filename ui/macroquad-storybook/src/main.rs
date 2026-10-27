@@ -22,12 +22,12 @@ use macroquad_widgets::{
     BlockPulseVm, BlockTrainVm, Button, ButtonVariant, CalloutTone, CalloutVm, CheckoutAction,
     CheckoutState, Eligibility, FloatingStick, FulfilmentAction, FulfilmentStatus, FulfilmentTx,
     Gesture, Gestures, MintCheckoutVm, OrderFulfilmentVm, OrderStatus, Painter, PulseDetail,
-    PulseTicker, QuantityStepperVm, RiderState, SquadCandidate, SquadCommit, SquadPickerAction,
-    SquadPickerVm, StepperAction, StickView, SwipeDir, Theme, TrainRider, TrainState, WalletAction,
-    WalletConnectVm, WalletItem, WalletListAction, WalletListState, WalletListVm, WalletRow,
-    WalletState, block_pulse, block_train, callout, floating_stick, mint_checkout,
-    order_fulfilment, quantity_stepper, segmented, segmented_pills, squad_picker, theme,
-    wallet_connect, wallet_list,
+    PulseTicker, QuantityStepperVm, RiderState, SheetState, SquadCandidate, SquadCommit,
+    SquadPickerAction, SquadPickerVm, StepperAction, StickView, SwipeDir, Theme, TrainRider,
+    TrainState, WalletAction, WalletConnectVm, WalletItem, WalletListAction, WalletListState,
+    WalletListVm, WalletRow, WalletState, block_pulse, block_train, callout, floating_stick,
+    mint_checkout, order_fulfilment, quantity_stepper, segmented, segmented_pills, squad_picker,
+    theme, wallet_connect, wallet_list,
 };
 use route_stories::RouteStory;
 use trading_stories::{TradingStory, TradingView};
@@ -141,6 +141,22 @@ enum Body {
     Route(Box<RouteStory>),
     /// A trading view, driven by the storybook clock.
     Trading(Box<TradingStory>),
+    /// The operator panel, whose buttons are live.
+    Admin(Box<AdminStory>),
+}
+
+/// The operator panel with a game's numbers in it and its buttons wired to an
+/// echo, the way a host would report what a command did.
+struct AdminStory {
+    snapshot: arcade_admin_quad::Snapshot,
+    commands: Vec<arcade_admin_quad::Command>,
+    outcome: Option<arcade_admin_quad::Outcome>,
+    /// The modal's motion. Opened all the way, so a capture is the settled
+    /// card; Close shuts it and a tap on the stage opens it again.
+    sheet: SheetState,
+    /// The rect the panel is given; the cramped one is there to prove a short
+    /// panel says what it left out instead of quietly drawing half of itself.
+    height: f32,
 }
 
 /// A floating stick the reader can drag with the mouse, beside fixed samples
@@ -168,6 +184,7 @@ enum Kind {
     Kit,
     Route,
     Trading,
+    Admin,
 }
 
 struct Story {
@@ -291,6 +308,7 @@ impl Story {
             Body::Kit(_) => Kind::Kit,
             Body::Route(_) => Kind::Route,
             Body::Trading(_) => Kind::Trading,
+            Body::Admin(_) => Kind::Admin,
         }
     }
 
@@ -310,6 +328,64 @@ impl Story {
                 view,
                 (0..6).map(placeholder_art).collect(),
             ))),
+        }
+    }
+
+    fn admin(name: &'static str, height: f32) -> Self {
+        Self {
+            category: "admin",
+            name,
+            body: Body::Admin(Box::new(AdminStory {
+                sheet: SheetState::new().opened(),
+                snapshot: arcade_admin_quad::Snapshot {
+                    client: arcade_admin_quad::ClientCost {
+                        fps: 59.6,
+                        frame_ms: 16.8,
+                        worst_ms: 41.2,
+                        memory_bytes: Some(412 * 1024 * 1024),
+                    },
+                    net: arcade_admin_quad::NetHealth {
+                        links_open: 3,
+                        links_expected: 4,
+                        links_relayed: 1,
+                        rtt_tenths: Some(124),
+                        churn: 2,
+                        offered: 7,
+                        answered: 7,
+                        failed: 1,
+                    },
+                    world: Some(arcade_admin_quad::World {
+                        players: 12,
+                        connected: 11,
+                        tick: 40_112,
+                        running: true,
+                        colo: Some("BNE".into()),
+                        age_ms: 1_200,
+                    }),
+                },
+                commands: vec![
+                    arcade_admin_quad::Command {
+                        id: "resync",
+                        label: "Resync",
+                        enabled: true,
+                        destructive: false,
+                    },
+                    arcade_admin_quad::Command {
+                        id: "restart",
+                        label: "Restart world",
+                        enabled: true,
+                        destructive: true,
+                    },
+                    arcade_admin_quad::Command {
+                        id: "broadcast",
+                        label: "Broadcast",
+                        enabled: false,
+                        destructive: false,
+                    },
+                ],
+                outcome: None,
+                height,
+            })),
         }
     }
 
@@ -733,6 +809,8 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::kit("rounded art", KitView::Art),
         Story::kit("preloader", KitView::Preload),
         Story::kit("card face", KitView::Face),
+        Story::admin("operator panel", 430.0),
+        Story::admin("operator panel · cramped", 300.0),
         Story::route("two-way split", RouteStory::split()),
         Story::route("declined split", RouteStory::declined()),
         Story::route("single venue", RouteStory::single()),
@@ -1262,6 +1340,37 @@ impl Storybook {
                         screen_height() - y - 20.0,
                     );
                     story.draw(p, area, &g, t);
+                }
+            }
+            Kind::Admin => {
+                let story_height = match &self.stories[sel].body {
+                    Body::Admin(story) => story.height,
+                    _ => 430.0,
+                };
+                let area = Rect::new(x0, y, col_w.min(360.0), story_height);
+                if let Body::Admin(story) = &mut self.stories[sel].body {
+                    let panel = arcade_admin_quad::Panel {
+                        snapshot: &story.snapshot,
+                        commands: &story.commands,
+                        outcome: story.outcome.as_ref(),
+                    };
+                    let reply = arcade_admin_quad::show_sheet(p, &panel, &story.sheet, area);
+                    if reply.close {
+                        story.sheet.close();
+                    } else if !story.sheet.visible() && p.tap.is_some() {
+                        story.sheet.open();
+                    }
+                    if let Some(id) = reply.pressed {
+                        let ok = story
+                            .commands
+                            .iter()
+                            .find(|c| c.id == id)
+                            .is_some_and(|c| c.enabled);
+                        story.outcome = Some(arcade_admin_quad::Outcome {
+                            text: format!("{id}: {}", if ok { "done" } else { "refused" }),
+                            ok,
+                        });
+                    }
                 }
             }
         }

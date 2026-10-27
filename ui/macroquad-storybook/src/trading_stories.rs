@@ -12,11 +12,11 @@ use macroquad::prelude::*;
 use macroquad_widgets::theme::with_alpha;
 use macroquad_widgets::{
     BoardRow, ChangeChipVm, ChartLabels, ChartPoint, FEED_ROW_STEP, FeedRow, FeedVm, Gesture,
-    HolderBoardVm, HolderMapLayout, HolderMapState, HolderMapVm, Holding, HoldingKind, LifeBucket,
-    LifeStripVm, MapGroup, MapTile, MarketInk, Painter, PriceChartVm, SplitBarVm, StatMark,
-    StatTile, StatTilesVm, TokenHeaderVm, TokenLogo, TradeMark, TradeSide, TradeSize, TreemapGroup,
-    TreemapState, TreemapTile, TreemapVm, change_chip, draw_rounded_rect, feed, format,
-    holder_board, holder_map, life_strip, price_chart, split_bar, stat_tiles, time_at_x,
+    HolderBoardVm, HolderMapLayout, HolderMapState, HolderMapVm, Holding, HoldingKind, KindInk,
+    LifeBucket, LifeStripVm, MapGroup, MapTile, MarketInk, Painter, PriceChartVm, SplitBarVm,
+    StatMark, StatTile, StatTilesVm, TokenHeaderVm, TokenLogo, TradeMark, TradeSide, TradeSize,
+    TreemapGroup, TreemapState, TreemapTile, TreemapVm, change_chip, draw_rounded_rect, feed,
+    format, holder_board, holder_map, life_strip, price_chart, split_bar, stat_tiles, time_at_x,
     token_header, treemap,
 };
 
@@ -24,6 +24,14 @@ use macroquad_widgets::{
 const T0: u64 = 1_792_000_000;
 /// One fixture point an hour.
 const STEP: u64 = 3_600;
+
+/// The arena's burn ink, where its role palette differs from the shared seven:
+/// a burned token is orange-red there, not a sell's pink. The stories pass it so
+/// the override is reviewed on the map and the board.
+const KIND_BURN: KindInk = KindInk {
+    kind: HoldingKind::Burn,
+    ink: Color::new(239.0 / 255.0, 108.0 / 255.0, 64.0 / 255.0, 1.0),
+};
 
 /// Which trading story this is.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -351,6 +359,7 @@ impl TradingStory {
                     total,
                     complete: self.view != TradingView::BoardPartial,
                     ink,
+                    kinds: &[KIND_BURN],
                 };
                 holder_board(p, &vm, Rect::new(x, y + 20.0, w.min(390.0), 220.0));
             }
@@ -405,6 +414,7 @@ impl TradingStory {
                         groups: &named,
                         total,
                         ink,
+                        kinds: &[KIND_BURN],
                     },
                     body,
                 );

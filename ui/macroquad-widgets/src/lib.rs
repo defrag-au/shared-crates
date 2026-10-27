@@ -79,8 +79,9 @@ pub use button::{Button, ButtonVariant};
 pub use callout::{CalloutTone, CalloutVm, callout, tone_ink};
 pub use choice_stepper::{ChoiceStepperVm, choice_stepper};
 pub use detail_sheet::{
-    BOTTOM_SHEET_BELOW, DetailRow, DetailSheetVm, RowTone, SheetForm, SheetResponse, SheetState,
-    detail_sheet, info_button, sheet_rect,
+    BOTTOM_SHEET_BELOW, DetailRow, DetailSheetVm, RowTone, SheetCard, SheetForm, SheetResponse,
+    SheetState, detail_sheet, info_button, sheet_card, sheet_chrome, sheet_content_width,
+    sheet_rect,
 };
 pub use floating_stick::{
     Cardinal, FloatingStick, Release, StickFrame, StickView, floating_stick,
@@ -130,7 +131,8 @@ pub use change_chip::{ChangeChipVm, change_chip};
 pub use feed::{FEED_ROW_H, FEED_ROW_STEP, FeedRow, FeedVm, feed, feed_row};
 #[cfg(feature = "trading")]
 pub use holder_board::{
-    BoardRow, HolderBoardVm, Holding, HoldingKind, holder_board, holding_chip, holding_colour,
+    BoardRow, HolderBoardVm, Holding, HoldingKind, KindInk, holder_board, holding_chip,
+    holding_colour, holding_colour_with,
 };
 #[cfg(feature = "trading")]
 pub use holder_map::{

@@ -273,6 +273,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "arcade-admin-quad"
+version = "0.1.0"
+dependencies = [
+ "macroquad",
+ "macroquad-widgets",
+]
+
+[[package]]
 name = "arcade-core"
 version = "0.1.0"
 dependencies = [
@@ -316,6 +324,7 @@ name = "arcade-room-worker"
 version = "0.1.0"
 dependencies = [
  "arcade-room",
+ "serde",
  "worker",
 ]
 
@@ -3756,6 +3765,7 @@ dependencies = [
 name = "macroquad-storybook"
 version = "0.1.0"
 dependencies = [
+ "arcade-admin-quad",
  "chain-heartbeat",
  "macroquad",
  "macroquad-gamekit",
