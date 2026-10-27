@@ -1062,6 +1062,19 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             ),
         },
     ),
+    // Splash's THIRD pool contract. Found holding $NikePig 2026-10-27 (9,128
+    // outputs read as an unclaimed script) and confirmed the way the second
+    // was: the same four leading datum fields (`TEWWE_ADA_NFT`, ADA, the
+    // token, `TEWWE_ADA_LQ`) and the same closing hash as the first's pools.
+    (
+        "f002facfd69d51b63e7046c6d40349b0b17c8dd775ee415c66af3ccc",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Splash" }),
+            derived_from: CredentialSource::Address(
+                "addr1x8cq97k066w4rd37wprvd4qrfxctzlyd6a67us2uv6hnen9j764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsgzvahe",
+            ),
+        },
+    ),
     // Minswap V2 pool.
     (
         "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
@@ -1152,6 +1165,323 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             }),
             derived_from: CredentialSource::Address(
                 "addr1w8nvjzjeydcn4atcd93aac8allvrpjn7pjr2qsweukpnayghhwcpj",
+            ),
+        },
+    ),
+    // WingRiders V1 and V2 REQUEST (order) contracts: the hash each version's
+    // pool datum names in its first field. Both come in an enterprise form
+    // shared by every trader and in forms carrying the customer's stake.
+    (
+        "86ae9eebd8b97944a45201e4aec1330a72291af2d071644bba015959",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange {
+                label: "WingRiders",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1wxr2a8htmzuhj39y2gq7ftkpxv98y2g67tg8zezthgq4jkg0a4ul4",
+            ),
+        },
+    ),
+    (
+        "c134d839a64a5dfb9b155869ef3f34280751a622f69958baa8ffd29c",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange {
+                label: "WingRiders",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1w8qnfkpe5e99m7umz4vxnmelxs5qw5dxytmfjk964rla98q605wte",
+            ),
+        },
+    ),
+    // VyFi pool and order contracts. Identified on $NikePig 2026-10-27: the
+    // pool's NFT was minted with the message "VyFi: LP Init", and the order
+    // contract was created in the same transaction as the pool script.
+    (
+        "cd2d50a2f836ab27a75f13d6b98a54c008848f91ea3bc025c27e76da",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "VyFi" }),
+            derived_from: CredentialSource::Address(
+                "addr1z8xj659zlqm2kfa8tufadwv22nqq3py0j84rhsp9cfl8dk4ksyd8pn7amnr48geat0yft0uezfunealzy4ghl0cayp4sen5fsv",
+            ),
+        },
+    ),
+    (
+        "158074bbfde02f3905afb423e10474944f01c006213469dbd756a278",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "VyFi" }),
+            derived_from: CredentialSource::Address(
+                "addr1wy2cqa9mlhsz7wg9476z8cgywj2y7qwqqcsng6wm6at2y7q7cjkqh",
+            ),
+        },
+    ),
+    // Minswap V1 order — one script for every trader, under any stake.
+    (
+        "a65ca58a4e9c755fa830173d2a5caed458ac0c73f97db7faae2e7e3b",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Minswap" }),
+            derived_from: CredentialSource::Address(
+                "addr1zxn9efv2f6w82hagxqtn62ju4m293tqvw0uhmdl64ch8uw6j2c79gy9l76sdg0xwhd7r0c0kna0tycz4y5s6mlenh8pq6s3z70",
+            ),
+        },
+    ),
+    // DexHunter's own order contracts, identified on $NikePig 2026-10-27 by
+    // their transactions' CIP-20 messages ("Dexhunter Trade", "cancel",
+    // "STOPLOSS Creation", "DCA Complete"): two customer-keyed limit-order
+    // scripts, then the DCA and stop-loss contracts.
+    (
+        "dbe7a3d8a1d82990992a38eea1a2efaa68e931e252fc92ca1383809b",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "DexHunter" }),
+            derived_from: CredentialSource::Address(
+                "addr1z8d70g7c58vznyye9guwagdza74x36f3uff0eyk2zwpcpx65agex6smle653yuetsnc6cnuxwsr6rjdjpcg8zl6p0m6sygpl8y",
+            ),
+        },
+    ),
+    (
+        "2025463437ee5d64e89814a66ce7f98cb184a66ae85a2fbbfd750106",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "DexHunter" }),
+            derived_from: CredentialSource::Address(
+                "addr1zysz2335xlh96e8gnq22vm88lxxtrp9xdt595taml46szp3x5kap69lyf9hytqe2ec4qgkv2askpemxljak0vxyjt6cqm6ct6e",
+            ),
+        },
+    ),
+    (
+        "97f1732964905b3c71d12163968814ac5f3be77abc94830a84d32cf9",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "DexHunter" }),
+            derived_from: CredentialSource::Address(
+                "addr1wxtlzuefvjg9k0r36ysk895gzjk97wl8027ffqc2snfje7gkzkf3h",
+            ),
+        },
+    ),
+    (
+        "6ec4acc3fbbd570ada625f24902777cec5d7a349fa0f3c7ba87b0cff",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "DexHunter" }),
+            derived_from: CredentialSource::Address(
+                "addr1w9hvftxrlw74wzk6vf0jfyp8wl8vt4arf8aq70rm4paselc46ptfq",
+            ),
+        },
+    ),
+    // SaturnSwap's exchange contract by credential: orders sit here under
+    // their owner's stake, so its one address above misses most of them.
+    (
+        "1af84a9e697e1e7b042a0a06f061e88182feb9e9ada950b36a916bd5",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange {
+                label: "SaturnSwap",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1zyd0sj57d9lpu7cy9g9qdurpazqc9l4eaxk6j59nd2gkh4gdwqualaz4tsjecupk566prptjpge3kgzjg4nrsmhceehs894qvc",
+            ),
+        },
+    ),
+    // Axo order scripts: every script whose transactions carried an "Axo:"
+    // CIP-20 message on $NikePig, 2026-10-27. The first is Axo's general
+    // contract; the rest look like individual traders' strategies, so
+    // another token's Axo traders can use scripts not listed here.
+    (
+        "55ff0e63efa0694e8065122c552e80c7b51768b7f20917af25752a7c",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1z92l7rnra7sxjn5qv5fzc4fwsrrm29mgkleqj9a0y46j5l92j5lwvkjlmf6arlsvem0mezjpwlmvxss3mvt7elht080qw2pgsh",
+            ),
+        },
+    ),
+    (
+        "c2c756eb9b1c8ac5d376b6ae7f474931bdecf40279b73ad4de57d0e7",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1z8pvw4htnvwg43wnw6m2ul68fycmmm85qfumwwk5metape7qz7c82ntmclw5x7ywygqgwt6jtdk7zwqpnm2x6plvwlmqs486cn",
+            ),
+        },
+    ),
+    (
+        "66a6bfe25e7e73c6c27ebbc1d13dd18b74da6eab003762e809a65c8f",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1z9n2d0lztel883kz06aur5fa6x9hfknw4vqrwchgpxn9eraktxxydrvn6ljxm7xaph5cl4ywu8t27dsuegemf0q67q2swrujvv",
+            ),
+        },
+    ),
+    (
+        "2e36ac845a6f847d76acf553ed52c28b1fd1e8cee39ca5ba8c2e91d9",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1zyhrdtyytfhcgltk4n648m2jc293l50gem3eefd63shfrk0h5z64hrwk4695jg90m9ugdh26z98ej0waqvt4xaazqv0s5y76a5",
+            ),
+        },
+    ),
+    (
+        "db39df384ce0bb895d1601b1fbb876afbc3ead6bf60a1e94ded9a069",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1z8dnnhecfnsthz2azcqmr7acw6hmc04dd0mq5855mmv6q6txxjtcwkuntjk36ms25yahpmzr6y5u8gdc9h80mxyaxnqq5q67vs",
+            ),
+        },
+    ),
+    (
+        "6b35255f5a768be1dd664d85529743e8632153b1a24621a7c20c9bea",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1z94n2f2ltfmghcwavexc255hg05xxg2nkx3yvgd8cgxfh6j3r9tannw3jg6rfyjjedhqjnqq8jzvkq7fgeasv2jzg3zq40vp5d",
+            ),
+        },
+    ),
+    (
+        "d31d1f8e727ce3d94d791ea6fb1502ec9283f5d86e54a4da4fde8b25",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1z8f368uwwf7w8k2d0y02d7c4qtkf9ql4mph9ffx6fl0gkf057lx943petj0arglpudu5ackaxywn7pw9d6fmvgy3aplqf22hpa",
+            ),
+        },
+    ),
+    (
+        "dfbb7ee1edcea9d3cf87e2e42ed2ea1071eb8a670ce654f229c8d96c",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1z80mklhpah82n570sl3wgtkjagg8r6u2vuxwv48j98ydjmq6tqhfsg3ghgvxq59qvvnprjpegw9q7wt74r5a2sry6vtsrzppv9",
+            ),
+        },
+    ),
+    (
+        "2fbcfa4fa5a53553c644fb2fc4162206b526be60b86b881ffe57241f",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1zyhme7j05kjn257xgnajl3qkygrt2f47vzuxhzqlletjg8uz886v0qt2dnnu5wkkw8v3rf2f2vvtcle9m9zsjtjx0xxqmh2m9h",
+            ),
+        },
+    ),
+    (
+        "fcc896deb55dd1befccc6246e886c1f08def3fe673d0009008222684",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1z87v39k7k4war0hue33yd6yxc8cgmmelueeaqqyspq3zdp8yranhazuukvkljzzene0nh4ckfqdhtj9zs97eaqcskt3qy8704c",
+            ),
+        },
+    ),
+    (
+        "f731111234a2508a3fa55c1897b3e07e5e5892d4115c2336ad277aef",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1z8mnzygjxj39pz3l54wp39anupl9ukyj6sg4cgek45nh4m76x6nl9fz3f82jz7jq4yhpecyjz5huzwgnqts4wgvt6apqa4ds3v",
+            ),
+        },
+    ),
+    (
+        "c8b1252870525ab48a7d90ef29132f252b8391db63565d08cceddb66",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1z8ytzffgwpf94dy20kgw72gn9ujjhqu3md34vhggenkakeh9pu8y80wluqzcq9qzg4fejnzkwzgsm4pdzrr5ls3fj6lsx06ddg",
+            ),
+        },
+    ),
+    (
+        "6de585ce16c7a4a101f55c06327d1501d65d54cba96afb4be66573bd",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1z9k7tpwwzmr6fggp74wqvvnaz5qavh25ew5k476tuejh80dexxtanlp8q8l5ar0g979lsvlnl7ra2m33g7ku6hllng9smd8fqs",
+            ),
+        },
+    ),
+    (
+        "486fd50580610334b3f59a851aead250627b8c72b2018a24e35918d2",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1z9yxl4g9spssxd9n7kdg2xh26fgxy7uvw2eqrz3yudv335nxxjtcwkuntjk36ms25yahpmzr6y5u8gdc9h80mxyaxnqqnpxw2d",
+            ),
+        },
+    ),
+    (
+        "765fb5aeefdcd6a598ee998091c05d37241d4e6b761bd2a5032c2934",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1w9m9lddwalwddfvca6vcpywqt5mjg82wddmph549qvkzjdq40p92x",
+            ),
+        },
+    ),
+    (
+        "0c98fd7b3590ad664e4589ee484c6ec14eada08ee3f557706a62eab1",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1zyxf3ltmxkg26ejwgky7ujzvdmq5atdq3m3l24msdf3w4vtxxjtcwkuntjk36ms25yahpmzr6y5u8gdc9h80mxyaxnqqgav76r",
+            ),
+        },
+    ),
+    (
+        "8f2fee1e5be61e3d58368a7d10db6eba60543bbe63885d7754a47155",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1zx8jlms7t0npu02cx6986yxmd6axq4pmhe3cshth2jj8z40h5z64hrwk4695jg90m9ugdh26z98ej0waqvt4xaazqv0ssm7mq3",
+            ),
+        },
+    ),
+    (
+        "0116b17c1f359bf0190cff4abf0ffc1adac8cc05288e0691f206a448",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1zyq3dvturu6ehuqepnl540c0lsdd4jxvq55gup537gr2gjxx7u64pcdqm8ytz22z0ueuravgn79jf32ua3662tm2yztsyenz4a",
+            ),
+        },
+    ),
+    (
+        "9fd41da27127452544bb441905af003d6bc1ea1220eaa336d622121c",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1zx0ag8dzwyn52f2yhdzpjpd0qq7khs02zgsw4gek6c3py88yranhazuukvkljzzene0nh4ckfqdhtj9zs97eaqcskt3qdnead3",
+            ),
+        },
+    ),
+    (
+        "394ff8e31ad31a21876a22b68b99d187178b6341a0f70686b3fa0649",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Axo" }),
+            derived_from: CredentialSource::Address(
+                "addr1zyu5l78rrtf35gv8dg3tdzue6xr30zmrgxs0wp5xk0aqvjfm82ff9sc3yyasd5e3un7khwhdkdnrxjw7s5ydfx4ctv4qj9nl25",
+            ),
+        },
+    ),
+    // Two vaults of one token-drop service, operator unknown (possibly DUX
+    // loot boxes; unconfirmed). Both are two-of-two timelock scripts sharing
+    // the signing key `220099e5…`. A claimant pays 5 or 10 ADA and receives a
+    // bundle of a dozen projects' tokens; MEASURED on $NikePig 2026-10-27,
+    // 2 or 5 NIKE per claim across ~13,600 claims. The first was active May
+    // to July 2025, the second from April 2026.
+    (
+        "5b4c324adfa71a5e305159876a6250714b79833e33d90a0aa177b72a",
+        CredentialEntry {
+            category: AC::Script(SC::Airdropper { label: "Unknown" }),
+            derived_from: CredentialSource::Address(
+                "addr1w9d5cvj2m7n35h3s29vcw6nz2pc5k7vr8ceajzs259mmw2ssclmgy",
+            ),
+        },
+    ),
+    (
+        "203dc8bdd78da44d691b949f589515eae6ea0d7b6b24add0aa0213e9",
+        CredentialEntry {
+            category: AC::Script(SC::Airdropper { label: "Unknown" }),
+            derived_from: CredentialSource::Address(
+                "addr1wysrmj9a67x6gntfrw2f7ky4zh4wd6sd0d4jftws4gpp86gw3kf46",
             ),
         },
     ),
@@ -1843,6 +2173,15 @@ pub enum ScriptCategory {
     Vesting {
         label: &'static str,
     },
+    /// An address that hands tokens out to claimants: an airdrop vault, a
+    /// faucet, a loot box. Its outgoing movements are distributions, not
+    /// trades, and what it holds is undistributed supply rather than one
+    /// holder's position.
+    ///
+    /// `label` names the operator, and is `"Unknown"` when that is not known.
+    Airdropper {
+        label: &'static str,
+    },
 }
 
 impl PartialEq for ScriptCategory {
@@ -1897,6 +2236,10 @@ impl PartialEq for ScriptCategory {
             (ScriptCategory::Vesting { label: l1 }, ScriptCategory::Vesting { label: l2 }) => {
                 l1 == l2
             }
+            (
+                ScriptCategory::Airdropper { label: l1 },
+                ScriptCategory::Airdropper { label: l2 },
+            ) => l1 == l2,
             _ => false,
         }
     }
@@ -1925,6 +2268,9 @@ impl fmt::Display for ScriptCategory {
             }
             ScriptCategory::Vesting { label } => {
                 write!(f, "{label} vesting")
+            }
+            ScriptCategory::Airdropper { label } => {
+                write!(f, "{label} airdropper")
             }
             // "bonding curve", never "exchange" — the word is what stops a
             // reader treating its reserves as an AMM's.
@@ -2918,6 +3264,7 @@ mod tests {
                 ScriptCategory::Staking { label, .. } => label.to_string(),
                 ScriptCategory::Vesting { label } => label.to_string(),
                 ScriptCategory::Launchpad { label } => label.to_string(),
+                ScriptCategory::Airdropper { label } => label.to_string(),
                 // A burn sink is attributed to NOBODY — that is the whole
                 // claim. Returning an owner would let a stake credential be
                 // named after it, and an always-fails script has no operator

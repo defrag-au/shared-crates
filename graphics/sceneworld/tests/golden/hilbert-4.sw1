@@ -1,0 +1,6 @@
+sw1
+palace
+hang c=0,0 wall=n name=p-a m=m:a title=A
+hang c=0,0 wall=e name=p-b m=m:b title=B
+hang c=0,0 wall=s name=p-c m=m:c title=C
+hang c=0,0 wall=w name=p-d m=m:d title=D

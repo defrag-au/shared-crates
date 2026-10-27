@@ -1,0 +1,27 @@
+[package]
+name = "scenegraph"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+publish = false
+description = "Named scene graph — agent-first dump/query, flatten, pick, judge and sketch, with no render"
+
+# Pure (no GPU, no I/O, no wasm-bindgen): the document IS the frame. The
+# renderers are the edge crates `scenegraph-mq` and `scenegraph-wgpu` over the
+# same DrawList. Check the wasm32 tree before adding a dependency:
+# `cargo tree --target wasm32-unknown-unknown -p scenegraph --features gltf`.
+
+[features]
+default = []
+# The glTF importer: models, rigs and their clips.
+gltf = ["dep:gltf"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+thiserror = "2"
+fdsm = "0.8"
+fdsm-ttf-parser = "0.2"
+image = { workspace = true }
+nalgebra = "0.34"
+ttf-parser = "0.25"
+gltf = { version = "1.4", optional = true, default-features = false, features = ["import", "utils", "names", "KHR_materials_unlit"] }

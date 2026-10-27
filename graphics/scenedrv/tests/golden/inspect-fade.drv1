@@ -1,0 +1,3 @@
+drv1
+flavor-shredder
+to node=flavor-shredder open=0.22 a=1 ease=inout-cubic

@@ -49,9 +49,17 @@ pub struct RoomConfig {
     pub signal_hz: u32,
     pub signal_burst: u32,
     /// Frames a second for everything else — inputs, hashes, pings — and the
-    /// burst allowed at once. A client sends on an input change or a 100 ms
-    /// heartbeat, so sixty a second is the honest ceiling and two seconds of
-    /// slack is the burst.
+    /// burst allowed at once.
+    ///
+    /// The honest ceiling is the *display* rate, not the tick rate. A client
+    /// sends on an input change, and a stick quantised to sixteen steps still
+    /// moves on most frames, so a page at 144 Hz sends 144 a second where a
+    /// keyboard sends eleven. The browser's `requestAnimationFrame` is
+    /// otherwise uncapped, so the rate has to clear the fastest display a
+    /// player might have: at 120 a 144 Hz page spent the burst in ten seconds
+    /// and was then refused mid-session with "too many input frames a second".
+    /// What this guards against is thousands a second, not one per frame. The
+    /// burst is two seconds of slack at the rate.
     pub frame_hz: u32,
     pub frame_burst: u32,
 }
@@ -65,8 +73,8 @@ impl Default for RoomConfig {
             max_catch_up: 300,
             signal_hz: 128,
             signal_burst: 512,
-            frame_hz: 120,
-            frame_burst: 240,
+            frame_hz: 240,
+            frame_burst: 480,
         }
     }
 }

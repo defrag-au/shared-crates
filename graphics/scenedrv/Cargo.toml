@@ -1,0 +1,12 @@
+[package]
+name = "scenedrv"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+publish = false
+description = "Closed clip drivers for scenegraph — drv1 ops compile to an1"
+
+[dependencies]
+scenegraph = { path = "../scenegraph" }
+sceneanim = { path = "../sceneanim" }
+thiserror = "2"

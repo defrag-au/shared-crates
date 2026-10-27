@@ -1,0 +1,24 @@
+[package]
+name = "scenegraph-wgpu"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+publish = false
+description = "wgpu backend for scenegraph: forward-rasters a DrawList, optionally into egui"
+
+[features]
+default = []
+# `Gpu::rasterize_egui`, and a view egui can sample.
+egui = ["dep:egui"]
+
+[dependencies]
+scenegraph = { path = "../scenegraph" }
+# 30, not 29: eframe's default features include `wgpu`, so a crate that draws
+# through both egui and raw wgpu must agree with egui-wgpu's version or the
+# `Device`/`Queue`/`RenderPass` types are distinct. egui 0.36 → egui-wgpu 0.36
+# → wgpu ^30. Bumping egui without this gives "arguments to this function are
+# incorrect" at every call that hands a wgpu handle across the boundary.
+wgpu = "30"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
+egui = { workspace = true, optional = true }

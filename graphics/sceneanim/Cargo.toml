@@ -1,0 +1,11 @@
+[package]
+name = "sceneanim"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+publish = false
+description = "Pure clip evaluator for scenegraph — pose(scene, clip, t) → Scene"
+
+[dependencies]
+scenegraph = { path = "../scenegraph" }
+thiserror = "2"

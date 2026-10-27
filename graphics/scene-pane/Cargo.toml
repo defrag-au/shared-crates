@@ -1,0 +1,17 @@
+[package]
+name = "scene-pane"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+publish = false
+description = "A scenegraph scene as one rect on a macroquad-gamekit stage: draw, pick, project, report"
+
+# Runtime edge crate: macroquad + the gamekit's report. The document, the
+# poses and the rules stay in the pure crates below it.
+
+[dependencies]
+scenegraph = { path = "../scenegraph" }
+scenegraph-mq = { path = "../scenegraph-mq" }
+sceneinput = { path = "../sceneinput" }
+macroquad = "0.4"
+macroquad-gamekit = { path = "../../gaming/macroquad-gamekit" }

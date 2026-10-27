@@ -43,6 +43,10 @@ jobs:
 
       - run: cargo check --workspace --exclude storybook-egui --all-targets
       - run: cargo test --workspace --exclude storybook-egui --all-targets
+      # The workspace runs default features, which leave out scenegraph's glTF
+      # importer: models, rigs, clips and the Khronos fixtures that test them.
+      - name: scenegraph with glTF
+        run: cargo test -p scenegraph --features gltf
 
   ocfl-fixtures:
     name: OCFL Fixtures
@@ -166,3 +170,16 @@ jobs:
             -p wallet-pallas \
             -p wallet-leptos \
             -p shared-ui-storybook
+          # The scenegraph's macroquad path: the pure crates (glTF included,
+          # as sceneapp enables it), the macroquad backend and the gamekit
+          # pane. scenegraph-wgpu is absent on purpose: no macroquad build
+          # links it.
+          cargo check --target wasm32-unknown-unknown \
+            -p scenegraph --features gltf \
+            -p sceneanim \
+            -p sceneinput \
+            -p scenedrv \
+            -p sceneworld \
+            -p sceneapp \
+            -p scenegraph-mq \
+            -p scene-pane

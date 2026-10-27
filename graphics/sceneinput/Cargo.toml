@@ -1,0 +1,11 @@
+[package]
+name = "sceneinput"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+publish = false
+description = "Pure pointer session for scenegraph — step(scene, list, session, event) → (Scene, Session)"
+
+[dependencies]
+scenegraph = { path = "../scenegraph" }
+thiserror = "2"

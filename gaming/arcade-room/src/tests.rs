@@ -1254,6 +1254,25 @@ fn the_two_planes_have_separate_budgets() {
     );
 }
 
+/// A page at 144 Hz sends an input frame on most frames, because a stick
+/// quantised to sixteen steps still moves on most frames. That is not a flood:
+/// the budget has to clear the fastest display a player might have, or a
+/// legitimate session is refused part-way through with "too many input frames
+/// a second" — which is what a 120 Hz budget did to a 144 Hz page.
+#[test]
+fn a_page_at_a_hundred_and_forty_four_hertz_is_not_a_flood() {
+    let mut room = two_seats(cfg());
+    let input = ToRoom::Inputs(vec![(1, vec![1, 0])]).encode();
+    // Thirty seconds of one frame every 6.94 ms.
+    let mut now = 0u64;
+    for _ in 0..30 * 144 {
+        room.message(1, &input, now);
+        now += 7;
+    }
+    assert_eq!(room.stats().rate_refused, 0, "{:?}", room.stats());
+    assert!(room.stats().inbound.inputs > 30 * 140);
+}
+
 /// Every frame the object receives is counted, and every frame it can read is
 /// attributed to a kind. The breakdown is what §12.1's number is made of: a
 /// heartbeat beside an input is the difference between a player saying it is
@@ -1299,10 +1318,12 @@ fn the_room_counts_what_each_connection_sends() {
 /// What one player costs the room: a heartbeat every `HEARTBEAT_MS`, a ping
 /// every two seconds and a hash every second, all on the input plane. **About
 /// eleven a second is the floor, and it is the heartbeat** — a player holding a
-/// direction sends one input for the press, not sixty, because
-/// [`Client::input`](crate::Client::input) sends on change and a held stick does
-/// not change. This is §12.1's measurement, pinned so a change to the client's
-/// pacing has to come with a new number.
+/// *key* sends one input for the press, not sixty, because
+/// [`Client::input`](crate::Client::input) sends on change. A pad's stick is
+/// the other case: it moves on most frames, so that player sends at the
+/// display's rate, which is what `frame_hz` is sized for. This is §12.1's
+/// measurement, pinned so a change to the client's pacing has to come with a
+/// new number.
 #[test]
 fn a_player_costs_the_room_about_eleven_frames_a_second() {
     let bots = 4;

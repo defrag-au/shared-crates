@@ -166,6 +166,15 @@ impl Frame<'_> {
     pub fn to_stage(&self, p: Vec2) -> Vec2 {
         (p - self.origin) / self.viewport.u
     }
+
+    /// A stage point in window points — the inverse of [`Frame::to_stage`].
+    ///
+    /// What [`Game::overlay`] needs, since that pass draws in window points:
+    /// this frame's tap arrives in stage units, and a panel laid out in points
+    /// has to look where the finger actually is.
+    pub fn to_window(&self, p: Vec2) -> Vec2 {
+        p * self.viewport.u + self.origin
+    }
 }
 
 /// `g`, its points mapped by `to`.
@@ -265,6 +274,29 @@ pub trait Game {
         false
     }
 
+    /// Whether [`Game::overlay`] has something to draw this frame.
+    ///
+    /// Asked before the frame is drawn, so a game with nothing to show pays
+    /// nothing: no target, no blit, no second pass.
+    fn draws_overlay(&self) -> bool {
+        false
+    }
+
+    /// Draw above the finished frame, in **window points**, with text
+    /// rasterised at the window's device scale.
+    ///
+    /// A pixel canvas is 320x224 of art, upscaled several times by the time it
+    /// reaches the screen. A panel drawn *into* it is 320x224 as well — a
+    /// whole user interface competing with the game for the same few thousand
+    /// pixels, and blurring when the canvas grows. This pass draws over the
+    /// canvas at the window's own resolution instead: `area` is the window in
+    /// points, so a panel can be laid out as it would be on any other screen.
+    ///
+    /// Called only on a pixel stage (the others already draw at device
+    /// resolution), and only when [`Game::draws_overlay`] said so. A `--shot`
+    /// capture takes the composite, so the panel is in the image.
+    fn overlay(&mut self, _frame: &Frame, _area: Rect) {}
+
     /// After the frame is presented. On a pixel stage [`Frame::canvas`] is
     /// the finished frame: what a scripted run saves
     /// ([`harness::write_capture`]).
@@ -348,6 +380,9 @@ async fn run_loop(stage: Stage, mut game: impl Game) {
     let fast_forward = fast_forward_to(&args, scripted);
     // A `--strip`, once its first frame is due.
     let mut strip: Option<harness::StripRun> = None;
+    // The window-sized target an overlay pass draws into, reused until the
+    // window changes size.
+    let mut overlay: Option<(u32, u32, RenderTarget)> = None;
     // A `--plan`: checked whole before anything runs.
     let mut plan = args.plan.as_deref().map(|path| match Plan::load(path) {
         Ok(plan) => PlanRun::new(plan),
@@ -489,6 +524,9 @@ async fn run_loop(stage: Stage, mut game: impl Game) {
         };
         // A board's offset into the window rides on the camera, with the shake.
         let shake = game.shake() + placed.offset;
+        // Whether an overlay is coming, asked before the frame so the pass over
+        // the canvas is set up once rather than twice.
+        let over = game.draws_overlay();
         // The design stage's capture draws into its own target; the pixel
         // stage's is the canvas.
         let mut capture = None;
@@ -536,6 +574,49 @@ async fn run_loop(stage: Stage, mut game: impl Game) {
             backdrop.accent,
         );
 
+        // The overlay pass: the finished canvas, at the size the window shows it,
+        // then the game's own UI in points over it, at the window's device
+        // resolution. A pixel canvas is art; this is the one surface drawn over
+        // it that is not.
+        let mut composite = None;
+        if over && let Some(target) = &canvas {
+            let points = vec2(screen_width(), screen_height());
+            let device = (points * screen_dpi_scale()).max(Vec2::ONE);
+            let size = (device.x.round() as u32, device.y.round() as u32);
+            if overlay.as_ref().is_none_or(|(w, h, _)| (*w, *h) != size) {
+                let rt = plain_target(size.0, size.1);
+                // The canvas goes into it several times its own size: nearest,
+                // or the game's pixels arrive as a smear under the overlay.
+                rt.texture.set_filter(FilterMode::Nearest);
+                overlay = Some((size.0, size.1, rt));
+            }
+            let (_, _, rt) = overlay.as_ref().expect("just made");
+            set_camera(&target_camera(device, Vec2::ZERO, rt));
+            clear_background(BLACK);
+            draw_texture_ex(
+                &target.texture,
+                0.0,
+                0.0,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(device),
+                    // A render target comes out upside down under a y-down
+                    // camera, the same as when `present` draws it.
+                    flip_y: true,
+                    ..Default::default()
+                },
+            );
+            set_camera(&target_camera(points, Vec2::ZERO, rt));
+            // The report's boxes are in stage units and this pass is in points,
+            // so its text is left out of a native capture report rather than
+            // recorded in a space the image is not in. A browser capture is the
+            // way this surface is reviewed.
+            harness::report::muted(|| {
+                game.overlay(&frame, Rect::new(0.0, 0.0, points.x, points.y))
+            });
+            composite = Some(rt);
+        }
+
         // A plan's capture is written and the run goes on; a `--shot` is
         // written and the run ends.
         let plan_note = |run: &PlanRun| {
@@ -547,22 +628,25 @@ async fn run_loop(stage: Stage, mut game: impl Game) {
             )
         };
         if let Some(target) = &canvas {
-            present(target, viewport, origin);
+            // What the window shows: the composite when an overlay was drawn
+            // over the canvas, the canvas itself otherwise.
+            let shown = composite.unwrap_or(target);
+            present(shown, viewport, origin);
             if let (Some(path), Some(run)) = (&plan_shot, plan.as_mut()) {
                 let note = plan_note(run);
-                wrote_planned(path, harness::write_capture(&target.texture, path, &note));
+                wrote_planned(path, harness::write_capture(&shown.texture, path, &note));
                 run.wrote();
             } else if due && let Some(path) = args.shot.as_ref() {
                 let note = game.capture_note(&frame);
                 match strip.as_mut() {
                     // The canvas is one pixel a stage unit.
                     Some(run) => {
-                        if run.add(&target.texture.get_texture_data(), 1.0) {
+                        if run.add(&shown.texture.get_texture_data(), 1.0) {
                             finish_capture(path, run.save(path, &note));
                         }
                     }
                     None => {
-                        finish_capture(path, harness::write_capture(&target.texture, path, &note))
+                        finish_capture(path, harness::write_capture(&shown.texture, path, &note))
                     }
                 }
             }

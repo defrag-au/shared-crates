@@ -1,0 +1,51 @@
+rp1
+# X takes the centre
+pick ndc=0,0 hit=c11
+fx mark
+~ turn Label font=ibm size=0.14 "O to play" p=ttt t=0,-2.15,0.04
++ mark-c11 Label font=ibm size=0.55 "X" c=1a1210 p=c11 t=0,0,0.05
+# O takes the top-left corner
+pick ndc=-0.32,0.32 hit=c00
+fx mark
+~ turn Label font=ibm size=0.14 "X to play" p=ttt t=0,-2.15,0.04
++ mark-c00 Label font=ibm size=0.55 "O" c=1a1210 p=c00 t=0,0,0.05
+# the centre again: X's mark selects its cell, which is occupied, so not a move
+pick ndc=0,0 hit=c11 blocked
+# X top-right
+pick ndc=0.32,0.32 hit=c02
+fx mark
+~ turn Label font=ibm size=0.14 "O to play" p=ttt t=0,-2.15,0.04
++ mark-c02 Label font=ibm size=0.55 "X" c=1a1210 p=c02 t=0,0,0.05
+# O top-middle
+pick ndc=0,0.32 hit=c01
+fx mark
+~ turn Label font=ibm size=0.14 "X to play" p=ttt t=0,-2.15,0.04
++ mark-c01 Label font=ibm size=0.55 "O" c=1a1210 p=c01 t=0,0,0.05
+# X bottom-left completes the anti-diagonal and wins
+pick ndc=-0.32,-0.32 hit=c20
+fx mark win
+~ turn Label font=ibm size=0.14 "X wins" p=ttt t=0,-2.15,0.04
+~ c02 Quad 1.05x1.05 sh=Unlit c=f2c94c p=ttt t=1.15,1.15,0.04 tag=cell
+~ c11 Quad 1.05x1.05 sh=Unlit c=f2c94c p=ttt t=0,0,0.04 tag=cell
+~ c20 Quad 1.05x1.05 sh=Unlit c=f2c94c p=ttt t=-1.15,-1.15,0.04 tag=cell
++ mark-c20 Label font=ibm size=0.55 "X" c=1a1210 p=c20 t=0,0,0.05
+# the game is over: an empty cell is no longer a move
+pick ndc=0.32,-0.32 hit=c22 blocked
+# off the board is the backdrop, never a move
+pick ndc=0.9,0.9 hit=void blocked
+# R: a new game
+input reset
+~ turn Label font=ibm size=0.14 "X to play" p=ttt t=0,-2.15,0.04
+~ c02 Quad 1.05x1.05 sh=Unlit c=e8e0d4 p=ttt t=1.15,1.15,0.04 tag=cell
+~ c11 Quad 1.05x1.05 sh=Unlit c=e8e0d4 p=ttt t=0,0,0.04 tag=cell
+~ c20 Quad 1.05x1.05 sh=Unlit c=e8e0d4 p=ttt t=-1.15,-1.15,0.04 tag=cell
+- mark-c00
+- mark-c01
+- mark-c02
+- mark-c11
+- mark-c20
+# 5 on the keyboard is the centre
+input c11
+fx mark
+~ turn Label font=ibm size=0.14 "O to play" p=ttt t=0,-2.15,0.04
++ mark-c11 Label font=ibm size=0.55 "X" c=1a1210 p=c11 t=0,0,0.05

@@ -38,6 +38,10 @@ members = [
     # Games: replay verification, lockstep rooms, and the macroquad game
     # layer. Kept together so the game crates read as one family.
     "gaming/*",
+    # The scenegraph: a 3D document as text dumps, scored without a render.
+    # Kept apart from `gaming/*` because galleries and viewers use it too.
+    # The pure crates, then their two renderer edge crates and the gamekit pane.
+    "graphics/*",
     # Realtime media-plane crates: the parts of WebRTC a browser will not do
     # for us. Kept apart from `gaming/*` because a relay's credentials are not
     # a game concept — any realtime client needs them.
