@@ -1,0 +1,9 @@
+sg1
+yard Group
+floor Quad 14x14 c=6a8a5a p=yard r=-1.5708,0,0
+duck Mesh Geom g=duck p=yard t=-3,-0.0993,0.5 tag=exhibit
+truck Mesh Geom g=truck pose=Wheels@0 p=yard t=2.5,0,-2 r=0,0.6,0 tag=exhibit
+crate Mesh Geom g=crate p=yard t=-0.6,0.5,2.5 r=0,0.5,0 tag=exhibit
+fox Mesh Geom g=fox pose=Walk@0 front=+z p=yard t=0.3,0,2 r=0,1.5708,0 s=0.01,0.01,0.01 tag=exhibit
+cam Camera eye=0,2.2,8 at=0,0.9,0
+sun Light Dir dir=-0.4,-1,-0.5

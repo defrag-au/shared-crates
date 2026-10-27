@@ -1,0 +1,3 @@
+drv1
+inspect
+to node=th-shredder open=0.7 t=0,2.32,2.2 r=0,0,0 s=1.6,1.6,1 ease=inout-cubic

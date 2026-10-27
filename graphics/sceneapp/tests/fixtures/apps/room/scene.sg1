@@ -1,0 +1,12 @@
+sg1
+room Group
+floor Quad 4x4 c=c8c2b4 p=room r=-1.5708,0,0
+back Quad 4x2.4 c=8a9bb0 p=room t=0,1.2,-2
+left Quad 4x2.4 c=7a8a9a p=room t=-2,1.2,0 r=0,1.5708,0
+right Quad 4x2.4 c=9a7a6a p=room t=2,1.2,0 r=0,-1.5708,0
+crate Mesh Box c=e07050 p=room t=0,0.4,0 s=0.6,0.8,0.6
+tet Mesh Geom g=tet c=70a0c8 p=room t=-1.2,0,0.5
+orb Mesh Sphere c=e8d080 p=room t=1.15,0.5,-0.55
+lamp Light Point c=ffc878 i=0.8 p=room t=0.9,1.4,0.7
+cam Camera eye=3.2,2.4,4.2 at=0,0.6,0
+sun Light Dir dir=-0.4,-1,-0.5

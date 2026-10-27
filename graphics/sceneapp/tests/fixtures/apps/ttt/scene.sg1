@@ -1,0 +1,17 @@
+sg1
+ttt Group
+void Quad 12x8 sh=Unlit c=121018 p=ttt t=0,0,-1.2
+felt Quad 3.7x3.7 sh=Unlit c=2a1814 p=ttt t=0,0,-0.02
+title Label font=ibm size=0.22 "Tic-tac-toe" p=ttt t=0,2.15,0.04
+turn Label font=ibm size=0.14 "X to play" p=ttt t=0,-2.15,0.04
+c00 Quad 1.05x1.05 sh=Unlit c=e8e0d4 p=ttt t=-1.15,1.15,0.04 tag=cell
+c01 Quad 1.05x1.05 sh=Unlit c=e8e0d4 p=ttt t=0,1.15,0.04 tag=cell
+c02 Quad 1.05x1.05 sh=Unlit c=e8e0d4 p=ttt t=1.15,1.15,0.04 tag=cell
+c10 Quad 1.05x1.05 sh=Unlit c=e8e0d4 p=ttt t=-1.15,0,0.04 tag=cell
+c11 Quad 1.05x1.05 sh=Unlit c=e8e0d4 p=ttt t=0,0,0.04 tag=cell
+c12 Quad 1.05x1.05 sh=Unlit c=e8e0d4 p=ttt t=1.15,0,0.04 tag=cell
+c20 Quad 1.05x1.05 sh=Unlit c=e8e0d4 p=ttt t=-1.15,-1.15,0.04 tag=cell
+c21 Quad 1.05x1.05 sh=Unlit c=e8e0d4 p=ttt t=0,-1.15,0.04 tag=cell
+c22 Quad 1.05x1.05 sh=Unlit c=e8e0d4 p=ttt t=1.15,-1.15,0.04 tag=cell
+cam Camera eye=0,0,6.2 at=0,0,0
+sun Light Dir dir=-0.25,-0.2,-1

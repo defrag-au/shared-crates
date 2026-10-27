@@ -1,0 +1,18 @@
+sg1
+gallery Group
+floor Quad 8x8 c=c8c2b4 p=gallery r=-1.5708,0,0
+ceil Quad 8x8 c=d8d4cc p=gallery t=0,3,0 r=1.5708,0,0
+wall-n Quad 8x3 c=8a9bb0 p=gallery t=0,1.5,-4 tag=wall
+p-toolhead Mesh Slab 1.5x1.5 rad=0 sh=Unlit m=285c0b8e91ba323da4ca083c9db837e111dafbf3143ece4d03eba8f4:546f6f6c6865616430323230 p=wall-n t=0,0,0.04 tag=hang
+title-toolhead Label font=ibm size=0.12 "Toolhead0220" p=p-toolhead t=0,-0.65,0.04
+wall-e Quad 8x3 c=9a8a7a p=gallery t=4,1.5,0 r=0,-1.5708,0 tag=wall
+p-pirate Mesh Slab 1.5x1.5 rad=0 sh=Unlit m=b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6:506972617465333236 p=wall-e t=0,0,0.04 tag=hang
+title-pirate Label font=ibm size=0.12 "Pirate326" p=p-pirate t=0,-0.65,0.04
+wall-w Quad 8x3 c=7a8a9a p=gallery t=-4,1.5,0 r=0,1.5708,0 tag=wall
+p-perp Mesh Slab 1.5x1.5 rad=0 sh=Unlit m=e6ba9c0ff27be029442c32533c6efd956a60d15ecb976acbb64c4de0:5065727031323633 p=wall-w t=0,0,0.04 tag=hang
+title-perp Label font=ibm size=0.12 "Perp1263" p=p-perp t=0,-0.65,0.04
+wall-s Quad 8x3 c=8a8078 p=gallery t=0,1.5,4 r=0,3.1416,0 tag=wall
+plinth Mesh Box c=b0a090 p=gallery t=0,0.2,0 s=0.8,0.4,0.8
+lamp Light Point c=ffe8c8 i=0.6 p=gallery t=0,2.6,0
+cam Camera eye=0,1.6,2 at=0,1.5,-1
+sun Light Dir dir=-0.4,-1,-0.5

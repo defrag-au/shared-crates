@@ -1,0 +1,11 @@
+[package]
+name = "sceneworld"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+publish = false
+description = "World document + window emit for scenegraph — sw1 → sg1"
+
+[dependencies]
+scenegraph = { path = "../scenegraph" }
+thiserror = "2"

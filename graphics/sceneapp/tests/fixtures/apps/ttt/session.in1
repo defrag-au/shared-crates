@@ -1,0 +1,4 @@
+in1
+pick
+ndc=0,0
+sel=c11 face=front uv=0.5,0.5 at=0,0,0.065

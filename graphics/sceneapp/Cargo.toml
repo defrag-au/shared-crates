@@ -1,0 +1,22 @@
+[package]
+name = "sceneapp"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+publish = false
+description = "Dump-folder app document for scenegraph — load, replay, gauntlet"
+
+# A game is the consumer's: `Game` is the trait, the games and their
+# registry live with the app that ships them. This crate must not depend on
+# any game; its gauntlet takes one as `NewGame`.
+
+[dependencies]
+# `gltf`: a folder's `models/*.glb` are interned as whole models.
+scenegraph = { path = "../scenegraph", features = ["gltf"] }
+sceneanim = { path = "../sceneanim" }
+sceneinput = { path = "../sceneinput" }
+scenedrv = { path = "../scenedrv" }
+sceneworld = { path = "../sceneworld" }
+thiserror = "2"
+# A folder's `images/*.png|jpg`, decoded so the checks can read their pixels.
+image = { workspace = true, features = ["png", "jpeg"] }

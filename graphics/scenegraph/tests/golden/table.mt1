@@ -1,0 +1,10 @@
+mt1
+discard Unlit c=3a2822
+draw Unlit c=3a2822
+end-turn Unlit c=8a3a28
+magnet-mother Unlit m=magnet-mother mb=back
+plate Unlit m=plate
+player Unlit c=3d342c
+th-core Unlit m=th-core mb=back
+th-shredder Unlit m=th-shredder mb=back
+th-welder Unlit m=th-welder mb=back

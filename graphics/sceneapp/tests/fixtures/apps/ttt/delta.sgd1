@@ -1,0 +1,3 @@
+sgd1
+~ turn Label font=ibm size=0.14 "O to play" p=ttt t=0,-2.15,0.04
++ mark-c11 Label font=ibm size=0.55 "X" c=1a1210 p=c11 t=0,0,0.05

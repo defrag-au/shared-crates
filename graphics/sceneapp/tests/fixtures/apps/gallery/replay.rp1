@@ -1,0 +1,12 @@
+rp1
+# step up to the north wall and pick the Toolhead print
+walk f=1.5
+view eye=0,1.6,0.5 at=0,1.5,-2.5
+pick node=p-toolhead hit=p-toolhead reach=4.44
+# turn right, to the east wall: the Pirate
+turn dx=1.05
+view eye=0,1.6,0.5 at=3,1.5,0.513
+pick node=p-pirate hit=p-pirate reach=3.97
+# walk east at the Pirate: one closed room, so the wall stops you short of it
+walk f=9
+view eye=3.485,1.6,0.515 at=6.485,1.5,0.527

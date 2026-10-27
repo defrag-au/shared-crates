@@ -1,0 +1,41 @@
+sg1
+combat Group
+void Quad 16x10 sh=Unlit c=121018 p=combat t=0,0.15,-1.2
+plate Quad 5.4x7.2 mat=plate p=combat t=0.2,1.1,-1.05
+stage Quad 11x1.6 sh=Unlit c=181410 p=combat t=0,-0.5,-0.45
+player Group p=combat t=-2.5,0.9,-0.12 tag=player
+body Mesh Slab 1.2x2.4 mat=player p=player
+nameplate Quad 1.05x0.34 sh=Unlit c=241c18 p=body t=0,-0.72,0.03
+name-player Label font=ibm size=0.16 "Salvage" p=body t=0,-0.72,0.04
+hp-player-track Quad 1.1x0.12 sh=Unlit c=2a1212 p=player t=0,-1.28,0.05
+hp-player-fill Quad 1.06x0.08 sh=Unlit c=b03a32 p=player t=0,-1.28,0.055
+hp-player Label font=ibm size=0.12 "30/30" p=player t=0,-1.28,0.06
+e0 Mesh Sphere sh=Unlit c=e8d080 p=player t=-0.32,-1.55,0.08 s=0.22,0.22,0.22 tag=energy
+e1 Mesh Sphere sh=Unlit c=e8d080 p=player t=0,-1.55,0.08 s=0.22,0.22,0.22 tag=energy
+e2 Mesh Sphere sh=Unlit c=e8d080 p=player t=0.32,-1.55,0.08 s=0.22,0.22,0.22 tag=energy
+enemy Group p=combat t=2.35,1.05,-0.12
+magnet-mother Mesh Slab 2x2.6 mat=magnet-mother p=enemy tag=enemy
+name-mm Label font=ibm size=0.16 "Magnet Mother" p=magnet-mother t=0,-1.05,0.04
+hp-mm-track Quad 1.4x0.12 sh=Unlit c=2a1212 p=enemy t=0,-1.55,0.05
+hp-mm-fill Quad 1.36x0.08 sh=Unlit c=b03a32 p=enemy t=0,-1.55,0.055
+hp-mm Label font=ibm size=0.12 "18/18" p=enemy t=0,-1.55,0.06
+intent-bg Quad 1.05x0.34 sh=Unlit c=2a1a18 p=enemy t=0,1.55,0.04
+intent Label font=ibm size=0.18 "ATK 7" p=enemy t=0,1.55,0.05
+hand Group p=combat t=0,-2.12,0.16
+th-shredder Mesh Slab 1.5x2 mat=th-shredder p=hand t=-1.55,0,0 r=0,0,0.2 tag=hand
+cost-shredder Label font=ibm size=0.18 "2" p=th-shredder t=-0.52,0.78,0.04
+name-shredder Label font=ibm size=0.14 "Shredder" p=th-shredder t=0,-0.78,0.04
+th-welder Mesh Slab 1.5x2 mat=th-welder p=hand t=0,0.06,0.06 tag=hand
+cost-welder Label font=ibm size=0.18 "1" p=th-welder t=-0.52,0.78,0.04
+name-welder Label font=ibm size=0.14 "Arc Welder" p=th-welder t=0,-0.78,0.04
+th-core Mesh Slab 1.5x2 mat=th-core p=hand t=1.55,0,0 r=0,0,-0.2 tag=hand
+cost-core Label font=ibm size=0.18 "3" p=th-core t=-0.52,0.78,0.04
+name-core Label font=ibm size=0.14 "Reactor Core" p=th-core t=0,-0.78,0.04
+draw Mesh Slab 0.7x0.95 mat=draw p=combat t=-3.35,-2.25,0.2 tag=pile
+draw-n Label font=ibm size=0.12 "Draw" p=draw t=0,-0.35,0.04
+discard Mesh Slab 0.7x0.95 mat=discard p=combat t=3.35,-2.25,0.2 tag=pile
+discard-n Label font=ibm size=0.12 "Discard" p=discard t=0,-0.35,0.04
+end-turn Mesh Slab 1.2x0.38 mat=end-turn p=combat t=3.2,-1.52,0.28 tag=button
+end-turn-n Label font=ibm size=0.14 "End turn" p=end-turn t=0,0,0.04
+cam Camera eye=0,0.2,6.8 at=0,0.2,0
+sun Light Dir dir=-0.35,-0.25,-1

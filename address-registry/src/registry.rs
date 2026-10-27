@@ -1062,6 +1062,19 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             ),
         },
     ),
+    // Splash's THIRD pool contract. Found holding $NikePig 2026-10-27 (9,128
+    // outputs read as an unclaimed script) and confirmed the way the second
+    // was: the same four leading datum fields (`TEWWE_ADA_NFT`, ADA, the
+    // token, `TEWWE_ADA_LQ`) and the same closing hash as the first's pools.
+    (
+        "f002facfd69d51b63e7046c6d40349b0b17c8dd775ee415c66af3ccc",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Splash" }),
+            derived_from: CredentialSource::Address(
+                "addr1x8cq97k066w4rd37wprvd4qrfxctzlyd6a67us2uv6hnen9j764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsgzvahe",
+            ),
+        },
+    ),
     // Minswap V2 pool.
     (
         "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
@@ -1152,6 +1165,52 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             }),
             derived_from: CredentialSource::Address(
                 "addr1w8nvjzjeydcn4atcd93aac8allvrpjn7pjr2qsweukpnayghhwcpj",
+            ),
+        },
+    ),
+    // WingRiders V1 and V2 REQUEST (order) contracts: the hash each version's
+    // pool datum names in its first field. Both come in an enterprise form
+    // shared by every trader and in forms carrying the customer's stake.
+    (
+        "86ae9eebd8b97944a45201e4aec1330a72291af2d071644bba015959",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange {
+                label: "WingRiders",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1wxr2a8htmzuhj39y2gq7ftkpxv98y2g67tg8zezthgq4jkg0a4ul4",
+            ),
+        },
+    ),
+    (
+        "c134d839a64a5dfb9b155869ef3f34280751a622f69958baa8ffd29c",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange {
+                label: "WingRiders",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1w8qnfkpe5e99m7umz4vxnmelxs5qw5dxytmfjk964rla98q605wte",
+            ),
+        },
+    ),
+    // VyFi pool and order contracts. Identified on $NikePig 2026-10-27: the
+    // pool's NFT was minted with the message "VyFi: LP Init", and the order
+    // contract was created in the same transaction as the pool script.
+    (
+        "cd2d50a2f836ab27a75f13d6b98a54c008848f91ea3bc025c27e76da",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "VyFi" }),
+            derived_from: CredentialSource::Address(
+                "addr1z8xj659zlqm2kfa8tufadwv22nqq3py0j84rhsp9cfl8dk4ksyd8pn7amnr48geat0yft0uezfunealzy4ghl0cayp4sen5fsv",
+            ),
+        },
+    ),
+    (
+        "158074bbfde02f3905afb423e10474944f01c006213469dbd756a278",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "VyFi" }),
+            derived_from: CredentialSource::Address(
+                "addr1wy2cqa9mlhsz7wg9476z8cgywj2y7qwqqcsng6wm6at2y7q7cjkqh",
             ),
         },
     ),

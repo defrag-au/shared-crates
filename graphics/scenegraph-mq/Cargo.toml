@@ -1,0 +1,21 @@
+[package]
+name = "scenegraph-mq"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+publish = false
+description = "macroquad backend for scenegraph: draws a DrawList, nothing else"
+
+# Runtime edge crate: the document, picking and the checks stay in the pure
+# `scenegraph`. Must stay wasm-bindgen-free (miniquad's gl.js cannot host it):
+# `cargo tree --target wasm32-unknown-unknown -p scenegraph-mq`.
+
+[dependencies]
+scenegraph = { path = "../scenegraph" }
+macroquad = "0.4"
+
+[dev-dependencies]
+# The parity tests: what this backend submits against what the wgpu one
+# does, for the same lists. Dev-only, so no macroquad build links wgpu.
+scenegraph = { path = "../scenegraph", features = ["gltf"] }
+scenegraph-wgpu = { path = "../scenegraph-wgpu" }

@@ -1,0 +1,7 @@
+sg1
+stage Group
+felt Quad 6x4 c=2a5a3a p=stage r=-1.5708,0,0
+a Mesh Slab 2.2x3.1 mat=print-a p=stage t=-1.3,1.55,-0.2 tag=hand
+b Mesh Slab 2.2x3.1 mat=print-b p=stage t=1.3,1.55,-0.2 tag=hand
+cam Camera eye=0,2.2,6 at=0,1,0
+sun Light Dir dir=-0.2,-1,-0.4
