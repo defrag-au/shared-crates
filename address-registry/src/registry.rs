@@ -1461,6 +1461,30 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             ),
         },
     ),
+    // Two vaults of one token-drop service, operator unknown (possibly DUX
+    // loot boxes; unconfirmed). Both are two-of-two timelock scripts sharing
+    // the signing key `220099e5…`. A claimant pays 5 or 10 ADA and receives a
+    // bundle of a dozen projects' tokens; MEASURED on $NikePig 2026-10-27,
+    // 2 or 5 NIKE per claim across ~13,600 claims. The first was active May
+    // to July 2025, the second from April 2026.
+    (
+        "5b4c324adfa71a5e305159876a6250714b79833e33d90a0aa177b72a",
+        CredentialEntry {
+            category: AC::Script(SC::Airdropper { label: "Unknown" }),
+            derived_from: CredentialSource::Address(
+                "addr1w9d5cvj2m7n35h3s29vcw6nz2pc5k7vr8ceajzs259mmw2ssclmgy",
+            ),
+        },
+    ),
+    (
+        "203dc8bdd78da44d691b949f589515eae6ea0d7b6b24add0aa0213e9",
+        CredentialEntry {
+            category: AC::Script(SC::Airdropper { label: "Unknown" }),
+            derived_from: CredentialSource::Address(
+                "addr1wysrmj9a67x6gntfrw2f7ky4zh4wd6sd0d4jftws4gpp86gw3kf46",
+            ),
+        },
+    ),
     (
         "ed97e0a1394724bb7cb94f20acf627abc253694c92b88bf8fb4b7f6f",
         CredentialEntry {
@@ -2149,6 +2173,15 @@ pub enum ScriptCategory {
     Vesting {
         label: &'static str,
     },
+    /// An address that hands tokens out to claimants: an airdrop vault, a
+    /// faucet, a loot box. Its outgoing movements are distributions, not
+    /// trades, and what it holds is undistributed supply rather than one
+    /// holder's position.
+    ///
+    /// `label` names the operator, and is `"Unknown"` when that is not known.
+    Airdropper {
+        label: &'static str,
+    },
 }
 
 impl PartialEq for ScriptCategory {
@@ -2203,6 +2236,10 @@ impl PartialEq for ScriptCategory {
             (ScriptCategory::Vesting { label: l1 }, ScriptCategory::Vesting { label: l2 }) => {
                 l1 == l2
             }
+            (
+                ScriptCategory::Airdropper { label: l1 },
+                ScriptCategory::Airdropper { label: l2 },
+            ) => l1 == l2,
             _ => false,
         }
     }
@@ -2231,6 +2268,9 @@ impl fmt::Display for ScriptCategory {
             }
             ScriptCategory::Vesting { label } => {
                 write!(f, "{label} vesting")
+            }
+            ScriptCategory::Airdropper { label } => {
+                write!(f, "{label} airdropper")
             }
             // "bonding curve", never "exchange" — the word is what stops a
             // reader treating its reserves as an AMM's.
@@ -3224,6 +3264,7 @@ mod tests {
                 ScriptCategory::Staking { label, .. } => label.to_string(),
                 ScriptCategory::Vesting { label } => label.to_string(),
                 ScriptCategory::Launchpad { label } => label.to_string(),
+                ScriptCategory::Airdropper { label } => label.to_string(),
                 // A burn sink is attributed to NOBODY — that is the whole
                 // claim. Returning an owner would let a stake credential be
                 // named after it, and an always-fails script has no operator
