@@ -16,6 +16,8 @@ pub mod script;
 pub mod send;
 pub mod swap;
 
+pub use fluent::assemble_tx;
+
 use cardano_assets::UtxoApi;
 use pallas_addresses::Address;
 use pallas_txbuilder::StagingTransaction;

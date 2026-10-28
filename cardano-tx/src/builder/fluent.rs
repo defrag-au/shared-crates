@@ -901,8 +901,23 @@ fn asset_output(
 // Assembly (stateless — called from converge_fee closure)
 // ============================================================================
 
+/// Assemble a staging transaction from an input/output set that is already
+/// final.
+///
+/// Public because a validator that requires an EXACT balance cannot use
+/// [`TxBuilder`]: [`PreparedTx::converge`] either emits change or folds a
+/// sub-floor leftover into the fee, and it refuses to build at all when the
+/// inputs only cover the outputs plus the fee. A settlement the script drains
+/// to the lovelace (`Σ inputs == Σ outputs + fee`, every input at one address,
+/// no change output) therefore has to state its own balance — and it should
+/// still share this one implementation, because the parts that are easy to get
+/// wrong (a redeemer keyed by ledger-sorted input position, one language view
+/// per Plutus version, reference inputs deduplicated) are here.
+///
+/// `fee` is written verbatim, so the caller owns the arithmetic. Pair it with
+/// [`super::converge_fee`] and recompute whichever output absorbs the fee.
 #[allow(clippy::too_many_arguments)]
-fn assemble_tx(
+pub fn assemble_tx(
     inputs: &[(Input, Option<ScriptInput>)],
     reference_inputs: &[Input],
     outputs: &[Output],
