@@ -10,6 +10,10 @@ description = "Host-owned CIP-30 connect flow for macroquad apps. Drives wallet-
 [dependencies]
 macroquad = "0.4"
 macroquad-widgets = { workspace = true }
+# `WalletModal`'s vocabulary, for `modal::CardanoModalHost`: the flow projected
+# into the one-button connector. The kit depends on the widgets only, so there
+# is no cycle, and it carries no wasm-bindgen.
+macroquad-gamekit = { path = "../../gaming/macroquad-gamekit" }
 wallet-miniquad = { workspace = true }
 # Only for the remembered provider: `platform_storage_*` is the miniquad
 # runtime's `localStorage` surface. Native builds stub it out.

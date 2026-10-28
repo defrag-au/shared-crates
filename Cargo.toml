@@ -76,6 +76,8 @@ members = [
     "ui/macroquad-text",
     "ui/macroquad-widgets",
     "ui/macroquad-bundle",
+    # Its runner: cargo runs only this workspace's binaries.
+    "tools/mq-bundle",
     "ui/macroquad-storybook",
     "ui/miniquad-platform",
     "ui/canvas-bridge",

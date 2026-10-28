@@ -17,6 +17,11 @@
 //! stake address, and the synthetic `0x1f…` EVM address the egui stories use),
 //! not live wallets.
 //!
+//! The "real wallets" stories are the exception: they use
+//! `macroquad_wallet_flow::CardanoModalHost` over the real CIP-30 bridge, so in
+//! the web storybook they list this browser's extensions with their own icons
+//! and connect them for real. Natively there is no browser, and they say so.
+//!
 //! The step stories open the modal settled at one state, so a capture at the
 //! default moment is that state. The walkthrough scripts a whole connect on a
 //! loop, so `--at` can capture any moment of any transition:
@@ -41,6 +46,7 @@ use macroquad_gamekit::wallet_modal::{
     WalletOption, wallet_button,
 };
 use macroquad_gamekit::{fill_rounded, stroke_rounded};
+use macroquad_wallet_flow::{CardanoModalHost, Stage, WalletFlow};
 use macroquad_widgets::{Painter, TextSize};
 
 /// The stake address every wallet fixture in the estate uses.
@@ -70,6 +76,8 @@ pub enum ModalView {
     Step(Preset),
     /// A connect scripted on a loop.
     Walkthrough,
+    /// The extensions this browser has, through the real CIP-30 bridge.
+    Real,
 }
 
 /// The state a step story opens at.
@@ -134,6 +142,21 @@ fn roadmap(icon: Option<Texture2D>) -> WalletModalVm {
         ChainOption::soon(ChainFamily::Xrpl),
     ])
     .with_intro("Connecting shares your address. Nothing is signed or sent.")
+}
+
+/// The roadmap with only the chain this browser can actually connect: Cardano,
+/// filled in each frame from the real host. EVM has no miniquad bridge yet, so
+/// it is listed as coming rather than offering wallets it cannot reach.
+fn real_roadmap() -> WalletModalVm {
+    WalletModalVm::new(vec![
+        ChainOption::ready(ChainFamily::Cardano, Vec::new()),
+        ChainOption::soon(ChainFamily::Evm),
+        ChainOption::soon(ChainFamily::Solana),
+        ChainOption::soon(ChainFamily::Midnight),
+        ChainOption::soon(ChainFamily::Tezos),
+        ChainOption::soon(ChainFamily::Xrpl),
+    ])
+    .with_intro("Your installed Cardano wallets. Connecting shares your address only.")
 }
 
 fn connected(family: ChainFamily, wallet: &str) -> ChainPhase {
@@ -213,6 +236,10 @@ pub struct WalletModalStory {
     cue: usize,
     /// The last thing the modal or a button reported.
     last: String,
+    /// The real Cardano host, made the first time a real story draws: making
+    /// it lists the extensions and reconnects the remembered wallet, which no
+    /// other story should set off at startup.
+    real: Option<CardanoModalHost>,
 }
 
 impl WalletModalStory {
@@ -221,12 +248,17 @@ impl WalletModalStory {
             view,
             phone,
             modal: WalletModal::new(),
-            vm: roadmap(icon.clone()),
+            vm: if view == ModalView::Real {
+                real_roadmap()
+            } else {
+                roadmap(icon.clone())
+            },
             icon,
             host: FakeHost::default(),
             t: 0.0,
             cue: 0,
             last: String::new(),
+            real: None,
         };
         if let ModalView::Step(preset) = view {
             story.preset(preset);
@@ -321,6 +353,24 @@ impl WalletModalStory {
             self.play(dt);
         }
         self.host.tick(&mut self.vm, dt);
+        if self.view == ModalView::Real {
+            let real = self
+                .real
+                .get_or_insert_with(|| CardanoModalHost::new(WalletFlow::new()));
+            real.poll();
+            if let Some(cardano) = self.vm.chain_mut(ChainFamily::Cardano) {
+                *cardano = real.chain();
+            }
+            if matches!(real.flow().stage(), Stage::Unavailable) {
+                p.text(
+                    "Real wallets need a browser: build the web storybook (see its Cargo.toml).",
+                    stage.x + 16.0,
+                    stage.bottom() - 16.0,
+                    p.size(TextSize::Md),
+                    p.theme.color.warning,
+                );
+            }
+        }
 
         // The screen behind the modal takes no tap while the modal is up.
         let behind = Painter::new(
@@ -339,7 +389,10 @@ impl WalletModalStory {
 
         if let Some(action) = self.modal.show(p, &self.vm, stage, dt) {
             self.last = format!("action: {action:?}");
-            self.host.apply(&mut self.vm, &action);
+            match &mut self.real {
+                Some(real) => real.apply(&action),
+                None => self.host.apply(&mut self.vm, &action),
+            }
         }
     }
 

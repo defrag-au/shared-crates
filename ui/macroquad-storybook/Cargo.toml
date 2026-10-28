@@ -7,6 +7,19 @@ publish = false
 # DEV ONLY — stories for the macroquad-widgets crate. Runs NATIVELY (a desktop
 # window, no web shell needed): `cargo run -p macroquad-storybook`.
 # ←/→ or number keys switch stories; tap a fulfilment tx to see the action.
+#
+# Also runs in a BROWSER, where the "wallet modal · real wallets" stories talk to
+# the extensions installed there:
+#
+#   cargo run -q -p mq-bundle -- --package macroquad-storybook \
+#       --wasm macroquad-storybook.wasm --title "macroquad storybook" \
+#       --dest .tmp/storybook-web --web ui/macroquad-storybook/web
+#   python3 -m http.server 8197 --directory .tmp/storybook-web
+#
+# `?story=<words>` picks a story, as `--story` does natively. `build.rs` stamps
+# the wallet and platform plugins into `web/` (gitignored).
+
+build = "build.rs"
 
 [[bin]]
 name = "macroquad-storybook"
@@ -30,3 +43,14 @@ ui-theme = { workspace = true, features = ["macroquad"] }
 # hand-built snapshot, so the widgets are shown folding the data they will fold
 # in production. Follower off — the story is the source of events.
 chain-heartbeat = { path = "../../chain/chain-heartbeat", default-features = false }
+# The real Cardano wallets behind the wallet modal's "real wallets" stories:
+# the CIP-30 flow and its modal host, over the miniquad wallet bridge.
+macroquad-wallet-flow = { workspace = true }
+# `launch_query`, so a browser picks a story with `?story=`.
+miniquad-platform = { path = "../miniquad-platform" }
+
+[build-dependencies]
+# Their `PLUGIN_JS`, stamped into `web/` so the page loads the plugin the wasm
+# was linked against.
+wallet-miniquad = { workspace = true }
+miniquad-platform = { path = "../miniquad-platform" }

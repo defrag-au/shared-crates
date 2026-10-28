@@ -34,12 +34,21 @@
 //! widget itself projects [`WalletFlow::vm`] and draws it with its own
 //! `Painter` — the same shape `frontend-pump` uses.
 //!
+//! ## The modal
+//!
+//! [`CardanoModalHost`] puts this same flow behind `macroquad_gamekit`'s
+//! one-button `WalletModal`, with the wallets' own icons. It sits beside
+//! [`WalletFlow::draw`] rather than replacing it.
+//!
 //! Keep it free of game logic and of I/O beyond the wallet bridge. The
 //! [`Bridge`] trait is the seam a soak drives with a fake wallet, so every
 //! stage is testable without a browser.
 
+pub mod modal;
+
 pub use macroquad_widgets::WalletState;
 use macroquad_widgets::{Painter, WalletAction, WalletConnectVm, WalletItem, wallet_connect};
+pub use modal::CardanoModalHost;
 use wallet_miniquad::{self as wallet, FailureKind, PollResultDetailed, Provider, ReqId};
 
 /// What the flow needs from a wallet bridge.
@@ -76,6 +85,18 @@ pub trait Bridge {
     /// [`Stage::Ready`], or an `enable()` that was refused. Never on a mere
     /// attempt — a remembered wallet should mean "this worked here".
     fn remember(&mut self, _key: Option<&str>) {}
+
+    /// Ask for the icon wallet `key` announces, as `size`×`size` RGBA. `None`
+    /// when this bridge has no icons to give — a native run, a test — which
+    /// leaves the wallet on its monogram.
+    fn icon(&mut self, _key: &str, _size: u16) -> Option<ReqId> {
+        None
+    }
+
+    /// The pixels of an [`Bridge::icon`] request that polled `Ok`.
+    fn take_icon(&mut self, _id: ReqId, _size: u16) -> Option<Vec<u8>> {
+        None
+    }
 }
 
 /// The production bridge: the miniquad plugin over `window.cardano`.
@@ -119,6 +140,12 @@ impl Bridge for MiniquadBridge {
             Some(key) => miniquad_platform::storage_set(PROVIDER_KEY, key),
             None => miniquad_platform::storage_remove(PROVIDER_KEY),
         }
+    }
+    fn icon(&mut self, key: &str, size: u16) -> Option<ReqId> {
+        wallet::AVAILABLE.then(|| wallet::icon(key, size))
+    }
+    fn take_icon(&mut self, id: ReqId, size: u16) -> Option<Vec<u8>> {
+        wallet::take_icon(id, size)
     }
 }
 

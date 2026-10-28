@@ -4018,8 +4018,11 @@ dependencies = [
  "chain-heartbeat",
  "macroquad",
  "macroquad-gamekit",
+ "macroquad-wallet-flow",
  "macroquad-widgets",
+ "miniquad-platform",
  "ui-theme",
+ "wallet-miniquad",
 ]
 
 [[package]]
@@ -4043,6 +4046,7 @@ name = "macroquad-wallet-flow"
 version = "0.1.0"
 dependencies = [
  "macroquad",
+ "macroquad-gamekit",
  "macroquad-widgets",
  "miniquad-platform",
  "wallet-miniquad",
@@ -4391,6 +4395,13 @@ checksum = "bb85c154ba489f01b25c0d36ae69a87e4a1c73a72631fc6c0eb6dde34a73e44b"
 dependencies = [
  "num-traits",
  "pxfm",
+]
+
+[[package]]
+name = "mq-bundle"
+version = "0.1.0"
+dependencies = [
+ "macroquad-bundle",
 ]
 
 [[package]]

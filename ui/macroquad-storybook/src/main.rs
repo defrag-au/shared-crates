@@ -605,6 +605,10 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
     let modal_stories = vec![
         // The live story first: the whole flow, from the one button.
         modal("live", ModalView::Live),
+        // This browser's own extensions, over the real CIP-30 bridge: the
+        // web storybook only (see Cargo.toml).
+        modal("real wallets", ModalView::Real),
+        phone("phone · real wallets", ModalView::Real),
         modal("walkthrough", ModalView::Walkthrough),
         modal("button · states", ModalView::Buttons),
         modal("chains", ModalView::Step(Preset::Chains)),
@@ -2004,7 +2008,8 @@ fn window_conf() -> Conf {
     }
 }
 
-/// Command line: `--story <substring>` and `--shot <path>`.
+/// Command line: `--story <substring>` and `--shot <path>`; in a browser,
+/// `?story=<substring>`.
 ///
 /// Both exist for the same reason: the sidebar doesn't scroll and the number
 /// keys stop at 9, so a story added late in the list is otherwise unreachable —
@@ -2028,7 +2033,8 @@ fn args() -> Args {
             .cloned()
     };
     Args {
-        story: value("--story"),
+        // A browser has no command line: `?story=` is the same switch there.
+        story: value("--story").or_else(|| miniquad_platform::launch_query("story")),
         shot: value("--shot"),
         at: value("--at").and_then(|s| s.parse().ok()),
     }
