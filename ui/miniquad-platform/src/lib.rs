@@ -57,7 +57,53 @@ unsafe extern "C" {
     fn platform_storage_get(key: JsObject) -> JsObject;
     fn platform_storage_set(key: JsObject, value: JsObject);
     fn platform_storage_remove(key: JsObject);
+    fn platform_fullscreen_zone(x0: f32, y0: f32, x1: f32, y1: f32);
+    fn platform_fullscreen_state() -> u32;
 }
+
+/// Whether the page can go fullscreen, and whether it is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fullscreen {
+    /// No fullscreen here: an iPhone's Safari (only video gets it; Add to
+    /// Home Screen is the way there), an embed that does not allow it, or a
+    /// native build. Offer no button.
+    Unavailable,
+    Windowed,
+    Full,
+}
+
+/// The page's fullscreen now.
+#[cfg(target_arch = "wasm32")]
+pub fn fullscreen() -> Fullscreen {
+    match unsafe { platform_fullscreen_state() } {
+        2 => Fullscreen::Full,
+        1 => Fullscreen::Windowed,
+        _ => Fullscreen::Unavailable,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn fullscreen() -> Fullscreen {
+    Fullscreen::Unavailable
+}
+
+/// Where the game's fullscreen button is, as `[left, top, right, bottom]`
+/// fractions of the canvas, or `None` while there is none. Call it every
+/// frame the button is drawn: a layout moves it.
+///
+/// A browser grants fullscreen only from inside a gesture's handler, and the
+/// frame loop is not one — macroquad's `set_fullscreen` is refused on the
+/// web. So `platform.js` listens for the tap itself, and one that ends inside
+/// the zone toggles fullscreen there. The game sees the same tap and should
+/// do nothing with it.
+#[cfg(target_arch = "wasm32")]
+pub fn fullscreen_zone(zone: Option<[f32; 4]>) {
+    let [x0, y0, x1, y1] = zone.unwrap_or([0.0; 4]);
+    unsafe { platform_fullscreen_zone(x0, y0, x1, y1) }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn fullscreen_zone(_zone: Option<[f32; 4]>) {}
 
 /// Reload the page: the way back for a game whose connection died while the
 /// phone was locked or the tab was hidden, when its transport cannot
@@ -199,12 +245,12 @@ getrandom::register_custom_getrandom!(webcrypto_getrandom);
 /// `Plugin platform is present in JS bundle, but is not used in the
 /// rust code` warning. JS-side `version: 3`, must match.
 ///
-/// Bumped 1 → 2 with the `localStorage` calls, and 2 → 3 with the page's host
-/// and path: a consumer carrying an older `platform.js` then fails the
-/// handshake at instantiate rather than calling a function gl.js would stub
-/// out.
+/// Bumped 1 → 2 with the `localStorage` calls, 2 → 3 with the page's host
+/// and path, and 3 → 4 with fullscreen: a consumer carrying an older
+/// `platform.js` then fails the handshake at instantiate rather than calling a
+/// function gl.js would stub out.
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn platform_crate_version() -> u32 {
-    3
+    4
 }

@@ -46,12 +46,18 @@ pub struct TokenHeaderVm<'a> {
     pub speed_lit: bool,
     pub paused: bool,
     pub settings_open: bool,
+    /// The fullscreen button, and whether the page is fullscreen now; `None`
+    /// where there is no fullscreen to go to (an iPhone's Safari, an embed
+    /// that does not allow it), and the button is not drawn.
+    pub fullscreen: Option<bool>,
     pub ink: MarketInk,
 }
 
 /// Where the header's buttons are.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HeaderRects {
+    /// Left of settings: only drawn when the host has fullscreen to offer.
+    pub fullscreen: Rect,
     pub settings: Rect,
     pub speed: Rect,
     pub pause: Rect,
@@ -63,7 +69,9 @@ pub fn header_rects(col: Rect) -> HeaderRects {
     let speed = Rect::new(col.right() - 46.0, col.y + 40.0, 46.0, 20.0);
     let pause = Rect::new(speed.x - 34.0 - 6.0, speed.y, 34.0, speed.h);
     let settings = Rect::new(pause.x - pause.w - 6.0, pause.y, pause.w, pause.h);
+    let fullscreen = Rect::new(settings.x - settings.w - 6.0, pause.y, pause.w, pause.h);
     HeaderRects {
+        fullscreen,
         settings,
         speed,
         pause,
@@ -130,7 +138,11 @@ pub fn token_header(p: &Painter, d: &Painter, vm: &TokenHeaderVm, col: Rect) -> 
     // Up to the buttons on its right, never under them: venues drop off the
     // end (`+2`) until it fits, and as a last resort it is a count. Never cut
     // with an ellipsis, which reads as a mistake.
-    let room = rects.settings.x - 8.0 - (col.x + 46.0);
+    let first_button = match vm.fullscreen {
+        Some(_) => rects.fullscreen,
+        None => rects.settings,
+    };
+    let room = first_button.x - 8.0 - (col.x + 46.0);
     let venue = venue_line(p, vm.venues, vm.pools, p.size(TextSize::Sm), room);
     p.text_mid(
         &venue,
@@ -230,6 +242,26 @@ pub fn token_header(p: &Painter, d: &Painter, vm: &TokenHeaderVm, col: Rect) -> 
         draw_line(c.x - 7.0, y, c.x + 7.0, y, 1.0, settings_ink);
         draw_circle(c.x + knob, y, 1.8, settings_ink);
     }
+
+    // Fullscreen: four corners pointing out, or in while fullscreen.
+    if let Some(on) = vm.fullscreen {
+        let r = rects.fullscreen;
+        draw_rounded_rect(r.x, r.y, r.w, r.h, 6.0, with_alpha(vm.ink.accent, 0.1));
+        let c = r.center();
+        let (h, arm) = (5.5f32, 3.5f32);
+        for (sx, sy) in [(-1.0f32, -1.0f32), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+            let corner = vec2(c.x + sx * h, c.y + sy * h);
+            // Out: the arms run back from the corner. In: from a corner
+            // pulled toward the centre, outward.
+            let (at, dir) = match on {
+                false => (corner, -1.0),
+                true => (vec2(c.x + sx * (h - arm), c.y + sy * (h - arm)), 1.0),
+            };
+            let ink = p.theme.color.text_muted;
+            draw_line(at.x, at.y, at.x + dir * sx * arm, at.y, 1.5, ink);
+            draw_line(at.x, at.y, at.x, at.y + dir * sy * arm, 1.5, ink);
+        }
+    }
     rects
 }
 
@@ -264,6 +296,8 @@ mod tests {
         assert_eq!(r.speed.right(), col.right());
         assert!(r.pause.right() < r.speed.x);
         assert!(r.settings.right() < r.pause.x);
+        assert!(r.fullscreen.right() < r.settings.x);
         assert_eq!(r.settings.w, r.pause.w);
+        assert_eq!(r.fullscreen.w, r.pause.w);
     }
 }

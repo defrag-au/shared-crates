@@ -8,7 +8,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p macroquad-widgets --test catalog`
 Note: these are MACROQUAD widgets. They cannot use wasm-bindgen, so they do not
 interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime pairs.
 
-29 widgets.
+30 widgets.
 
 | module | what it is |
 |---|---|
@@ -27,6 +27,7 @@ interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime p
 | `holder_map` | `HolderMap` — holdings by area, grouped by what they are, on a treemap that holds still as shares move |
 | `life_strip` | `LifeStrip` — a token's whole life on one axis: a fuzzy price band, how busy each stretch was, the window being replayed as a brush, and the playhead |
 | `mint_checkout` | `MintCheckout` organism — the mint initiator: phase + eligibility, a [`quantity_stepper`], the live total, and the Mint CTA |
+| `momentum` | `Momentum` — inertial scrolling for a list a finger drags: the content follows the finger while it is down, and after a flick it keeps going and slows to a stop, as a phone's own lists do |
 | `order_fulfilment` | `OrderFulfilment` — the buyer-facing "what's happening to my order" widget |
 | `price_chart` | `PriceChart` — a price over time as a step line, with the volume it traded split into buys and sells at the foot, a mark for each trade while there is room for one, the playhead, and a finger's scrub |
 | `quantity_stepper` | `QuantityStepper` molecule — `[−] [ n ] [+]`, clamped to `[min, max]` |

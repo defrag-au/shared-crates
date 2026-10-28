@@ -23,6 +23,7 @@ mod floating_stick;
 mod fonts;
 mod gesture;
 mod mint_checkout;
+mod momentum;
 mod order_fulfilment;
 mod quantity_stepper;
 mod radar;
@@ -94,6 +95,7 @@ pub use macroquad_text::Align;
 pub use mint_checkout::{
     CheckoutAction, CheckoutResponse, CheckoutState, Eligibility, MintCheckoutVm, mint_checkout,
 };
+pub use momentum::Momentum;
 pub use order_fulfilment::{
     FulfilmentAction, FulfilmentResponse, FulfilmentStatus, FulfilmentTx, OrderFulfilmentVm,
     OrderStatus, order_fulfilment,

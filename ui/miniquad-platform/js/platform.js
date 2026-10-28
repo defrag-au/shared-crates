@@ -2,7 +2,8 @@
 // but which the miniquad WASM runtime doesn't provide out of the box.
 //
 // Currently exposes: the page's query string, host and path, a page reload,
-// cryptographically-secure random bytes (backed by
+// a fullscreen button the page itself answers, cryptographically-secure
+// random bytes (backed by
 // `crypto.getRandomValues()`), and small-value persistence over
 // `localStorage`. Rust's `getrandom` crate routes through this plugin via
 // `register_custom_getrandom!` so pallas-crypto + bip39 + everything else that
@@ -102,7 +103,70 @@
         }
     }
 
+    // ── Fullscreen ──────────────────────────────────────────────────────────
+    //
+    // A browser grants fullscreen only from inside a user gesture's handler,
+    // and the wasm's frame loop is not one: miniquad's `set_fullscreen` is
+    // refused on the web. So the game names where its fullscreen button is
+    // (`platform_fullscreen_zone`, as fractions of the canvas) and this page
+    // listens for the tap itself: one that ends inside the zone toggles
+    // fullscreen from its own handler, where the browser allows it.
+    //
+    // `pointerup` is a gesture for a finger or pen; for a mouse, the
+    // `mousedown` before it already was, and that lasts past the release.
+
+    let fullscreenZone = null;
+
+    function fullscreenElement() {
+        return document.fullscreenElement || document.webkitFullscreenElement || null;
+    }
+
+    function fullscreenEnabled() {
+        return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+    }
+
+    function toggleFullscreen() {
+        try {
+            const asked = fullscreenElement()
+                ? (document.exitFullscreen || document.webkitExitFullscreen).call(document)
+                : (function () {
+                    const el = document.documentElement;
+                    return (el.requestFullscreen || el.webkitRequestFullscreen)
+                        .call(el, { navigationUI: 'hide' });
+                })();
+            if (asked && asked.catch) asked.catch(function () {});
+        } catch (e) {
+            console.warn('platform: fullscreen was refused', e);
+        }
+    }
+
+    document.addEventListener('pointerup', function (e) {
+        if (!fullscreenZone || !fullscreenEnabled()) return;
+        const canvas = document.querySelector('#glcanvas') || document.querySelector('canvas');
+        if (!canvas) return;
+        const r = canvas.getBoundingClientRect();
+        const fx = (e.clientX - r.left) / r.width;
+        const fy = (e.clientY - r.top) / r.height;
+        const z = fullscreenZone;
+        if (fx >= z[0] && fx <= z[2] && fy >= z[1] && fy <= z[3]) toggleFullscreen();
+    }, { capture: true, passive: true });
+
+    // The button's box as fractions of the canvas, left, top, right, bottom;
+    // a right edge not past the left clears it.
+    function platform_fullscreen_zone(x0, y0, x1, y1) {
+        fullscreenZone = x1 > x0 && y1 > y0 ? [x0, y0, x1, y1] : null;
+    }
+
+    // 0: no fullscreen here (an iPhone's Safari, an embed that does not allow
+    // it), 1: windowed, 2: fullscreen.
+    function platform_fullscreen_state() {
+        if (!fullscreenEnabled()) return 0;
+        return fullscreenElement() ? 2 : 1;
+    }
+
     register_plugin = function (importObject) {
+        importObject.env.platform_fullscreen_zone = platform_fullscreen_zone;
+        importObject.env.platform_fullscreen_state = platform_fullscreen_state;
         importObject.env.platform_random_bytes = platform_random_bytes;
         importObject.env.platform_query_param = platform_query_param;
         importObject.env.platform_location_host = platform_location_host;
@@ -113,9 +177,9 @@
         importObject.env.platform_storage_remove = platform_storage_remove;
     };
 
-    // v2 added the storage calls, v3 the page's host and path. A consumer whose
-    // committed `platform.js` predates it fails the handshake at instantiate
-    // rather than calling a stubbed function — which is why the Rust export and
-    // this number move together.
-    miniquad_add_plugin({ register_plugin, version: 3, name: 'platform' });
+    // v2 added the storage calls, v3 the page's host and path, v4 fullscreen. A
+    // consumer whose committed `platform.js` predates it fails the handshake at
+    // instantiate rather than calling a stubbed function — which is why the
+    // Rust export and this number move together.
+    miniquad_add_plugin({ register_plugin, version: 4, name: 'platform' });
 })();

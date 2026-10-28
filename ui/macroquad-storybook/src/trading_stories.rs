@@ -439,6 +439,8 @@ impl TradingStory {
                     speed_lit: live,
                     paused: false,
                     settings_open: false,
+                    // Live shows the button windowed; the replay without it.
+                    fullscreen: live.then_some(false),
                     ink,
                 };
                 token_header(p, p, &vm, col);
