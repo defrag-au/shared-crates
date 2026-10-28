@@ -718,7 +718,8 @@ mod tests {
         let space = Rect::new(0.0, 0.0, 900.0, 520.0);
         let mut state = TreemapState::default();
         let mut items: Vec<(usize, f64)> = Vec::new();
-        for frame in 0..2_000 {
+        // Past MAX_DEPTH arrivals, so the rebuild is exercised too.
+        for frame in 0..MAX_DEPTH + 100 {
             for j in 0..3 {
                 let k = frame * 3 + j;
                 items.push((k, 1.0 + (k % 97) as f64));

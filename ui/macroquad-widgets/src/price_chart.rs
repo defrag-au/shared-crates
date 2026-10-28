@@ -154,11 +154,30 @@ pub struct ChartLabels<'a> {
     pub end: Option<&'a str>,
 }
 
+/// A stretch the host has only a coarse reading for (a whole-life
+/// overview's bucket): its low, high and close, in display units. Drawn soft
+/// and blurred where the points do not reach yet, so the plot is never
+/// empty while its detail loads.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RoughStretch {
+    pub unix: u64,
+    pub secs: u64,
+    pub lo: f64,
+    pub hi: f64,
+    pub close: f64,
+    /// How strongly, `0..=1`: a stretch whose detail has just arrived fades
+    /// out under it rather than vanishing.
+    pub alpha: f32,
+}
+
 /// What the chart draws.
 #[derive(Clone, Copy, Debug)]
 pub struct PriceChartVm<'a> {
     /// The points in the window, ascending.
     pub points: &'a [ChartPoint],
+    /// Where the points do not reach, the coarse shape, ascending: drawn
+    /// blurred under the line. Empty for none.
+    pub rough: &'a [RoughStretch],
     /// The last point before the window, so the line enters from the left
     /// edge rather than starting in mid-air.
     pub lead: Option<ChartPoint>,
@@ -232,6 +251,14 @@ pub fn price_chart(p: &Painter, vm: &PriceChartVm, plot: Rect) {
             with_alpha(p.theme.color.border, 0.35),
         );
     }
+
+    rough(
+        vm.rough,
+        &x_of,
+        &y_of,
+        plot,
+        if vm.up { vm.ink.buy } else { vm.ink.sell },
+    );
 
     // The window's points, led in by the last price before it.
     let mut series: Vec<ChartPoint> = Vec::with_capacity(vm.points.len() + 1);
@@ -336,6 +363,77 @@ pub fn price_chart(p: &Painter, vm: &PriceChartVm, plot: Rect) {
     }
     if let Some(end) = vm.labels.end {
         p.text_in(end, row, s, p.theme.color.text_muted, crate::Align::End);
+    }
+}
+
+/// The coarse stretches, soft: each one's low-to-high as a faint band, and
+/// the closes joined centre to centre as a line drawn wide and faint under
+/// narrower and stronger passes — a blur, which says "about here" where the
+/// detailed line says "exactly here". Stretches with a gap between them are
+/// not joined.
+fn rough(
+    stretches: &[RoughStretch],
+    x_of: &dyn Fn(u64) -> f32,
+    y_of: &dyn Fn(f64) -> f32,
+    plot: Rect,
+    tone: Color,
+) {
+    for s in stretches {
+        let (x0, x1) = (x_of(s.unix), x_of(s.unix + s.secs));
+        if x1 <= plot.x || x0 >= plot.right() || s.alpha <= 0.0 {
+            continue;
+        }
+        let (top, bottom) = (y_of(s.hi), y_of(s.lo));
+        draw_rectangle(
+            x0,
+            top,
+            (x1 - x0).max(1.0),
+            (bottom - top).max(1.0),
+            with_alpha(tone, 0.08 * s.alpha),
+        );
+    }
+    // Each unbroken run of stretches as one line: from its first one's left
+    // edge, through every centre, to its last one's right edge, so it meets
+    // whatever is drawn either side of it.
+    let mut runs: Vec<Vec<&RoughStretch>> = Vec::new();
+    for s in stretches.iter().filter(|s| s.alpha > 0.0) {
+        match runs.last_mut() {
+            // One strength a run: a stretch fading out under detail that has
+            // just landed draws apart, and the rough beside it still meets
+            // its edge.
+            Some(run)
+                if run.last().is_some_and(|p| {
+                    s.unix <= p.unix + p.secs + 1 && (s.alpha - p.alpha).abs() < 0.01
+                }) =>
+            {
+                run.push(s)
+            }
+            _ => runs.push(vec![s]),
+        }
+    }
+    for run in &runs {
+        let (Some(first), Some(last)) = (run.first(), run.last()) else {
+            continue;
+        };
+        let at = |unix: u64, s: &RoughStretch| (vec2(x_of(unix), y_of(s.close)), s.alpha);
+        let line: Vec<(Vec2, f32)> = std::iter::once(at(first.unix, first))
+            .chain(run.iter().map(|s| at(s.unix + s.secs / 2, s)))
+            .chain(std::iter::once(at(last.unix + last.secs, last)))
+            .collect();
+        for w in line.windows(2) {
+            let ((pa, aa), (pb, ab)) = (w[0], w[1]);
+            let alpha = aa.min(ab);
+            for (width, strength) in [(7.0, 0.06), (4.5, 0.12), (2.5, 0.22), (1.2, 0.35)] {
+                draw_line(
+                    pa.x,
+                    pa.y,
+                    pb.x,
+                    pb.y,
+                    width,
+                    with_alpha(tone, strength * alpha),
+                );
+            }
+        }
     }
 }
 

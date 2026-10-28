@@ -173,6 +173,7 @@ impl TradingStory {
                 let high_label = format!("HIGH {}", format::price(high));
                 let vm = PriceChartVm {
                     points,
+                    rough: &[],
                     lead: None,
                     t0,
                     t1,

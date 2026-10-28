@@ -146,8 +146,8 @@ pub use life_strip::{LifeBucket, LifeStripVm, life_strip, price_band};
 pub use market_ink::MarketInk;
 #[cfg(feature = "trading")]
 pub use price_chart::{
-    ChartLabels, ChartPoint, PriceChartVm, TradeMark, TradeSide, TradeSize, View, beat_at_x,
-    chart_view, price_chart, time_at_x,
+    ChartLabels, ChartPoint, PriceChartVm, RoughStretch, TradeMark, TradeSide, TradeSize, View,
+    beat_at_x, chart_view, price_chart, time_at_x,
 };
 #[cfg(feature = "trading")]
 pub use split_bar::{SplitBarVm, split_bar};
