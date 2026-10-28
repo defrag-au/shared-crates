@@ -4002,6 +4002,7 @@ dependencies = [
 name = "macroquad-gamekit"
 version = "0.1.0"
 dependencies = [
+ "chains",
  "discord-auth",
  "gamepads",
  "macroquad",

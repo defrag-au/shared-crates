@@ -14,6 +14,7 @@ mod chain_fixture;
 mod gamekit_stories;
 mod route_stories;
 mod trading_stories;
+mod wallet_modal_stories;
 
 use chain_fixture::{ChainSim, Scenario};
 use gamekit_stories::{KitStory, KitView};
@@ -32,6 +33,7 @@ use macroquad_widgets::{
 use route_stories::RouteStory;
 use trading_stories::{TradingStory, TradingView};
 use ui_theme::{TextSize, Token};
+use wallet_modal_stories::{ModalView, Preset, WalletModalStory};
 
 const SIDEBAR_W: f32 = 210.0;
 /// The sidebar's fixed title band; the story list scrolls beneath it.
@@ -143,6 +145,8 @@ enum Body {
     Trading(Box<TradingStory>),
     /// The operator panel, whose commands are live.
     Admin(Box<AdminStory>),
+    /// The one-button wallet connector and its modal, against a fake host.
+    WalletModal(Box<WalletModalStory>),
 }
 
 /// The operator panel with a game's numbers in it and its buttons wired to an
@@ -195,6 +199,7 @@ enum Kind {
     Route,
     Trading,
     Admin,
+    WalletModal,
 }
 
 struct Story {
@@ -319,6 +324,20 @@ impl Story {
             Body::Route(_) => Kind::Route,
             Body::Trading(_) => Kind::Trading,
             Body::Admin(_) => Kind::Admin,
+            Body::WalletModal(_) => Kind::WalletModal,
+        }
+    }
+
+    fn wallet_modal(
+        name: &'static str,
+        view: ModalView,
+        phone: bool,
+        icon: &Option<Texture2D>,
+    ) -> Self {
+        Self {
+            category: "wallet modal",
+            name,
+            body: Body::WalletModal(Box::new(WalletModalStory::new(view, phone, icon.clone()))),
         }
     }
 
@@ -580,7 +599,33 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
     use FulfilmentStatus as F;
     use OrderStatus as S;
     use StoryMode::*;
-    vec![
+    let icon = &sample_icon;
+    let modal = |name, view| Story::wallet_modal(name, view, false, icon);
+    let phone = |name, view| Story::wallet_modal(name, view, true, icon);
+    let modal_stories = vec![
+        // The live story first: the whole flow, from the one button.
+        modal("live", ModalView::Live),
+        modal("walkthrough", ModalView::Walkthrough),
+        modal("button · states", ModalView::Buttons),
+        modal("chains", ModalView::Step(Preset::Chains)),
+        modal("wallets", ModalView::Step(Preset::Wallets)),
+        modal("no wallets", ModalView::Step(Preset::NoWallets)),
+        modal("connecting", ModalView::Step(Preset::Connecting)),
+        modal("connected", ModalView::Step(Preset::Connected)),
+        modal("declined", ModalView::Step(Preset::Declined)),
+        modal("failed", ModalView::Step(Preset::Failed)),
+        modal("only EVM", ModalView::Step(Preset::OnlyEvm)),
+        modal(
+            "two chains connected",
+            ModalView::Step(Preset::TwoConnected),
+        ),
+        phone("phone · live", ModalView::Live),
+        phone("phone · chains", ModalView::Step(Preset::Chains)),
+        phone("phone · wallets", ModalView::Step(Preset::Wallets)),
+        phone("phone · connected", ModalView::Step(Preset::Connected)),
+        phone("phone · failed", ModalView::Step(Preset::Failed)),
+    ];
+    let mut stories = vec![
         Story::buttons("atoms", "buttons"),
         Story::stepper("atoms", "quantity stepper", 2),
         Story::segmented("atoms", "segmented · track", false),
@@ -596,7 +641,7 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
                 WalletItem {
                     key: "eternl".into(),
                     name: "Eternl".into(),
-                    icon: sample_icon,
+                    icon: sample_icon.clone(),
                 },
                 WalletItem::new("vespr", "Vespr"),
                 WalletItem::new("lace", "Lace"),
@@ -879,7 +924,9 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::trading("token header · replay", TradingView::Header),
         Story::trading("token header · live", TradingView::HeaderLive),
         Story::trading("treemap", TradingView::Treemap),
-    ]
+    ];
+    stories.extend(modal_stories);
+    stories
 }
 
 /// The stories' time. Paused, stepped and slowed from the keyboard, so an
@@ -1256,7 +1303,7 @@ impl Storybook {
         );
         y += 20.0;
         let help = match self.stories[sel].kind() {
-            Kind::Kit | Kind::Route | Kind::Trading => format!(
+            Kind::Kit | Kind::Route | Kind::Trading | Kind::WalletModal => format!(
                 "arrows / click to switch  ·  t = theme: {}  ·  p pause · . step · s slow  ·  {}",
                 p.theme.name,
                 self.clock.label()
@@ -1381,6 +1428,18 @@ impl Storybook {
                         screen_height() - y - 20.0,
                     );
                     story.draw(p, area, &g, t);
+                }
+            }
+            Kind::WalletModal => {
+                let dt = self.dt;
+                if let Body::WalletModal(story) = &mut self.stories[sel].body {
+                    let area = Rect::new(
+                        x0,
+                        y,
+                        screen_width() - x0 - 20.0,
+                        screen_height() - y - 44.0,
+                    );
+                    story.draw(p, area, dt);
                 }
             }
             Kind::Admin => {

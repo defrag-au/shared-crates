@@ -43,6 +43,10 @@ macroquad-widgets = { path = "../../ui/macroquad-widgets" }
 # shared with the widgets, so both draw text one way. Re-exported as `text`
 # and `harness::report`.
 macroquad-text = { path = "../../ui/macroquad-text" }
+# Chain identity for `wallet_modal`: the families a connector offers, in the
+# order a reader meets them. Pure (serde only), so it adds nothing to the wasm
+# tree that miniquad cannot host.
+chains = { workspace = true }
 # Gamepads: gilrs on desktop, the browser Gamepad API through a miniquad plugin
 # on the web. `default-features = false` drops its wasm-bindgen backend, which
 # cannot run under miniquad's gl.js.
