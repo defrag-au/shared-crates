@@ -126,7 +126,7 @@ pub use tween::{Animated, Lerp};
 pub use wall::{Wall, WallStyle};
 pub use wallet_connection::{Connection, ConnectionEvent};
 pub use wallet_modal::{
-    Account, AccountDetail, ChainOption, ChainPhase, DetailKind, Support, WalletModal,
+    Account, AccountDetail, ChainOption, ChainPhase, DetailKind, SignInPhase, Support, WalletModal,
     WalletModalAction, WalletModalVm, WalletOption, chain_mark, chain_tint, wallet_button,
     wallet_icon, wallet_icon_shaped,
 };

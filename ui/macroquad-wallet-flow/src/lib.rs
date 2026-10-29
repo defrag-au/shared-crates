@@ -27,6 +27,14 @@
 //! picker, an explicit [`WalletFlow::disconnect`] forgets it too, and a wallet
 //! that is not installed is remembered but not connected.
 //!
+//! ## The account can change under the page
+//!
+//! CIP-30 has no account-changed event, so a wallet switched to another
+//! account while the tab was hidden goes unnoticed. [`WalletFlow::recheck`] is
+//! the quiet re-read, which the [`WalletConnector`] runs each time the page
+//! comes back into view; [`WalletFlow::refresh_address`] is the stricter one a
+//! builder runs before funding a transaction.
+//!
 //! ## Drawing
 //!
 //! [`WalletFlow::draw`] takes the host's `Painter`, so the panel uses the
@@ -231,6 +239,26 @@ enum InFlight {
         address_hex: String,
         network_id: u8,
     },
+    /// [`WalletFlow::recheck`]'s first read: the reward address, which is the
+    /// account's identity. The stage stays `Ready` throughout, and a failure
+    /// leaves it as it was.
+    RecheckStake { req: ReqId, held: Held },
+    /// The recheck's second read, made only when the identity looks different
+    /// or the wallet gave no reward address: the change address. `stake` is
+    /// the reward address the first read found, if any.
+    RecheckAddress {
+        req: ReqId,
+        held: Held,
+        stake: Option<String>,
+    },
+}
+
+/// The connection a recheck compares against, as it was when it started.
+struct Held {
+    name: String,
+    address_hex: String,
+    stake_address: Option<String>,
+    network_id: u8,
 }
 
 impl InFlight {
@@ -240,8 +268,14 @@ impl InFlight {
             | Self::Network { req, .. }
             | Self::Address { req, .. }
             | Self::Stake { req, .. }
-            | Self::RefreshingAddress { req, .. } => *req,
+            | Self::RefreshingAddress { req, .. }
+            | Self::RecheckStake { req, .. }
+            | Self::RecheckAddress { req, .. } => *req,
         }
+    }
+
+    fn is_recheck(&self) -> bool {
+        matches!(self, Self::RecheckStake { .. } | Self::RecheckAddress { .. })
     }
 }
 
@@ -388,6 +422,11 @@ impl<B: Bridge> WalletFlow<B> {
         if self.is_refreshing() {
             return;
         }
+        // A build's check outranks a recheck: it reads the same thing, and a
+        // build is waiting on it.
+        if let Some(pending) = self.pending.take_if(|p| p.is_recheck()) {
+            self.bridge.cancel(pending.req());
+        }
         let Stage::Ready {
             name,
             address_hex,
@@ -405,6 +444,46 @@ impl<B: Bridge> WalletFlow<B> {
             address_hex,
             network_id,
         });
+    }
+
+    /// Ask the connected wallet which account it is on now, quietly.
+    ///
+    /// For the page coming back into view: a CIP-30 wallet can switch account
+    /// while the page is hidden and never say so. The reward address is read
+    /// first, because it is what a sign-in proves; only when it looks
+    /// different (or the wallet has none) is the change address read too.
+    /// The stage stays `Ready` throughout. A different account replaces the
+    /// connection and leaves the "Wallet account changed" notice, as
+    /// [`Self::refresh_address`] does; a failed read changes nothing, because
+    /// a wallet that is merely locked is not a reason to drop the page's
+    /// connection. A no-op unless the flow is `Ready` and idle.
+    pub fn recheck(&mut self) {
+        if self.pending.is_some() {
+            return;
+        }
+        let Stage::Ready {
+            name,
+            address_hex,
+            stake_address,
+            network_id,
+            ..
+        } = &self.stage
+        else {
+            return;
+        };
+        let held = Held {
+            name: name.clone(),
+            address_hex: address_hex.clone(),
+            stake_address: stake_address.clone(),
+            network_id: *network_id,
+        };
+        let req = self.bridge.reward_address();
+        self.pending = Some(InFlight::RecheckStake { req, held });
+    }
+
+    /// Whether a [`Self::recheck`] is in flight.
+    pub fn is_rechecking(&self) -> bool {
+        self.pending.as_ref().is_some_and(InFlight::is_recheck)
     }
 
     /// A short line about the last outcome, e.g. a cancelled connect. Taken
@@ -607,12 +686,8 @@ impl<B: Bridge> WalletFlow<B> {
                 // A reward address is optional. An empty answer or a wallet
                 // that cannot produce one falls back to the change address's
                 // own stake part, which is where `wallet-pallas` reads it too.
-                let stake_address = if data.is_empty() {
-                    wallet::stake_address_bech32(&address_hex)
-                } else {
-                    wallet::stake_address_bech32(&data)
-                        .or_else(|| Some(wallet::hex_to_bech32(&data)))
-                };
+                let stake_address =
+                    reward_bech32(&data).or_else(|| wallet::stake_address_bech32(&address_hex));
                 self.ready(name, address_hex, stake_address, network_id);
             }
             InFlight::RefreshingAddress {
@@ -627,6 +702,22 @@ impl<B: Bridge> WalletFlow<B> {
                 }
                 let stake_address = wallet::stake_address_bech32(&data);
                 self.ready(name, data, stake_address, network_id);
+                self.notice = Some("Wallet account changed".to_string());
+            }
+            InFlight::RecheckStake { held, .. } => {
+                let stake = reward_bech32(&data);
+                if stake.is_some() && stake == held.stake_address {
+                    return;
+                }
+                let req = self.bridge.change_address();
+                self.pending = Some(InFlight::RecheckAddress { req, held, stake });
+            }
+            InFlight::RecheckAddress { held, stake, .. } => {
+                let stake = stake.or_else(|| wallet::stake_address_bech32(&data));
+                if data == held.address_hex && stake == held.stake_address {
+                    return;
+                }
+                self.ready(held.name, data, stake, held.network_id);
                 self.notice = Some("Wallet account changed".to_string());
             }
         }
@@ -651,6 +742,9 @@ impl<B: Bridge> WalletFlow<B> {
                 let stake_address = wallet::stake_address_bech32(&address_hex);
                 self.ready(name, address_hex, stake_address, network_id);
             }
+            // A recheck is a question, not a step: a locked wallet or a
+            // refused read leaves the connection as it was.
+            InFlight::RecheckStake { .. } | InFlight::RecheckAddress { .. } => {}
             InFlight::RefreshingAddress { .. } => {
                 self.bridge.disconnect();
                 self.providers = self.bridge.list_providers();
@@ -731,6 +825,15 @@ fn state_for(providers: &[Provider], stage: &Stage) -> WalletState {
         } => WalletState::Error(network_message(*network_id, *expected)),
         Stage::Failed { message } => WalletState::Error(message.clone()),
     }
+}
+
+/// A `getRewardAddresses` answer as bech32, or `None` for a wallet that gave
+/// none.
+fn reward_bech32(data: &str) -> Option<String> {
+    if data.is_empty() {
+        return None;
+    }
+    wallet::stake_address_bech32(data).or_else(|| Some(wallet::hex_to_bech32(data)))
 }
 
 fn network_message(network_id: u8, expected: u8) -> String {
@@ -929,6 +1032,110 @@ mod tests {
         assert!(matches!(flow.stage(), Stage::Failed { .. }));
         assert!(flow.blocker().is_some());
         assert!(flow.address_hex().is_none());
+    }
+
+    /// The common case on every return to the tab: one cheap read, nothing
+    /// written, no notice.
+    #[test]
+    fn a_recheck_of_the_same_account_reads_only_the_stake() {
+        let mut flow = ready_flow();
+        let revision = flow.revision();
+        flow.bridge.calls.clear();
+        flow.bridge.results.push_back(ok(&reward_address()));
+
+        flow.recheck();
+        assert!(flow.is_rechecking());
+        assert!(flow.blocker().is_none(), "a recheck never blocks a build");
+        flow.poll();
+
+        assert!(!flow.is_rechecking());
+        assert_eq!(flow.bridge.calls, ["reward"]);
+        assert_eq!(flow.revision(), revision, "nothing was rewritten");
+        assert!(flow.notice().is_none());
+    }
+
+    /// Switched account in the wallet while the tab was hidden: the new
+    /// account replaces the old one, stake and address both.
+    #[test]
+    fn a_recheck_finds_a_switched_account() {
+        let mut flow = ready_flow();
+        let was = flow.stake_address().map(str::to_string);
+        let address = format!("01{}{}", "44".repeat(28), "55".repeat(28));
+        let reward = format!("e1{}", "55".repeat(28));
+        flow.bridge.results.push_back(ok(&reward));
+        flow.bridge.results.push_back(ok(&address));
+
+        flow.recheck();
+        flow.poll();
+        assert!(flow.is_rechecking(), "the address is read too");
+        flow.poll();
+
+        assert_eq!(flow.address_hex(), Some(address.as_str()));
+        let now = flow.stake_address().expect("a stake address");
+        assert!(now.starts_with("stake1"), "{now}");
+        assert_ne!(Some(now.to_string()), was);
+        assert_eq!(
+            flow.take_notice().as_deref(),
+            Some("Wallet account changed")
+        );
+    }
+
+    /// A locked wallet refuses the read. That is not a disconnect.
+    #[test]
+    fn a_failed_recheck_keeps_the_connection() {
+        let mut flow = ready_flow();
+        flow.bridge
+            .results
+            .push_back(err("wallet locked", FailureKind::Failed));
+
+        flow.recheck();
+        flow.poll();
+
+        assert!(matches!(flow.stage(), Stage::Ready { .. }));
+        assert!(!flow.bridge.disconnected);
+        assert!(flow.notice().is_none());
+    }
+
+    /// A wallet with no reward address: the change address decides.
+    #[test]
+    fn a_recheck_without_a_reward_address_compares_the_address() {
+        let mut flow = flow(vec![ok("eternl"), ok("1"), ok(&base_address()), ok("")]);
+        flow.connect("eternl");
+        for _ in 0..4 {
+            flow.poll();
+        }
+        let revision = flow.revision();
+        flow.bridge.calls.clear();
+        flow.bridge.results.push_back(ok(""));
+        flow.bridge.results.push_back(ok(&base_address()));
+
+        flow.recheck();
+        flow.poll();
+        flow.poll();
+
+        assert_eq!(flow.bridge.calls, ["reward", "change"]);
+        assert_eq!(flow.revision(), revision, "the same account");
+        assert!(flow.notice().is_none());
+    }
+
+    /// A build's check takes over from a recheck rather than queueing behind
+    /// it.
+    #[test]
+    fn a_refresh_replaces_a_recheck() {
+        let mut flow = ready_flow();
+        flow.recheck();
+        flow.refresh_address();
+        assert!(flow.is_refreshing());
+        assert!(!flow.is_rechecking());
+        assert!(flow.bridge.calls.contains(&"cancel"));
+    }
+
+    #[test]
+    fn a_recheck_before_a_wallet_is_ready_is_a_no_op() {
+        let mut flow = flow(Vec::new());
+        flow.recheck();
+        assert!(!flow.is_rechecking());
+        assert!(flow.bridge.calls.is_empty());
     }
 
     #[test]

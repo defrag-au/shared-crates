@@ -24,12 +24,12 @@ use macroquad_widgets::{
     BlockPulseVm, BlockTrainVm, Button, ButtonVariant, CalloutTone, CalloutVm, CheckoutAction,
     CheckoutState, Eligibility, FloatingStick, FulfilmentAction, FulfilmentStatus, FulfilmentTx,
     Gesture, Gestures, MintCheckoutVm, OrderFulfilmentVm, OrderStatus, Painter, PulseDetail,
-    PulseTicker, QuantityStepperVm, RiderState, SheetState, SquadCandidate, SquadCommit,
-    SquadPickerAction, SquadPickerVm, StepperAction, StickView, SwipeDir, Theme, TrainRider,
-    TrainState, WalletAction, WalletConnectVm, WalletItem, WalletListAction, WalletListState,
-    WalletListVm, WalletRow, WalletState, block_pulse, block_train, callout, floating_stick,
-    mint_checkout, order_fulfilment, quantity_stepper, segmented, segmented_pills, squad_picker,
-    theme, wallet_connect, wallet_list,
+    PulseTicker, QuantityStepperVm, RiderState, Scroll, ScrollInput, SheetState, SquadCandidate,
+    SquadCommit, SquadPickerAction, SquadPickerVm, StepperAction, StickView, SwipeDir, Theme,
+    TrainRider, TrainState, WalletAction, WalletConnectVm, WalletItem, WalletListAction,
+    WalletListState, WalletListVm, WalletRow, WalletState, block_pulse, block_train, callout,
+    floating_stick, mint_checkout, order_fulfilment, quantity_stepper, segmented, segmented_pills,
+    squad_picker, theme, wallet_connect, wallet_list,
 };
 use route_stories::RouteStory;
 use trading_stories::{TradingStory, TradingView};
@@ -625,6 +625,29 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         modal("declined", ModalView::Step(Preset::Declined)),
         modal("failed", ModalView::Step(Preset::Failed)),
         modal("only EVM", ModalView::Step(Preset::OnlyEvm)),
+        // A site that signs in, as the staking site does.
+        modal("sign in · live", ModalView::SignIn),
+        modal("sign in · offered", ModalView::Step(Preset::SignInOffered)),
+        modal("sign in · signing", ModalView::Step(Preset::SigningIn)),
+        modal(
+            "sign in · declined",
+            ModalView::Step(Preset::SignInDeclined),
+        ),
+        modal("sign in · failed", ModalView::Step(Preset::SignInFailed)),
+        modal("sign in · signed in", ModalView::Step(Preset::SignedIn)),
+        modal(
+            "sign in · wallet changed",
+            ModalView::Step(Preset::SignInChanged),
+        ),
+        phone(
+            "phone · sign in · wallet changed",
+            ModalView::Step(Preset::SignInChanged),
+        ),
+        phone("phone · sign in · live", ModalView::SignIn),
+        phone(
+            "phone · sign in · signing",
+            ModalView::Step(Preset::SigningIn),
+        ),
         modal(
             "two chains connected",
             ModalView::Step(Preset::TwoConnected),
@@ -1087,8 +1110,8 @@ struct Storybook {
     clock: Clock,
     /// This frame's story `dt`, from the clock.
     dt: f32,
-    /// How far the sidebar list is scrolled, in points.
-    scroll: f32,
+    /// The sidebar list's scroll: drag, flick or wheel.
+    scroll: Scroll,
     /// Scroll the selected story into view on the next sidebar draw: set when
     /// a story is chosen by key or `--story`, which may be off-screen.
     reveal: bool,
@@ -1109,7 +1132,7 @@ impl Storybook {
             gesture: Gesture::default(),
             clock: Clock::new(),
             dt: 0.0,
-            scroll: 0.0,
+            scroll: Scroll::new(),
             reveal: false,
         }
     }
@@ -1199,29 +1222,33 @@ impl Storybook {
         }
         let content = y;
 
-        if mouse.x < SIDEBAR_W {
-            let (_, wheel) = mouse_wheel();
-            // A wheel reports notches (about ±1); a trackpad reports points.
-            let step = if wheel.abs() <= 1.5 {
-                wheel * 36.0
-            } else {
-                wheel
-            };
-            self.scroll -= step;
-        }
         if std::mem::take(&mut self.reveal)
             && let Some(&row_y) = rows.get(self.selected)
         {
             let (top, bottom) = (row_y - 13.0, row_y + 13.0);
-            if top < self.scroll {
-                self.scroll = top - 8.0;
-            } else if bottom > self.scroll + visible {
-                self.scroll = bottom - visible + 8.0;
+            let at = self.scroll.offset();
+            if top < at {
+                self.scroll.set(top - 8.0);
+            } else if bottom > at + visible {
+                self.scroll.set(bottom - visible + 8.0);
             }
         }
+        // Drag, flick or wheel, on the real clock: a paused or slowed story
+        // clock must not freeze the list beside it.
+        let list = Rect::new(0.0, list_top, SIDEBAR_W, visible);
+        let input = ScrollInput::read(self.gesture.drag, mouse);
         let max_scroll = (content - visible).max(0.0);
-        self.scroll = self.scroll.clamp(0.0, max_scroll);
-        let off = list_top - self.scroll;
+        self.scroll
+            .update(list, &input, Some(max_scroll), get_frame_time());
+        // A tap that only caught the coasting list chooses no story.
+        let p = &Painter::new(
+            p.font,
+            p.mono,
+            p.theme,
+            self.scroll.filter_tap(self.gesture.tap),
+        )
+        .at_time(p.time());
+        let off = list_top - self.scroll.offset();
 
         for (hy, cat) in &headings {
             p.text(cat, 16.0, hy + off, 11.0, p.theme.color.text_muted);
@@ -1283,7 +1310,7 @@ impl Storybook {
             1.0,
             theme::with_alpha(
                 p.theme.color.bg_highlight,
-                if self.scroll > 0.0 { 1.0 } else { 0.0 },
+                if self.scroll.offset() > 0.0 { 1.0 } else { 0.0 },
             ),
         );
 
@@ -1291,7 +1318,7 @@ impl Storybook {
         if max_scroll > 0.0 {
             let track = visible - 8.0;
             let thumb = (track * visible / content).max(24.0);
-            let ty = list_top + 4.0 + (track - thumb) * (self.scroll / max_scroll);
+            let ty = list_top + 4.0 + (track - thumb) * (self.scroll.offset() / max_scroll);
             draw_rectangle(
                 SIDEBAR_W - 5.0,
                 ty,

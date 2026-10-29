@@ -1,13 +1,17 @@
 //! The events a consumer acts on, and the envelope they arrive in.
 //!
-//! Three events are modelled, because they are the ones an ownership ledger and
-//! the trait and image caches beside it want: [`ItemTransferred`], [`ItemSold`]
-//! and [`ItemMetadataUpdated`]. The other seven are carried as
-//! [`StreamEvent::Unmodelled`] rather than dropped, so a consumer can log or
-//! forward them and a new event type is never fatal.
+//! **All ten types the stream delivers are modelled**, each against a captured frame. That
+//! matters more than it sounds: the point of this crate is that a consumer never sees an
+//! untyped body, and a payload written from documentation rather than from the socket is
+//! how a decoder ends up agreeing with the docs and failing on the wire. Both
+//! `collection_offer` and `order_revalidate` carry `"item": {}`, and a bid carries
+//! `created_date` where a listing carries `listing_date` — none of which the guide says.
+//!
+//! [`StreamEvent::Unmodelled`] remains for an event type this crate has never seen, so a
+//! type OpenSea adds later is carried and logged rather than dropped or fatal.
 
 use serde::de::IgnoredAny;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::event_type::EventType;
 use crate::frame::{Frame, FrameEvent, FrameHeader};
@@ -44,6 +48,30 @@ pub struct CollectionRef {
 pub struct Account {
     /// The address.
     pub address: String,
+}
+
+/// A contract address as OpenSea writes it.
+///
+/// The same shape as [`Account`], kept separate because a contract is not a wallet and
+/// a consumer that treated one as the other would be matching a maker against a
+/// collection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContractRef {
+    /// The address.
+    pub address: String,
+}
+
+/// A trait constraint an offer is made against.
+///
+/// Deliberately not [`Trait`]: a trait *on an item* is a `value`, and the criterion an
+/// offer names is a `trait_name` — the stream uses different keys for the same idea in
+/// the two places, and one type would have to pretend otherwise.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TraitCriterion {
+    /// The trait's category.
+    pub trait_type: String,
+    /// The value the offer is constrained to.
+    pub trait_name: String,
 }
 
 /// The asset an event is about.
@@ -153,6 +181,322 @@ pub struct ItemSold {
     pub taker: Option<Account>,
     /// The transaction that settled it, when there was one.
     pub transaction: Option<TransactionRef>,
+}
+
+/// A listing or bid was cancelled.
+///
+/// The message does not say which, so the name is the marketplace's: `item_cancelled`
+/// fires for both. The shape is a listing's — a `maker`, a price and an order — and a
+/// cancelled bid arrives in the same shape with the same fields, which is why the
+/// fields a bid may omit are optional here rather than absent.
+///
+/// Unlike [`OrderInvalidate`], this one carries the price (`base_price`) and the
+/// listing's own dates, so a cancellation can be priced without the earlier listing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ItemCancelled {
+    /// The chain, by OpenSea's slug.
+    pub chain: String,
+    /// Which collection.
+    pub collection: CollectionRef,
+    /// When it happened, RFC 3339.
+    pub event_timestamp: String,
+    /// What it was listed at, in the payment token's smallest unit.
+    #[serde(with = "wasm_safe_serde::u128_required")]
+    pub base_price: u128,
+    /// When the order was placed, RFC 3339.
+    #[serde(default)]
+    pub listing_date: Option<String>,
+    /// When the order would have lapsed, RFC 3339. Absent on an order with no end.
+    #[serde(default)]
+    pub expiration_date: Option<String>,
+    /// Whether the order was private.
+    #[serde(default)]
+    pub is_private: bool,
+    /// What was listed.
+    pub item: ItemRef,
+    /// `null` on a public listing.
+    #[serde(default)]
+    pub listing_type: Option<String>,
+    /// The seller, or the bidder when this is a bid.
+    pub maker: Account,
+    /// The order that ended. Empty is possible, as on a sale.
+    #[serde(default)]
+    pub order_hash: String,
+    /// What it was denominated in.
+    pub payment_token: PaymentToken,
+    /// The settlement contract, or the zero address when there was none.
+    #[serde(default)]
+    pub protocol_address: String,
+    /// How many.
+    pub quantity: u32,
+    /// The counterparty, when there was one.
+    #[serde(default)]
+    pub taker: Option<Account>,
+    /// The transaction that cancelled it, when there was one.
+    #[serde(default)]
+    pub transaction: Option<TransactionRef>,
+}
+
+/// An asset was put up for sale.
+///
+/// The counterpart of [`ItemCancelled`]: both carry a price and the listing's dates, which
+/// is what lets a cancellation be priced without having kept the listing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ItemListed {
+    /// The chain, by OpenSea's slug.
+    pub chain: String,
+    /// Which collection.
+    pub collection: CollectionRef,
+    /// When it happened, RFC 3339.
+    pub event_timestamp: String,
+    /// When the order was placed, RFC 3339.
+    #[serde(default)]
+    pub listing_date: Option<String>,
+    /// When the order lapses, RFC 3339.
+    #[serde(default)]
+    pub expiration_date: Option<String>,
+    /// Whether the order is private.
+    #[serde(default)]
+    pub is_private: bool,
+    /// What was listed.
+    pub item: ItemRef,
+    /// `null` on a public listing.
+    #[serde(default)]
+    pub listing_type: Option<String>,
+    /// The seller.
+    pub maker: Account,
+    /// The order. Empty is possible, as on a sale.
+    #[serde(default)]
+    pub order_hash: String,
+    /// What it is denominated in.
+    pub payment_token: PaymentToken,
+    /// The asking price, in the payment token's smallest unit.
+    #[serde(with = "wasm_safe_serde::u128_required")]
+    pub base_price: u128,
+    /// The settlement contract.
+    #[serde(default)]
+    pub protocol_address: String,
+    /// How many.
+    pub quantity: u32,
+    /// The counterparty, when there is one.
+    #[serde(default)]
+    pub taker: Option<Account>,
+}
+
+/// An offer was made on one asset.
+///
+/// A bid, in the marketplace's vocabulary. It carries `created_date` rather than the
+/// `listing_date` a listing carries, and neither `is_private` nor `listing_type` —
+/// differences that are only visible in a captured frame.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ItemReceivedBid {
+    /// The chain, by OpenSea's slug.
+    pub chain: String,
+    /// Which collection.
+    pub collection: CollectionRef,
+    /// When it happened, RFC 3339.
+    pub event_timestamp: String,
+    /// When the offer was made, RFC 3339.
+    #[serde(default)]
+    pub created_date: Option<String>,
+    /// When the offer lapses, RFC 3339.
+    #[serde(default)]
+    pub expiration_date: Option<String>,
+    /// What the offer is for.
+    pub item: ItemRef,
+    /// The bidder.
+    pub maker: Account,
+    /// The order. Empty is possible, as on a sale.
+    #[serde(default)]
+    pub order_hash: String,
+    /// What the offer is denominated in.
+    pub payment_token: PaymentToken,
+    /// The offer, in the payment token's smallest unit.
+    #[serde(with = "wasm_safe_serde::u128_required")]
+    pub base_price: u128,
+    /// The settlement contract.
+    #[serde(default)]
+    pub protocol_address: String,
+    /// How many.
+    pub quantity: u32,
+    /// The counterparty, when there is one.
+    #[serde(default)]
+    pub taker: Option<Account>,
+}
+
+/// An offer against any asset in a collection.
+///
+/// Collection-scoped, so there is no item: the captured frame's `item` is `{}`, which is
+/// why this type has no `item` field at all rather than an optional one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CollectionOffer {
+    /// The chain, by OpenSea's slug.
+    pub chain: String,
+    /// Which collection.
+    pub collection: CollectionRef,
+    /// When it happened, RFC 3339.
+    pub event_timestamp: String,
+    /// When the offer was made, RFC 3339.
+    #[serde(default)]
+    pub created_date: Option<String>,
+    /// When the offer lapses, RFC 3339.
+    #[serde(default)]
+    pub expiration_date: Option<String>,
+    /// The contract the offer is constrained to.
+    #[serde(default)]
+    pub asset_contract_criteria: Option<ContractRef>,
+    /// The collection the offer is constrained to.
+    #[serde(default)]
+    pub collection_criteria: Option<CollectionRef>,
+    /// The bidder.
+    pub maker: Account,
+    /// The order. Empty is possible, as on a sale.
+    #[serde(default)]
+    pub order_hash: String,
+    /// What the offer is denominated in.
+    pub payment_token: PaymentToken,
+    /// The offer, in the payment token's smallest unit.
+    #[serde(with = "wasm_safe_serde::u128_required")]
+    pub base_price: u128,
+    /// The settlement contract.
+    #[serde(default)]
+    pub protocol_address: String,
+    /// How many.
+    pub quantity: u32,
+    /// The counterparty, when there is one.
+    #[serde(default)]
+    pub taker: Option<Account>,
+}
+
+/// An offer against any asset carrying a trait.
+///
+/// The same payload as [`CollectionOffer`] plus the constraint. `trait_criteria` and
+/// `trait_criteria_list` carry the same value in the captured frame; both are kept
+/// because both are on the wire and which one a future frame populates is not something
+/// to assume.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TraitOffer {
+    /// The chain, by OpenSea's slug.
+    pub chain: String,
+    /// Which collection.
+    pub collection: CollectionRef,
+    /// When it happened, RFC 3339.
+    pub event_timestamp: String,
+    /// When the offer was made, RFC 3339.
+    #[serde(default)]
+    pub created_date: Option<String>,
+    /// When the offer lapses, RFC 3339.
+    #[serde(default)]
+    pub expiration_date: Option<String>,
+    /// The contract the offer is constrained to.
+    #[serde(default)]
+    pub asset_contract_criteria: Option<ContractRef>,
+    /// The collection the offer is constrained to.
+    #[serde(default)]
+    pub collection_criteria: Option<CollectionRef>,
+    /// The trader's own trait constraint, when there is one.
+    #[serde(default)]
+    pub trait_criteria: Option<TraitCriterion>,
+    /// The same constraints as a list.
+    #[serde(default)]
+    pub trait_criteria_list: Vec<TraitCriterion>,
+    /// The bidder.
+    pub maker: Account,
+    /// The order. Empty is possible, as on a sale.
+    #[serde(default)]
+    pub order_hash: String,
+    /// What the offer is denominated in.
+    pub payment_token: PaymentToken,
+    /// The offer, in the payment token's smallest unit.
+    #[serde(with = "wasm_safe_serde::u128_required")]
+    pub base_price: u128,
+    /// The settlement contract.
+    #[serde(default)]
+    pub protocol_address: String,
+    /// How many.
+    pub quantity: u32,
+    /// The counterparty, when there is one.
+    #[serde(default)]
+    pub taker: Option<Account>,
+}
+
+/// An order stopped being valid.
+///
+/// This is the message that cannot be turned into "a listing was delisted" or "an
+/// offer was withdrawn": it carries an order hash and an item and nothing that says
+/// which of the two the order was. A consumer records it as an invalidation and joins
+/// the hash against the earlier listing or bid; the join is the only way to know, and
+/// a missed earlier message means never.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrderInvalidate {
+    /// The chain, by OpenSea's slug.
+    pub chain: String,
+    /// Which collection.
+    pub collection: CollectionRef,
+    /// When it happened, RFC 3339.
+    pub event_timestamp: String,
+    /// The item the order was for, when the frame names one.
+    ///
+    /// Optional because the pair of lifecycle messages is one shape: `order_revalidate`
+    /// reports `"item": {}` where `order_invalidate` names an item, and which of the two
+    /// carries one is not something a consumer should have to know.
+    #[serde(default, deserialize_with = "empty_object_is_none")]
+    pub item: Option<ItemRef>,
+    /// The order that stopped being valid.
+    pub order_hash: String,
+    /// The settlement contract.
+    #[serde(default)]
+    pub protocol_address: String,
+}
+
+/// An order that had become invalid is valid again.
+///
+/// The inverse of [`OrderInvalidate`] and the same shape, with the same absence: no side,
+/// no price, no maker. Captured frames carry `"item": {}` here even when the invalidate
+/// that preceded it named an item, so `item` is optional.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrderRevalidate {
+    /// The chain, by OpenSea's slug.
+    pub chain: String,
+    /// Which collection.
+    pub collection: CollectionRef,
+    /// When it happened, RFC 3339.
+    pub event_timestamp: String,
+    /// The item the order was for, when the frame names one.
+    #[serde(default, deserialize_with = "empty_object_is_none")]
+    pub item: Option<ItemRef>,
+    /// The order that became valid again.
+    pub order_hash: String,
+    /// The settlement contract.
+    #[serde(default)]
+    pub protocol_address: String,
+}
+
+/// Reads an `item` that the stream may report as `{}`.
+///
+/// `Option<ItemRef>` alone does not do it: serde takes only `null` for `None`, and this
+/// field says "not about one asset" with an **empty object**. A half-populated item is
+/// an error rather than a silent `None`, so a schema change cannot pass as an absence.
+fn empty_object_is_none<'de, D>(deserializer: D) -> Result<Option<ItemRef>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct ItemFields {
+        #[serde(default)]
+        nft_id: Option<String>,
+        #[serde(default)]
+        permalink: Option<String>,
+    }
+
+    let fields = ItemFields::deserialize(deserializer)?;
+    match (fields.nft_id, fields.permalink) {
+        (Some(nft_id), Some(permalink)) => Ok(Some(ItemRef { nft_id, permalink })),
+        (None, None) => Ok(None),
+        _ => Err(serde::de::Error::custom(
+            "an item carrying only one of nft_id and permalink",
+        )),
+    }
 }
 
 /// A token's metadata as the stream reports it.
@@ -304,6 +648,20 @@ pub enum StreamEvent {
     ItemSold(Box<ItemSold>),
     /// The token's metadata, reported in full rather than as a diff.
     ItemMetadataUpdated(Box<ItemMetadataUpdated>),
+    /// A listing or bid ended without being taken.
+    ItemCancelled(Box<ItemCancelled>),
+    /// An asset was put up for sale.
+    ItemListed(Box<ItemListed>),
+    /// An offer was made on one asset.
+    ItemReceivedBid(Box<ItemReceivedBid>),
+    /// An offer was made against a whole collection.
+    CollectionOffer(Box<CollectionOffer>),
+    /// An offer was made against a trait.
+    TraitOffer(Box<TraitOffer>),
+    /// An order stopped being valid, with no statement of which kind it was.
+    OrderInvalidate(Box<OrderInvalidate>),
+    /// An order that had been invalid became valid again.
+    OrderRevalidate(Box<OrderRevalidate>),
     /// An event type this crate does not decode.
     Unmodelled(UnmodelledEvent),
 }
@@ -340,6 +698,34 @@ impl StreamEvent {
                 Ok(Some(Self::ItemMetadataUpdated(Box::new(
                     frame.payload.payload,
                 ))))
+            }
+            EventType::ItemCancelled => {
+                let frame: Frame<EventEnvelope<ItemCancelled>> = Frame::from_wire(raw)?;
+                Ok(Some(Self::ItemCancelled(Box::new(frame.payload.payload))))
+            }
+            EventType::OrderInvalidate => {
+                let frame: Frame<EventEnvelope<OrderInvalidate>> = Frame::from_wire(raw)?;
+                Ok(Some(Self::OrderInvalidate(Box::new(frame.payload.payload))))
+            }
+            EventType::ItemListed => {
+                let frame: Frame<EventEnvelope<ItemListed>> = Frame::from_wire(raw)?;
+                Ok(Some(Self::ItemListed(Box::new(frame.payload.payload))))
+            }
+            EventType::ItemReceivedBid => {
+                let frame: Frame<EventEnvelope<ItemReceivedBid>> = Frame::from_wire(raw)?;
+                Ok(Some(Self::ItemReceivedBid(Box::new(frame.payload.payload))))
+            }
+            EventType::CollectionOffer => {
+                let frame: Frame<EventEnvelope<CollectionOffer>> = Frame::from_wire(raw)?;
+                Ok(Some(Self::CollectionOffer(Box::new(frame.payload.payload))))
+            }
+            EventType::TraitOffer => {
+                let frame: Frame<EventEnvelope<TraitOffer>> = Frame::from_wire(raw)?;
+                Ok(Some(Self::TraitOffer(Box::new(frame.payload.payload))))
+            }
+            EventType::OrderRevalidate => {
+                let frame: Frame<EventEnvelope<OrderRevalidate>> = Frame::from_wire(raw)?;
+                Ok(Some(Self::OrderRevalidate(Box::new(frame.payload.payload))))
             }
             other => {
                 let frame: Frame<EventEnvelope<IgnoredAny>> = Frame::from_wire(raw)?;

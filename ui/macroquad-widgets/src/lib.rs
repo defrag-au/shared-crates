@@ -28,6 +28,7 @@ mod order_fulfilment;
 mod quantity_stepper;
 mod radar;
 mod route_graph;
+mod scroll;
 mod segmented;
 mod slider;
 mod squad_picker;
@@ -109,6 +110,7 @@ pub use route_graph::{
     LegState, ROUTE_STRIP_H, RouteCard, RouteGraphVm, RouteMeter, RouteNode, route_graph,
     route_graph_height, route_strip,
 };
+pub use scroll::{NOTCH_POINTS, Scroll, ScrollAxis, ScrollInput, wheel_points};
 pub use segmented::{pill_rects, segmented, segmented_pills};
 pub use slider::{AmountSliderVm, SliderStop, amount_slider};
 pub use squad_picker::{

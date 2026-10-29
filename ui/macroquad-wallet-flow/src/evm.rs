@@ -15,7 +15,10 @@
 //!   then `eth_chainId`, so the account says which chain it is on.
 //! - **The wallet can speak first.** Switching account or chain in the wallet
 //!   updates the connected account in place; a wallet that drops every account
-//!   — the reader disconnected the site there — lets the connection go.
+//!   — the reader disconnected the site there — lets the connection go. Not
+//!   every wallet sends those events, and a hidden tab may miss them, so the
+//!   page's return to view rechecks (`eth_accounts`, `eth_chainId`) and feeds
+//!   the answers through the same path.
 //! - **The wallet is remembered**, as the Cardano flow remembers its wallet:
 //!   a connect that completed is written to the page's storage, and the next
 //!   load reconnects it with `eth_accounts`, which never prompts. If the site
@@ -69,6 +72,9 @@ pub trait EvmBridge {
     fn switch_chain(&mut self, target: &ChainTarget) -> ReqId;
     fn disconnect(&mut self);
     fn changes(&mut self) -> EvmChanges;
+    /// Ask the connected wallet for its accounts and chain now; the answers
+    /// arrive through [`EvmBridge::changes`], as the wallet's own events do.
+    fn recheck(&mut self) {}
     fn poll(&mut self, req: ReqId) -> PollResultDetailed;
     fn cancel(&mut self, req: ReqId);
     fn icon(&mut self, _id: &str, _size: u16) -> Option<ReqId> {
@@ -110,6 +116,9 @@ impl EvmBridge for MiniquadEvmBridge {
     }
     fn changes(&mut self) -> EvmChanges {
         evm::changes()
+    }
+    fn recheck(&mut self) {
+        evm::recheck()
     }
     fn poll(&mut self, req: ReqId) -> PollResultDetailed {
         evm::poll(req)
@@ -601,6 +610,17 @@ impl<B: EvmBridge + 'static> ChainHost for EvmHost<B> {
     fn connection(&self) -> &Connection {
         &self.connection
     }
+
+    /// `eth_accounts` and `eth_chainId` on the connected wallet, reported as
+    /// if the wallet had sent `accountsChanged` and `chainChanged`: so a
+    /// recheck follows exactly the rules the wallet's own events do — another
+    /// account updates in place, no account lets go, a wrong chain faults and
+    /// the right one reconnects.
+    fn recheck(&mut self) {
+        if self.connection.is_connected() || self.wrong_chain {
+            self.bridge.recheck();
+        }
+    }
 }
 
 /// An EVM account as the modal shows it: the address to copy, and the chain
@@ -644,6 +664,10 @@ mod tests {
         /// Queued answers for switch requests, and each target asked for.
         switches: VecDeque<PollResultDetailed>,
         switched_to: Vec<u64>,
+        /// How often a recheck was asked for, and what the wallet answers it
+        /// with: reported through `changes`, as the plugin does.
+        rechecks: usize,
+        recheck_answer: Option<EvmChanges>,
     }
 
     impl Fake {
@@ -682,6 +706,12 @@ mod tests {
         }
         fn changes(&mut self) -> EvmChanges {
             self.changes.pop_front().unwrap_or_default()
+        }
+        fn recheck(&mut self) {
+            self.rechecks += 1;
+            if let Some(answer) = self.recheck_answer.take() {
+                self.changes.push_back(answer);
+            }
         }
         fn poll(&mut self, req: ReqId) -> PollResultDetailed {
             self.answers
@@ -848,6 +878,38 @@ mod tests {
         assert_eq!(account.address, other);
         assert_eq!(account.details[1].value, "Robinhood Chain");
         assert_eq!(host.bridge.asked.len(), 1, "no reconnect");
+    }
+
+    /// A wallet that sent no event while the tab was hidden: the recheck on
+    /// return finds the other account, and it follows in place.
+    #[test]
+    fn a_recheck_finds_an_account_switched_silently() {
+        let mut bridge = fake();
+        bridge.accounts.push_back(ok(&address()));
+        bridge.chains.push_back(ok("0x1"));
+        let other = format!("0x{}", "2e".repeat(20));
+        bridge.recheck_answer = Some(EvmChanges {
+            accounts: Some(vec![other.clone()]),
+            chain: Some("0x1".into()),
+        });
+        let mut host = EvmHost::with_bridge(bridge);
+        connect(&mut host);
+        run(&mut host, 2);
+        assert_eq!(host.connection().account().unwrap().address, address());
+
+        host.recheck();
+        run(&mut host, 1);
+        assert_eq!(host.bridge.rechecks, 1);
+        assert_eq!(host.connection().account().unwrap().address, other);
+        assert_eq!(host.bridge.asked.len(), 1, "no reconnect");
+    }
+
+    /// Nothing connected, nothing to ask.
+    #[test]
+    fn a_recheck_with_no_wallet_asks_nothing() {
+        let mut host = EvmHost::with_bridge(fake());
+        host.recheck();
+        assert_eq!(host.bridge.rechecks, 0);
     }
 
     /// The reader disconnects this site in the wallet itself.

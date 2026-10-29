@@ -8,7 +8,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p macroquad-widgets --test catalog`
 Note: these are MACROQUAD widgets. They cannot use wasm-bindgen, so they do not
 interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime pairs.
 
-30 widgets.
+31 widgets.
 
 | module | what it is |
 |---|---|
@@ -33,6 +33,7 @@ interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime p
 | `quantity_stepper` | `QuantityStepper` molecule — `[−] [ n ] [+]`, clamped to `[min, max]` |
 | `radar` | `Radar` — a round scope: range rings, a turning sweep, blips that flare as the sweep passes and fade after, and an optional gauge arc around the rim |
 | `route_graph` | `RouteGraph` — an amount splitting across several routes and joining again: a source node fanning out through pipes as thick as each share, one card per route, then a sink node; and `route_strip`, the same split as one labelled bar |
+| `scroll` | `Scroll` — one scrolling container's offset, as a phone's lists move: the content follows a finger that drags it, coasts on after a flick and slows to a stop, and a wheel or trackpad moves it too |
 | `segmented` | `Segmented` molecule — a row of mutually exclusive options in one track, the picked one filled |
 | `slider` | `AmountSlider` — pick an amount from a short ladder of snapping stops, for surfaces with no text input |
 | `split_bar` | `SplitBar` — one horizontal bar split between two amounts, with a label at each end and a marker at the split |

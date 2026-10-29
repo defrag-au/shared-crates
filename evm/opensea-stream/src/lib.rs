@@ -87,6 +87,9 @@
 //!         Some(StreamEvent::ItemTransferred(movement)) => { /* ownership delta */ }
 //!         Some(StreamEvent::ItemSold(sale))            => { /* ownership delta, priced */ }
 //!         Some(StreamEvent::ItemMetadataUpdated(item)) => { /* traits and image */ }
+//!         Some(StreamEvent::ItemCancelled(order))      => { /* the order ended */ }
+//!         Some(StreamEvent::OrderInvalidate(ended))    => { /* an order, side unknown */ }
+//!         // and ItemListed, ItemReceivedBid, CollectionOffer, TraitOffer, OrderRevalidate
 //!         Some(StreamEvent::Unmodelled(event))         => { /* log, do not drop */ }
 //!         None                                         => { /* not an event */ }
 //!     }
@@ -109,9 +112,10 @@ mod watch;
 pub use chain::{ROBINHOOD_SLUG, chain_ref, chain_slug};
 pub use endpoint::endpoint_url;
 pub use event::{
-    Account, ChainName, CollectionRef, EventEnvelope, EventStamp, ItemMetadata,
-    ItemMetadataUpdated, ItemRef, ItemSold, ItemTransferred, MetadataItem, PaymentToken,
-    StreamEvent, Trait, TransactionRef, UnmodelledEvent,
+    Account, ChainName, CollectionOffer, CollectionRef, ContractRef, EventEnvelope, EventStamp,
+    ItemCancelled, ItemListed, ItemMetadata, ItemMetadataUpdated, ItemReceivedBid, ItemRef,
+    ItemSold, ItemTransferred, MetadataItem, OrderInvalidate, OrderRevalidate, PaymentToken,
+    StreamEvent, Trait, TraitCriterion, TraitOffer, TransactionRef, UnmodelledEvent,
 };
 pub use event_type::EventType;
 pub use filter::EventFilter;

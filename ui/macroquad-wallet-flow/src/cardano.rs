@@ -357,6 +357,13 @@ impl<B: Bridge + 'static> ChainHost for CardanoHost<B> {
     fn connection(&self) -> &Connection {
         &self.connection
     }
+
+    /// [`WalletFlow::recheck`]: the reward address, then the change address
+    /// only if that differs. A switched account reaches the connection as an
+    /// answer with the new account, which updates it in place.
+    fn recheck(&mut self) {
+        self.flow.recheck();
+    }
 }
 
 /// A Cardano account as the modal shows it: named by its handle when it has
@@ -658,6 +665,40 @@ mod tests {
         assert_eq!(chain.wallets.len(), 1);
         assert_eq!(chain.wallets[0].name, "Eternl");
         assert_eq!(host.flow.bridge.icons_asked, vec!["eternl".to_string()]);
+    }
+
+    /// Switched account in the wallet while away: after a recheck the modal's
+    /// account is the new one, still connected, never through a reconnect.
+    #[test]
+    fn a_recheck_carries_a_switched_account_to_the_modal() {
+        let mut host = host(vec![ok("eternl"), ok("1"), ok(&base_address()), ok("")]);
+        connect(&mut host);
+        for _ in 0..4 {
+            host.poll();
+        }
+        let ChainPhase::Connected { account: was, .. } = host.phase() else {
+            panic!("expected connected, got {:?}", host.phase());
+        };
+        let switched = format!("01{}{}", "44".repeat(28), "55".repeat(28));
+        host.flow.bridge.results.push_back(ok(""));
+        host.flow.bridge.results.push_back(ok(&switched));
+
+        host.recheck();
+        host.poll();
+        assert!(host.poll(), "the listing changed");
+
+        let ChainPhase::Connected { wallet, account } = host.phase() else {
+            panic!("expected connected, got {:?}", host.phase());
+        };
+        assert_eq!(wallet, "eternl");
+        assert_ne!(account.address, was.address);
+        let stake = |a: &Account| {
+            a.details
+                .iter()
+                .find(|d| d.label == "Stake address")
+                .map(|d| d.value.clone())
+        };
+        assert_ne!(stake(&account), stake(&was));
     }
 
     #[test]

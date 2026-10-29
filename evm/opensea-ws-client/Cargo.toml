@@ -41,3 +41,8 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 # emits are the only thing an operator has to look at, and they need a subscriber.
 # An example's dependency: the library does not install one.
 tracing-subscriber = { workspace = true }
+# `.env` is for the examples, which are the entry points. The library reads the key
+# the caller passes it and does not load a file on a consumer's behalf — a transport
+# that changed the process environment would be a side effect nobody asked for.
+# Already in the workspace's lock via `pipeline/tx-classifier`.
+dotenvy = "0.15"

@@ -60,6 +60,56 @@ unsafe extern "C" {
     fn platform_fullscreen_zone(x0: f32, y0: f32, x1: f32, y1: f32);
     fn platform_fullscreen_state() -> u32;
     fn platform_clipboard_write(text: JsObject);
+    fn platform_focus_returns() -> u32;
+}
+
+/// How many times the page has come back to the visitor: the tab shown again,
+/// or the window focused again. Only the change matters, so read it through a
+/// [`FocusWatch`]. Natively it never moves.
+#[cfg(target_arch = "wasm32")]
+pub fn focus_returns() -> u32 {
+    unsafe { platform_focus_returns() }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn focus_returns() -> u32 {
+    0
+}
+
+/// Notices the page coming back to the visitor, once per return.
+///
+/// The moment to recheck whatever may have changed while the visitor was
+/// elsewhere — a wallet switched to another account in its extension is the
+/// case this exists for. A tab switch usually fires both the browser's
+/// visibility and focus events; that is still one return here, as long as
+/// [`FocusWatch::returned`] is read each frame.
+#[derive(Debug, Default)]
+pub struct FocusWatch {
+    seen: u32,
+}
+
+impl FocusWatch {
+    /// Starts from the page's count now, so a watch made late does not report
+    /// returns from before it existed.
+    pub fn new() -> Self {
+        Self {
+            seen: focus_returns(),
+        }
+    }
+
+    /// `true` once for each frame on which the page has come back since the
+    /// last call.
+    pub fn returned(&mut self) -> bool {
+        self.saw(focus_returns())
+    }
+
+    /// The comparison, apart from the browser: the count wraps rather than
+    /// overflowing, and any change is a return.
+    fn saw(&mut self, now: u32) -> bool {
+        let changed = now != self.seen;
+        self.seen = now;
+        changed
+    }
 }
 
 /// Put `text` on the system clipboard, from a tap. `true` when the page took
@@ -263,14 +313,35 @@ getrandom::register_custom_getrandom!(webcrypto_getrandom);
 
 /// Plugin handshake for `gl.js` — silences the
 /// `Plugin platform is present in JS bundle, but is not used in the
-/// rust code` warning. JS-side `version: 5`, must match.
+/// rust code` warning. JS-side `version: 6`, must match.
 ///
 /// Bumped 1 → 2 with the `localStorage` calls, 2 → 3 with the page's host
-/// and path, 3 → 4 with fullscreen, and 4 → 5 with the clipboard: a consumer
-/// carrying an older `platform.js` then fails the handshake at instantiate
-/// rather than calling a function gl.js would stub out.
+/// and path, 3 → 4 with fullscreen, 4 → 5 with the clipboard, and 5 → 6 with
+/// the focus count: a consumer carrying an older `platform.js` then fails the
+/// handshake at instantiate rather than calling a function gl.js would stub
+/// out.
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn platform_crate_version() -> u32 {
-    5
+    6
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FocusWatch;
+
+    #[test]
+    fn a_return_is_reported_once() {
+        let mut watch = FocusWatch::default();
+        assert!(!watch.saw(0));
+        assert!(watch.saw(2), "a tab switch's two events, one return");
+        assert!(!watch.saw(2));
+        assert!(watch.saw(3));
+    }
+
+    #[test]
+    fn natively_nothing_returns() {
+        let mut watch = FocusWatch::new();
+        assert!(!watch.returned());
+    }
 }

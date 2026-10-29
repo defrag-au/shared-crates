@@ -118,6 +118,7 @@ mod imp {
         fn evm_icon_pixels(req: i32) -> JsObject;
         fn evm_disconnect();
         fn evm_changes() -> JsObject;
+        fn evm_recheck();
         fn evm_cancel(req: i32);
         fn evm_poll(req: i32) -> JsObject;
     }
@@ -171,6 +172,13 @@ mod imp {
         serde_json::from_str(&js_to_string(unsafe { evm_changes() })).unwrap_or_default()
     }
 
+    /// Ask the connected wallet for its accounts and chain now; the answers
+    /// arrive through [`changes`], as the wallet's own events do. Nothing
+    /// happens with no wallet connected.
+    pub fn recheck() {
+        unsafe { evm_recheck() }
+    }
+
     pub fn cancel(req: ReqId) {
         unsafe { evm_cancel(req.0) }
     }
@@ -212,6 +220,7 @@ mod imp {
     pub fn changes() -> EvmChanges {
         EvmChanges::default()
     }
+    pub fn recheck() {}
     pub fn cancel(_req: ReqId) {}
     pub fn poll(_req: ReqId) -> PollResultDetailed {
         PollResultDetailed::Err {
@@ -223,12 +232,12 @@ mod imp {
 
 pub use imp::*;
 
-/// Plugin version handshake for `evm.js`, which declares `version: 2`.
-/// Bumped 1 → 2 with `switch_chain`.
+/// Plugin version handshake for `evm.js`, which declares `version: 3`.
+/// Bumped 1 → 2 with `switch_chain`, 2 → 3 with `recheck`.
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn evm_crate_version() -> u32 {
-    2
+    3
 }
 
 #[cfg(test)]

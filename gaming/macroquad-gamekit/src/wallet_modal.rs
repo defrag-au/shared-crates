@@ -30,6 +30,28 @@
 //! Disconnect is on the same screen, beside Switch wallet, and closes the card.
 //! With more than one chain connected, a tab per chain switches between them.
 //!
+//! ## Signing in
+//!
+//! A site that has to know the reader holds the wallet — not just its
+//! address — signs in after connecting: a message signed by the wallet and
+//! checked by the site's server. The modal carries that as each chain's
+//! [`SignInPhase`], which a site that needs no sign-in never sets:
+//!
+//! - **Offered**: the account view says "not signed in" under the name and
+//!   leads with a **Sign in** button ([`WalletModalAction::SignIn`]).
+//! - **Working**: the answer step returns, its ring spinning, with the host's
+//!   own words for the step ("Approve the message in Eternl").
+//! - **Declined** or **Failed**: the answer step offers Try again and Switch
+//!   wallet, a failure shaking once, as a connect does.
+//! - **Signed in**: the account view again, "Signed in with …" in the success
+//!   colour, the ring drawing closed and the check popping.
+//! - **Changed**: the wallet moved to another account after the sign-in (the
+//!   host notices on the page's return to view). The answer step names both
+//!   and offers **Sign in again** or **Sign out**.
+//!
+//! Connected but not signed in, the wallet button's live dot is amber and
+//! beats faster: one step is still owed. Disconnect signs out as well.
+//!
 //! ## Who owns what
 //!
 //! The host owns the connection. The modal reports [`WalletModalAction`]s and
@@ -193,6 +215,62 @@ impl ChainPhase {
     }
 }
 
+/// Whether a connected account has proved itself to the site, as the host
+/// knows it. A site that only needs an address leaves it at
+/// [`SignInPhase::NotNeeded`] and the modal never mentions signing in.
+///
+/// Like [`ChainPhase`], it is the host's to set: the modal shows it and
+/// reports [`WalletModalAction::SignIn`], and the host runs the challenge,
+/// the signature and the check against its own server.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub enum SignInPhase {
+    /// The site needs no sign-in on this chain.
+    #[default]
+    NotNeeded,
+    /// Connected, not signed in: the account view offers "Sign in".
+    Offered,
+    /// Signing in, in the host's words: what it is waiting on ("Approve the
+    /// message in Eternl", "Checking the signature"). `in_wallet` while the
+    /// wallet's own dialog is up, which is the reader's move.
+    Working { step: String, in_wallet: bool },
+    /// Signed in. `detail` is anything worth a line ("until 18:40").
+    SignedIn { detail: Option<String> },
+    /// The reader refused to sign. Not an error.
+    Declined,
+    /// The signature was not made or not accepted, in the host's words.
+    Failed { message: String },
+    /// Signed in as one account, and the wallet is now on another: switched in
+    /// the wallet while the page was away. The answer step says so and offers
+    /// "Sign in again" ([`WalletModalAction::SignIn`]) or "Sign out"
+    /// ([`WalletModalAction::Disconnect`]). `was` and `now` are the
+    /// identities the site compares (a stake address, a handle), shortened
+    /// for display by the modal.
+    Changed { was: String, now: String },
+}
+
+impl SignInPhase {
+    /// Connected but not yet proved: the button's amber dot.
+    pub fn wants_attention(&self) -> bool {
+        matches!(
+            self,
+            Self::Offered
+                | Self::Working { .. }
+                | Self::Declined
+                | Self::Failed { .. }
+                | Self::Changed { .. }
+        )
+    }
+
+    /// A sign-in under way, stopped, or overtaken by the wallet: the answer
+    /// step, not the account view.
+    fn is_answer(&self) -> bool {
+        matches!(
+            self,
+            Self::Working { .. } | Self::Declined | Self::Failed { .. } | Self::Changed { .. }
+        )
+    }
+}
+
 /// What a connected wallet answered with, as its chain describes it.
 ///
 /// The modal knows no chain's account model, so the host writes the account
@@ -286,6 +364,8 @@ pub struct ChainOption {
     /// The wallets detected on it, in the order to offer them.
     pub wallets: Vec<WalletOption>,
     pub phase: ChainPhase,
+    /// Whether its connected account has signed in to the site.
+    pub sign_in: SignInPhase,
 }
 
 impl ChainOption {
@@ -296,6 +376,7 @@ impl ChainOption {
             support: Support::Ready,
             wallets,
             phase: ChainPhase::Idle,
+            sign_in: SignInPhase::NotNeeded,
         }
     }
 
@@ -306,11 +387,17 @@ impl ChainOption {
             support: Support::Soon,
             wallets: Vec::new(),
             phase: ChainPhase::Idle,
+            sign_in: SignInPhase::NotNeeded,
         }
     }
 
     pub fn with_phase(mut self, phase: ChainPhase) -> Self {
         self.phase = phase;
+        self
+    }
+
+    pub fn with_sign_in(mut self, sign_in: SignInPhase) -> Self {
+        self.sign_in = sign_in;
         self
     }
 
@@ -372,6 +459,14 @@ impl WalletModalVm {
         }
     }
 
+    /// Set a chain's sign-in phase, if the chain is listed: for a site that
+    /// proves the connected account to its server.
+    pub fn set_sign_in(&mut self, family: ChainFamily, sign_in: SignInPhase) {
+        if let Some(chain) = self.chain_mut(family) {
+            chain.sign_in = sign_in;
+        }
+    }
+
     /// Every connected account, in the order the chains are listed: the
     /// set a surface that links wallets across chains works from. Each is its
     /// own connection, so there is no "the" account to choose between.
@@ -396,8 +491,12 @@ pub enum WalletModalAction {
     Connect { family: ChainFamily, wallet: String },
     /// Stop waiting on the wallet asked on `family`.
     Cancel(ChainFamily),
-    /// Let go of the wallet connected on `family`.
+    /// Let go of the wallet connected on `family`. On a site that signs in,
+    /// this is signing out as well.
     Disconnect(ChainFamily),
+    /// Sign in to the site with the account connected on `family`: from the
+    /// account view's "Sign in", or "Try again" after a refusal or a fault.
+    SignIn(ChainFamily),
     /// Put this text on the clipboard: an address or a name from the account
     /// view. The modal shows "Copied" beside it; the clipboard is the host's.
     Copy(String),
@@ -408,9 +507,10 @@ impl WalletModalAction {
     /// for a copy, which is no chain's.
     pub fn family(&self) -> Option<ChainFamily> {
         match self {
-            Self::Connect { family, .. } | Self::Cancel(family) | Self::Disconnect(family) => {
-                Some(*family)
-            }
+            Self::Connect { family, .. }
+            | Self::Cancel(family)
+            | Self::Disconnect(family)
+            | Self::SignIn(family) => Some(*family),
             Self::Copy(_) => None,
         }
     }
@@ -445,6 +545,8 @@ enum Act {
     Another,
     Cancel,
     Disconnect,
+    /// Sign in with the account in focus: an offer taken, or a retry.
+    SignIn,
     Copy(String),
     /// Turn the wallet list to this page.
     WalletPage(usize),
@@ -749,6 +851,9 @@ pub struct WalletModal {
     chain_step: bool,
     /// The chain's phase as last drawn, to tell when it changed.
     seen: Option<ChainPhase>,
+    /// The chain's sign-in phase as last drawn: a change replays the answer
+    /// step's motion (the ring spinning up, the check popping).
+    seen_sign_in: Option<SignInPhase>,
     /// Seconds the current step has shown, for the rows' stagger.
     page_age: f32,
     /// Seconds the chain's phase has held, for the answer step's motion.
@@ -800,6 +905,7 @@ impl WalletModal {
             only: None,
             chain_step: true,
             seen: None,
+            seen_sign_in: None,
             page_age: 0.0,
             phase_age: 0.0,
             hover: Vec::new(),
@@ -890,6 +996,7 @@ impl WalletModal {
             self.leaving = None;
             self.slide.set(1.0);
             self.seen = None;
+            self.seen_sign_in = None;
             self.page_age = 0.0;
             self.phase_age = 0.0;
             self.hover.clear();
@@ -1147,12 +1254,19 @@ impl WalletModal {
             // phase carries the account, and most frames it has not moved.
             let idle = ChainPhase::Idle;
             let phase = vm.chain(family).map_or(&idle, |c| &c.phase);
-            if self.seen.as_ref() != Some(phase) {
-                // A settled modal shows the phase it opened on as already
-                // arrived.
+            let none = SignInPhase::NotNeeded;
+            let sign_in = vm.chain(family).map_or(&none, |c| &c.sign_in);
+            // Both read before either is acted on: a settled modal keeps the
+            // first of each as already arrived.
+            let phase_moved = self.seen.as_ref() != Some(phase);
+            let sign_in_moved = self.seen_sign_in.as_ref() != Some(sign_in);
+            if phase_moved || sign_in_moved {
                 if !std::mem::take(&mut self.still) {
                     self.phase_age = 0.0;
                 }
+                self.seen_sign_in = Some(sign_in.clone());
+            }
+            if phase_moved {
                 let phase = phase.clone();
                 self.seen = Some(phase.clone());
                 self.send(Nav::Phase(phase));
@@ -1209,6 +1323,9 @@ impl WalletModal {
             Act::Another => self.send(Nav::Another),
             Act::Cancel => self.send(Nav::Cancel),
             Act::Disconnect => self.send(Nav::Disconnect),
+            // Not a step: the host signs in, and the account view follows
+            // its sign-in phase.
+            Act::SignIn => self.family.map(WalletModalAction::SignIn),
             // Not a step: the copy is the host's, the "Copied" note the card's.
             Act::Copy(value) => {
                 self.copied = Some((value.clone(), 0.0));
@@ -1306,16 +1423,26 @@ impl WalletModal {
             }
             Page::Answer => {
                 let phase = self.answer_phase(vm);
-                if let ChainPhase::Connected { account, .. } = &*phase {
-                    return account_layout(p, vm, account, w).height;
+                if let ChainPhase::Connected { account, wallet } = &*phase {
+                    let sign_in = self.focus_sign_in(vm);
+                    if sign_in.is_answer() {
+                        let copy = sign_in_copy(vm, self.family, wallet, sign_in);
+                        return answer_height(p, &copy, w);
+                    }
+                    let offer = *sign_in == SignInPhase::Offered;
+                    return account_layout(p, vm, account, w, offer).height;
                 }
-                let copy = answer_copy(vm, self.family, &phase);
-                let lines = wrap(p, &copy.message, p.size(TextSize::Md), w, 3);
-                let h = HERO_H + 30.0 + lines.len() as f32 * LINE_H + 18.0;
-                let buttons = copy.buttons.len() as f32;
-                h + buttons * BUTTON_H + (buttons - 1.0).max(0.0) * BUTTON_GAP
+                answer_height(p, &answer_copy(vm, self.family, &phase), w)
             }
         }
+    }
+
+    /// The sign-in phase of the chain in focus.
+    fn focus_sign_in<'a>(&self, vm: &'a WalletModalVm) -> &'a SignInPhase {
+        const NONE: &SignInPhase = &SignInPhase::NotNeeded;
+        self.family
+            .and_then(|f| vm.chain(f))
+            .map_or(NONE, |c| &c.sign_in)
     }
 
     fn empty_message(&self) -> String {
@@ -1730,11 +1857,22 @@ impl WalletModal {
         let family = self.family?;
         let chain = vm.chain(family)?;
         let tint = chain_tint(&p.theme, family);
-        let phase = self.answer_phase(vm);
-        if let ChainPhase::Connected { .. } = &*phase {
-            return self.draw_account(p, vm, body, layer, &phase);
-        }
-        let copy = answer_copy(vm, Some(family), &phase);
+        let answer = self.answer_phase(vm);
+        // Connected, the step is the account — unless a sign-in is under way
+        // or has stopped, which is answered here the way a connect is.
+        let (phase, copy) = match &*answer {
+            ChainPhase::Connected { wallet, .. } => {
+                let sign_in = self.focus_sign_in(vm);
+                if !sign_in.is_answer() {
+                    return self.draw_account(p, vm, body, layer, &answer);
+                }
+                (
+                    sign_in_ring(wallet, sign_in),
+                    sign_in_copy(vm, Some(family), wallet, sign_in),
+                )
+            }
+            other => (other.clone(), answer_copy(vm, Some(family), other)),
+        };
         let key = phase.wallet().unwrap_or("");
         let wallet = chain.wallet(key);
         let name = chain.wallet_name(key);
@@ -1742,7 +1880,7 @@ impl WalletModal {
         let a = layer.alpha;
 
         // A failure shakes once, the way a wrong answer does in a game.
-        let shake = if matches!(*phase, ChainPhase::Failed { .. }) {
+        let shake = if matches!(phase, ChainPhase::Failed { .. }) {
             let k = (1.0 - age / 0.42).max(0.0);
             (age * 46.0).sin() * 7.0 * k * k
         } else {
@@ -1815,7 +1953,8 @@ impl WalletModal {
         let family = self.family?;
         let chain = vm.chain(family)?;
         let tint = chain_tint(&p.theme, family);
-        let layout = account_layout(p, vm, account, body.w);
+        let sign_in = &chain.sign_in;
+        let layout = account_layout(p, vm, account, body.w, *sign_in == SignInPhase::Offered);
         let x = body.x + layer.dx;
         let a = layer.alpha;
         let mut act = None;
@@ -1881,13 +2020,23 @@ impl WalletModal {
                 p.mono_mid(&shown, text_x, title_mid, size, title_ink);
             }
         }
+        // Under the name: how it came, and — on a site that signs in —
+        // whether it has.
         let sub = p.size(TextSize::Md);
+        let (line, ink) = match sign_in {
+            SignInPhase::SignedIn { detail: Some(d) } => {
+                (format!("Signed in with {name} · {d}"), c.success)
+            }
+            SignInPhase::SignedIn { detail: None } => (format!("Signed in with {name}"), c.success),
+            SignInPhase::Offered => (format!("Connected with {name} · not signed in"), c.warning),
+            _ => (format!("Connected with {name}"), c.text_muted),
+        };
         p.text_mid(
-            &p.fit(&format!("Connected with {name}"), sub, text_w),
+            &p.fit(&line, sub, text_w),
             text_x,
             top + IDENTITY_H * 0.5 + 12.0,
             sub,
-            alpha(c.text_muted, a),
+            alpha(ink, a),
         );
 
         // The details, in a well of their own.
@@ -1993,6 +2142,24 @@ impl WalletModal {
                         act = Some(Act::Copy(detail.value.clone()));
                     }
                 }
+            }
+        }
+
+        // Connected and not yet signed in: the step that is still owed, as the
+        // card's primary action.
+        if let Some(top) = layout.sign_in_top {
+            let rect = Rect::new(x, body.y + top, body.w, BUTTON_H);
+            let room = layer.room(rect.bottom());
+            if pill_button(
+                p,
+                rect,
+                "Sign in",
+                PillStyle::Filled,
+                tint,
+                layer.live && room > 0.9,
+                a * room,
+            ) {
+                act = Some(Act::SignIn);
             }
         }
 
@@ -2187,6 +2354,8 @@ struct AccountLayout {
     panel_h: f32,
     /// One per detail, from the top of the panel.
     rows: Vec<DetailRow>,
+    /// The "Sign in" button, when a sign-in is offered.
+    sign_in_top: Option<f32>,
     buttons_top: f32,
     height: f32,
 }
@@ -2199,7 +2368,13 @@ struct DetailRow {
     shown: String,
 }
 
-fn account_layout(p: &Painter, vm: &WalletModalVm, account: &Account, w: f32) -> AccountLayout {
+fn account_layout(
+    p: &Painter,
+    vm: &WalletModalVm,
+    account: &Account,
+    w: f32,
+    offer_sign_in: bool,
+) -> AccountLayout {
     let tabs: Vec<(ChainFamily, f32)> = vm
         .chains
         .iter()
@@ -2236,6 +2411,11 @@ fn account_layout(p: &Painter, vm: &WalletModalVm, account: &Account, w: f32) ->
     }
     let panel_h = if rows.is_empty() { 0.0 } else { ry };
     y += panel_h + 16.0;
+    let sign_in_top = offer_sign_in.then(|| {
+        let top = y;
+        y += BUTTON_H + BUTTON_GAP;
+        top
+    });
     let buttons_top = y;
     y += BUTTON_H;
     AccountLayout {
@@ -2244,6 +2424,7 @@ fn account_layout(p: &Painter, vm: &WalletModalVm, account: &Account, w: f32) ->
         panel_top,
         panel_h,
         rows,
+        sign_in_top,
         buttons_top,
         height: y,
     }
@@ -2307,6 +2488,87 @@ fn answer_copy(vm: &WalletModalVm, family: Option<ChainFamily>, phase: &ChainPha
     }
 }
 
+/// The answer step's height for `copy`: the hero, the title, the message and
+/// the buttons.
+fn answer_height(p: &Painter, copy: &AnswerCopy, w: f32) -> f32 {
+    let lines = wrap(p, &copy.message, p.size(TextSize::Md), w, 3);
+    let h = HERO_H + 30.0 + lines.len() as f32 * LINE_H + 18.0;
+    let buttons = copy.buttons.len() as f32;
+    h + buttons * BUTTON_H + (buttons - 1.0).max(0.0) * BUTTON_GAP
+}
+
+/// The ring a sign-in draws, as the connect phase that looks the same: a
+/// spinner while it waits, muted for a refusal or a changed account (nothing
+/// failed; the reader decides), red for a fault.
+fn sign_in_ring(wallet: &str, sign_in: &SignInPhase) -> ChainPhase {
+    let wallet = wallet.to_string();
+    match sign_in {
+        SignInPhase::Declined | SignInPhase::Changed { .. } => ChainPhase::Declined { wallet },
+        SignInPhase::Failed { message } => ChainPhase::Failed {
+            wallet,
+            message: message.clone(),
+        },
+        _ => ChainPhase::Connecting { wallet },
+    }
+}
+
+/// What the answer step says while signing in, or after it stopped.
+fn sign_in_copy(
+    vm: &WalletModalVm,
+    family: Option<ChainFamily>,
+    wallet: &str,
+    sign_in: &SignInPhase,
+) -> AnswerCopy {
+    let name = family
+        .and_then(|f| vm.chain(f))
+        .map_or(wallet.to_string(), |c| c.wallet_name(wallet).to_string());
+    let again = vec![
+        ("Try again", PillStyle::Filled, Act::SignIn),
+        ("Switch wallet", PillStyle::Ghost, Act::Another),
+    ];
+    match sign_in {
+        SignInPhase::Working { step, in_wallet } => AnswerCopy {
+            title: if *in_wallet {
+                format!("Sign in with {name}")
+            } else {
+                "Signing in".to_string()
+            },
+            message: step.clone(),
+            buttons: Vec::new(),
+        },
+        SignInPhase::Declined => AnswerCopy {
+            title: "Sign-in cancelled".to_string(),
+            message: format!("{name} didn't sign the message. Try again, or switch wallet."),
+            buttons: again,
+        },
+        SignInPhase::Failed { message } => AnswerCopy {
+            title: "Couldn't sign in".to_string(),
+            message: message.clone(),
+            buttons: again,
+        },
+        SignInPhase::Changed { was, now } => AnswerCopy {
+            title: "Wallet account changed".to_string(),
+            message: format!(
+                "You signed in as {}, but {name} is now on {}. Sign in again with this account, or sign out.",
+                short_address(was),
+                short_address(now)
+            ),
+            buttons: vec![
+                ("Sign in again", PillStyle::Filled, Act::SignIn),
+                ("Sign out", PillStyle::Ghost, Act::Disconnect),
+            ],
+        },
+        // Not an answer: the account view shows these.
+        SignInPhase::NotNeeded | SignInPhase::Offered | SignInPhase::SignedIn { .. } => {
+            AnswerCopy {
+                title: String::new(),
+                message: String::new(),
+                buttons: Vec::new(),
+            }
+        }
+    }
+}
+
 /// Where an opening lands. A chain is in focus when the opening names one,
 /// when only one is listed, or — opened from the button with a wallet
 /// connected — the first connected one: the reader wants that wallet, its
@@ -2364,6 +2626,11 @@ pub fn wallet_button(p: &Painter, vm: &WalletModalVm, rect: Rect) -> bool {
             _ => None,
         })
         .collect();
+    // A connected account that still owes the site a sign-in.
+    let owed = vm
+        .chains
+        .iter()
+        .any(|ch| matches!(ch.phase, ChainPhase::Connected { .. }) && ch.sign_in.wants_attention());
     let connecting = vm
         .chains
         .iter()
@@ -2406,10 +2673,18 @@ pub fn wallet_button(p: &Painter, vm: &WalletModalVm, rect: Rect) -> bool {
                 p.mono_mid(&shown, x, rect.center().y, mono, c.text_primary);
             }
         }
+        // Live and signed in (or no sign-in needed): green. Connected but a
+        // sign-in still owed: amber, beating faster, so it reads as "one more
+        // step" from across the screen.
         let dot = vec2(rect.right() - 16.0, rect.center().y);
-        let glow = (p.time() as f32 * 2.0).sin() * 0.5 + 0.5;
-        draw_circle(dot.x, dot.y, 5.0 + 2.0 * glow, alpha(c.success, 0.18));
-        draw_circle(dot.x, dot.y, 3.5, c.success);
+        let (ink, rate) = if owed {
+            (c.warning, 4.0)
+        } else {
+            (c.success, 2.0)
+        };
+        let glow = (p.time() as f32 * rate).sin() * 0.5 + 0.5;
+        draw_circle(dot.x, dot.y, 5.0 + 2.0 * glow, alpha(ink, 0.18));
+        draw_circle(dot.x, dot.y, 3.5, ink);
     } else if let Some(chain) = connecting {
         let tint = chain_tint(&p.theme, chain.family);
         fill_rounded(rect, r, Color::lerp(c.bg_secondary, tint, 0.16 + lift));
@@ -3451,5 +3726,170 @@ mod tests {
     fn a_name_keeps_its_colour() {
         assert_eq!(name_hash("Eternl"), name_hash("Eternl"));
         assert_ne!(name_hash("Eternl"), name_hash("Lace"));
+    }
+
+    // ------------------------------------------------------------------------
+    // Signing in
+    // ------------------------------------------------------------------------
+
+    /// Connected on a site that signs in, with `sign_in` where it stands.
+    fn signing(sign_in: SignInPhase) -> WalletModalVm {
+        let mut vm = connected_cardano();
+        vm.set_sign_in(ChainFamily::Cardano, sign_in);
+        vm
+    }
+
+    #[test]
+    fn a_site_that_needs_no_sign_in_never_mentions_it() {
+        let vm = connected_cardano();
+        assert_eq!(
+            vm.chain(ChainFamily::Cardano).unwrap().sign_in,
+            SignInPhase::NotNeeded
+        );
+        assert!(!SignInPhase::NotNeeded.wants_attention());
+        let mut modal = WalletModal::new();
+        modal.open();
+        run(&mut modal, &vm, 0.5);
+        assert!(modal.on_account(), "the account view, as before");
+    }
+
+    #[test]
+    fn an_offered_sign_in_is_taken_from_the_account_and_reported() {
+        let vm = signing(SignInPhase::Offered);
+        let mut modal = WalletModal::new();
+        modal.open();
+        run(&mut modal, &vm, 0.5);
+        assert!(modal.on_account());
+        assert_eq!(
+            modal.apply(&vm, Act::SignIn),
+            Some(WalletModalAction::SignIn(ChainFamily::Cardano))
+        );
+        assert_eq!(
+            WalletModalAction::SignIn(ChainFamily::Cardano).family(),
+            Some(ChainFamily::Cardano)
+        );
+        assert!(modal.on_account(), "signing in is not a step of the flow");
+    }
+
+    #[test]
+    fn a_sign_in_runs_on_the_answer_step_and_lands_on_the_account() {
+        let mut vm = signing(SignInPhase::Offered);
+        let mut modal = WalletModal::new();
+        modal.open();
+        run(&mut modal, &vm, 1.0);
+        assert!(modal.phase_age > 0.9);
+
+        // Under way: still the account in the flow, drawn as an answer, and
+        // the motion starts over for it.
+        vm.set_sign_in(
+            ChainFamily::Cardano,
+            SignInPhase::Working {
+                step: "Approve the message in Eternl".into(),
+                in_wallet: true,
+            },
+        );
+        modal.step(&vm, DT);
+        assert!(
+            modal.phase_age < 0.1,
+            "a new sign-in phase replays the ring"
+        );
+        assert_eq!(modal.page(), Page::Answer);
+        assert!(modal.focus_sign_in(&vm).is_answer());
+
+        // Done: the account view again, with its check popping anew.
+        run(&mut modal, &vm, 0.5);
+        vm.set_sign_in(ChainFamily::Cardano, SignInPhase::SignedIn { detail: None });
+        modal.step(&vm, DT);
+        assert!(modal.phase_age < 0.1);
+        assert!(modal.on_account());
+        assert!(!modal.focus_sign_in(&vm).is_answer());
+    }
+
+    #[test]
+    fn a_refused_or_failed_sign_in_offers_to_try_again_or_switch() {
+        let vm = signing(SignInPhase::Declined);
+        for phase in [
+            SignInPhase::Declined,
+            SignInPhase::Failed {
+                message: "The signature was not accepted".into(),
+            },
+        ] {
+            let copy = sign_in_copy(&vm, Some(ChainFamily::Cardano), "eternl", &phase);
+            let acts: Vec<&Act> = copy.buttons.iter().map(|(_, _, a)| a).collect();
+            assert_eq!(acts, [&Act::SignIn, &Act::Another], "{phase:?}");
+            assert!(phase.wants_attention());
+        }
+        let working = SignInPhase::Working {
+            step: "Approve the message in Eternl".into(),
+            in_wallet: true,
+        };
+        let copy = sign_in_copy(&vm, Some(ChainFamily::Cardano), "eternl", &working);
+        assert_eq!(copy.title, "Sign in with Eternl");
+        assert!(
+            copy.buttons.is_empty(),
+            "nothing to press while the wallet asks"
+        );
+        assert_eq!(
+            sign_in_ring("eternl", &working),
+            ChainPhase::Connecting {
+                wallet: "eternl".into()
+            }
+        );
+    }
+
+    /// The wallet moved to another account after the sign-in: the answer step
+    /// names both, and the way on is to sign in again or to sign out — which
+    /// is the account view's own disconnect.
+    #[test]
+    fn a_changed_account_offers_to_sign_in_again_or_out() {
+        let changed = SignInPhase::Changed {
+            was: "stake1u9old0000000000000000000000000000000000000000aaaa".into(),
+            now: "stake1u9new0000000000000000000000000000000000000000bbbb".into(),
+        };
+        let vm = signing(changed.clone());
+        assert!(changed.wants_attention(), "the button's dot is amber");
+
+        let copy = sign_in_copy(&vm, Some(ChainFamily::Cardano), "eternl", &changed);
+        assert_eq!(copy.title, "Wallet account changed");
+        assert!(copy.message.contains("aaaa") && copy.message.contains("bbbb"));
+        assert!(copy.message.contains("Eternl"), "{}", copy.message);
+        let acts: Vec<&Act> = copy.buttons.iter().map(|(_, _, a)| a).collect();
+        assert_eq!(acts, [&Act::SignIn, &Act::Disconnect]);
+        assert_eq!(
+            sign_in_ring("eternl", &changed),
+            ChainPhase::Declined {
+                wallet: "eternl".into()
+            },
+            "muted, not a fault"
+        );
+
+        let mut modal = WalletModal::new();
+        modal.open();
+        run(&mut modal, &vm, 0.5);
+        assert_eq!(modal.page(), Page::Answer);
+        assert!(modal.focus_sign_in(&vm).is_answer());
+        assert_eq!(
+            modal.apply(&vm, Act::Disconnect),
+            Some(WalletModalAction::Disconnect(ChainFamily::Cardano))
+        );
+    }
+
+    #[test]
+    fn signed_in_wants_nothing_more() {
+        assert!(!SignInPhase::SignedIn { detail: None }.wants_attention());
+        assert!(SignInPhase::Offered.wants_attention());
+    }
+
+    #[test]
+    fn disconnecting_while_signed_in_still_closes_the_card() {
+        let vm = signing(SignInPhase::SignedIn { detail: None });
+        let mut modal = WalletModal::new();
+        modal.open();
+        run(&mut modal, &vm, 0.5);
+        assert_eq!(
+            modal.apply(&vm, Act::Disconnect),
+            Some(WalletModalAction::Disconnect(ChainFamily::Cardano))
+        );
+        assert!(!modal.is_open());
     }
 }

@@ -9,9 +9,10 @@
 // actually picked — the same rule wallet-core's wasm-bindgen bridge follows.
 //
 // Surface: list, connect (prompting or silent), chain id, switch chain, icon,
-// disconnect, events (accounts and chain changed), cancel, poll.
+// disconnect, events (accounts and chain changed), a recheck that reports
+// like an event, cancel, poll.
 //
-// Plugin version 2: adds `evm_switch_chain`.
+// Plugin version 2: adds `evm_switch_chain`. Version 3: adds `evm_recheck`.
 
 (function () {
     let nextReqId = 1;
@@ -249,6 +250,26 @@
         return jsonObj(out);
     }
 
+    // Ask the connected wallet what it holds now, and report the answer as if
+    // the wallet had said so itself: the accounts and chain land in `changes`,
+    // which Rust already compares with what it knew. For the page coming back
+    // into view — a wallet's own events are not always delivered while a tab
+    // is hidden, and some wallets never send them.
+    function evm_recheck() {
+        const provider = current;
+        if (!provider) return;
+        provider.request({ method: 'eth_accounts', params: [] })
+            .then(function (accounts) {
+                if (current === provider) changes.accounts = Array.isArray(accounts) ? accounts.map(String) : [];
+            })
+            .catch(function () {});
+        provider.request({ method: 'eth_chainId', params: [] })
+            .then(function (chain) {
+                if (current === provider) changes.chain = String(chain);
+            })
+            .catch(function () {});
+    }
+
     function evm_cancel(req_id) {
         pending.delete(req_id);
         icons.delete(req_id);
@@ -273,9 +294,10 @@
         importObject.env.evm_icon_pixels = evm_icon_pixels;
         importObject.env.evm_disconnect = evm_disconnect;
         importObject.env.evm_changes = evm_changes;
+        importObject.env.evm_recheck = evm_recheck;
         importObject.env.evm_cancel = evm_cancel;
         importObject.env.evm_poll = evm_poll;
     };
 
-    miniquad_add_plugin({ register_plugin, version: 2, name: 'evm' });
+    miniquad_add_plugin({ register_plugin, version: 3, name: 'evm' });
 })();

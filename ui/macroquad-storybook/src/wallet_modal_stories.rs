@@ -29,6 +29,12 @@
 //! The "stress" story lists every chain family as connectable, each with a
 //! dozen made-up wallets: the most a connector will be asked to draw.
 //!
+//! The "sign in" stories are a site that signs in after connecting, as the
+//! staking site does: Cardano only, the modal's sign-in stage set by the
+//! story playing the site. In the live one a connect starts a sign-in, the
+//! wallet signs after a moment — Vespr refuses, Typhon's signature is
+//! rejected — and Disconnect signs out.
+//!
 //! The step stories open the modal settled at one state, so a capture at the
 //! default moment is that state. The walkthrough scripts a whole connect on a
 //! loop, so `--at` can capture any moment of any transition:
@@ -53,7 +59,7 @@ use macroquad::prelude::*;
 use macroquad_gamekit::paint::{Gradient, fill_gradient};
 use macroquad_gamekit::wallet_connection::{Connection, ConnectionEvent};
 use macroquad_gamekit::wallet_modal::{
-    Account, ChainFamily, ChainOption, WalletModalAction, WalletOption, wallet_button,
+    Account, ChainFamily, ChainOption, SignInPhase, WalletModalAction, WalletOption, wallet_button,
 };
 use macroquad_gamekit::{fill_rounded, stroke_rounded};
 use macroquad_wallet_flow::{
@@ -91,6 +97,10 @@ pub enum ModalView {
     /// Every chain family connectable, a dozen wallets each, opened on the
     /// chain step — or, given one, on that chain's wallets.
     Stress(Option<ChainFamily>),
+    /// A site that signs in, live: Cardano only, as the staking site is.
+    /// Connect, then sign in; Vespr refuses to sign and Typhon's signature is
+    /// not accepted, as they do for connecting.
+    SignIn,
 }
 
 /// The state a step story opens at.
@@ -112,6 +122,18 @@ pub enum Preset {
     OnlyEvm,
     /// Cardano and EVM connected at once: the account view with chain tabs.
     TwoConnected,
+    /// Connected on a site that signs in, and not yet signed in.
+    SignInOffered,
+    /// The wallet is showing its signing dialog.
+    SigningIn,
+    /// The reader refused to sign.
+    SignInDeclined,
+    /// The signature was not accepted.
+    SignInFailed,
+    /// Signed in.
+    SignedIn,
+    /// Signed in, then the wallet switched account while the page was away.
+    SignInChanged,
 }
 
 /// What the walkthrough does, and when.
@@ -300,6 +322,9 @@ impl ChainHost for FakeChain {
             }
             // The connector sends copies to the clipboard, never to a host.
             WalletModalAction::Copy(_) => return,
+            // Signing in is the site's, not the chain's: the sign-in story
+            // plays the site.
+            WalletModalAction::SignIn(_) => return,
         };
         self.dirty |= self.connection.handle(&event);
     }
@@ -395,6 +420,34 @@ fn preset(preset: Preset, clock: &Clock, icon: Option<Texture2D>) -> WalletConne
             cardano.connected("eternl", cardano_fixture(Some(HANDLE))),
             evm.connected("io.rabby", evm_fixture(None)),
         ),
+        Preset::SignInOffered
+        | Preset::SigningIn
+        | Preset::SignInDeclined
+        | Preset::SignInFailed
+        | Preset::SignedIn
+        | Preset::SignInChanged => {
+            let mut connector =
+                signs_in(cardano.connected("eternl", cardano_fixture(Some(HANDLE))));
+            let sign_in = match preset {
+                Preset::SigningIn => signing_step("Eternl"),
+                Preset::SignInDeclined => SignInPhase::Declined,
+                Preset::SignInFailed => SignInPhase::Failed {
+                    message: NOT_ACCEPTED.into(),
+                },
+                Preset::SignedIn => SignInPhase::SignedIn {
+                    detail: Some("for 8 hours".into()),
+                },
+                // Synthetic stake addresses: the shape of the real thing,
+                // nobody's account.
+                Preset::SignInChanged => SignInPhase::Changed {
+                    was: format!("stake1u9{}k4", "q".repeat(48)),
+                    now: format!("stake1u8{}m7", "z".repeat(48)),
+                },
+                _ => SignInPhase::Offered,
+            };
+            connector.set_sign_in(Cardano, sign_in);
+            connector
+        }
         Preset::Chains | Preset::Wallets | Preset::OnlyEvm => roadmap(cardano, evm),
     };
     match preset {
@@ -417,11 +470,45 @@ fn preset(preset: Preset, clock: &Clock, icon: Option<Texture2D>) -> WalletConne
         | Preset::Connected
         | Preset::ConnectedNoHandle
         | Preset::EvmNamed
-        | Preset::TwoConnected => connector.open(),
+        | Preset::TwoConnected
+        | Preset::SignInOffered
+        | Preset::SigningIn
+        | Preset::SignInDeclined
+        | Preset::SignInFailed
+        | Preset::SignedIn
+        | Preset::SignInChanged => connector.open(),
     }
     connector.settle();
     connector
 }
+
+/// A Cardano-only site that signs in, as the staking site is.
+fn signs_in(cardano: FakeChain) -> WalletConnector {
+    WalletConnector::new()
+        .host(cardano)
+        .title("Sign in to staking")
+        .intro(SIGN_IN_INTRO)
+}
+
+/// What the staking site says before a wallet is picked.
+const SIGN_IN_INTRO: &str = "Your wallet signs a one-time message to prove it is yours. \
+     No transaction is made and nothing leaves your wallet.";
+
+/// The words while `wallet` shows its signing dialog.
+fn signing_step(wallet: &str) -> SignInPhase {
+    SignInPhase::Working {
+        step: format!(
+            "Approve the message in {wallet}. It proves the wallet is yours; nothing is sent."
+        ),
+        in_wallet: true,
+    }
+}
+
+/// A server refusing a signature, in a site's words.
+const NOT_ACCEPTED: &str = "The site could not check the signature. Try again in a moment.";
+
+/// Seconds the sign-in story's wallet takes to sign.
+const SIGN_SECS: f32 = 1.6;
 
 /// The button gallery's rows: each a connector left in one state.
 fn gallery(clock: &Clock) -> Vec<(&'static str, WalletConnector)> {
@@ -465,6 +552,10 @@ pub struct WalletModalStory {
     /// real story draws: making it lists the extensions and reconnects the
     /// remembered wallets, which no other story should set off at startup.
     real: bool,
+    /// The sign-in story's site: a sign-in asked for and not yet started
+    /// (a connect just picked), and when the wallet's signature lands.
+    sign_after_connect: bool,
+    signed_at: Option<f32>,
 }
 
 impl WalletModalStory {
@@ -483,6 +574,7 @@ impl WalletModalStory {
             }
             // Made on first draw, not here.
             ModalView::Real | ModalView::Buttons => WalletConnector::new(),
+            ModalView::SignIn => signs_in(FakeChain::cardano(&clock, icon.clone())),
             ModalView::Live | ModalView::Walkthrough => roadmap(
                 FakeChain::cardano(&clock, icon.clone()),
                 FakeChain::evm(&clock),
@@ -504,7 +596,70 @@ impl WalletModalStory {
             cue: 0,
             last: String::new(),
             real: false,
+            sign_after_connect: false,
+            signed_at: None,
         }
+    }
+
+    /// The sign-in story's site, after the modal reported `action`: a connect
+    /// starts a sign-in once the wallet is connected, "Sign in" and "Try
+    /// again" start one at once, and the wallet's answer lands after
+    /// [`SIGN_SECS`] — refused by Vespr, rejected for Typhon, else signed in.
+    fn play_site(&mut self, action: Option<&WalletModalAction>) {
+        use ChainFamily::Cardano;
+        let now = self.clock.get();
+        let connected = self
+            .connector
+            .vm()
+            .connected()
+            .next()
+            .map(|(_, wallet, _)| wallet.to_string());
+        match action {
+            Some(WalletModalAction::Connect { .. }) => self.sign_after_connect = true,
+            Some(WalletModalAction::SignIn(_)) => self.signed_at = Some(now + SIGN_SECS),
+            Some(WalletModalAction::Disconnect(_) | WalletModalAction::Cancel(_)) => {
+                self.sign_after_connect = false;
+                self.signed_at = None;
+            }
+            _ => {}
+        }
+        let Some(wallet) = connected else {
+            self.connector.set_sign_in(Cardano, SignInPhase::NotNeeded);
+            return;
+        };
+        if std::mem::take(&mut self.sign_after_connect) {
+            self.signed_at = Some(now + SIGN_SECS);
+        }
+        let name = self
+            .connector
+            .vm()
+            .chain(Cardano)
+            .map_or(wallet.clone(), |c| c.wallet_name(&wallet).to_string());
+        let sign_in = match self.signed_at {
+            Some(at) if now < at => signing_step(&name),
+            Some(_) => {
+                self.signed_at = None;
+                match wallet.as_str() {
+                    "vespr" => SignInPhase::Declined,
+                    "typhoncip30" => SignInPhase::Failed {
+                        message: NOT_ACCEPTED.into(),
+                    },
+                    _ => SignInPhase::SignedIn {
+                        detail: Some("for 8 hours".into()),
+                    },
+                }
+            }
+            None => match &self
+                .connector
+                .vm()
+                .chain(Cardano)
+                .map(|c| c.sign_in.clone())
+            {
+                Some(SignInPhase::NotNeeded) | None => SignInPhase::Offered,
+                Some(kept) => kept.clone(),
+            },
+        };
+        self.connector.set_sign_in(Cardano, sign_in);
     }
 
     pub fn draw(&mut self, p: &Painter, area: Rect, dt: f32) {
@@ -559,8 +714,12 @@ impl WalletModalStory {
         if self.connector.button(p, button) {
             self.last = "button: open".into();
         }
-        if let Some(action) = self.connector.show(p, stage, dt) {
+        let action = self.connector.show(p, stage, dt);
+        if let Some(action) = &action {
             self.last = format!("action: {action:?}");
+        }
+        if self.view == ModalView::SignIn {
+            self.play_site(action.as_ref());
         }
     }
 

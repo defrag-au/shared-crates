@@ -562,6 +562,33 @@ nix develop -c cargo tree --target wasm32-unknown-unknown -p <crate>
   tree, not the direct dependency.
 
 
+## A macroquad scrolling container scrolls with momentum, through the widgets' Scroll
+<!-- rule: rules/org/defrag/macroquad-scroll-momentum -->
+
+Every macroquad container that scrolls holds a `macroquad_widgets::Scroll` and reads its offset
+from `Scroll::offset`. Never hand-roll an `f32` offset with its own wheel and drag code. A list
+that steps a whole row at a time uses `macroquad_widgets::Momentum::rows` instead.
+
+Each frame, before laying out:
+
+```rust
+let input = ScrollInput::read(frame.input.gesture.drag, frame.pointer());
+self.scroll.update(area, &input, Some(content_len - area.h), frame.dt);
+let tap = self.scroll.filter_tap(frame.input.gesture.tap);
+```
+
+- Pass `None` for the maximum until the content's length is known, so a position asked for
+  early (a `--scroll` flag) is not clamped to nothing.
+- Hit-test with the tap from `filter_tap`. A finger that lands on a coasting list only stops it.
+- Behind a modal, pass `ScrollInput::none()`. The container then takes no new input, and a coast
+  already under way runs out.
+- Jump with `Scroll::set` for a reveal, a key or a restored position. It stops any coast.
+
+Between them, `Scroll` and `Momentum` decide which drag is the container's, the flick and its
+coast, the wheel in notches or points, the clamped ends, and the tap that only caught a coast.
+A hand-rolled offset gets each of these wrong in its own way.
+
+
 ## A game's rules crate reports what happened; the client animates it and decides nothing
 <!-- rule: rules/org/defrag/rules-emit-events -->
 

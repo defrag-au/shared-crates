@@ -939,6 +939,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chain-events"
+version = "0.1.0"
+dependencies = [
+ "chains",
+ "opensea-stream",
+ "serde",
+ "serde_json",
+ "wasm_safe_serde",
+]
+
+[[package]]
 name = "chain-heartbeat"
 version = "0.1.0"
 dependencies = [
@@ -5111,6 +5122,7 @@ dependencies = [
 name = "opensea-ws-client"
 version = "0.1.0"
 dependencies = [
+ "dotenvy",
  "futures-util",
  "opensea-stream",
  "rustls",

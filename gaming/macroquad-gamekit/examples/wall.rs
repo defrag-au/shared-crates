@@ -17,7 +17,7 @@
 //!
 //! A spotlight moves to the next tile every three seconds: its span grows and
 //! the wall repacks around it. Every so often a tile pulses in place. Wheel or
-//! drag to scroll; tap a tile to spotlight it.
+//! drag or flick to scroll; tap a tile to spotlight it.
 //!
 //! `--tiles 228` sizes it like a real collection, and `--profile` adds where
 //! each frame's time went to a capture's report:
@@ -34,6 +34,7 @@ use macroquad_gamekit::wall::{
     ColourTile, FnTile, ImageSource, ImageTile, ImageView, Layered, TileCtx, Tiles, Wall, WallStyle,
 };
 use macroquad_gamekit::{Backdrop, Frame, Game, app};
+use macroquad_widgets::{Scroll, ScrollInput};
 
 const DESIGN: Vec2 = vec2(390.0, 844.0);
 const COUNT: u32 = 72;
@@ -173,8 +174,8 @@ struct Demo {
     loaders: Loaders,
     spotlight: u32,
     since: f32,
-    scroll: f32,
-    drag_from: Option<f32>,
+    /// Drag, flick and coast, or the wheel.
+    scroll: Scroll,
     next_pulse: f32,
     area: Rect,
     dt: f32,
@@ -225,8 +226,11 @@ impl Demo {
             spotlight: 0,
             since: 0.0,
             // `--scroll N`: start scrolled, for a capture of the clipped edge.
-            scroll: macroquad_gamekit::harness::flag_num::<f32>("--scroll").unwrap_or(0.0),
-            drag_from: None,
+            scroll: {
+                let mut scroll = Scroll::new();
+                scroll.set(macroquad_gamekit::harness::flag_num::<f32>("--scroll").unwrap_or(0.0));
+                scroll
+            },
             next_pulse: 1.5,
             area: Rect::new(0.0, 0.0, 1.0, 1.0),
             dt: 0.0,
@@ -312,29 +316,19 @@ impl Game for Demo {
         self.wall
             .set_cols(Wall::<u32>::cols_for(self.area.w, 104.0, style.gap));
 
-        // Scroll: wheel and drag.
-        if self.area.contains(frame.pointer()) {
-            self.scroll -= mouse_wheel().1 * 0.5;
-        }
-        match frame.input.gesture.drag {
-            Some(at) => {
-                if let Some(from) = self.drag_from {
-                    self.scroll += from - at.y;
-                }
-                self.drag_from = Some(at.y);
-            }
-            None => self.drag_from = None,
-        }
-        // Not before the wall has rows: a `--scroll` asked for at the start
-        // would be clamped to nothing.
-        if self.wall.rows() > 0 {
-            self.scroll = self.scroll.clamp(0.0, self.wall.max_scroll(self.area));
-        }
+        // Scroll: a drag that starts on the wall, its flick coasting on, or
+        // the wheel. Not clamped before the wall has rows: a `--scroll` asked
+        // for at the start would be clamped to nothing.
+        let input = ScrollInput::read(frame.input.gesture.drag, frame.pointer());
+        let max = (self.wall.rows() > 0).then(|| self.wall.max_scroll(self.area));
+        self.scroll.update(self.area, &input, max, frame.dt);
+        let scroll = self.scroll.offset();
 
-        // A tap spotlights; otherwise the spotlight moves on by itself.
+        // A tap spotlights (unless it only caught a coasting wall);
+        // otherwise the spotlight moves on by itself.
         self.since += frame.dt;
-        if let Some(tap) = frame.input.gesture.tap
-            && let Some(key) = self.wall.hit(self.area, self.scroll, tap)
+        if let Some(tap) = self.scroll.filter_tap(frame.input.gesture.tap)
+            && let Some(key) = self.wall.hit(self.area, scroll, tap)
         {
             self.spotlight = key;
             self.since = 0.0;
@@ -356,7 +350,7 @@ impl Game for Demo {
         // proceeds even through a capture's fast-forward, which never draws.
         self.wall.update_tiles(
             self.area,
-            self.scroll,
+            scroll,
             &mut self.tiles,
             &mut self.loaders,
             frame.dt,
@@ -367,8 +361,12 @@ impl Game for Demo {
 
     fn draw(&mut self, frame: &Frame) {
         clear_background(Color::from_hex(0x0b0c12));
-        self.wall
-            .draw_tiles(self.area, self.scroll, &mut self.tiles, &mut self.loaders);
+        self.wall.draw_tiles(
+            self.area,
+            self.scroll.offset(),
+            &mut self.tiles,
+            &mut self.loaders,
+        );
         // No cover over the title: the wall clips its scrolled rows itself.
         let b = frame.bounds;
         if frame.text {

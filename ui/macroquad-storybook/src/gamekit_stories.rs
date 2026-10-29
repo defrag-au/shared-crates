@@ -21,7 +21,7 @@ use macroquad_gamekit::{
     Sprite, TextStyle, draw_icon, draw_order, emblem, fill_rounded, gem, line, plate,
     shrink_to_fit, stroke_rounded, topmost,
 };
-use macroquad_widgets::{Gesture, Painter};
+use macroquad_widgets::{Gesture, Painter, Scroll, ScrollInput};
 use ui_theme::TextSize;
 
 /// Which kit story this is.
@@ -863,7 +863,8 @@ fn text_story(p: &Painter, area: Rect) {
 ///
 /// - tap a tile to spotlight it (it grows and the wall repacks around it);
 ///   otherwise the spotlight moves on every few seconds;
-/// - drag or wheel to scroll;
+/// - drag, flick or wheel to scroll: a flick coasts on and slows to a stop,
+///   and a tap on a coasting wall only stops it;
 /// - `[` and `]` shrink or grow the spotlight (1 to 3 cells); `B` toggles
 ///   boosted tiles;
 ///   `R` reshuffles the ranking; `U` pulses a few tiles; `+` / `-` add or
@@ -880,8 +881,9 @@ struct WallStage {
     boosted: bool,
     auto: bool,
     since: f64,
-    scroll: f32,
-    drag_from: Option<f32>,
+    /// Drag, flick and coast, or the wheel: the kit's scroll, as every
+    /// scrolling container should hold.
+    scroll: Scroll,
     seed: u32,
 }
 
@@ -1032,8 +1034,11 @@ impl WallStage {
             auto: true,
             since: 0.0,
             // `--scroll N`: start scrolled, for a capture of the clipped edge.
-            scroll: macroquad_gamekit::harness::flag_num::<f32>("--scroll").unwrap_or(0.0),
-            drag_from: None,
+            scroll: {
+                let mut scroll = Scroll::new();
+                scroll.set(macroquad_gamekit::harness::flag_num::<f32>("--scroll").unwrap_or(0.0));
+                scroll
+            },
             seed: 1,
         };
         stage.set_count(120);
@@ -1133,27 +1138,23 @@ impl KitStory {
             s.set_count(s.count.saturating_sub(24));
         }
 
-        // Scroll: wheel over the wall, or a drag.
-        if field.contains(Vec2::from(mouse_position())) {
-            s.scroll -= mouse_wheel().1 * 0.5;
-        }
-        match g.drag {
-            Some(at) if field.contains(at) || s.drag_from.is_some() => {
-                if let Some(from) = s.drag_from {
-                    s.scroll += from - at.y;
-                }
-                s.drag_from = Some(at.y);
-            }
-            _ => s.drag_from = None,
-        }
+        // Scroll: a drag that starts on the wall, its flick coasting on, or
+        // the wheel over it. Not clamped before the wall has rows: a
+        // `--scroll` asked for at the start would be clamped to nothing. A
+        // tap that only caught a coasting wall spotlights nothing.
+        let input = ScrollInput::read(g.drag, Vec2::from(mouse_position()));
+        let max = (s.wall.rows() > 0).then(|| s.wall.max_scroll(field));
+        s.scroll.update(field, &input, max, dt);
+        let tap = s.scroll.filter_tap(g.tap);
+        let scroll = s.scroll.offset();
 
         // Columns from the width; the spotlight by tap or by itself.
         let gap = s.wall.style().gap;
         s.wall
             .set_cols(macroquad_gamekit::Wall::<u32>::cols_for(field.w, 92.0, gap));
         s.since += f64::from(dt);
-        if let Some(tap) = g.tap
-            && let Some(key) = s.wall.hit(field, s.scroll, tap)
+        if let Some(tap) = tap
+            && let Some(key) = s.wall.hit(field, scroll, tap)
         {
             s.spotlight = key;
             s.since = 0.0;
@@ -1164,18 +1165,13 @@ impl KitStory {
         }
         s.wall.arrange(s.arrangement());
         s.wall.update(dt);
-        // Not before the wall has rows: a `--scroll` asked for at the start
-        // would be clamped to nothing.
-        if s.wall.rows() > 0 {
-            s.scroll = s.scroll.clamp(0.0, s.wall.max_scroll(field));
-        }
         s.wall
-            .update_tiles(field, s.scroll, &mut s.tiles, &mut s.loaders, dt);
+            .update_tiles(field, scroll, &mut s.tiles, &mut s.loaders, dt);
         s.loaders.update(t);
 
         // Draw: the wall clips its own scrolled rows, so nothing covers them.
         s.wall
-            .draw_tiles(field, s.scroll, &mut s.tiles, &mut s.loaders);
+            .draw_tiles(field, scroll, &mut s.tiles, &mut s.loaders);
         p.text(
             &format!(
                 "{} tiles · {} cols · spotlight {} at {}x{} · boosted {} · auto {} · scrolled {:.0} of {:.0}",
@@ -1186,7 +1182,7 @@ impl KitStory {
                 s.spot_span,
                 if s.boosted { "on" } else { "off" },
                 if s.auto { "on" } else { "off" },
-                s.scroll,
+                scroll,
                 s.wall.max_scroll(field),
             ),
             head.x + 4.0,
@@ -1195,7 +1191,7 @@ impl KitStory {
             theme.text_primary,
         );
         p.text(
-            "tap: spotlight · drag/wheel: scroll · [ ]: spotlight size · B: boosts · R: reshuffle · U: pulse · + -: tiles · A: auto",
+            "tap: spotlight · drag, flick or wheel: scroll · [ ]: spotlight size · B: boosts · R: reshuffle · U: pulse · + -: tiles · A: auto",
             head.x + 4.0,
             head.y + 32.0,
             p.size(TextSize::Xs),

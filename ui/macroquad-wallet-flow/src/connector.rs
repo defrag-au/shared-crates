@@ -29,6 +29,17 @@
 //!   the one host whose chain it names; a copy, which is no chain's, goes to
 //!   the clipboard once.
 //!
+//! ## Coming back to the page
+//!
+//! A wallet can switch account while the tab is hidden, and neither CIP-30
+//! nor every EIP-1193 wallet says so. So each time the page comes back into
+//! view (`miniquad_platform::FocusWatch`: the tab shown again, the window
+//! focused again), the connector asks every host to
+//! [recheck](ChainHost::recheck): a quiet read of the account, never a
+//! prompt. A different account arrives as the host's next listing; a site
+//! that signed the old account in compares the two and decides what that
+//! means (see `SignInPhase::Changed`).
+//!
 //! ## What it does not own
 //!
 //! The chains themselves. Each host is independent — its own connection, its
@@ -41,9 +52,11 @@ use std::any::Any;
 use macroquad::prelude::Rect;
 use macroquad_gamekit::wallet_connection::Connection;
 use macroquad_gamekit::wallet_modal::{
-    Account, ChainFamily, ChainOption, WalletModal, WalletModalAction, WalletModalVm, wallet_button,
+    Account, ChainFamily, ChainOption, SignInPhase, WalletModal, WalletModalAction, WalletModalVm,
+    wallet_button,
 };
 use macroquad_widgets::Painter;
+use miniquad_platform::FocusWatch;
 
 /// Put `text` on the clipboard: the page's on the web, miniquad's natively.
 pub fn copy_text(text: &str) {
@@ -76,6 +89,14 @@ pub trait ChainHost: Any {
 
     /// The connection, for a site's reads: the wallet, the account.
     fn connection(&self) -> &Connection;
+
+    /// Ask the connected wallet, quietly, which account it is on now. The
+    /// connector calls it when the page comes back into view: a wallet can
+    /// switch account while the tab is hidden and not say so. A change
+    /// arrives the way any other does, through the next [`ChainHost::poll`];
+    /// a failed read changes nothing. Never prompts. A host with nothing to
+    /// ask keeps the default, which does nothing.
+    fn recheck(&mut self) {}
 }
 
 /// See the [module docs](self).
@@ -87,6 +108,8 @@ pub struct WalletConnector {
     vm: WalletModalVm,
     /// Where a copy goes: [`copy_text`] unless the site says otherwise.
     clipboard: fn(&str),
+    /// The page coming back into view, which is when every host rechecks.
+    focus: FocusWatch,
 }
 
 impl Default for WalletConnector {
@@ -103,6 +126,7 @@ impl WalletConnector {
             hosts: Vec::new(),
             vm: WalletModalVm::new(Vec::new()),
             clipboard: copy_text,
+            focus: FocusWatch::new(),
         }
     }
 
@@ -179,7 +203,14 @@ impl WalletConnector {
 
     /// Advance every chain without drawing: what [`Self::show`] does first.
     /// For a frame where the modal is not drawn, and for tests.
+    ///
+    /// On the first frame after the page comes back into view (the tab shown
+    /// again, the window focused again), every host is asked to
+    /// [recheck](ChainHost::recheck) its wallet first.
     pub fn poll(&mut self) {
+        if self.focus.returned() {
+            self.recheck();
+        }
         for host in &mut self.hosts {
             if host.poll() {
                 let option = host.option();
@@ -189,9 +220,20 @@ impl WalletConnector {
                     .iter_mut()
                     .find(|c| c.family == option.family)
                 {
-                    *entry = option;
+                    // The sign-in phase is the site's, not the host's: a new
+                    // listing keeps it.
+                    let sign_in = std::mem::take(&mut entry.sign_in);
+                    *entry = option.with_sign_in(sign_in);
                 }
             }
+        }
+    }
+
+    /// Ask every connected wallet which account it is on now, as a return to
+    /// the page does. For a site with its own reason to ask, and for tests.
+    pub fn recheck(&mut self) {
+        for host in &mut self.hosts {
+            host.recheck();
         }
     }
 
@@ -268,6 +310,19 @@ impl WalletConnector {
         &self.vm
     }
 
+    /// Where signing in to the site stands for `family`'s connected account,
+    /// for a site that proves the account to its server: the modal shows it
+    /// (offer, progress, refusal, success) and reports
+    /// `WalletModalAction::SignIn`. The challenge, the signature and the
+    /// check are the site's; no host is involved, and a host's new listing
+    /// keeps what is set here.
+    pub fn set_sign_in(&mut self, family: ChainFamily, sign_in: SignInPhase) {
+        if self.vm.chain(family).is_some_and(|c| c.sign_in == sign_in) {
+            return;
+        }
+        self.vm.set_sign_in(family, sign_in);
+    }
+
     /// `family`'s connection, when a host connects it.
     pub fn connection(&self, family: ChainFamily) -> Option<&Connection> {
         self.hosts
@@ -313,6 +368,7 @@ mod tests {
         dirty: bool,
         listed: usize,
         applied: Vec<WalletModalAction>,
+        rechecked: usize,
     }
 
     impl Counted {
@@ -323,6 +379,7 @@ mod tests {
                 dirty: false,
                 listed: 0,
                 applied: Vec::new(),
+                rechecked: 0,
             }
         }
     }
@@ -350,9 +407,36 @@ mod tests {
         fn connection(&self) -> &Connection {
             &self.connection
         }
+        fn recheck(&mut self) {
+            self.rechecked += 1;
+        }
     }
 
     fn no_clipboard(_: &str) {}
+
+    fn rechecks(wallets: &WalletConnector) -> Vec<usize> {
+        wallets
+            .hosts
+            .iter()
+            .map(|h| {
+                let any: &dyn Any = h.as_ref();
+                any.downcast_ref::<Counted>().expect("Counted").rechecked
+            })
+            .collect()
+    }
+
+    /// Every chain is asked on a return to the page, and polling alone
+    /// (natively, where the page never leaves) asks nothing.
+    #[test]
+    fn a_recheck_reaches_every_chain_and_idle_polls_ask_nothing() {
+        let mut wallets = two_chains();
+        for _ in 0..10 {
+            wallets.poll();
+        }
+        assert_eq!(rechecks(&wallets), [0, 0]);
+        wallets.recheck();
+        assert_eq!(rechecks(&wallets), [1, 1]);
+    }
 
     fn two_chains() -> WalletConnector {
         WalletConnector::new()
@@ -401,6 +485,50 @@ mod tests {
             })
             .collect();
         assert_eq!(applied, [(ChainFamily::Cardano, 0), (ChainFamily::Evm, 1)]);
+    }
+
+    /// The site's sign-in phase survives the host rewriting its chain's
+    /// listing: a connect landing must not forget that the site offered (or
+    /// finished) a sign-in.
+    #[test]
+    fn a_new_listing_keeps_the_sites_sign_in() {
+        let mut wallets = two_chains();
+        let signed = SignInPhase::SignedIn { detail: None };
+        wallets.set_sign_in(ChainFamily::Evm, signed.clone());
+        wallets.apply(&WalletModalAction::Connect {
+            family: ChainFamily::Evm,
+            wallet: "w".into(),
+        });
+        wallets.poll();
+        assert_eq!(
+            wallets.vm().chain(ChainFamily::Evm).unwrap().sign_in,
+            signed
+        );
+        assert_eq!(
+            wallets.vm().chain(ChainFamily::Cardano).unwrap().sign_in,
+            SignInPhase::NotNeeded
+        );
+    }
+
+    /// A sign-in is the site's: it reaches no host.
+    #[test]
+    fn a_sign_in_action_is_offered_to_its_chain_only() {
+        let mut wallets = two_chains();
+        wallets.apply(&WalletModalAction::SignIn(ChainFamily::Cardano));
+        let applied: Vec<usize> = wallets
+            .hosts
+            .iter()
+            .map(|h| {
+                let any: &dyn Any = h.as_ref();
+                any.downcast_ref::<Counted>()
+                    .expect("Counted")
+                    .applied
+                    .len()
+            })
+            .collect();
+        // Routed like any chain's action; a host that does not sign in
+        // ignores it, which is every host today.
+        assert_eq!(applied, [1, 0]);
     }
 
     /// A change reaches the view model on the next poll, and only that chain's

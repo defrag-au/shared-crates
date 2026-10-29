@@ -2,7 +2,8 @@
 // but which the miniquad WASM runtime doesn't provide out of the box.
 //
 // Currently exposes: the page's query string, host and path, a page reload,
-// a fullscreen button the page itself answers, cryptographically-secure
+// a fullscreen button the page itself answers, a count of the page's returns
+// to focus, cryptographically-secure
 // random bytes (backed by
 // `crypto.getRandomValues()`), and small-value persistence over
 // `localStorage`. Rust's `getrandom` crate routes through this plugin via
@@ -199,7 +200,25 @@
         }
     }
 
+    // Each time the page comes back to the visitor: the tab is shown again or
+    // the window takes focus again (a tab switch usually fires both, and a
+    // wallet extension's popup closing fires the second). The game compares
+    // the count with the one it last saw, so a double count is harmless and
+    // nothing is missed between frames.
+    let focusReturns = 0;
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') focusReturns += 1;
+    });
+    window.addEventListener('focus', function () {
+        focusReturns += 1;
+    });
+
+    function platform_focus_returns() {
+        return focusReturns;
+    }
+
     register_plugin = function (importObject) {
+        importObject.env.platform_focus_returns = platform_focus_returns;
         importObject.env.platform_clipboard_write = platform_clipboard_write;
         importObject.env.platform_fullscreen_zone = platform_fullscreen_zone;
         importObject.env.platform_fullscreen_state = platform_fullscreen_state;
@@ -214,8 +233,9 @@
     };
 
     // v2 added the storage calls, v3 the page's host and path, v4 fullscreen,
-    // v5 the clipboard. A consumer whose committed `platform.js` predates it
-    // fails the handshake at instantiate rather than calling a stubbed
-    // function — which is why the Rust export and this number move together.
-    miniquad_add_plugin({ register_plugin, version: 5, name: 'platform' });
+    // v5 the clipboard, v6 the focus count. A consumer whose committed
+    // `platform.js` predates it fails the handshake at instantiate rather than
+    // calling a stubbed function — which is why the Rust export and this
+    // number move together.
+    miniquad_add_plugin({ register_plugin, version: 6, name: 'platform' });
 })();
