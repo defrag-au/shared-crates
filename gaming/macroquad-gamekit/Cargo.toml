@@ -47,6 +47,10 @@ macroquad-text = { path = "../../ui/macroquad-text" }
 # order a reader meets them. Pure (serde only), so it adds nothing to the wasm
 # tree that miniquad cannot host.
 chains = { workspace = true }
+# The state machines behind `wallet_connection` (one per chain connection) and
+# `wallet_modal`'s navigation. no_std, plain sync `handle(&event)`, and nothing
+# beyond its own macro crate, so it is as safe under miniquad as under egui.
+statig = { workspace = true }
 # Gamepads: gilrs on desktop, the browser Gamepad API through a miniquad plugin
 # on the web. `default-features = false` drops its wasm-bindgen backend, which
 # cannot run under miniquad's gl.js.

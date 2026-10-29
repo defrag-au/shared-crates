@@ -164,7 +164,43 @@
         return fullscreenElement() ? 2 : 1;
     }
 
+    // ── Clipboard ───────────────────────────────────────────────────────────
+    //
+    // miniquad's own clipboard on the web only answers the browser's copy
+    // event (Ctrl+C); it cannot put text on the clipboard when a button is
+    // tapped. `navigator.clipboard.writeText` can, inside the transient
+    // activation a tap grants — which the next frame is still within. Where it
+    // is missing or refused (an insecure origin, an older browser), the
+    // hidden-textarea `execCommand('copy')` is the fallback.
+
+    function copyByCommand(text) {
+        try {
+            const area = document.createElement('textarea');
+            area.value = text;
+            area.setAttribute('readonly', '');
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(area);
+            if (!ok) console.warn('platform: copy was refused');
+        } catch (e) {
+            console.warn('platform: copy is unavailable', e);
+        }
+    }
+
+    function platform_clipboard_write(text_js) {
+        const text = consume_js_object(text_js);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).catch(function () { copyByCommand(text); });
+        } else {
+            copyByCommand(text);
+        }
+    }
+
     register_plugin = function (importObject) {
+        importObject.env.platform_clipboard_write = platform_clipboard_write;
         importObject.env.platform_fullscreen_zone = platform_fullscreen_zone;
         importObject.env.platform_fullscreen_state = platform_fullscreen_state;
         importObject.env.platform_random_bytes = platform_random_bytes;
@@ -177,9 +213,9 @@
         importObject.env.platform_storage_remove = platform_storage_remove;
     };
 
-    // v2 added the storage calls, v3 the page's host and path, v4 fullscreen. A
-    // consumer whose committed `platform.js` predates it fails the handshake at
-    // instantiate rather than calling a stubbed function — which is why the
-    // Rust export and this number move together.
-    miniquad_add_plugin({ register_plugin, version: 4, name: 'platform' });
+    // v2 added the storage calls, v3 the page's host and path, v4 fullscreen,
+    // v5 the clipboard. A consumer whose committed `platform.js` predates it
+    // fails the handshake at instantiate rather than calling a stubbed
+    // function — which is why the Rust export and this number move together.
+    miniquad_add_plugin({ register_plugin, version: 5, name: 'platform' });
 })();

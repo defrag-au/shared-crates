@@ -59,6 +59,26 @@ unsafe extern "C" {
     fn platform_storage_remove(key: JsObject);
     fn platform_fullscreen_zone(x0: f32, y0: f32, x1: f32, y1: f32);
     fn platform_fullscreen_state() -> u32;
+    fn platform_clipboard_write(text: JsObject);
+}
+
+/// Put `text` on the system clipboard, from a tap. `true` when the page took
+/// it; `false` natively, where there is no page and the caller writes through
+/// miniquad's own `clipboard_set` instead.
+///
+/// On the web miniquad's clipboard only answers the browser's copy event, so a
+/// Copy button needs this. The browser allows it within the activation a tap
+/// grants — the frame that handles the tap is still inside it — and the plugin
+/// falls back to `execCommand('copy')` where the async clipboard is refused.
+#[cfg(target_arch = "wasm32")]
+pub fn clipboard_write(text: &str) -> bool {
+    unsafe { platform_clipboard_write(JsObject::string(text)) };
+    true
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn clipboard_write(_text: &str) -> bool {
+    false
 }
 
 /// Whether the page can go fullscreen, and whether it is.
@@ -243,14 +263,14 @@ getrandom::register_custom_getrandom!(webcrypto_getrandom);
 
 /// Plugin handshake for `gl.js` — silences the
 /// `Plugin platform is present in JS bundle, but is not used in the
-/// rust code` warning. JS-side `version: 3`, must match.
+/// rust code` warning. JS-side `version: 5`, must match.
 ///
 /// Bumped 1 → 2 with the `localStorage` calls, 2 → 3 with the page's host
-/// and path, and 3 → 4 with fullscreen: a consumer carrying an older
-/// `platform.js` then fails the handshake at instantiate rather than calling a
-/// function gl.js would stub out.
+/// and path, 3 → 4 with fullscreen, and 4 → 5 with the clipboard: a consumer
+/// carrying an older `platform.js` then fails the handshake at instantiate
+/// rather than calling a function gl.js would stub out.
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn platform_crate_version() -> u32 {
-    4
+    5
 }

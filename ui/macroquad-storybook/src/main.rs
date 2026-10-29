@@ -616,6 +616,11 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         modal("no wallets", ModalView::Step(Preset::NoWallets)),
         modal("connecting", ModalView::Step(Preset::Connecting)),
         modal("connected", ModalView::Step(Preset::Connected)),
+        modal(
+            "connected · no handle",
+            ModalView::Step(Preset::ConnectedNoHandle),
+        ),
+        modal("connected · EVM named", ModalView::Step(Preset::EvmNamed)),
         modal("declined", ModalView::Step(Preset::Declined)),
         modal("failed", ModalView::Step(Preset::Failed)),
         modal("only EVM", ModalView::Step(Preset::OnlyEvm)),
@@ -627,6 +632,7 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         phone("phone · chains", ModalView::Step(Preset::Chains)),
         phone("phone · wallets", ModalView::Step(Preset::Wallets)),
         phone("phone · connected", ModalView::Step(Preset::Connected)),
+        phone("phone · two chains", ModalView::Step(Preset::TwoConnected)),
         phone("phone · failed", ModalView::Step(Preset::Failed)),
     ];
     let mut stories = vec![

@@ -74,6 +74,7 @@ pub mod text;
 pub mod thumbs;
 pub mod tween;
 pub mod viewer;
+pub mod wallet_connection;
 pub mod wallet_modal;
 pub mod web;
 
@@ -118,7 +119,9 @@ pub use text::{
 };
 pub use thumbs::{Finger, StickShown, ThumbFrame, Thumbs};
 pub use tween::{Animated, Lerp};
+pub use wallet_connection::{Connection, ConnectionEvent};
 pub use wallet_modal::{
-    ChainOption, ChainPhase, Support, WalletModal, WalletModalAction, WalletModalVm, WalletOption,
-    chain_mark, chain_tint, wallet_button, wallet_icon,
+    Account, AccountDetail, ChainOption, ChainPhase, DetailKind, Support, WalletModal,
+    WalletModalAction, WalletModalVm, WalletOption, chain_mark, chain_tint, wallet_button,
+    wallet_icon,
 };

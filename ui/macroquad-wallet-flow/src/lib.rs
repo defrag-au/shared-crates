@@ -48,7 +48,7 @@ pub mod modal;
 
 pub use macroquad_widgets::WalletState;
 use macroquad_widgets::{Painter, WalletAction, WalletConnectVm, WalletItem, wallet_connect};
-pub use modal::CardanoModalHost;
+pub use modal::{CardanoModalHost, cardano_account, copy_text};
 use wallet_miniquad::{self as wallet, FailureKind, PollResultDetailed, Provider, ReqId};
 
 /// What the flow needs from a wallet bridge.
@@ -95,6 +95,13 @@ pub trait Bridge {
 
     /// The pixels of an [`Bridge::icon`] request that polled `Ok`.
     fn take_icon(&mut self, _id: ReqId, _size: u16) -> Option<Vec<u8>> {
+        None
+    }
+
+    /// Ask the connected wallet for its balance (CIP-30 `getBalance`, hex
+    /// CBOR), which is where its ADA Handle is read from. `None` when this
+    /// bridge has no balance to give, which leaves the account unnamed.
+    fn balance(&mut self) -> Option<ReqId> {
         None
     }
 }
@@ -146,6 +153,9 @@ impl Bridge for MiniquadBridge {
     }
     fn take_icon(&mut self, id: ReqId, size: u16) -> Option<Vec<u8>> {
         wallet::take_icon(id, size)
+    }
+    fn balance(&mut self) -> Option<ReqId> {
+        wallet::AVAILABLE.then(wallet::balance)
     }
 }
 

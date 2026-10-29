@@ -14,8 +14,21 @@
 //!    modal with [`WalletModal::open_on`].
 //! 2. **Wallet** — a row per detected wallet on that chain, with its own icon
 //!    when the host decoded one and a monogram tile when it did not.
-//! 3. **Answer** — the wallet has been asked: waiting, connected (with the
-//!    address it answered with), declined, or failed.
+//! 3. **Answer** — the wallet has been asked: waiting, declined, failed, or
+//!    connected — which is the account view below.
+//!
+//! ## The account view
+//!
+//! A connected chain is shown as its [`Account`], and the button opens
+//! straight onto it: tapping a connected wallet is a request for *that
+//! wallet*, not the list it was picked from. The account is named by its
+//! [`Account::label`] — an ADA Handle, an ENS name — wherever it is named, and
+//! everything the host wrote about it is listed one value to a line, shortened
+//! the way `egui-widgets`' `IdPill` shortens an identifier, each value worth
+//! pasting elsewhere with a Copy beside it that takes the whole value
+//! ([`WalletModalAction::Copy`]).
+//! Disconnect is on the same screen, beside Switch wallet, and closes the card.
+//! With more than one chain connected, a tab per chain switches between them.
 //!
 //! ## Who owns what
 //!
@@ -51,7 +64,8 @@ use std::f32::consts::TAU;
 
 use macroquad::models::{Mesh, Vertex, draw_mesh};
 use macroquad::prelude::*;
-use macroquad_widgets::{Painter, SheetForm, TextSize, Theme};
+use macroquad_widgets::{Align, Painter, SheetForm, TextSize, Theme};
+use statig::prelude::{InitializedStateMachine, IntoStateMachineExt};
 
 /// The chain vocabulary the modal is expressed in, re-exported so a host can
 /// name a chain without depending on `chains` itself.
@@ -76,6 +90,8 @@ const SLIDE_PX: f32 = 40.0;
 const STAGGER: f32 = 0.04;
 /// How long one row takes to arrive.
 const ROW_IN_SECS: f32 = 0.22;
+/// How long a copied value's row says so.
+const COPIED_SECS: f32 = 1.8;
 
 const CARD_MAX_W: f32 = 420.0;
 const SHEET_MAX_W: f32 = 560.0;
@@ -99,7 +115,19 @@ const THREE_ACROSS: f32 = 340.0;
 const LINE_H: f32 = 17.0;
 /// The answer step's picture: the wallet's icon in its ring.
 const HERO_H: f32 = 108.0;
-const ADDRESS_H: f32 = 36.0;
+/// The account view's identity row — icon in its ring beside the name — kept
+/// to one row so the details below it have the room.
+const IDENTITY_H: f32 = 60.0;
+const ACCOUNT_RING: f32 = 27.0;
+const TABS_H: f32 = 30.0;
+/// The Copy button's square.
+const COPY_W: f32 = 30.0;
+/// A copyable detail's label, above its value.
+const DETAIL_LABEL_H: f32 = 16.0;
+/// A one-line fact.
+const FACT_H: f32 = 16.0;
+/// Between detail rows, and round the panel's edge.
+const ROW_PAD: f32 = 12.0;
 
 // ============================================================================
 // The view model
@@ -138,8 +166,8 @@ pub enum ChainPhase {
     Idle,
     /// `wallet` (a [`WalletOption::key`]) has been asked and has not answered.
     Connecting { wallet: String },
-    /// `wallet` answered with `address`, already in the form a reader is shown.
-    Connected { wallet: String, address: String },
+    /// `wallet` answered with `account`.
+    Connected { wallet: String, account: Account },
     /// The reader refused in the wallet's own dialog. Not an error.
     Declined { wallet: String },
     /// A wallet or bridge fault, in the host's words.
@@ -157,12 +185,82 @@ impl ChainPhase {
             | Self::Failed { wallet, .. } => Some(wallet),
         }
     }
+}
 
-    /// Whether the chain is mid-conversation or connected — the phases the
-    /// answer step opens straight onto.
-    fn is_live(&self) -> bool {
-        matches!(self, Self::Connecting { .. } | Self::Connected { .. })
+/// What a connected wallet answered with, as its chain describes it.
+///
+/// The modal knows no chain's account model, so the host writes the account
+/// out: the address to show first, the human name its ecosystem resolved, if
+/// any, and the rest as labelled details. That is what makes the account view
+/// chain-specific without the modal knowing a stake key from an ENS name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Account {
+    /// The address a reader receives at and is shown when there is no label,
+    /// in the form they are shown it: `addr1…`, `0x…`.
+    pub address: String,
+    /// A human name for the account, once resolved: an ADA Handle (`$name`),
+    /// an ENS name (`name.eth`). Shown in place of the address wherever the
+    /// account is named; the address stays in the details.
+    pub label: Option<String>,
+    /// Everything else worth seeing, in order.
+    pub details: Vec<AccountDetail>,
+}
+
+impl Account {
+    pub fn new(address: impl Into<String>) -> Self {
+        Self {
+            address: address.into(),
+            label: None,
+            details: Vec::new(),
+        }
     }
+
+    pub fn with_label(mut self, label: impl Into<String>) -> Self {
+        self.label = Some(label.into());
+        self
+    }
+
+    /// A value a reader takes elsewhere — an address, a key, a name: shown in
+    /// full, with a Copy button.
+    pub fn copyable(mut self, label: impl Into<String>, value: impl Into<String>) -> Self {
+        self.details.push(AccountDetail {
+            label: label.into(),
+            value: value.into(),
+            kind: DetailKind::Copyable,
+        });
+        self
+    }
+
+    /// A fact read at a glance — the network: one line, nothing to copy.
+    pub fn fact(mut self, label: impl Into<String>, value: impl Into<String>) -> Self {
+        self.details.push(AccountDetail {
+            label: label.into(),
+            value: value.into(),
+            kind: DetailKind::Fact,
+        });
+        self
+    }
+
+    /// What to call the account: its label, else its address.
+    pub fn display(&self) -> &str {
+        self.label.as_deref().unwrap_or(&self.address)
+    }
+}
+
+/// One labelled line of an [`Account`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AccountDetail {
+    pub label: String,
+    pub value: String,
+    pub kind: DetailKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DetailKind {
+    /// Shown in full, in the monospace face, with a Copy button.
+    Copyable,
+    /// One line, label and value side by side.
+    Fact,
 }
 
 /// Whether a chain can be connected yet.
@@ -268,6 +366,16 @@ impl WalletModalVm {
         }
     }
 
+    /// Every connected account, in the order the chains are listed: the
+    /// set a surface that links wallets across chains works from. Each is its
+    /// own connection, so there is no "the" account to choose between.
+    pub fn connected(&self) -> impl Iterator<Item = (ChainFamily, &str, &Account)> {
+        self.chains.iter().filter_map(|c| match &c.phase {
+            ChainPhase::Connected { wallet, account } => Some((c.family, wallet.as_str(), account)),
+            _ => None,
+        })
+    }
+
     fn phase(&self, family: ChainFamily) -> ChainPhase {
         self.chain(family)
             .map(|c| c.phase.clone())
@@ -284,6 +392,9 @@ pub enum WalletModalAction {
     Cancel(ChainFamily),
     /// Let go of the wallet connected on `family`.
     Disconnect(ChainFamily),
+    /// Put this text on the clipboard: an address or a name from the account
+    /// view. The modal shows "Copied" beside it; the clipboard is the host's.
+    Copy(String),
 }
 
 /// Which step the modal is on.
@@ -313,10 +424,262 @@ enum Act {
     Wallet(String),
     Retry,
     Another,
-    Done,
     Cancel,
     Disconnect,
+    Copy(String),
 }
+
+// ============================================================================
+// The navigation
+// ============================================================================
+
+/// Where the modal is in its flow, as a statig machine.
+///
+/// It holds which step is showing and which chain that step is about — never
+/// a connection. Connections are the hosts' ([`crate::wallet_connection`]),
+/// one per chain, and reach this machine only as [`nav::Nav::Phase`] for the
+/// chain in focus; so any number of chains can be connected while the modal
+/// looks at one of them. The motion between steps is not here either: the
+/// modal compares the step before and after each event and eases between
+/// them, so the machine says *where*, and the tweens say *how*.
+mod nav {
+    use statig::prelude::*;
+
+    use super::{ChainFamily, ChainPhase, WalletModalAction};
+
+    /// What the flow is told.
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub(super) enum Nav {
+        /// Open, on one chain or on any. Waits for [`Nav::Start`], which the
+        /// modal sends with the first frame that sees the view model.
+        Open(Option<ChainFamily>),
+        /// Where an opening starts.
+        Start(Start),
+        Close,
+        Back,
+        /// A chain picked — a tile, or a tab on the account view — with its
+        /// phase at that moment.
+        Chain(ChainFamily, ChainPhase),
+        /// A wallet picked on the chain in focus.
+        Wallet(String),
+        Retry,
+        /// Choose another wallet on the chain in focus.
+        Another,
+        Cancel,
+        Disconnect,
+        /// The phase of the chain in focus changed.
+        Phase(ChainPhase),
+    }
+
+    /// The step an opening lands on, decided from the view model.
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub(super) enum Start {
+        Chains,
+        Wallets(ChainFamily),
+        Asking(ChainFamily, String),
+        Account(ChainFamily),
+    }
+
+    /// What a handler reads and writes beyond its own state.
+    pub(super) struct Ctx {
+        /// Whether this opening has a chain step to go back to.
+        pub chain_step: bool,
+        /// The action the event produced, for the host.
+        pub out: Option<WalletModalAction>,
+    }
+
+    #[derive(Default)]
+    pub(super) struct Flow;
+
+    /// Where a picked chain leads: its account when connected, its answer
+    /// while a wallet is being asked, else its wallets.
+    fn chain_target(family: ChainFamily, phase: &ChainPhase) -> State {
+        match phase {
+            ChainPhase::Connected { .. } => State::account(family),
+            ChainPhase::Connecting { wallet } => State::asking(family, wallet.clone(), true),
+            _ => State::wallets(family),
+        }
+    }
+
+    fn connect(context: &mut Ctx, family: ChainFamily, wallet: &str) {
+        context.out = Some(WalletModalAction::Connect {
+            family,
+            wallet: wallet.to_string(),
+        });
+    }
+
+    #[state_machine(
+        initial = "State::closed()",
+        state(derive(Debug, Clone, PartialEq, Eq))
+    )]
+    impl Flow {
+        #[state]
+        fn closed(event: &Nav) -> Outcome<State> {
+            match event {
+                Nav::Open(only) => Transition(State::opening(*only)),
+                _ => Handled,
+            }
+        }
+
+        /// Asked to open; the next frame says where. A choice made before
+        /// that frame — a story or a pad presetting the flow — is taken as
+        /// made.
+        #[state(superstate = "open")]
+        fn opening(
+            only: &mut Option<ChainFamily>,
+            context: &mut Ctx,
+            event: &Nav,
+        ) -> Outcome<State> {
+            match event {
+                Nav::Start(Start::Chains) => Transition(State::chains()),
+                Nav::Start(Start::Wallets(f)) => Transition(State::wallets(*f)),
+                Nav::Start(Start::Asking(f, w)) => Transition(State::asking(*f, w.clone(), true)),
+                Nav::Start(Start::Account(f)) => Transition(State::account(*f)),
+                Nav::Chain(f, phase) => Transition(chain_target(*f, phase)),
+                Nav::Wallet(wallet) => match only {
+                    Some(family) => {
+                        connect(context, *family, wallet);
+                        Transition(State::asking(*family, wallet.clone(), false))
+                    }
+                    None => Handled,
+                },
+                _ => Super,
+            }
+        }
+
+        /// Which chain.
+        #[state(superstate = "open")]
+        fn chains(event: &Nav) -> Outcome<State> {
+            match event {
+                Nav::Chain(f, phase) => Transition(chain_target(*f, phase)),
+                Nav::Back => Transition(State::closed()),
+                _ => Super,
+            }
+        }
+
+        /// Which wallet, on `family`.
+        #[state(superstate = "open")]
+        fn wallets(family: &mut ChainFamily, context: &mut Ctx, event: &Nav) -> Outcome<State> {
+            match event {
+                Nav::Wallet(wallet) => {
+                    connect(context, *family, wallet);
+                    Transition(State::asking(*family, wallet.clone(), false))
+                }
+                Nav::Back if context.chain_step => Transition(State::chains()),
+                Nav::Back => Transition(State::closed()),
+                _ => Super,
+            }
+        }
+
+        /// `wallet` on `family` has been asked: waiting, refused or failed.
+        /// `heard` is whether the host has answered at all — until it has,
+        /// an idle phase is the frame between the tap and the host applying
+        /// it, not a cancel.
+        #[state(superstate = "open")]
+        fn asking(
+            family: &mut ChainFamily,
+            wallet: &mut String,
+            heard: &mut bool,
+            context: &mut Ctx,
+            event: &Nav,
+        ) -> Outcome<State> {
+            match event {
+                Nav::Phase(ChainPhase::Connected { .. }) => Transition(State::account(*family)),
+                // The host let go while its answer was showing: there is no
+                // answer left to show.
+                Nav::Phase(ChainPhase::Idle) if *heard => Transition(State::wallets(*family)),
+                Nav::Phase(ChainPhase::Idle) => Handled,
+                Nav::Phase(phase) => {
+                    if let Some(w) = phase.wallet() {
+                        *wallet = w.to_string();
+                    }
+                    *heard = true;
+                    Handled
+                }
+                Nav::Retry => {
+                    connect(context, *family, wallet);
+                    Handled
+                }
+                Nav::Cancel => {
+                    context.out = Some(WalletModalAction::Cancel(*family));
+                    Handled
+                }
+                Nav::Another | Nav::Back => Transition(State::wallets(*family)),
+                _ => Super,
+            }
+        }
+
+        /// `family`'s connected account.
+        #[state(superstate = "open")]
+        fn account(family: &mut ChainFamily, context: &mut Ctx, event: &Nav) -> Outcome<State> {
+            match event {
+                // A tab: another connected chain's account, in place.
+                Nav::Chain(f, ChainPhase::Connected { .. }) => {
+                    *family = *f;
+                    Handled
+                }
+                Nav::Phase(ChainPhase::Connected { .. }) => Handled,
+                // Disconnected from somewhere else: offer its wallets again.
+                Nav::Phase(ChainPhase::Idle) => Transition(State::wallets(*family)),
+                // Re-asked, or failed since: show that answer.
+                Nav::Phase(phase) => match phase.wallet() {
+                    Some(w) => Transition(State::asking(*family, w.to_string(), true)),
+                    None => Handled,
+                },
+                Nav::Another => Transition(State::wallets(*family)),
+                // Done with this wallet: the card goes with it, and the button
+                // says "Connect wallet" again. Landing on the wallet list
+                // would offer the reader the thing they just let go of.
+                Nav::Disconnect => {
+                    context.out = Some(WalletModalAction::Disconnect(*family));
+                    Transition(State::closed())
+                }
+                // From an account, back is "somewhere else to connect", not
+                // the list this wallet was picked from: switching wallet has
+                // its own button.
+                Nav::Back if context.chain_step => Transition(State::chains()),
+                Nav::Back => Transition(State::closed()),
+                _ => Super,
+            }
+        }
+
+        /// Every step of an open modal: closing, and re-opening elsewhere.
+        #[superstate]
+        fn open(event: &Nav) -> Outcome<State> {
+            match event {
+                Nav::Close => Transition(State::closed()),
+                Nav::Open(only) => Transition(State::opening(*only)),
+                _ => Handled,
+            }
+        }
+    }
+
+    impl State {
+        /// The step this state draws, if it draws one.
+        pub(super) fn page(&self) -> Option<super::Page> {
+            use super::Page;
+            match self {
+                State::Closed {} | State::Opening { .. } => None,
+                State::Chains {} => Some(Page::Chains),
+                State::Wallets { .. } => Some(Page::Wallets),
+                State::Asking { .. } | State::Account { .. } => Some(Page::Answer),
+            }
+        }
+
+        /// The chain this state is about.
+        pub(super) fn family(&self) -> Option<ChainFamily> {
+            match self {
+                State::Closed {} | State::Chains {} => None,
+                State::Opening { only } => *only,
+                State::Wallets { family }
+                | State::Asking { family, .. }
+                | State::Account { family } => Some(*family),
+            }
+        }
+    }
+}
+
+use nav::{Ctx, Nav, Start};
 
 // ============================================================================
 // The modal
@@ -324,11 +687,11 @@ enum Act {
 
 /// See the [module docs](self).
 pub struct WalletModal {
-    /// Whether the host wants it open. The card may still be leaving after this
-    /// turns false; [`Self::is_visible`] is the question for input routing.
-    open: bool,
+    /// Where the flow is: the step, and the chain it is about. See [`nav`].
+    flow: InitializedStateMachine<nav::Flow>,
     /// 0 closed, 1 open, eased.
     shown: Animated<f32>,
+    /// The step last shown: what a closing card keeps drawing as it goes.
     page: Page,
     /// The page sliding out, while the current one slides in.
     leaving: Option<Page>,
@@ -342,12 +705,10 @@ pub struct WalletModal {
     progress: Animated<f32>,
     /// The back button's visibility.
     back_vis: Animated<f32>,
-    /// The chain the flow is on, once settled.
+    /// The chain last in focus: what a closing card keeps its colour from.
     family: Option<ChainFamily>,
     /// The chain this opening is restricted to.
     only: Option<ChainFamily>,
-    /// The wallet this flow asked, until the host answers.
-    asked: Option<String>,
     /// Whether the chain step is part of this opening.
     chain_step: bool,
     /// The chain's phase as last drawn, to tell when it changed.
@@ -358,14 +719,14 @@ pub struct WalletModal {
     phase_age: f32,
     /// Smoothed hover per row of the current step.
     hover: Vec<f32>,
-    /// The first sync after an open: settle the starting step without motion.
-    fresh: bool,
     /// Jump the step bar and back button rather than easing them, once.
     snap: bool,
     /// Take the next height as given rather than easing to it.
     height_fresh: bool,
     /// Set by [`Self::settled`]: the first phase seen has already played.
     still: bool,
+    /// The value last copied, and seconds since: its row says "Copied".
+    copied: Option<(String, f32)>,
     dt: f32,
     /// Seconds since this modal was made, for the spinner.
     clock: f32,
@@ -380,7 +741,12 @@ impl Default for WalletModal {
 impl WalletModal {
     pub fn new() -> Self {
         Self {
-            open: false,
+            flow: nav::Flow
+                .uninitialized_state_machine()
+                .init_with_context(&mut Ctx {
+                    chain_step: true,
+                    out: None,
+                }),
             shown: Animated::new(0.0),
             page: Page::Chains,
             leaving: None,
@@ -391,16 +757,15 @@ impl WalletModal {
             back_vis: Animated::new(0.0),
             family: None,
             only: None,
-            asked: None,
             chain_step: true,
             seen: None,
             page_age: 0.0,
             phase_age: 0.0,
             hover: Vec::new(),
-            fresh: false,
             snap: true,
             height_fresh: true,
             still: false,
+            copied: None,
             dt: 0.0,
             clock: 0.0,
         }
@@ -421,7 +786,7 @@ impl WalletModal {
     /// Skip the rise-in and the rows' arrival: the settled card, at once. For a
     /// capture of a step, or a host restoring a modal it had open.
     pub fn settled(mut self) -> Self {
-        let to = if self.open { 1.0 } else { 0.0 };
+        let to = if self.is_open() { 1.0 } else { 0.0 };
         self.shown.set(to);
         self.slide.set(1.0);
         self.page_age = 10.0;
@@ -433,60 +798,106 @@ impl WalletModal {
     }
 
     fn open_with(&mut self, only: Option<ChainFamily>) {
-        if self.open && self.only == only {
+        if self.is_open() && self.only == only {
             return;
         }
-        let from_closed = !self.is_visible();
-        self.open = true;
         self.only = only;
-        self.family = only;
-        self.asked = None;
-        self.leaving = None;
-        self.slide.set(1.0);
-        self.seen = None;
-        self.page_age = 0.0;
-        self.phase_age = 0.0;
-        self.hover.clear();
-        self.fresh = true;
-        if from_closed {
-            self.snap = true;
-            self.height_fresh = true;
-        }
-        self.shown.to(1.0, OPEN_SECS, Ease::ExpoOut);
+        self.send(Nav::Open(only));
     }
 
     /// Dismiss. A connect in flight is left to the host: closing the card is
     /// not cancelling the wallet's dialog, which may still be up.
     pub fn close(&mut self) {
-        if !self.open {
-            return;
-        }
-        self.open = false;
-        self.shown.to(0.0, CLOSE_SECS, Ease::CubicIn);
+        self.send(Nav::Close);
     }
 
     /// One step back, closing from the first step. For a host's Escape key or
     /// a gamepad's B.
     pub fn back(&mut self) {
-        match self.page {
-            Page::Answer => {
-                self.asked = None;
-                self.go(Page::Wallets, -1.0);
-            }
-            Page::Wallets if self.chain_step => self.go(Page::Chains, -1.0),
-            Page::Wallets | Page::Chains => self.close(),
-        }
+        self.send(Nav::Back);
     }
 
     /// Whether the host wants it open.
     pub fn is_open(&self) -> bool {
-        self.open
+        !matches!(self.flow.state(), nav::State::Closed {})
+    }
+
+    /// Whether the step showing is a connected account.
+    fn on_account(&self) -> bool {
+        matches!(self.flow.state(), nav::State::Account { .. })
+    }
+
+    /// Tell the flow something, then move the card to wherever it now is:
+    /// rise in from closed, slide between steps, or leave. Returns the action
+    /// the event produced for the host.
+    fn send(&mut self, event: Nav) -> Option<WalletModalAction> {
+        let before = self.flow.state().clone();
+        let mut ctx = Ctx {
+            chain_step: self.chain_step,
+            out: None,
+        };
+        self.flow.handle_with_context(&event, &mut ctx);
+        let after = self.flow.state().clone();
+        let was_open = !matches!(before, nav::State::Closed {});
+        let now_open = !matches!(after, nav::State::Closed {});
+
+        if !was_open && now_open {
+            // Opening: start fresh, and rise in.
+            let from_closed = !self.is_visible_motion();
+            self.leaving = None;
+            self.slide.set(1.0);
+            self.seen = None;
+            self.page_age = 0.0;
+            self.phase_age = 0.0;
+            self.hover.clear();
+            if from_closed {
+                self.snap = true;
+                self.height_fresh = true;
+            }
+            self.shown.to(1.0, OPEN_SECS, Ease::ExpoOut);
+        }
+        if was_open && !now_open {
+            self.shown.to(0.0, CLOSE_SECS, Ease::CubicIn);
+        }
+        // An opening draws nothing until the first frame places it.
+        if now_open && !matches!(after, nav::State::Opening { .. }) {
+            if after.family() != self.family {
+                // A new chain in focus: its phase is news.
+                self.seen = None;
+            }
+            self.family = after.family();
+            if let Some(page) = after.page() {
+                // A step that was already drawn slides to the next; the first
+                // step of an opening is simply there.
+                match before.page() {
+                    Some(from) if from != page => {
+                        let dir = if page.index() > from.index() {
+                            1.0
+                        } else {
+                            -1.0
+                        };
+                        self.go(page, dir);
+                    }
+                    _ => {
+                        if before.page().is_none() {
+                            self.page = page;
+                        }
+                    }
+                }
+            }
+        }
+        ctx.out
+    }
+
+    /// Whether any of the card is still drawn, from the motion alone.
+    fn is_visible_motion(&self) -> bool {
+        self.shown.get() > 0.0 || !self.shown.settled()
     }
 
     /// Whether any of it is on screen: the question for "should the screen
     /// behind take input".
     pub fn is_visible(&self) -> bool {
-        self.open || self.shown.get() > 0.0
+        self.is_open() || self.shown.get() > 0.0
     }
 
     pub fn page(&self) -> Page {
@@ -600,7 +1011,7 @@ impl WalletModal {
             );
         }
 
-        let live = self.open && e > 0.85;
+        let live = self.is_open() && e > 0.85;
         let mut act = self.draw_header(p, vm, card, handle, tint, e, live);
 
         // The steps: the one leaving, then the one arriving over it.
@@ -661,43 +1072,40 @@ impl WalletModal {
         self.back_vis.update(dt);
         self.page_age += dt;
         self.phase_age += dt;
+        if let Some((_, age)) = &mut self.copied {
+            *age += dt;
+            if *age > COPIED_SECS {
+                self.copied = None;
+            }
+        }
         if !self.is_visible() {
             self.leaving = None;
             return;
         }
-        if self.open {
+        if self.is_open() {
             self.sync(vm);
         }
     }
 
+    /// Bring the flow up to date with the view model: place an opening, and
+    /// tell the flow when the chain in focus changes phase.
     fn sync(&mut self, vm: &WalletModalVm) {
         self.chain_step = self.only.is_none() && vm.chains.len() > 1;
-        if self.family.is_none() && vm.chains.len() == 1 {
-            self.family = Some(vm.chains[0].family);
+        if let nav::State::Opening { only } = self.flow.state() {
+            let start = start_for(vm, *only);
+            self.send(Nav::Start(start));
         }
-        if std::mem::take(&mut self.fresh) {
-            self.page = match self.family {
-                Some(f) if vm.phase(f).is_live() => Page::Answer,
-                Some(_) => Page::Wallets,
-                None => Page::Chains,
-            };
-        }
-        let phase = self.family.map(|f| vm.phase(f)).unwrap_or_default();
-        // The host let go of the chain while its answer was showing: there is
-        // no answer left to show.
-        if self.page == Page::Answer
-            && phase == ChainPhase::Idle
-            && self.seen.as_ref().is_some_and(|s| *s != ChainPhase::Idle)
-        {
-            self.asked = None;
-            self.go(Page::Wallets, -1.0);
-        }
-        if self.seen.as_ref() != Some(&phase) {
-            // A settled modal shows the phase it opened on as already arrived.
-            if !std::mem::take(&mut self.still) {
-                self.phase_age = 0.0;
+        if let Some(family) = self.flow.state().family() {
+            let phase = vm.phase(family);
+            if self.seen.as_ref() != Some(&phase) {
+                // A settled modal shows the phase it opened on as already
+                // arrived.
+                if !std::mem::take(&mut self.still) {
+                    self.phase_age = 0.0;
+                }
+                self.seen = Some(phase.clone());
+                self.send(Nav::Phase(phase));
             }
-            self.seen = Some(phase);
         }
 
         let offset = if self.chain_step { 0.0 } else { 1.0 };
@@ -720,7 +1128,7 @@ impl WalletModal {
         match self.page {
             Page::Chains => false,
             Page::Wallets => self.chain_step,
-            Page::Answer => true,
+            Page::Answer => !self.on_account() || self.chain_step,
         }
     }
 
@@ -739,36 +1147,22 @@ impl WalletModal {
 
     fn apply(&mut self, vm: &WalletModalVm, act: Act) -> Option<WalletModalAction> {
         match act {
-            Act::Back => {
-                self.back();
-                None
-            }
-            Act::Close | Act::Done => {
-                self.close();
-                None
-            }
+            Act::Back => self.send(Nav::Back),
+            Act::Close => self.send(Nav::Close),
             Act::Chain(family) => {
                 self.choose_chain(vm, family);
                 None
             }
             Act::Wallet(key) => self.choose_wallet(key),
-            Act::Retry => {
-                let family = self.family?;
-                let wallet = vm
-                    .phase(family)
-                    .wallet()
-                    .map(str::to_string)
-                    .or_else(|| self.asked.clone())?;
-                self.asked = Some(wallet.clone());
-                Some(WalletModalAction::Connect { family, wallet })
+            Act::Retry => self.send(Nav::Retry),
+            Act::Another => self.send(Nav::Another),
+            Act::Cancel => self.send(Nav::Cancel),
+            Act::Disconnect => self.send(Nav::Disconnect),
+            // Not a step: the copy is the host's, the "Copied" note the card's.
+            Act::Copy(value) => {
+                self.copied = Some((value.clone(), 0.0));
+                Some(WalletModalAction::Copy(value))
             }
-            Act::Another => {
-                self.asked = None;
-                self.go(Page::Wallets, -1.0);
-                None
-            }
-            Act::Cancel => self.family.map(WalletModalAction::Cancel),
-            Act::Disconnect => self.family.map(WalletModalAction::Disconnect),
         }
     }
 
@@ -783,41 +1177,22 @@ impl WalletModal {
         if chain.support == Support::Soon {
             return;
         }
-        // An explicit choice supersedes the step the opening would have
-        // guessed, even when it comes before the first frame.
-        self.fresh = false;
-        self.family = Some(family);
-        self.asked = None;
-        self.seen = None;
-        let page = if chain.phase.is_live() {
-            Page::Answer
-        } else {
-            Page::Wallets
-        };
-        self.go(page, 1.0);
+        self.send(Nav::Chain(family, chain.phase.clone()));
     }
 
     /// Pick the wallet `key` on the settled chain, as a tap on its row does:
     /// the connect to apply, and the answer step. `None` before a chain is
     /// settled.
     pub fn choose_wallet(&mut self, key: impl Into<String>) -> Option<WalletModalAction> {
-        let key = key.into();
-        let family = self.family?;
-        self.fresh = false;
-        self.asked = Some(key.clone());
-        self.go(Page::Answer, 1.0);
-        Some(WalletModalAction::Connect {
-            family,
-            wallet: key,
-        })
+        self.send(Nav::Wallet(key.into()))
     }
 
     /// The phase the answer step draws: the host's, or — in the frame between
     /// a tap and the host applying it — the wallet just asked, as waiting.
     fn answer_phase(&self, vm: &WalletModalVm) -> ChainPhase {
         let phase = self.family.map(|f| vm.phase(f)).unwrap_or_default();
-        match (&phase, &self.asked) {
-            (ChainPhase::Idle, Some(wallet)) => ChainPhase::Connecting {
+        match (self.flow.state(), &phase) {
+            (nav::State::Asking { wallet, .. }, ChainPhase::Idle) => ChainPhase::Connecting {
                 wallet: wallet.clone(),
             },
             _ => phase,
@@ -859,12 +1234,12 @@ impl WalletModal {
             }
             Page::Answer => {
                 let phase = self.answer_phase(vm);
+                if let ChainPhase::Connected { account, .. } = &phase {
+                    return account_layout(p, vm, account, w).height;
+                }
                 let copy = answer_copy(vm, self.family, &phase);
                 let lines = wrap(p, &copy.message, p.size(TextSize::Md), w, 3);
-                let mut h = HERO_H + 30.0 + lines.len() as f32 * LINE_H + 18.0;
-                if matches!(phase, ChainPhase::Connected { .. }) {
-                    h += ADDRESS_H + 16.0;
-                }
+                let h = HERO_H + 30.0 + lines.len() as f32 * LINE_H + 18.0;
                 let buttons = copy.buttons.len() as f32;
                 h + buttons * BUTTON_H + (buttons - 1.0).max(0.0) * BUTTON_GAP
             }
@@ -1067,9 +1442,15 @@ impl WalletModal {
             );
             let (status, ink) = match (&chain.support, &chain.phase) {
                 (Support::Soon, _) => ("Coming soon".to_string(), c.text_muted),
-                (_, ChainPhase::Connected { wallet, .. }) => {
-                    (chain.wallet_name(wallet).to_string(), c.success)
-                }
+                // Who it is connected as: the account's name when it has
+                // one, else the wallet it came through.
+                (_, ChainPhase::Connected { wallet, account }) => (
+                    account
+                        .label
+                        .clone()
+                        .unwrap_or_else(|| chain.wallet_name(wallet).to_string()),
+                    c.success,
+                ),
                 (_, ChainPhase::Connecting { .. }) => ("Connecting…".to_string(), tint),
                 _ => (
                     match chain.wallets.len() {
@@ -1222,6 +1603,9 @@ impl WalletModal {
         let chain = vm.chain(family)?;
         let tint = chain_tint(&p.theme, family);
         let phase = self.answer_phase(vm);
+        if let ChainPhase::Connected { wallet, account } = &phase {
+            return self.draw_account(p, vm, body, layer, wallet, account);
+        }
         let copy = answer_copy(vm, Some(family), &phase);
         let key = phase.wallet().unwrap_or("");
         let wallet = chain.wallet(key);
@@ -1238,9 +1622,302 @@ impl WalletModal {
         };
         let dx = layer.dx + shake;
         let hero = vec2(body.center().x + dx, body.y + 50.0);
-        let ring_r = 42.0;
+        self.draw_hero(p, &phase, hero, 42.0, wallet, name, tint, a);
 
-        match &phase {
+        let mut y = body.y + HERO_H;
+        let title_size = p.size(TextSize::Xl2);
+        p.text_centred(
+            &p.fit(&copy.title, title_size, body.w),
+            Rect::new(body.x + dx, y, body.w, 18.0),
+            title_size,
+            alpha(c.text_primary, a * layer.room(y + 18.0)),
+        );
+        y += 30.0;
+        let size = p.size(TextSize::Md);
+        for line in wrap(p, &copy.message, size, body.w, 3) {
+            p.text_centred(
+                &line,
+                Rect::new(body.x + dx, y, body.w, 12.0),
+                size,
+                alpha(c.text_muted, a * layer.room(y + 12.0)),
+            );
+            y += LINE_H;
+        }
+        y += 18.0;
+
+        let mut act = None;
+        for (label, style, which) in &copy.buttons {
+            let rect = Rect::new(body.x + dx, y, body.w, BUTTON_H);
+            let room = layer.room(rect.bottom());
+            if pill_button(
+                p,
+                rect,
+                label,
+                *style,
+                tint,
+                layer.live && room > 0.9,
+                a * room,
+            ) {
+                act = Some(which.clone());
+            }
+            y += BUTTON_H + BUTTON_GAP;
+        }
+        act
+    }
+
+    /// The connected account, as its chain describes it: who it is, everything
+    /// the host wrote about it with a Copy beside each value worth taking
+    /// elsewhere, and the way out — Disconnect — in plain sight.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_account(
+        &mut self,
+        p: &Painter,
+        vm: &WalletModalVm,
+        body: Rect,
+        layer: Layer,
+        key: &str,
+        account: &Account,
+    ) -> Option<Act> {
+        let c = p.theme.color;
+        let family = self.family?;
+        let chain = vm.chain(family)?;
+        let tint = chain_tint(&p.theme, family);
+        let layout = account_layout(p, vm, account, body.w);
+        let x = body.x + layer.dx;
+        let a = layer.alpha;
+        let mut act = None;
+
+        // One tab per connected chain, when there is more than one.
+        if layout.tabs.len() > 1 {
+            let mut tx = x;
+            for (i, (f, w)) in layout.tabs.iter().enumerate() {
+                let rect = Rect::new(tx, body.y, *w, TABS_H);
+                let on = *f == family;
+                let hit = p.interact(rect, layer.live && !on);
+                let hv = self.hover_at(100 + i, hit.hover || hit.pressed);
+                let ft = chain_tint(&p.theme, *f);
+                let fill = if on { 0.22 } else { 0.06 + 0.1 * hv };
+                fill_rounded(rect, TABS_H * 0.5, alpha(ft, fill * a));
+                stroke_rounded(
+                    rect,
+                    TABS_H * 0.5,
+                    1.0,
+                    alpha(ft, (if on { 0.8 } else { 0.25 + 0.4 * hv }) * a),
+                );
+                chain_mark(*f, vec2(rect.x + 16.0, rect.center().y), 14.0, alpha(ft, a));
+                let ink = if on { c.text_primary } else { c.text_secondary };
+                p.text_mid(
+                    f.display_name(),
+                    rect.x + 30.0,
+                    rect.center().y,
+                    p.size(TextSize::Md),
+                    alpha(ink, a),
+                );
+                if hit.clicked {
+                    act = Some(Act::Chain(*f));
+                }
+                tx += w + 8.0;
+            }
+        }
+
+        // Who it is, on one row: the wallet's icon in its ring, then the
+        // account's name over the wallet it came through.
+        let top = body.y + layout.hero_top;
+        let hero = vec2(x + ACCOUNT_RING + 3.0, top + IDENTITY_H * 0.5);
+        let wallet = chain.wallet(key);
+        let name = chain.wallet_name(key);
+        let phase = ChainPhase::Connected {
+            wallet: key.to_string(),
+            account: account.clone(),
+        };
+        self.draw_hero(p, &phase, hero, ACCOUNT_RING, wallet, name, tint, a);
+        let text_x = x + ACCOUNT_RING * 2.0 + 18.0;
+        let text_w = body.x + body.w - text_x;
+        let title_mid = top + IDENTITY_H * 0.5 - 10.0;
+        let title_ink = alpha(c.text_primary, a);
+        match &account.label {
+            Some(label) => {
+                let size = p.size(TextSize::Xl2);
+                p.text_mid(
+                    &p.fit(label, size, text_w),
+                    text_x,
+                    title_mid,
+                    size,
+                    title_ink,
+                );
+            }
+            None => {
+                let size = p.size(TextSize::Xl);
+                let shown = fit_address(p, &account.address, size, text_w);
+                p.mono_mid(&shown, text_x, title_mid, size, title_ink);
+            }
+        }
+        let sub = p.size(TextSize::Md);
+        p.text_mid(
+            &p.fit(&format!("Connected with {name}"), sub, text_w),
+            text_x,
+            top + IDENTITY_H * 0.5 + 12.0,
+            sub,
+            alpha(c.text_muted, a),
+        );
+
+        // The details, in a well of their own.
+        let panel = Rect::new(x, body.y + layout.panel_top, body.w, layout.panel_h);
+        if !layout.rows.is_empty() {
+            let pa = a * layer.room(panel.bottom());
+            fill_rounded(panel, 14.0, alpha(c.bg_primary, 0.65 * pa));
+            stroke_rounded(panel, 14.0, 1.0, alpha(c.border, pa));
+        }
+        let label_size = p.size(TextSize::Sm);
+        let mono = p.size(TextSize::Md);
+        for (i, (detail, row)) in account.details.iter().zip(&layout.rows).enumerate() {
+            let ry = panel.y + row.y;
+            let ra = a * layer.room(ry + row.h);
+            if i > 0 {
+                draw_line(
+                    panel.x + 12.0,
+                    ry - ROW_PAD * 0.5,
+                    panel.right() - 12.0,
+                    ry - ROW_PAD * 0.5,
+                    1.0,
+                    alpha(c.border, 0.6 * ra),
+                );
+            }
+            let inner = panel.x + 12.0;
+            match detail.kind {
+                DetailKind::Fact => {
+                    let line = Rect::new(inner, ry, panel.w - 24.0, row.h);
+                    p.text_in(
+                        &detail.label,
+                        line,
+                        label_size,
+                        alpha(c.text_muted, ra),
+                        Align::Start,
+                    );
+                    p.text_in(
+                        &detail.value,
+                        line,
+                        p.size(TextSize::Md),
+                        alpha(c.text_primary, ra),
+                        Align::End,
+                    );
+                }
+                DetailKind::Copyable => {
+                    p.text_top(
+                        &detail.label,
+                        inner,
+                        ry,
+                        label_size,
+                        alpha(c.text_muted, ra),
+                    );
+                    p.mono_top(
+                        &row.shown,
+                        inner,
+                        ry + DETAIL_LABEL_H + 2.0,
+                        mono,
+                        alpha(c.text_primary, ra),
+                    );
+                    // The Copy button, or the word that it worked.
+                    let button = Rect::new(
+                        panel.right() - 12.0 - COPY_W,
+                        ry + (row.h - COPY_W) * 0.5,
+                        COPY_W,
+                        COPY_W,
+                    );
+                    let copied = self
+                        .copied
+                        .as_ref()
+                        .filter(|(v, _)| *v == detail.value)
+                        .map(|(_, age)| *age);
+                    let hit = p.interact(button, layer.live && ra > 0.9);
+                    let hv = self.hover_at(200 + i, hit.hover || hit.pressed);
+                    if hv > 0.01 {
+                        fill_rounded(button, 8.0, alpha(c.bg_highlight, 0.8 * hv * ra));
+                    }
+                    match copied {
+                        Some(age) => {
+                            let fade = (1.0 - (age - (COPIED_SECS - 0.4)) / 0.4).clamp(0.0, 1.0);
+                            let pop = Ease::BackOut.apply(age / 0.25);
+                            check_badge(
+                                button.center(),
+                                9.0 * pop,
+                                c.success,
+                                c.bg_primary,
+                                ra * fade,
+                            );
+                            let word = "Copied";
+                            let ww = p.measure(word, label_size).width;
+                            p.text_mid(
+                                word,
+                                button.x - ww - 6.0,
+                                ry + 6.0,
+                                label_size,
+                                alpha(c.success, ra * fade),
+                            );
+                        }
+                        None => copy_glyph(
+                            button.center(),
+                            alpha(Color::lerp(c.text_muted, tint, hv), ra),
+                        ),
+                    }
+                    if hit.clicked {
+                        act = Some(Act::Copy(detail.value.clone()));
+                    }
+                }
+            }
+        }
+
+        // The two ways to stop using this wallet, side by side. No Done: the
+        // close button and a tap on the scrim already dismiss the card.
+        let y = body.y + layout.buttons_top;
+        let half = (body.w - BUTTON_GAP) * 0.5;
+        let switch = Rect::new(x, y, half, BUTTON_H);
+        let leave = Rect::new(x + half + BUTTON_GAP, y, half, BUTTON_H);
+        let room = layer.room(switch.bottom());
+        let live = layer.live && room > 0.9;
+        if pill_button(
+            p,
+            switch,
+            "Switch wallet",
+            PillStyle::Ghost,
+            tint,
+            live,
+            a * room,
+        ) {
+            act = Some(Act::Another);
+        }
+        if pill_button(
+            p,
+            leave,
+            "Disconnect",
+            PillStyle::Danger,
+            c.error,
+            live,
+            a * room,
+        ) {
+            act = Some(Act::Disconnect);
+        }
+        act
+    }
+
+    /// The wallet's icon in a ring that says how its connect went: spinning
+    /// while it waits, drawing itself closed and popping a check when it
+    /// connects, muted for a refusal, red for a fault.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_hero(
+        &self,
+        p: &Painter,
+        phase: &ChainPhase,
+        hero: Vec2,
+        ring_r: f32,
+        wallet: Option<&WalletOption>,
+        name: &str,
+        tint: Color,
+        a: f32,
+    ) {
+        let c = p.theme.color;
+        let age = self.phase_age;
+        match phase {
             ChainPhase::Connecting { .. } | ChainPhase::Idle => {
                 let pulse = (self.clock * 2.4).sin() * 0.5 + 0.5;
                 draw_circle(
@@ -1291,10 +1968,14 @@ impl WalletModal {
                 draw_circle_lines(hero.x, hero.y, ring_r, 3.0, alpha(c.error, a));
             }
         }
-        let icon = Rect::new(hero.x - 28.0, hero.y - 28.0, 56.0, 56.0);
+        // The icon and its badge scale with the ring, so the account view's
+        // smaller hero keeps the answer step's proportions.
+        let k = ring_r / 42.0;
+        let half = 28.0 * k;
+        let icon = Rect::new(hero.x - half, hero.y - half, half * 2.0, half * 2.0);
         wallet_icon(p, wallet, name, icon, a);
-        let badge = vec2(hero.x + 30.0, hero.y + 28.0);
-        match &phase {
+        let badge = vec2(hero.x + 30.0 * k, hero.y + 28.0 * k);
+        match phase {
             ChainPhase::Connected { .. } => {
                 let pop = Ease::BackOut.apply((age - 0.35) / 0.3);
                 if pop > 0.0 {
@@ -1326,73 +2007,6 @@ impl WalletModal {
             }
             _ => {}
         }
-
-        let mut y = body.y + HERO_H;
-        let title_size = p.size(TextSize::Xl2);
-        p.text_centred(
-            &p.fit(&copy.title, title_size, body.w),
-            Rect::new(body.x + dx, y, body.w, 18.0),
-            title_size,
-            alpha(c.text_primary, a * layer.room(y + 18.0)),
-        );
-        y += 30.0;
-        let size = p.size(TextSize::Md);
-        for line in wrap(p, &copy.message, size, body.w, 3) {
-            p.text_centred(
-                &line,
-                Rect::new(body.x + dx, y, body.w, 12.0),
-                size,
-                alpha(c.text_muted, a * layer.room(y + 12.0)),
-            );
-            y += LINE_H;
-        }
-        y += 18.0;
-
-        if let ChainPhase::Connected { address, .. } = &phase {
-            let a = a * layer.room(y + ADDRESS_H);
-            let pill = Rect::new(body.x + dx, y, body.w, ADDRESS_H);
-            fill_rounded(pill, 12.0, alpha(c.bg_primary, 0.7 * a));
-            stroke_rounded(pill, 12.0, 1.0, alpha(c.border, a));
-            chain_mark(
-                family,
-                vec2(pill.x + 20.0, pill.center().y),
-                14.0,
-                alpha(tint, a),
-            );
-            let mono = p.size(TextSize::Md);
-            let shown = fit_address(p, address, mono, pill.w - 48.0);
-            p.mono_mid(
-                &shown,
-                pill.x + 36.0,
-                pill.center().y,
-                mono,
-                alpha(c.text_primary, a),
-            );
-            y += ADDRESS_H + 16.0;
-        }
-
-        let mut act = None;
-        for (label, style, which) in &copy.buttons {
-            let rect = Rect::new(body.x + dx, y, body.w, BUTTON_H);
-            let fill = match which {
-                Act::Done => c.success,
-                _ => tint,
-            };
-            let room = layer.room(rect.bottom());
-            if pill_button(
-                p,
-                rect,
-                label,
-                *style,
-                fill,
-                layer.live && room > 0.9,
-                a * room,
-            ) {
-                act = Some(which.clone());
-            }
-            y += BUTTON_H + BUTTON_GAP;
-        }
-        act
     }
 }
 
@@ -1428,6 +2042,97 @@ impl Layer {
 enum PillStyle {
     Filled,
     Ghost,
+    /// Outlined and inked in the error colour: an exit that is plainly there
+    /// without being the step's primary action.
+    Danger,
+}
+
+/// The account view, laid out once so its height and its drawing agree. Every
+/// y is from the top of the body.
+struct AccountLayout {
+    /// The connected chains and each tab's width, when there is more than one.
+    tabs: Vec<(ChainFamily, f32)>,
+    hero_top: f32,
+    panel_top: f32,
+    panel_h: f32,
+    /// One per detail, from the top of the panel.
+    rows: Vec<DetailRow>,
+    buttons_top: f32,
+    height: f32,
+}
+
+struct DetailRow {
+    y: f32,
+    h: f32,
+    /// A copyable value on one line beside its Copy button, shortened as
+    /// `IdPill` shortens one. The Copy button takes the whole value.
+    shown: String,
+}
+
+fn account_layout(p: &Painter, vm: &WalletModalVm, account: &Account, w: f32) -> AccountLayout {
+    let tabs: Vec<(ChainFamily, f32)> = vm
+        .chains
+        .iter()
+        .filter(|c| matches!(c.phase, ChainPhase::Connected { .. }))
+        .map(|c| {
+            let label = p
+                .measure(c.family.display_name(), p.size(TextSize::Md))
+                .width;
+            (c.family, label + 44.0)
+        })
+        .collect();
+    let mut y = 0.0;
+    if tabs.len() > 1 {
+        y += TABS_H + 12.0;
+    }
+    let hero_top = y;
+    y += IDENTITY_H + 14.0;
+
+    let panel_top = y;
+    let value_w = w - 24.0 - COPY_W - 8.0;
+    let mono = p.size(TextSize::Md);
+    let mut ry = ROW_PAD;
+    let mut rows = Vec::with_capacity(account.details.len());
+    for detail in &account.details {
+        let (h, shown) = match detail.kind {
+            DetailKind::Fact => (FACT_H, String::new()),
+            DetailKind::Copyable => (
+                DETAIL_LABEL_H + LINE_H,
+                fit_address(p, &detail.value, mono, value_w),
+            ),
+        };
+        rows.push(DetailRow { y: ry, h, shown });
+        ry += h + ROW_PAD;
+    }
+    let panel_h = if rows.is_empty() { 0.0 } else { ry };
+    y += panel_h + 16.0;
+    let buttons_top = y;
+    y += BUTTON_H;
+    AccountLayout {
+        tabs,
+        hero_top,
+        panel_top,
+        panel_h,
+        rows,
+        buttons_top,
+        height: y,
+    }
+}
+
+/// Two overlapping sheets: the Copy mark.
+fn copy_glyph(at: Vec2, color: Color) {
+    stroke_rounded(
+        Rect::new(at.x - 5.0, at.y - 3.0, 9.0, 10.0),
+        2.0,
+        1.6,
+        color,
+    );
+    stroke_rounded(
+        Rect::new(at.x - 2.0, at.y - 7.0, 9.0, 10.0),
+        2.0,
+        1.6,
+        color,
+    );
 }
 
 /// What the answer step says, and what it offers.
@@ -1440,13 +2145,13 @@ struct AnswerCopy {
 fn answer_copy(vm: &WalletModalVm, family: Option<ChainFamily>, phase: &ChainPhase) -> AnswerCopy {
     let chain = family.and_then(|f| vm.chain(f));
     let name = |key: &str| chain.map_or(key.to_string(), |c| c.wallet_name(key).to_string());
-    let chain_name = family.map_or("", |f| f.display_name());
     let again = vec![
         ("Try again", PillStyle::Filled, Act::Retry),
         ("Choose another wallet", PillStyle::Ghost, Act::Another),
     ];
     match phase {
-        ChainPhase::Idle => AnswerCopy {
+        // A connected chain is drawn as its account, not as an answer.
+        ChainPhase::Idle | ChainPhase::Connected { .. } => AnswerCopy {
             title: String::new(),
             message: String::new(),
             buttons: Vec::new(),
@@ -1455,14 +2160,6 @@ fn answer_copy(vm: &WalletModalVm, family: Option<ChainFamily>, phase: &ChainPha
             title: format!("Waiting for {}", name(wallet)),
             message: format!("Approve the request in {} to connect.", name(wallet)),
             buttons: vec![("Cancel", PillStyle::Ghost, Act::Cancel)],
-        },
-        ChainPhase::Connected { wallet, .. } => AnswerCopy {
-            title: "Connected".to_string(),
-            message: format!("{} on {chain_name}", name(wallet)),
-            buttons: vec![
-                ("Done", PillStyle::Filled, Act::Done),
-                ("Disconnect", PillStyle::Ghost, Act::Disconnect),
-            ],
         },
         ChainPhase::Declined { wallet } => AnswerCopy {
             title: "Request cancelled".to_string(),
@@ -1476,6 +2173,30 @@ fn answer_copy(vm: &WalletModalVm, family: Option<ChainFamily>, phase: &ChainPha
             title: "Couldn't connect".to_string(),
             message: message.clone(),
             buttons: again,
+        },
+    }
+}
+
+/// Where an opening lands. A chain is in focus when the opening names one,
+/// when only one is listed, or — opened from the button with a wallet
+/// connected — the first connected one: the reader wants that wallet, its
+/// details, a copy, a disconnect, not the list they connected it from. A chain
+/// in focus opens on its account if connected, its answer if a wallet is
+/// being asked, else its wallets; with none in focus, on the chain step.
+fn start_for(vm: &WalletModalVm, only: Option<ChainFamily>) -> Start {
+    let single = (vm.chains.len() == 1).then(|| vm.chains[0].family);
+    let connected = || {
+        vm.chains
+            .iter()
+            .find(|c| matches!(c.phase, ChainPhase::Connected { .. }))
+            .map(|c| c.family)
+    };
+    match only.or(single).or_else(connected) {
+        None => Start::Chains,
+        Some(family) => match vm.phase(family) {
+            ChainPhase::Connected { .. } => Start::Account(family),
+            ChainPhase::Connecting { wallet } => Start::Asking(family, wallet),
+            _ => Start::Wallets(family),
         },
     }
 }
@@ -1499,17 +2220,17 @@ fn columns(w: f32) -> usize {
 /// to [`WalletModal::open`].
 ///
 /// Disconnected, it is a filled call to action. Connecting, it spins. Connected,
-/// it shows each connected chain's mark and the first connection's address,
-/// with a live dot.
+/// it shows each connected chain's mark and the first connection's name — its
+/// label when one was resolved, else its address — with a live dot.
 pub fn wallet_button(p: &Painter, vm: &WalletModalVm, rect: Rect) -> bool {
     let c = p.theme.color;
     let hit = p.interact(rect, true);
     let r = rect.h * 0.5;
-    let connected: Vec<(ChainFamily, &str)> = vm
+    let connected: Vec<(ChainFamily, &Account)> = vm
         .chains
         .iter()
         .filter_map(|ch| match &ch.phase {
-            ChainPhase::Connected { address, .. } => Some((ch.family, address.as_str())),
+            ChainPhase::Connected { account, .. } => Some((ch.family, account)),
             _ => None,
         })
         .collect();
@@ -1526,7 +2247,7 @@ pub fn wallet_button(p: &Painter, vm: &WalletModalVm, rect: Rect) -> bool {
         0.0
     };
 
-    if let Some(&(_, address)) = connected.first() {
+    if let Some(&(_, account)) = connected.first() {
         fill_rounded(
             rect,
             r,
@@ -1543,10 +2264,18 @@ pub fn wallet_button(p: &Painter, vm: &WalletModalVm, rect: Rect) -> bool {
             chain_mark(*family, at, disc * 1.15, tint);
         }
         x += (connected.len().min(3) as f32 - 1.0) * disc * 1.25 + disc + 10.0;
-        let mono = p.size(TextSize::Md);
-        let dot_room = 22.0;
-        let shown = fit_address(p, address, mono, rect.right() - x - dot_room);
-        p.mono_mid(&shown, x, rect.center().y, mono, c.text_primary);
+        let room = rect.right() - x - 22.0;
+        match &account.label {
+            Some(label) => {
+                let shown = p.fit(label, label_size, room);
+                p.text_mid(&shown, x, rect.center().y, label_size, c.text_primary);
+            }
+            None => {
+                let mono = p.size(TextSize::Md);
+                let shown = fit_address(p, &account.address, mono, room);
+                p.mono_mid(&shown, x, rect.center().y, mono, c.text_primary);
+            }
+        }
         let dot = vec2(rect.right() - 16.0, rect.center().y);
         let glow = (p.time() as f32 * 2.0).sin() * 0.5 + 0.5;
         draw_circle(dot.x, dot.y, 5.0 + 2.0 * glow, alpha(c.success, 0.18));
@@ -1892,6 +2621,18 @@ fn pill_button(
             stroke_rounded(rect, r, 1.0, alpha(c.border, a));
             p.text_centred(&label, rect, size, alpha(c.text_primary, a));
         }
+        PillStyle::Danger => {
+            let k = if hit.pressed {
+                0.28
+            } else if hit.hover {
+                0.18
+            } else {
+                0.08
+            };
+            fill_rounded(rect, r, alpha(fill, k * a));
+            stroke_rounded(rect, r, 1.0, alpha(fill, 0.7 * a));
+            p.text_centred(&label, rect, size, alpha(fill, a));
+        }
     }
     hit.clicked
 }
@@ -1946,33 +2687,50 @@ fn crescent(at: Vec2, outer: f32, offset: f32, bite: f32, angle: f32, color: Col
     fill_strip(&a, &b, color);
 }
 
-/// Both ends of an address, with an ellipsis between: the head says what kind
-/// of address it is, the tail is what a reader checks.
+/// The middle-elision `egui-widgets`' `IdPill` shows an identifier with: ten
+/// characters, an ellipsis, eight. A consistent length across a 56-character
+/// policy id, a 64-character hash and a 103-character address, so a column
+/// of them reads as one thing. The head says what kind of value it is; the
+/// tail is what a reader checks.
+const ID_HEAD: usize = 10;
+const ID_TAIL: usize = 8;
+
+/// `address` shortened the way [`IdPill`](../../egui_widgets/id_pill) does,
+/// with no measuring: [`ID_HEAD`]…[`ID_TAIL`], or whole when it is no longer.
 pub fn short_address(address: &str) -> String {
-    middle_cut(address, 10, 6)
+    truncate_middle(address, ID_HEAD, ID_TAIL)
 }
 
-fn middle_cut(address: &str, head: usize, tail: usize) -> String {
-    let chars: Vec<char> = address.chars().collect();
-    if chars.len() <= head + tail + 4 {
+/// `IdPill`'s `truncate_middle`, character for character: `s` unchanged when
+/// it is at most `prefix + suffix + 1` characters, else its first `prefix`,
+/// an ellipsis, and its last `suffix`. Character-wise, so a non-ASCII value
+/// cannot split mid-character. Mirrored rather than shared because
+/// `egui-widgets` cannot be a macroquad dependency.
+fn truncate_middle(s: &str, prefix: usize, suffix: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= prefix + suffix + 1 {
+        return s.to_string();
+    }
+    let head: String = chars[..prefix].iter().collect();
+    let tail: String = chars[chars.len() - suffix..].iter().collect();
+    format!("{head}…{tail}")
+}
+
+/// `address` on one line in `w`, as `IdPill` chooses: whole when it fits,
+/// else its [`ID_HEAD`]…[`ID_TAIL`] elision. Only where even that does not
+/// fit — the button at a phone's width — does it cut closer, still keeping
+/// both ends rather than losing the tail to a second ellipsis.
+fn fit_address(p: &Painter, address: &str, size: f32, w: f32) -> String {
+    if p.measure_mono(address, size).width <= w {
         return address.to_string();
     }
-    let h: String = chars[..head].iter().collect();
-    let t: String = chars[chars.len() - tail..].iter().collect();
-    format!("{h}…{t}")
-}
-
-/// The longest middle cut of `address` that fits `w` in the monospace face,
-/// so a narrow button keeps both ends rather than losing the tail to a second
-/// ellipsis.
-fn fit_address(p: &Painter, address: &str, size: f32, w: f32) -> String {
-    for (head, tail) in [(10, 6), (8, 5), (6, 4), (5, 3)] {
-        let cut = middle_cut(address, head, tail);
+    for (head, tail) in [(ID_HEAD, ID_TAIL), (8, 6), (6, 4), (5, 3)] {
+        let cut = truncate_middle(address, head, tail);
         if p.measure_mono(&cut, size).width <= w {
             return cut;
         }
     }
-    p.fit_mono(&middle_cut(address, 5, 3), size, w)
+    p.fit_mono(&truncate_middle(address, 5, 3), size, w)
 }
 
 /// `s` broken into at most `max_lines` lines that fit `w`, at word boundaries;
@@ -2197,7 +2955,7 @@ mod tests {
             ChainFamily::Cardano,
             ChainPhase::Connected {
                 wallet: "eternl".into(),
-                address: "addr1".into(),
+                account: Account::new("addr1"),
             },
         );
         let mut modal = WalletModal::new();
@@ -2217,7 +2975,7 @@ mod tests {
             ChainFamily::Evm,
             ChainPhase::Connected {
                 wallet: "io.rabby".into(),
-                address: "0x1f".into(),
+                account: Account::new("0x1f"),
             },
         );
         let mut modal = WalletModal::new();
@@ -2225,6 +2983,188 @@ mod tests {
         modal.step(&vm, DT);
         modal.apply(&vm, Act::Chain(ChainFamily::Evm));
         assert_eq!(modal.page(), Page::Answer);
+    }
+
+    fn connected_cardano() -> WalletModalVm {
+        let mut vm = roadmap();
+        vm.set_phase(
+            ChainFamily::Cardano,
+            ChainPhase::Connected {
+                wallet: "eternl".into(),
+                account: Account::new("addr1")
+                    .with_label("$name")
+                    .copyable("Stake address", "stake1"),
+            },
+        );
+        vm
+    }
+
+    /// The button with a wallet connected is a way into that wallet — its
+    /// details and its disconnect — not back to the list it was picked from.
+    #[test]
+    fn opening_with_a_wallet_connected_lands_on_its_account() {
+        let vm = connected_cardano();
+        let mut modal = WalletModal::new();
+        modal.open();
+        modal.step(&vm, DT);
+        assert_eq!(modal.page(), Page::Answer);
+        assert_eq!(modal.family(), Some(ChainFamily::Cardano));
+        assert!(modal.on_account());
+        assert_eq!(
+            modal.apply(&vm, Act::Disconnect),
+            Some(WalletModalAction::Disconnect(ChainFamily::Cardano))
+        );
+    }
+
+    #[test]
+    fn back_from_an_account_offers_the_other_chains() {
+        let vm = connected_cardano();
+        let mut modal = WalletModal::new();
+        modal.open();
+        modal.step(&vm, DT);
+        modal.back();
+        assert_eq!(modal.page(), Page::Chains);
+    }
+
+    #[test]
+    fn back_from_the_only_chains_account_closes() {
+        let mut vm = WalletModalVm::new(vec![cardano()]);
+        vm.set_phase(
+            ChainFamily::Cardano,
+            ChainPhase::Connected {
+                wallet: "eternl".into(),
+                account: Account::new("addr1"),
+            },
+        );
+        let mut modal = WalletModal::new();
+        modal.open();
+        modal.step(&vm, DT);
+        assert!(!modal.can_back(), "no back arrow to a list of one chain");
+        modal.back();
+        assert!(!modal.is_open());
+    }
+
+    #[test]
+    fn switching_wallet_goes_to_the_list() {
+        let vm = connected_cardano();
+        let mut modal = WalletModal::new();
+        modal.open();
+        modal.step(&vm, DT);
+        modal.apply(&vm, Act::Another);
+        assert_eq!(modal.page(), Page::Wallets);
+    }
+
+    /// A second chain connects while the first stays connected, and both are
+    /// listed for a linking surface: the modal only ever had one in focus.
+    #[test]
+    fn a_second_chain_connects_alongside_the_first() {
+        let mut vm = connected_cardano();
+        let mut modal = WalletModal::new();
+        modal.open();
+        modal.step(&vm, DT);
+        modal.back();
+        assert_eq!(modal.page(), Page::Chains);
+        modal.apply(&vm, Act::Chain(ChainFamily::Evm));
+        let action = modal.apply(&vm, Act::Wallet("io.rabby".into()));
+        assert_eq!(
+            action,
+            Some(WalletModalAction::Connect {
+                family: ChainFamily::Evm,
+                wallet: "io.rabby".into()
+            })
+        );
+        vm.set_phase(
+            ChainFamily::Evm,
+            ChainPhase::Connected {
+                wallet: "io.rabby".into(),
+                account: Account::new("0x1f"),
+            },
+        );
+        modal.step(&vm, DT);
+        assert!(modal.on_account());
+        assert_eq!(modal.family(), Some(ChainFamily::Evm));
+        let connected: Vec<ChainFamily> = vm.connected().map(|(f, _, _)| f).collect();
+        assert_eq!(connected, [ChainFamily::Cardano, ChainFamily::Evm]);
+    }
+
+    /// The account view's tabs move between connected chains in place: no
+    /// slide, because it is the same step about another chain.
+    #[test]
+    fn a_tab_switches_account_in_place() {
+        let mut vm = connected_cardano();
+        vm.set_phase(
+            ChainFamily::Evm,
+            ChainPhase::Connected {
+                wallet: "io.rabby".into(),
+                account: Account::new("0x1f"),
+            },
+        );
+        let mut modal = WalletModal::new().settled();
+        modal.open();
+        modal.step(&vm, DT);
+        assert_eq!(modal.family(), Some(ChainFamily::Cardano));
+        modal.apply(&vm, Act::Chain(ChainFamily::Evm));
+        assert_eq!(modal.family(), Some(ChainFamily::Evm));
+        assert!(modal.on_account());
+        assert_eq!(modal.leaving, None);
+    }
+
+    /// Disconnected from somewhere else — another tab, the wallet itself —
+    /// while its account was showing: offer its wallets again.
+    #[test]
+    fn an_account_let_go_elsewhere_returns_to_its_wallets() {
+        let mut vm = connected_cardano();
+        let mut modal = WalletModal::new();
+        modal.open();
+        modal.step(&vm, DT);
+        vm.set_phase(ChainFamily::Cardano, ChainPhase::Idle);
+        modal.step(&vm, DT);
+        assert_eq!(modal.page(), Page::Wallets);
+        assert!(modal.is_open());
+    }
+
+    /// Letting go of a wallet is the end of this visit: the card closes,
+    /// rather than offering the list the reader just left.
+    #[test]
+    fn disconnecting_closes_the_card() {
+        let mut vm = connected_cardano();
+        let mut modal = WalletModal::new();
+        modal.open();
+        modal.step(&vm, DT);
+        assert_eq!(
+            modal.apply(&vm, Act::Disconnect),
+            Some(WalletModalAction::Disconnect(ChainFamily::Cardano))
+        );
+        assert!(!modal.is_open());
+        vm.set_phase(ChainFamily::Cardano, ChainPhase::Idle);
+        run(&mut modal, &vm, CLOSE_SECS + DT);
+        assert!(!modal.is_visible());
+        assert_eq!(
+            modal.page(),
+            Page::Answer,
+            "no slide to the list on the way out"
+        );
+    }
+
+    #[test]
+    fn a_copy_is_reported_and_remembered_for_a_moment() {
+        let vm = connected_cardano();
+        let mut modal = WalletModal::new();
+        modal.open();
+        modal.step(&vm, DT);
+        assert_eq!(
+            modal.apply(&vm, Act::Copy("stake1".into())),
+            Some(WalletModalAction::Copy("stake1".into()))
+        );
+        assert!(modal.copied.as_ref().is_some_and(|(v, _)| v == "stake1"));
+        run(&mut modal, &vm, COPIED_SECS + DT);
+        assert!(modal.copied.is_none(), "the note goes away");
+    }
+
+    #[test]
+    fn an_account_is_named_by_its_label_when_it_has_one() {
+        assert_eq!(Account::new("addr1").display(), "addr1");
+        assert_eq!(Account::new("addr1").with_label("$name").display(), "$name");
     }
 
     #[test]
@@ -2291,6 +3231,18 @@ mod tests {
         assert!(s.starts_with("stake1u896"));
         assert!(s.ends_with("c5rhq9"));
         assert_eq!(short_address("0x1f"), "0x1f");
+    }
+
+    /// The same cases `egui-widgets`' `IdPill` holds its `truncate_middle` to,
+    /// so the two renderers shorten an identifier identically.
+    #[test]
+    fn truncation_matches_id_pill() {
+        assert_eq!(truncate_middle("abc", 10, 6), "abc");
+        let s = "0123456789abcdef0123456789abcdef";
+        assert_eq!(truncate_middle(s, 8, 6), "01234567…abcdef");
+        // IdPill's default widths: ten, an ellipsis, eight.
+        let stake = "stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9";
+        assert_eq!(short_address(stake), "stake1u896…tgc5rhq9");
     }
 
     #[test]

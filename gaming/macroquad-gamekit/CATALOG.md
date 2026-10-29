@@ -10,7 +10,7 @@ across frames and takes time as an argument. Stories are in `macroquad-storybook
 under "gamekit". MACROQUAD only: no wasm-bindgen, see the shared-crates CLAUDE.md on
 runtime pairs.
 
-34 modules.
+35 modules.
 
 | module | what it is |
 |---|---|
@@ -46,5 +46,6 @@ runtime pairs.
 | `thumbs` | `Thumbs` — touch controls for a phone game: the first finger down anywhere is a stick, any other tap is an activation, and a few reserved areas (a map button) take their own taps |
 | `tween` | `Animated` — a value that moves towards a target over time: the tween, held by whatever owns the value |
 | `viewer` | `Viewer` — a window for reviewing a game's sprites by eye, moving: one sprite looping large and at real size against guides, a crowd of its clones each on its own phase, and keys to tune the gait and body live and print the lines to paste back |
+| `wallet_connection` | `Connection` — one wallet connection's lifecycle as a state machine, the same on every chain: asked, answered, refused, failed, let go |
 | `wallet_modal` | `WalletModal` — a wallet connector a game opens from one button: which chain, which wallet, then what the wallet answered, on one card that glides between the steps |
 | `web` | `web` — the miniquad JS plugins the kit's `audio`, `gamepads` and `discord-auth` features need in the page, and the kit's own page scripts (fullscreen on a phone), shipped with the kit and stamped by a game's `build.rs` |

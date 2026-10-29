@@ -13,9 +13,11 @@
 //! | Typhon | fails, with a sentence long enough to wrap |
 //! | any other | connects |
 //!
-//! The addresses a connect answers with are the estate's fixtures (the shared
-//! stake address, and the synthetic `0x1f…` EVM address the egui stories use),
-//! not live wallets.
+//! The accounts a connect answers with are fixtures, not live wallets: a
+//! synthetic Cardano base address turned into its `addr1…` and `stake1…` by
+//! the same pallas conversion a real connect uses, written out by the real
+//! host's own `cardano_account`, with the estate's fixture handle; and the
+//! synthetic `0x1f…` EVM address the egui stories use.
 //!
 //! The "real wallets" stories are the exception: they use
 //! `macroquad_wallet_flow::CardanoModalHost` over the real CIP-30 bridge, so in
@@ -41,16 +43,14 @@
 
 use macroquad::prelude::*;
 use macroquad_gamekit::paint::{Gradient, fill_gradient};
+use macroquad_gamekit::wallet_modal::Account;
 use macroquad_gamekit::wallet_modal::{
     ChainFamily, ChainOption, ChainPhase, WalletModal, WalletModalAction, WalletModalVm,
     WalletOption, wallet_button,
 };
 use macroquad_gamekit::{fill_rounded, stroke_rounded};
-use macroquad_wallet_flow::{CardanoModalHost, Stage, WalletFlow};
+use macroquad_wallet_flow::{CardanoModalHost, Stage, WalletFlow, cardano_account, copy_text};
 use macroquad_widgets::{Painter, TextSize};
-
-/// The stake address every wallet fixture in the estate uses.
-const STAKE: &str = "stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9";
 
 /// Seconds a fake wallet takes to answer: long enough to see the wait.
 const ANSWER_SECS: f32 = 1.6;
@@ -87,12 +87,17 @@ pub enum Preset {
     Wallets,
     NoWallets,
     Connecting,
+    /// A Cardano account with its handle: the account view.
     Connected,
+    /// The same account before, or without, a handle: named by its address.
+    ConnectedNoHandle,
+    /// An EVM account named by a placeholder where an ENS name will go.
+    EvmNamed,
     Declined,
     Failed,
     /// An action only EVM can satisfy: no chain step.
     OnlyEvm,
-    /// Cardano and EVM connected at once.
+    /// Cardano and EVM connected at once: the account view with chain tabs.
     TwoConnected,
 }
 
@@ -159,12 +164,42 @@ fn real_roadmap() -> WalletModalVm {
     .with_intro("Your installed Cardano wallets. Connecting shares your address only.")
 }
 
+/// The estate's fixture handle (`egui-widgets`' wallet fixtures use it too).
+const HANDLE: &str = "$boef";
+
+/// A synthetic mainnet base address (header 0x01 over two made-up key
+/// hashes), the one the flow's tests use — not a real wallet's.
+fn base_address_hex() -> String {
+    format!("01{}{}", "11".repeat(28), "22".repeat(28))
+}
+
+/// The Cardano account a connect produces, built by the real host's own
+/// builder from the synthetic address, with or without a handle.
+fn cardano_fixture(handle: Option<&str>) -> Account {
+    let hex = base_address_hex();
+    let address = wallet_miniquad::hex_to_bech32(&hex);
+    let stake = wallet_miniquad::stake_address_bech32(&hex);
+    cardano_account(&address, stake.as_deref(), 1, handle)
+}
+
+/// An EVM account. `name` stands in for an ENS name: there is no ENS resolver
+/// yet, so a story passing one is showing where a resolved name will sit, and
+/// the name it passes is a placeholder.
+fn evm_fixture(name: Option<&str>) -> Account {
+    let address = evm_address();
+    let mut account = Account::new(&address);
+    if let Some(name) = name {
+        account = account.with_label(name).copyable("ENS name", name);
+    }
+    account.copyable("Address", &address)
+}
+
 fn connected(family: ChainFamily, wallet: &str) -> ChainPhase {
     ChainPhase::Connected {
         wallet: wallet.to_string(),
-        address: match family {
-            ChainFamily::Evm => evm_address(),
-            _ => STAKE.to_string(),
+        account: match family {
+            ChainFamily::Evm => evm_fixture(None),
+            _ => cardano_fixture(Some(HANDLE)),
         },
     }
 }
@@ -194,6 +229,8 @@ impl FakeHost {
                 }
                 vm.set_phase(*family, ChainPhase::Idle);
             }
+            // A real copy, so the story can be pasted from.
+            WalletModalAction::Copy(text) => copy_text(text),
         }
     }
 
@@ -290,7 +327,27 @@ impl WalletModalStory {
             }
             Preset::Connected => {
                 vm.set_phase(Cardano, connected(Cardano, "eternl"));
-                modal.open_on(Cardano);
+                modal.open();
+            }
+            Preset::ConnectedNoHandle => {
+                vm.set_phase(
+                    Cardano,
+                    ChainPhase::Connected {
+                        wallet: "eternl".into(),
+                        account: cardano_fixture(None),
+                    },
+                );
+                modal.open();
+            }
+            Preset::EvmNamed => {
+                vm.set_phase(
+                    Evm,
+                    ChainPhase::Connected {
+                        wallet: "io.rabby".into(),
+                        account: evm_fixture(Some("example.eth")),
+                    },
+                );
+                modal.open();
             }
             Preset::Declined | Preset::Failed => {
                 let phase = if preset == Preset::Declined {

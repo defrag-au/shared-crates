@@ -48,6 +48,9 @@ chain-heartbeat = { path = "../../chain/chain-heartbeat", default-features = fal
 macroquad-wallet-flow = { workspace = true }
 # `launch_query`, so a browser picks a story with `?story=`.
 miniquad-platform = { path = "../miniquad-platform" }
+# The fixture account's addresses, derived from a synthetic base address by
+# the same pallas conversion a real connect uses, rather than pasted.
+wallet-miniquad = { workspace = true }
 
 [build-dependencies]
 # Their `PLUGIN_JS`, stamped into `web/` so the page loads the plugin the wasm
