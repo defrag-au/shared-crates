@@ -44,6 +44,7 @@ pub use discord_auth::miniquad as auth;
 #[cfg(feature = "audio")]
 pub mod audio;
 pub mod bake;
+pub mod clip;
 pub mod dir;
 pub mod ease;
 pub mod face;
@@ -84,6 +85,7 @@ pub use app::{Backdrop, Frame, Game, Stage};
 #[cfg(feature = "audio")]
 pub use audio::{Audio, Panned, Voices, load_pcm, pan_gains, pan_mono, wav, wav_stereo};
 pub use bake::{Baked, Baker};
+pub use clip::with_clip;
 pub use dir::Dir4;
 pub use ease::Ease;
 pub use face::{emblem, gem, line, plate, shrink_to_fit, tab, tab_width};

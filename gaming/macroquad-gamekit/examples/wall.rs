@@ -224,7 +224,8 @@ impl Demo {
             },
             spotlight: 0,
             since: 0.0,
-            scroll: 0.0,
+            // `--scroll N`: start scrolled, for a capture of the clipped edge.
+            scroll: macroquad_gamekit::harness::flag_num::<f32>("--scroll").unwrap_or(0.0),
             drag_from: None,
             next_pulse: 1.5,
             area: Rect::new(0.0, 0.0, 1.0, 1.0),
@@ -324,7 +325,11 @@ impl Game for Demo {
             }
             None => self.drag_from = None,
         }
-        self.scroll = self.scroll.clamp(0.0, self.wall.max_scroll(self.area));
+        // Not before the wall has rows: a `--scroll` asked for at the start
+        // would be clamped to nothing.
+        if self.wall.rows() > 0 {
+            self.scroll = self.scroll.clamp(0.0, self.wall.max_scroll(self.area));
+        }
 
         // A tap spotlights; otherwise the spotlight moves on by itself.
         self.since += frame.dt;
@@ -364,9 +369,8 @@ impl Game for Demo {
         clear_background(Color::from_hex(0x0b0c12));
         self.wall
             .draw_tiles(self.area, self.scroll, &mut self.tiles, &mut self.loaders);
-        // The title is drawn after the wall, so a scrolled row slides under it.
+        // No cover over the title: the wall clips its scrolled rows itself.
         let b = frame.bounds;
-        draw_rectangle(b.x, b.y, b.w, 50.0, Color::from_hex(0x0b0c12));
         if frame.text {
             draw_text(
                 "gamekit wall",

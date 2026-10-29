@@ -1031,7 +1031,8 @@ impl WallStage {
             boosted: true,
             auto: true,
             since: 0.0,
-            scroll: 0.0,
+            // `--scroll N`: start scrolled, for a capture of the clipped edge.
+            scroll: macroquad_gamekit::harness::flag_num::<f32>("--scroll").unwrap_or(0.0),
             drag_from: None,
             seed: 1,
         };
@@ -1163,18 +1164,21 @@ impl KitStory {
         }
         s.wall.arrange(s.arrangement());
         s.wall.update(dt);
-        s.scroll = s.scroll.clamp(0.0, s.wall.max_scroll(field));
+        // Not before the wall has rows: a `--scroll` asked for at the start
+        // would be clamped to nothing.
+        if s.wall.rows() > 0 {
+            s.scroll = s.scroll.clamp(0.0, s.wall.max_scroll(field));
+        }
         s.wall
             .update_tiles(field, s.scroll, &mut s.tiles, &mut s.loaders, dt);
         s.loaders.update(t);
 
-        // Draw: the wall, then the header over its top edge.
+        // Draw: the wall clips its own scrolled rows, so nothing covers them.
         s.wall
             .draw_tiles(field, s.scroll, &mut s.tiles, &mut s.loaders);
-        draw_rectangle(head.x, head.y, head.w, head.h + 4.0, theme.bg_primary);
         p.text(
             &format!(
-                "{} tiles · {} cols · spotlight {} at {}x{} · boosted {} · auto {}",
+                "{} tiles · {} cols · spotlight {} at {}x{} · boosted {} · auto {} · scrolled {:.0} of {:.0}",
                 s.count,
                 s.wall.cols(),
                 s.spotlight,
@@ -1182,6 +1186,8 @@ impl KitStory {
                 s.spot_span,
                 if s.boosted { "on" } else { "off" },
                 if s.auto { "on" } else { "off" },
+                s.scroll,
+                s.wall.max_scroll(field),
             ),
             head.x + 4.0,
             head.y + 14.0,

@@ -21,8 +21,10 @@
 //! and loaders are injected by the host. Without tiles, [`Wall::place`] hands
 //! back where everything is, for a host that draws itself.
 //!
-//! Draw the wall before whatever frames it (a header, a panel's title): a
-//! scrolled wall's top row slides under them rather than being clipped.
+//! [`Wall::draw_tiles`] clips to the wall's area ([`crate::clip`]), so rows
+//! scrolled out of view are cut at its edge rather than drawn over whatever
+//! sits above or below it. A host drawing from [`Wall::place`] itself should
+//! do the same.
 
 pub mod pack;
 pub mod tile;
@@ -359,11 +361,22 @@ impl<K: Clone + Eq + Hash> Wall<K> {
         loaders: &mut L,
     ) {
         let _s = profile::scope("wall.draw_tiles");
-        for p in self.place(area, scroll).into_iter().filter(|p| p.on_screen) {
-            if let Some(tile) = tiles.get_mut(&p.key) {
-                profile::time("tile.draw", || tile.draw(p.ctx, loaders));
+        let placed = self.place(area, scroll);
+        // Clipped top and bottom, where a scroll cuts rows; a little wider than
+        // the area at the sides, so a tile swelling at the edge is not shaved.
+        let clip = Rect::new(
+            area.x - SWELL_UNITS,
+            area.y,
+            area.w + 2.0 * SWELL_UNITS,
+            area.h,
+        );
+        crate::clip::with_clip(clip, || {
+            for p in placed.into_iter().filter(|p| p.on_screen) {
+                if let Some(tile) = tiles.get_mut(&p.key) {
+                    profile::time("tile.draw", || tile.draw(p.ctx, loaders));
+                }
             }
-        }
+        });
     }
 
     /// 0 to 1 to 0 over a pulse.
