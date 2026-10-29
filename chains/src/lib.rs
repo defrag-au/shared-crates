@@ -265,13 +265,22 @@ impl CardanoNetwork {
 
 /// An EIP-155 chain.
 ///
-/// Deliberately short. [`Self::Robinhood`] is here because its id was **verified
-/// against the live chain** (`eth_chainId` on the public RPC returned `0x1237`).
+/// Deliberately short. Each named chain is here because its id was **verified
+/// against the live chain** — `eth_chainId` on a public RPC — and its name read
+/// from the community registry (`ethereum-lists/chains`):
+///
+/// | variant | id | `eth_chainId` | endpoint asked |
+/// |---|---|---|---|
+/// | [`Self::Ethereum`] | 1 | `0x1`, 2026-10-29 | `ethereum-rpc.publicnode.com` |
+/// | [`Self::Robinhood`] | 4663 | `0x1237` | `rpc.mainnet.chain.robinhood.com` |
+///
 /// Every other chain is reachable as [`Self::Id`] and parses back unchanged, so
 /// naming one later is purely additive — whereas naming one now, from memory,
 /// would be writing down a constant nobody has checked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EvmChain {
+    /// Ethereum Mainnet — `eip155:1`.
+    Ethereum,
     /// Robinhood Chain — `eip155:4663`.
     Robinhood,
     /// Any EIP-155 id with no name here. Not an error case: meeting a chain we
@@ -282,6 +291,7 @@ pub enum EvmChain {
 impl EvmChain {
     pub const fn chain_id(self) -> u64 {
         match self {
+            Self::Ethereum => 1,
             Self::Robinhood => 4663,
             Self::Id(id) => id,
         }
@@ -292,14 +302,16 @@ impl EvmChain {
     /// be the same chain with two spellings, and comparing them would fail.
     pub const fn from_chain_id(id: u64) -> Self {
         match id {
+            1 => Self::Ethereum,
             4663 => Self::Robinhood,
             other => Self::Id(other),
         }
     }
 
-    /// The chain's name, where it has one.
+    /// The chain's name, where it has one — the registry's own.
     pub const fn name(self) -> Option<&'static str> {
         match self {
+            Self::Ethereum => Some("Ethereum Mainnet"),
             Self::Robinhood => Some("Robinhood Chain"),
             Self::Id(_) => None,
         }
@@ -719,6 +731,7 @@ impl ChainRef {
     pub const fn monogram(self) -> &'static str {
         match self {
             Self::Cardano(_) => "ADA",
+            Self::Evm(EvmChain::Ethereum) => "ETH",
             Self::Evm(EvmChain::Robinhood) => "RH",
             Self::Evm(EvmChain::Id(_)) => "EVM",
             Self::Solana(_) => "SOL",
@@ -1232,6 +1245,20 @@ mod tests {
             ChainRef::from_str("eip155:4663").unwrap().as_caip2(),
             "eip155:4663"
         );
+    }
+
+    #[test]
+    fn ethereum_is_eip155_1() {
+        // Verified against the live chain: `eth_chainId` on
+        // `ethereum-rpc.publicnode.com` returned `0x1` on 2026-10-29.
+        assert_eq!(EvmChain::Ethereum.chain_id(), 1);
+        assert_eq!(EvmChain::from_chain_id(1), EvmChain::Ethereum);
+        assert_eq!(EvmChain::Ethereum.name(), Some("Ethereum Mainnet"));
+        let parsed = ChainRef::from_str("eip155:1").unwrap();
+        assert_eq!(parsed, ChainRef::Evm(EvmChain::Ethereum));
+        assert_eq!(parsed.as_caip2(), "eip155:1", "the wire form is unchanged");
+        assert_eq!(parsed.monogram(), "ETH");
+        assert_eq!(parsed.family(), ChainFamily::Evm);
     }
 
     #[test]

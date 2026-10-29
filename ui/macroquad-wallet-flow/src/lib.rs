@@ -44,8 +44,14 @@
 //! [`Bridge`] trait is the seam a soak drives with a fake wallet, so every
 //! stage is testable without a browser.
 
+pub mod evm_modal;
+pub mod icons;
 pub mod modal;
 
+pub use evm_modal::{
+    AddChain, ChainTarget, EvmBridge, EvmModalHost, MiniquadEvmBridge, NativeCurrency, evm_account,
+    robinhood_chain,
+};
 pub use macroquad_widgets::WalletState;
 use macroquad_widgets::{Painter, WalletAction, WalletConnectVm, WalletItem, wallet_connect};
 pub use modal::{CardanoModalHost, cardano_account, copy_text};

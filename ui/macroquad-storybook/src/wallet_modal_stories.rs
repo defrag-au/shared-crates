@@ -20,9 +20,11 @@
 //! synthetic `0x1f…` EVM address the egui stories use.
 //!
 //! The "real wallets" stories are the exception: they use
-//! `macroquad_wallet_flow::CardanoModalHost` over the real CIP-30 bridge, so in
-//! the web storybook they list this browser's extensions with their own icons
-//! and connect them for real. Natively there is no browser, and they say so.
+//! `macroquad_wallet_flow::CardanoModalHost` over the real CIP-30 bridge and
+//! `EvmModalHost` over the real EIP-6963 one, so in the web storybook they list
+//! this browser's extensions on both chains with their own icons and connect
+//! them for real, both at once if you like. Natively there is no browser, and
+//! they say so.
 //!
 //! The step stories open the modal settled at one state, so a capture at the
 //! default moment is that state. The walkthrough scripts a whole connect on a
@@ -49,7 +51,9 @@ use macroquad_gamekit::wallet_modal::{
     WalletOption, wallet_button,
 };
 use macroquad_gamekit::{fill_rounded, stroke_rounded};
-use macroquad_wallet_flow::{CardanoModalHost, Stage, WalletFlow, cardano_account, copy_text};
+use macroquad_wallet_flow::{
+    CardanoModalHost, EvmModalHost, Stage, WalletFlow, cardano_account, copy_text, robinhood_chain,
+};
 use macroquad_widgets::{Painter, TextSize};
 
 /// Seconds a fake wallet takes to answer: long enough to see the wait.
@@ -149,19 +153,25 @@ fn roadmap(icon: Option<Texture2D>) -> WalletModalVm {
     .with_intro("Connecting shares your address. Nothing is signed or sent.")
 }
 
-/// The roadmap with only the chain this browser can actually connect: Cardano,
-/// filled in each frame from the real host. EVM has no miniquad bridge yet, so
-/// it is listed as coming rather than offering wallets it cannot reach.
+/// The roadmap with the chains this browser can actually connect — Cardano and
+/// EVM, each filled in every frame from its real host — and the rest coming.
 fn real_roadmap() -> WalletModalVm {
     WalletModalVm::new(vec![
         ChainOption::ready(ChainFamily::Cardano, Vec::new()),
-        ChainOption::soon(ChainFamily::Evm),
+        ChainOption::ready(ChainFamily::Evm, Vec::new()),
         ChainOption::soon(ChainFamily::Solana),
         ChainOption::soon(ChainFamily::Midnight),
         ChainOption::soon(ChainFamily::Tezos),
         ChainOption::soon(ChainFamily::Xrpl),
     ])
-    .with_intro("Your installed Cardano wallets. Connecting shares your address only.")
+    .with_intro("Your installed wallets. Connecting shares your address only.")
+}
+
+/// The real hosts, one per chain with a bridge: each connection its own, so
+/// both chains can be connected at once.
+struct RealHosts {
+    cardano: CardanoModalHost,
+    evm: EvmModalHost,
 }
 
 /// The estate's fixture handle (`egui-widgets`' wallet fixtures use it too).
@@ -273,10 +283,10 @@ pub struct WalletModalStory {
     cue: usize,
     /// The last thing the modal or a button reported.
     last: String,
-    /// The real Cardano host, made the first time a real story draws: making
-    /// it lists the extensions and reconnects the remembered wallet, which no
+    /// The real hosts, made the first time a real story draws: making them
+    /// lists the extensions and reconnects the remembered wallets, which no
     /// other story should set off at startup.
-    real: Option<CardanoModalHost>,
+    real: Option<RealHosts>,
 }
 
 impl WalletModalStory {
@@ -411,14 +421,22 @@ impl WalletModalStory {
         }
         self.host.tick(&mut self.vm, dt);
         if self.view == ModalView::Real {
-            let real = self
-                .real
-                .get_or_insert_with(|| CardanoModalHost::new(WalletFlow::new()));
-            real.poll();
+            let real = self.real.get_or_insert_with(|| RealHosts {
+                cardano: CardanoModalHost::new(WalletFlow::new()),
+                // Robinhood Chain, the EVM chain cnft.dev-workers onboards
+                // collections on: a wallet on any other is asked to switch,
+                // and offered the chain to add.
+                evm: EvmModalHost::new().expect_chain(robinhood_chain()),
+            });
+            real.cardano.poll();
+            real.evm.poll();
             if let Some(cardano) = self.vm.chain_mut(ChainFamily::Cardano) {
-                *cardano = real.chain();
+                *cardano = real.cardano.chain();
             }
-            if matches!(real.flow().stage(), Stage::Unavailable) {
+            if let Some(evm) = self.vm.chain_mut(ChainFamily::Evm) {
+                *evm = real.evm.chain();
+            }
+            if matches!(real.cardano.flow().stage(), Stage::Unavailable) {
                 p.text(
                     "Real wallets need a browser: build the web storybook (see its Cargo.toml).",
                     stage.x + 16.0,
@@ -446,9 +464,15 @@ impl WalletModalStory {
 
         if let Some(action) = self.modal.show(p, &self.vm, stage, dt) {
             self.last = format!("action: {action:?}");
-            match &mut self.real {
-                Some(real) => real.apply(&action),
-                None => self.host.apply(&mut self.vm, &action),
+            match (&mut self.real, &action) {
+                // Once, not once per host.
+                (Some(_), WalletModalAction::Copy(text)) => copy_text(text),
+                // Each host takes its own chain's actions and ignores the rest.
+                (Some(real), _) => {
+                    real.cardano.apply(&action);
+                    real.evm.apply(&action);
+                }
+                (None, _) => self.host.apply(&mut self.vm, &action),
             }
         }
     }

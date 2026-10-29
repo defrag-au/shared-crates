@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Host-owned CIP-30 connect flow for macroquad apps. Drives wallet-miniquad's request→poll bridge into macroquad-widgets' stateless WalletConnectVm, so every macroquad surface connects a wallet identically."
+description = "Host-owned wallet connect flows for macroquad apps: CIP-30 (Cardano) and EIP-6963/EIP-1193 (EVM) over wallet-miniquad's request→poll bridge, for macroquad-widgets' WalletConnectVm and macroquad-gamekit's WalletModal, so every macroquad surface connects a wallet identically."
 
 [dependencies]
 macroquad = "0.4"
@@ -15,6 +15,9 @@ macroquad-widgets = { workspace = true }
 # is no cycle, and it carries no wasm-bindgen.
 macroquad-gamekit = { path = "../../gaming/macroquad-gamekit" }
 wallet-miniquad = { workspace = true }
+# EIP-155 chain names for the EVM account's network line, from the one place
+# they are verified rather than from memory. Pure (serde only).
+chains = { workspace = true }
 # Only for the remembered provider: `platform_storage_*` is the miniquad
 # runtime's `localStorage` surface. Native builds stub it out.
 miniquad-platform = { path = "../miniquad-platform" }

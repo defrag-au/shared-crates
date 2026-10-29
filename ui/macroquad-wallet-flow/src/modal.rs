@@ -48,31 +48,19 @@
 //! The modal's `Copy` goes through [`copy_text`]: the page's clipboard on the
 //! web, miniquad's natively.
 
-use macroquad::prelude::{FilterMode, Texture2D};
 use macroquad_gamekit::wallet_connection::{Connection, ConnectionEvent};
 use macroquad_gamekit::wallet_modal::{
     Account, ChainFamily, ChainOption, ChainPhase, WalletModalAction, WalletOption,
 };
 use wallet_miniquad::{PollResultDetailed, ReqId};
 
+pub use crate::icons::ICON_PX;
+use crate::icons::IconCache;
 use crate::{Bridge, MiniquadBridge, Stage, WalletFlow, network_message};
-
-/// The square an icon is rasterised to. Twice the largest size the modal draws
-/// one (56 points), so it stays sharp on a 2× display.
-pub const ICON_PX: u16 = 128;
 
 /// Polls between re-reads of the extension list while nothing is connected:
 /// half a second at 60 frames a second.
-const RELIST_EVERY: u32 = 30;
-
-/// One detected wallet's icon, on its way from the bridge to a texture.
-enum Icon {
-    Asked(ReqId),
-    Pixels(Vec<u8>),
-    Ready(Texture2D),
-    /// None announced, or it would not load: the monogram stays.
-    Missing,
-}
+pub(crate) const RELIST_EVERY: u32 = 30;
 
 /// The connected account's ADA Handle, read once per change address.
 #[derive(Default)]
@@ -103,8 +91,8 @@ pub struct CardanoModalHost<B: Bridge = MiniquadBridge> {
     /// The connection's lifecycle, the same machine every chain's host
     /// feeds: the flow is CIP-30's mechanics, this is what they mean.
     connection: Connection,
-    /// Per provider key, in the order the flow lists them.
-    icons: Vec<(String, Icon)>,
+    /// Per provider key.
+    icons: IconCache,
     /// Polls since the extension list was last read.
     since_list: u32,
     handle: Handle,
@@ -121,7 +109,7 @@ impl<B: Bridge> CardanoModalHost<B> {
         let mut host = Self {
             flow,
             connection,
-            icons: Vec::new(),
+            icons: IconCache::default(),
             since_list: 0,
             handle: Handle::Unasked,
         };
@@ -148,19 +136,11 @@ impl<B: Bridge> CardanoModalHost<B> {
             self.relist();
         }
         self.ask_icons();
-        for (_, icon) in &mut self.icons {
-            let Icon::Asked(req) = *icon else {
-                continue;
-            };
-            *icon = match self.flow.bridge.poll(req) {
-                PollResultDetailed::Pending => continue,
-                PollResultDetailed::Ok { .. } => self
-                    .flow
-                    .bridge
-                    .take_icon(req, ICON_PX)
-                    .map_or(Icon::Missing, Icon::Pixels),
-                PollResultDetailed::Err { .. } => Icon::Missing,
-            };
+        for req in self.icons.waiting() {
+            let result = self.flow.bridge.poll(req);
+            let bridge = &mut self.flow.bridge;
+            self.icons
+                .settle(req, result, || bridge.take_icon(req, ICON_PX));
         }
         self.poll_handle();
         if let Some(event) = self.outcome() {
@@ -296,15 +276,8 @@ impl<B: Bridge> CardanoModalHost<B> {
         let mut wallets = Vec::with_capacity(self.flow.providers.len());
         for provider in &self.flow.providers {
             let mut option = WalletOption::new(provider.key.clone(), provider.name.clone());
-            if let Some((_, icon)) = self.icons.iter_mut().find(|(k, _)| *k == provider.key) {
-                if let Icon::Pixels(rgba) = icon {
-                    let texture = Texture2D::from_rgba8(ICON_PX, ICON_PX, rgba);
-                    texture.set_filter(FilterMode::Linear);
-                    *icon = Icon::Ready(texture);
-                }
-                if let Icon::Ready(texture) = icon {
-                    option = option.with_icon(texture.clone());
-                }
+            if let Some(texture) = self.icons.texture(&provider.key) {
+                option = option.with_icon(texture);
             }
             wallets.push(option);
         }
@@ -339,16 +312,10 @@ impl<B: Bridge> CardanoModalHost<B> {
 
     /// Ask for the icon of every listed wallet not yet asked about.
     fn ask_icons(&mut self) {
+        let bridge = &mut self.flow.bridge;
         for provider in &self.flow.providers {
-            if self.icons.iter().any(|(k, _)| *k == provider.key) {
-                continue;
-            }
-            let icon = self
-                .flow
-                .bridge
-                .icon(&provider.key, ICON_PX)
-                .map_or(Icon::Missing, Icon::Asked);
-            self.icons.push((provider.key.clone(), icon));
+            self.icons
+                .ask(&provider.key, || bridge.icon(&provider.key, ICON_PX));
         }
     }
 }

@@ -54,7 +54,7 @@ impl Gradient {
 
 /// Points around a rounded rectangle, clockwise from the top-left corner's
 /// start, `segments` per corner.
-fn rounded_outline(rect: Rect, radius: f32, segments: usize) -> Vec<Vec2> {
+pub(crate) fn rounded_outline(rect: Rect, radius: f32, segments: usize) -> Vec<Vec2> {
     let r = radius.min(rect.w / 2.0).min(rect.h / 2.0).max(0.0);
     let corners = [
         (vec2(rect.x + r, rect.y + r), std::f32::consts::PI),

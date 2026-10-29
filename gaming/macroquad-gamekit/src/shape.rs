@@ -18,6 +18,49 @@ pub fn fill_rounded(rect: Rect, radius: f32, color: Color) {
     macroquad_widgets::draw_rounded_rect(rect.x, rect.y, rect.w, rect.h, radius, color);
 }
 
+/// `texture` filling `rect` — cropped to its shape as [`cover_source`] crops,
+/// and clipped to its rounded corners (a circle, when `radius` is half its
+/// side) — tinted by `tint`.
+///
+/// The clip is geometry rather than a shader: a fan over the rounded outline
+/// with each vertex's texture coordinate read off the crop. So it needs no
+/// [`RoundedArt`] made after the window exists, and suits a small picture drawn
+/// anywhere — a wallet's icon in its tile, an avatar in its ring. A large
+/// card's art, where the outline's segments would show, is `RoundedArt`'s.
+pub fn fill_texture_rounded(texture: &Texture2D, rect: Rect, radius: f32, tint: Color) {
+    use macroquad::models::{Mesh, Vertex, draw_mesh};
+
+    let size = texture.size();
+    let src = cover_source(size, vec2(rect.w, rect.h));
+    let uv = |p: Vec2| {
+        let fx = ((p.x - rect.x) / rect.w.max(1e-3)).clamp(0.0, 1.0);
+        let fy = ((p.y - rect.y) / rect.h.max(1e-3)).clamp(0.0, 1.0);
+        vec2(
+            (src.x + fx * src.w) / size.x.max(1.0),
+            (src.y + fy * src.h) / size.y.max(1.0),
+        )
+    };
+    let outline = crate::paint::rounded_outline(rect, radius, 12);
+    let centre = rect.center();
+    let mut vertices = Vec::with_capacity(outline.len() + 1);
+    let c = uv(centre);
+    vertices.push(Vertex::new(centre.x, centre.y, 0.0, c.x, c.y, tint));
+    for p in &outline {
+        let t = uv(*p);
+        vertices.push(Vertex::new(p.x, p.y, 0.0, t.x, t.y, tint));
+    }
+    let n = outline.len() as u16;
+    let mut indices = Vec::with_capacity(outline.len() * 3);
+    for i in 0..n {
+        indices.extend([0, 1 + i, 1 + (i + 1) % n]);
+    }
+    draw_mesh(&Mesh {
+        vertices,
+        indices,
+        texture: Some(texture.clone()),
+    });
+}
+
 /// Outline a rounded rectangle, the line centred on the edge.
 pub fn stroke_rounded(rect: Rect, radius: f32, thickness: f32, color: Color) {
     let r = radius.min(rect.w / 2.0).min(rect.h / 2.0).max(0.0);

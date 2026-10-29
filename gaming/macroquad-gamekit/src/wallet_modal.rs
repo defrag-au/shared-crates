@@ -73,7 +73,7 @@ pub use chains::ChainFamily;
 
 use crate::ease::Ease;
 use crate::paint::{Gradient, fill_gradient};
-use crate::shape::{fill_rounded, stroke_rounded};
+use crate::shape::{fill_rounded, fill_texture_rounded, stroke_rounded};
 use crate::tween::{Animated, Lerp};
 
 /// Seconds the card takes to rise in.
@@ -1968,12 +1968,13 @@ impl WalletModal {
                 draw_circle_lines(hero.x, hero.y, ring_r, 3.0, alpha(c.error, a));
             }
         }
-        // The icon and its badge scale with the ring, so the account view's
-        // smaller hero keeps the answer step's proportions.
+        // The icon fills the ring, a circle just inside its stroke; the badge
+        // scales with the ring, so the account view's smaller hero keeps the
+        // answer step's proportions.
         let k = ring_r / 42.0;
-        let half = 28.0 * k;
+        let half = ring_r - 5.0;
         let icon = Rect::new(hero.x - half, hero.y - half, half * 2.0, half * 2.0);
-        wallet_icon(p, wallet, name, icon, a);
+        wallet_icon_shaped(p, wallet, name, icon, half, a);
         let badge = vec2(hero.x + 30.0 * k, hero.y + 28.0 * k);
         match phase {
             ChainPhase::Connected { .. } => {
@@ -2460,26 +2461,32 @@ pub fn chain_mark(family: ChainFamily, at: Vec2, size: f32, color: Color) {
     }
 }
 
-/// A wallet's picture in a rounded tile: its own icon over a dark plate, or a
-/// monogram on a gradient picked from its name, so a wallet without an icon
-/// keeps the same colour wherever it is listed.
+/// A wallet's picture in a rounded tile: its own icon, or a monogram on a
+/// gradient picked from its name, so a wallet without an icon keeps the same
+/// colour wherever it is listed. See [`wallet_icon_shaped`].
 pub fn wallet_icon(p: &Painter, wallet: Option<&WalletOption>, name: &str, rect: Rect, a: f32) {
+    wallet_icon_shaped(p, wallet, name, rect, rect.w * 0.28, a);
+}
+
+/// [`wallet_icon`] in a shape of the caller's: corners of `radius`, a circle
+/// at half the side.
+///
+/// The icon fills the shape edge to edge, cropped to it as a cover image is,
+/// rather than sitting small on a plate: a wallet's icon is its own square of
+/// colour, and the shape is the frame. A dark plate stays underneath for an
+/// icon drawn on transparency.
+pub fn wallet_icon_shaped(
+    p: &Painter,
+    wallet: Option<&WalletOption>,
+    name: &str,
+    rect: Rect,
+    radius: f32,
+    a: f32,
+) {
     let c = p.theme.color;
-    let radius = rect.w * 0.28;
     if let Some(icon) = wallet.and_then(|w| w.icon.as_ref()) {
         fill_rounded(rect, radius, alpha(c.bg_primary, a));
-        stroke_rounded(rect, radius, 1.0, alpha(c.border, a));
-        let inset = rect.w * 0.14;
-        draw_texture_ex(
-            icon,
-            rect.x + inset,
-            rect.y + inset,
-            Color::new(1.0, 1.0, 1.0, a),
-            DrawTextureParams {
-                dest_size: Some(vec2(rect.w - 2.0 * inset, rect.h - 2.0 * inset)),
-                ..Default::default()
-            },
-        );
+        fill_texture_rounded(icon, rect, radius, Color::new(1.0, 1.0, 1.0, a));
         return;
     }
     let hues = [

@@ -34,6 +34,8 @@
 //! - [`hex_to_bech32`] — address hex → `stake1…` / `addr1…` via pallas
 //! - [`stake_address_bech32`] — the stake address a payment address delegates to
 //! - [`balance::extract_handle`] — walk the balance CBOR for an ADA Handle
+//! - [`evm`] — EVM wallets: EIP-6963 discovery and the EIP-1193 provider,
+//!   in their own plugin ([`EVM_PLUGIN_JS`])
 //!
 //! ## Wiring it into a consumer
 //!
@@ -63,6 +65,7 @@
 
 pub mod balance;
 pub mod bridge;
+pub mod evm;
 
 pub use bridge::*;
 
@@ -103,6 +106,11 @@ pub fn stake_address_bech32(hex: &str) -> Option<String> {
 /// JavaScript source for the wallet plugin. Consumers materialise this
 /// into their HTML shell directory (typically via `build.rs`).
 pub const PLUGIN_JS: &str = include_str!("../js/wallet.js");
+
+/// JavaScript source for the EVM plugin ([`evm`]), stamped beside
+/// [`PLUGIN_JS`] as `evm.js` by a consumer that connects EVM wallets. A
+/// consumer that never calls [`evm`] imports none of it, and needs none.
+pub const EVM_PLUGIN_JS: &str = include_str!("../js/evm.js");
 
 /// Convert a CIP-30 hex address into its bech32 form. Falls back to
 /// returning the raw hex when the header byte is unknown or the

@@ -105,7 +105,7 @@ pub use pixel::{Grid, Onion, Palette, PixelError, PixelSprite, parse_frames};
 pub use pointer::{HoverGrace, Pointer, PointerConfig, PointerEvent, Swipe, Swipes};
 pub use preload::Preloader;
 pub use sequence::{Sequencer, stagger};
-pub use shape::{RoundedArt, cover_source, fill_rounded, stroke_rounded};
+pub use shape::{RoundedArt, cover_source, fill_rounded, fill_texture_rounded, stroke_rounded};
 pub use sprite::{Pose, Sprite, draw_order, topmost};
 pub use sprite_file::{SpriteFile, SpriteFileError};
 pub use starfield::{Star, Starfield};
@@ -123,5 +123,5 @@ pub use wallet_connection::{Connection, ConnectionEvent};
 pub use wallet_modal::{
     Account, AccountDetail, ChainOption, ChainPhase, DetailKind, Support, WalletModal,
     WalletModalAction, WalletModalVm, WalletOption, chain_mark, chain_tint, wallet_button,
-    wallet_icon,
+    wallet_icon, wallet_icon_shaped,
 };
