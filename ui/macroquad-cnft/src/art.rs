@@ -266,3 +266,20 @@ impl ArtLoader {
         arrived
     }
 }
+
+/// NFT art on a gamekit wall: `ArtLoader` is an image source for
+/// `macroquad_gamekit::wall::ImageTile`, the same queue, retries and cache.
+impl macroquad_gamekit::wall::ImageSource for ArtLoader {
+    fn request(&mut self, url: &str, priority: i32) {
+        ArtLoader::request(self, url, priority);
+    }
+
+    fn view(&mut self, url: &str) -> macroquad_gamekit::wall::ImageView<'_> {
+        use macroquad_gamekit::wall::ImageView;
+        match ArtLoader::view(self, url) {
+            ArtView::Loading => ImageView::Loading,
+            ArtView::Failed => ImageView::Failed,
+            ArtView::Ready { texture, age } => ImageView::Ready { texture, age },
+        }
+    }
+}

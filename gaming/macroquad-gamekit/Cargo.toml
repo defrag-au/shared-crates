@@ -43,6 +43,10 @@ macroquad-widgets = { path = "../../ui/macroquad-widgets" }
 # shared with the widgets, so both draw text one way. Re-exported as `text`
 # and `harness::report`.
 macroquad-text = { path = "../../ui/macroquad-text" }
+# `profile`: the scope recorder and its text tables. No dependencies and no
+# clock of its own (the kit passes miniquad's), so nothing in it needs
+# wasm-bindgen.
+perf-probe = { workspace = true }
 # Chain identity for `wallet_modal`: the families a connector offers, in the
 # order a reader meets them. Pure (serde only), so it adds nothing to the wasm
 # tree that miniquad cannot host.

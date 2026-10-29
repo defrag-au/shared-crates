@@ -60,6 +60,7 @@
 //! While the modal is visible the host should draw the screen behind it with
 //! no tap: a tap meant for the scrim must not also press what lies under it.
 
+use std::borrow::Cow;
 use std::f32::consts::TAU;
 
 use macroquad::models::{Mesh, Vertex, draw_mesh};
@@ -107,6 +108,11 @@ const TILE_H: f32 = 96.0;
 const TILE_GAP: f32 = 10.0;
 const ROW_H: f32 = 58.0;
 const ROW_GAP: f32 = 8.0;
+/// The most wallet rows a page lists. A longer list pages rather than
+/// scrolls: no clip, a constant draw, and the pager says how many there are.
+const WALLETS_PER_PAGE: usize = 6;
+/// The pager under a paged wallet list.
+const PAGER_H: f32 = 44.0;
 const BUTTON_H: f32 = 44.0;
 const BUTTON_GAP: f32 = 8.0;
 const ICON_BUTTON: f32 = 32.0;
@@ -397,6 +403,19 @@ pub enum WalletModalAction {
     Copy(String),
 }
 
+impl WalletModalAction {
+    /// The chain this action is for — the host that should apply it. `None`
+    /// for a copy, which is no chain's.
+    pub fn family(&self) -> Option<ChainFamily> {
+        match self {
+            Self::Connect { family, .. } | Self::Cancel(family) | Self::Disconnect(family) => {
+                Some(*family)
+            }
+            Self::Copy(_) => None,
+        }
+    }
+}
+
 /// Which step the modal is on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
@@ -427,6 +446,23 @@ enum Act {
     Cancel,
     Disconnect,
     Copy(String),
+    /// Turn the wallet list to this page.
+    WalletPage(usize),
+}
+
+/// How `n` wallets page in `room` of body height: the rows a page lists, and
+/// the number of pages. A list that fits is one page with no pager; one that
+/// does not gives the pager its row and fills the rest.
+fn wallet_paging(n: usize, room: f32) -> (usize, usize) {
+    let fit = |h: f32| {
+        let rows = ((h + ROW_GAP) / (ROW_H + ROW_GAP)).floor().max(1.0) as usize;
+        rows.min(WALLETS_PER_PAGE)
+    };
+    if n <= fit(room) {
+        return (n.max(1), 1);
+    }
+    let per = fit(room - PAGER_H);
+    (per, n.div_ceil(per))
 }
 
 // ============================================================================
@@ -719,6 +755,11 @@ pub struct WalletModal {
     phase_age: f32,
     /// Smoothed hover per row of the current step.
     hover: Vec<f32>,
+    /// The page of the wallet list showing, from 0.
+    wallet_page: usize,
+    /// The most height the card's body can take, as of the last frame drawn:
+    /// what decides how many wallet rows a page lists.
+    body_room: f32,
     /// Jump the step bar and back button rather than easing them, once.
     snap: bool,
     /// Take the next height as given rather than easing to it.
@@ -762,6 +803,8 @@ impl WalletModal {
             page_age: 0.0,
             phase_age: 0.0,
             hover: Vec::new(),
+            wallet_page: 0,
+            body_room: f32::INFINITY,
             snap: true,
             height_fresh: true,
             still: false,
@@ -850,6 +893,7 @@ impl WalletModal {
             self.page_age = 0.0;
             self.phase_age = 0.0;
             self.hover.clear();
+            self.wallet_page = 0;
             if from_closed {
                 self.snap = true;
                 self.height_fresh = true;
@@ -862,8 +906,10 @@ impl WalletModal {
         // An opening draws nothing until the first frame places it.
         if now_open && !matches!(after, nav::State::Opening { .. }) {
             if after.family() != self.family {
-                // A new chain in focus: its phase is news.
+                // A new chain in focus: its phase is news, and its list
+                // starts at the top.
                 self.seen = None;
+                self.wallet_page = 0;
             }
             self.family = after.family();
             if let Some(page) = after.page() {
@@ -938,6 +984,7 @@ impl WalletModal {
             SheetForm::Modal => area.h - 2.0 * MARGIN,
             SheetForm::Bottom => area.h - MARGIN,
         };
+        self.body_room = room - handle - HEADER_H - PAD;
         let target =
             (handle + HEADER_H + self.page_height(p, vm, self.page, body_w) + PAD).min(room);
         if self.height_fresh {
@@ -1096,13 +1143,17 @@ impl WalletModal {
             self.send(Nav::Start(start));
         }
         if let Some(family) = self.flow.state().family() {
-            let phase = vm.phase(family);
-            if self.seen.as_ref() != Some(&phase) {
+            // Compared in place and cloned only when it has changed: the
+            // phase carries the account, and most frames it has not moved.
+            let idle = ChainPhase::Idle;
+            let phase = vm.chain(family).map_or(&idle, |c| &c.phase);
+            if self.seen.as_ref() != Some(phase) {
                 // A settled modal shows the phase it opened on as already
                 // arrived.
                 if !std::mem::take(&mut self.still) {
                     self.phase_age = 0.0;
                 }
+                let phase = phase.clone();
                 self.seen = Some(phase.clone());
                 self.send(Nav::Phase(phase));
             }
@@ -1163,6 +1214,17 @@ impl WalletModal {
                 self.copied = Some((value.clone(), 0.0));
                 Some(WalletModalAction::Copy(value))
             }
+            // Not a step either: the rows arrive again from the side the
+            // reader turned towards.
+            Act::WalletPage(page) => {
+                if page != self.wallet_page {
+                    self.dir = if page > self.wallet_page { 1.0 } else { -1.0 };
+                    self.wallet_page = page;
+                    self.page_age = 0.0;
+                    self.hover.clear();
+                }
+                None
+            }
         }
     }
 
@@ -1189,13 +1251,19 @@ impl WalletModal {
 
     /// The phase the answer step draws: the host's, or — in the frame between
     /// a tap and the host applying it — the wallet just asked, as waiting.
-    fn answer_phase(&self, vm: &WalletModalVm) -> ChainPhase {
-        let phase = self.family.map(|f| vm.phase(f)).unwrap_or_default();
-        match (self.flow.state(), &phase) {
-            (nav::State::Asking { wallet, .. }, ChainPhase::Idle) => ChainPhase::Connecting {
-                wallet: wallet.clone(),
-            },
-            _ => phase,
+    ///
+    /// Borrowed from the view model whenever it can be: this is read several
+    /// times a frame, and the phase carries the account.
+    fn answer_phase<'a>(&self, vm: &'a WalletModalVm) -> Cow<'a, ChainPhase> {
+        let phase = self.family.and_then(|f| vm.chain(f)).map(|c| &c.phase);
+        match (self.flow.state(), phase) {
+            (nav::State::Asking { wallet, .. }, None | Some(ChainPhase::Idle)) => {
+                Cow::Owned(ChainPhase::Connecting {
+                    wallet: wallet.clone(),
+                })
+            }
+            (_, Some(phase)) => Cow::Borrowed(phase),
+            (_, None) => Cow::Owned(ChainPhase::Idle),
         }
     }
 
@@ -1229,12 +1297,16 @@ impl WalletModal {
                     let lines = wrap(p, &self.empty_message(), p.size(TextSize::Md), w, 3);
                     104.0 + lines.len() as f32 * LINE_H
                 } else {
-                    n as f32 * ROW_H + (n as f32 - 1.0) * ROW_GAP
+                    // Every page as tall as a full one, so turning to a short
+                    // last page does not move the card.
+                    let (per, pages) = wallet_paging(n, self.body_room);
+                    let rows = per as f32 * ROW_H + (per as f32 - 1.0) * ROW_GAP;
+                    if pages > 1 { rows + PAGER_H } else { rows }
                 }
             }
             Page::Answer => {
                 let phase = self.answer_phase(vm);
-                if let ChainPhase::Connected { account, .. } = &phase {
+                if let ChainPhase::Connected { account, .. } = &*phase {
                     return account_layout(p, vm, account, w).height;
                 }
                 let copy = answer_copy(vm, self.family, &phase);
@@ -1524,7 +1596,10 @@ impl WalletModal {
         }
 
         let mut act = None;
-        for (i, wallet) in chain.wallets.iter().enumerate() {
+        let (per, pages) = wallet_paging(chain.wallets.len(), self.body_room);
+        let page = self.wallet_page.min(pages - 1);
+        let rows = chain.wallets.iter().skip(page * per).take(per);
+        for (i, wallet) in rows.enumerate() {
             let s = layer.stagger(i);
             let a = layer.alpha * s;
             let rect = Rect::new(
@@ -1588,6 +1663,59 @@ impl WalletModal {
                 act = Some(Act::Wallet(wallet.key.clone()));
             }
         }
+        if pages > 1 {
+            let top = body.y + per as f32 * (ROW_H + ROW_GAP) - ROW_GAP;
+            if let Some(turn) = self.draw_pager(p, body, top, page, pages, layer) {
+                act = Some(turn);
+            }
+        }
+        act
+    }
+
+    /// "‹ 2 / 3 ›" under a paged wallet list, the arrows in the header's
+    /// style: a turn when one is tapped.
+    fn draw_pager(
+        &self,
+        p: &Painter,
+        body: Rect,
+        top: f32,
+        page: usize,
+        pages: usize,
+        layer: Layer,
+    ) -> Option<Act> {
+        let c = p.theme.color;
+        let a = layer.alpha * layer.room(top + PAGER_H);
+        let mid = vec2(body.center().x + layer.dx, top + PAGER_H * 0.5 + 2.0);
+        p.text_centred(
+            &format!("{} / {pages}", page + 1),
+            Rect::new(mid.x - 40.0, mid.y - 8.0, 80.0, 16.0),
+            p.size(TextSize::Md),
+            alpha(c.text_muted, a),
+        );
+        let mut act = None;
+        let turns = [
+            (-1.0, page.checked_sub(1)),
+            (1.0, (page + 1 < pages).then_some(page + 1)),
+        ];
+        for (dir, to) in turns {
+            let at = vec2(mid.x + dir * 64.0, mid.y);
+            let r = Rect::new(at.x - 16.0, at.y - 16.0, 32.0, 32.0);
+            let hit = p.interact(r, layer.live && to.is_some() && a > 0.9);
+            if hit.hover || hit.pressed {
+                draw_circle(at.x, at.y, 16.0, alpha(c.bg_highlight, 0.8 * a));
+            }
+            // An end the list cannot turn past stays, dimmed, so the pager
+            // does not shift.
+            let ink = if to.is_some() {
+                alpha(c.text_primary, a)
+            } else {
+                alpha(c.text_muted, 0.35 * a)
+            };
+            chevron(at, 6.0, dir, ink);
+            if hit.clicked {
+                act = to.map(Act::WalletPage);
+            }
+        }
         act
     }
 
@@ -1603,8 +1731,8 @@ impl WalletModal {
         let chain = vm.chain(family)?;
         let tint = chain_tint(&p.theme, family);
         let phase = self.answer_phase(vm);
-        if let ChainPhase::Connected { wallet, account } = &phase {
-            return self.draw_account(p, vm, body, layer, wallet, account);
+        if let ChainPhase::Connected { .. } = &*phase {
+            return self.draw_account(p, vm, body, layer, &phase);
         }
         let copy = answer_copy(vm, Some(family), &phase);
         let key = phase.wallet().unwrap_or("");
@@ -1614,7 +1742,7 @@ impl WalletModal {
         let a = layer.alpha;
 
         // A failure shakes once, the way a wrong answer does in a game.
-        let shake = if matches!(phase, ChainPhase::Failed { .. }) {
+        let shake = if matches!(*phase, ChainPhase::Failed { .. }) {
             let k = (1.0 - age / 0.42).max(0.0);
             (age * 46.0).sin() * 7.0 * k * k
         } else {
@@ -1668,16 +1796,21 @@ impl WalletModal {
     /// The connected account, as its chain describes it: who it is, everything
     /// the host wrote about it with a Copy beside each value worth taking
     /// elsewhere, and the way out — Disconnect — in plain sight.
-    #[allow(clippy::too_many_arguments)]
     fn draw_account(
         &mut self,
         p: &Painter,
         vm: &WalletModalVm,
         body: Rect,
         layer: Layer,
-        key: &str,
-        account: &Account,
+        phase: &ChainPhase,
     ) -> Option<Act> {
+        let ChainPhase::Connected {
+            wallet: key,
+            account,
+        } = phase
+        else {
+            return None;
+        };
         let c = p.theme.color;
         let family = self.family?;
         let chain = vm.chain(family)?;
@@ -1726,11 +1859,7 @@ impl WalletModal {
         let hero = vec2(x + ACCOUNT_RING + 3.0, top + IDENTITY_H * 0.5);
         let wallet = chain.wallet(key);
         let name = chain.wallet_name(key);
-        let phase = ChainPhase::Connected {
-            wallet: key.to_string(),
-            account: account.clone(),
-        };
-        self.draw_hero(p, &phase, hero, ACCOUNT_RING, wallet, name, tint, a);
+        self.draw_hero(p, phase, hero, ACCOUNT_RING, wallet, name, tint, a);
         let text_x = x + ACCOUNT_RING * 2.0 + 18.0;
         let text_w = body.x + body.w - text_x;
         let title_mid = top + IDENTITY_H * 0.5 - 10.0;
@@ -2812,6 +2941,72 @@ mod tests {
         }
     }
 
+    /// A Cardano chain with `n` wallets, beside EVM.
+    fn many_wallets(n: usize) -> WalletModalVm {
+        let wallets = (0..n)
+            .map(|i| WalletOption::new(format!("w{i}"), format!("Wallet {i}")))
+            .collect();
+        WalletModalVm::new(vec![
+            ChainOption::ready(ChainFamily::Cardano, wallets),
+            evm(),
+        ])
+    }
+
+    #[test]
+    fn a_list_that_fits_is_one_page() {
+        assert_eq!(wallet_paging(4, f32::INFINITY), (4, 1));
+        assert_eq!(wallet_paging(WALLETS_PER_PAGE, f32::INFINITY), (6, 1));
+    }
+
+    #[test]
+    fn a_long_list_pages_a_full_page_at_a_time() {
+        assert_eq!(wallet_paging(7, f32::INFINITY), (6, 2));
+        assert_eq!(wallet_paging(12, f32::INFINITY), (6, 2));
+        assert_eq!(wallet_paging(13, f32::INFINITY), (6, 3));
+    }
+
+    /// A short card gives the pager its row: four rows' room holds three
+    /// rows and the pager.
+    #[test]
+    fn a_short_card_pages_sooner() {
+        let four_rows = 4.0 * ROW_H + 3.0 * ROW_GAP;
+        assert_eq!(wallet_paging(4, four_rows), (4, 1));
+        assert_eq!(wallet_paging(5, four_rows), (3, 2));
+    }
+
+    #[test]
+    fn turning_the_page_and_changing_chain() {
+        let vm = many_wallets(12);
+        let mut modal = WalletModal::new();
+        modal.open();
+        modal.step(&vm, DT);
+        modal.apply(&vm, Act::Chain(ChainFamily::Cardano));
+        assert_eq!(modal.apply(&vm, Act::WalletPage(1)), None);
+        assert_eq!(modal.wallet_page, 1);
+        assert_eq!(modal.page(), Page::Wallets, "a turn is not a step");
+        // Back to the chains and into another: its list starts at the top.
+        modal.apply(&vm, Act::Back);
+        modal.apply(&vm, Act::Chain(ChainFamily::Evm));
+        assert_eq!(modal.wallet_page, 0);
+    }
+
+    /// A wallet on a later page connects by key like any other: a pad or a
+    /// script never needs to turn to it.
+    #[test]
+    fn a_wallet_on_a_later_page_can_be_chosen() {
+        let vm = many_wallets(12);
+        let mut modal = WalletModal::new();
+        modal.open_on(ChainFamily::Cardano);
+        modal.step(&vm, DT);
+        assert_eq!(
+            modal.choose_wallet("w11"),
+            Some(WalletModalAction::Connect {
+                family: ChainFamily::Cardano,
+                wallet: "w11".into()
+            })
+        );
+    }
+
     #[test]
     fn a_closed_modal_is_not_visible_and_opening_rises_in() {
         let vm = roadmap();
@@ -2899,7 +3094,7 @@ mod tests {
         run(&mut modal, &vm, 0.5);
         assert_eq!(modal.page(), Page::Answer);
         assert_eq!(
-            modal.answer_phase(&vm),
+            *modal.answer_phase(&vm),
             ChainPhase::Connecting {
                 wallet: "eternl".into()
             }

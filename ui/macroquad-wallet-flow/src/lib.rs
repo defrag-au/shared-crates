@@ -36,25 +36,29 @@
 //!
 //! ## The modal
 //!
-//! [`CardanoModalHost`] puts this same flow behind `macroquad_gamekit`'s
-//! one-button `WalletModal`, with the wallets' own icons. It sits beside
-//! [`WalletFlow::draw`] rather than replacing it.
+//! [`WalletConnector`] is the one-button connector a game holds: every chain
+//! it connects, behind `macroquad_gamekit`'s `WalletModal`. Each chain is a
+//! [`ChainHost`] — [`CardanoHost`] puts this same flow behind it, with the
+//! wallets' own icons; [`EvmHost`] does the same for EIP-6963 wallets. It
+//! sits beside [`WalletFlow::draw`] rather than replacing it.
 //!
 //! Keep it free of game logic and of I/O beyond the wallet bridge. The
 //! [`Bridge`] trait is the seam a soak drives with a fake wallet, so every
 //! stage is testable without a browser.
 
-pub mod evm_modal;
+pub mod cardano;
+pub mod connector;
+pub mod evm;
 pub mod icons;
-pub mod modal;
 
-pub use evm_modal::{
-    AddChain, ChainTarget, EvmBridge, EvmModalHost, MiniquadEvmBridge, NativeCurrency, evm_account,
+pub use cardano::{CardanoHost, cardano_account};
+pub use connector::{ChainHost, WalletConnector, copy_text};
+pub use evm::{
+    AddChain, ChainTarget, EvmBridge, EvmHost, MiniquadEvmBridge, NativeCurrency, evm_account,
     robinhood_chain,
 };
 pub use macroquad_widgets::WalletState;
 use macroquad_widgets::{Painter, WalletAction, WalletConnectVm, WalletItem, wallet_connect};
-pub use modal::{CardanoModalHost, cardano_account, copy_text};
 use wallet_miniquad::{self as wallet, FailureKind, PollResultDetailed, Provider, ReqId};
 
 /// What the flow needs from a wallet bridge.
@@ -258,6 +262,9 @@ pub struct WalletFlow<B: Bridge = MiniquadBridge> {
     /// The key of the connect attempt in flight, so a `Ready` knows what to
     /// remember and a failed `enable()` knows what to forget.
     attempt: Option<String>,
+    /// Bumped whenever the stage is written, so a host can tell "nothing
+    /// changed" without comparing the stage — which carries the addresses.
+    revision: u64,
 }
 
 impl WalletFlow<MiniquadBridge> {
@@ -294,9 +301,16 @@ impl<B: Bridge> WalletFlow<B> {
             expected_network: None,
             notice: None,
             attempt: None,
+            revision: 0,
         };
         flow.auto_connect();
         flow
+    }
+
+    /// Changes whenever the stage is written. Equal across two reads means
+    /// the stage has not moved between them.
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     /// Connect the wallet this host last used, if it is still installed.
@@ -523,6 +537,7 @@ impl<B: Bridge> WalletFlow<B> {
     /// drift, so they are written in one move.
     fn set_stage(&mut self, stage: Stage) {
         self.stage = stage;
+        self.revision += 1;
         self.vm = WalletConnectVm {
             state: state_for(&self.providers, &self.stage),
         };

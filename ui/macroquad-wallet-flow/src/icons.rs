@@ -53,17 +53,20 @@ impl IconCache {
 
     /// What polling `req` produced: its pixels when it answered, `None` when
     /// it failed. `result` is the poll, `take` fetches the pixels of an `Ok`.
+    /// `true` when pixels arrived — the wallet's row now has a picture to
+    /// show, so its chain's listing needs writing again.
     pub fn settle(
         &mut self,
         req: ReqId,
         result: PollResultDetailed,
         take: impl FnOnce() -> Option<Vec<u8>>,
-    ) {
+    ) -> bool {
         let next = match result {
-            PollResultDetailed::Pending => return,
+            PollResultDetailed::Pending => return false,
             PollResultDetailed::Ok { .. } => take().map_or(Icon::Missing, Icon::Pixels),
             PollResultDetailed::Err { .. } => Icon::Missing,
         };
+        let arrived = matches!(next, Icon::Pixels(_));
         if let Some((_, icon)) = self
             .entries
             .iter_mut()
@@ -71,6 +74,22 @@ impl IconCache {
         {
             *icon = next;
         }
+        arrived
+    }
+
+    /// Settle every waiting request. `poll` is the host's bridge: it polls a
+    /// request and, when that answered, takes its pixels. `true` when any
+    /// pixels arrived.
+    pub fn poll_all(
+        &mut self,
+        mut poll: impl FnMut(ReqId) -> (PollResultDetailed, Option<Vec<u8>>),
+    ) -> bool {
+        let mut arrived = false;
+        for req in self.waiting() {
+            let (result, pixels) = poll(req);
+            arrived |= self.settle(req, result, || pixels);
+        }
+        arrived
     }
 
     /// `key`'s texture, once its pixels have arrived. Makes the texture the

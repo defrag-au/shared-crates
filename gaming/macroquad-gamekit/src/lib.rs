@@ -62,6 +62,7 @@ pub mod pixel;
 pub mod plan;
 pub mod pointer;
 pub mod preload;
+pub mod profile;
 pub mod sequence;
 pub mod shape;
 pub mod sprite;
@@ -74,6 +75,7 @@ pub mod text;
 pub mod thumbs;
 pub mod tween;
 pub mod viewer;
+pub mod wall;
 pub mod wallet_connection;
 pub mod wallet_modal;
 pub mod web;
@@ -119,6 +121,7 @@ pub use text::{
 };
 pub use thumbs::{Finger, StickShown, ThumbFrame, Thumbs};
 pub use tween::{Animated, Lerp};
+pub use wall::{Wall, WallStyle};
 pub use wallet_connection::{Connection, ConnectionEvent};
 pub use wallet_modal::{
     Account, AccountDetail, ChainOption, ChainPhase, DetailKind, Support, WalletModal,

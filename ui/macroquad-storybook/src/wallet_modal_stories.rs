@@ -1,11 +1,12 @@
-//! Stories for `macroquad_gamekit::wallet_modal` — the one-button wallet
-//! connector, its modal flow, and every state the flow can be in.
+//! Stories for the one-button wallet connector — `macroquad_wallet_flow`'s
+//! `WalletConnector` over `macroquad_gamekit::wallet_modal` — and every state
+//! the flow can be in.
 //!
-//! The storybook plays the host. [`FakeHost`] applies the modal's actions the
-//! way a real bridge would — the wallet is asked, it answers a moment later —
-//! and writes the outcome back as the chain's phase. Which answer comes back is
-//! decided by the wallet, so every outcome is one click away in the live
-//! stories:
+//! Every story but the button gallery holds a real `WalletConnector`, exactly
+//! as a game would. What changes is the hosts behind it. [`FakeChain`] is a
+//! `ChainHost` with no bridge: it is asked, and answers a moment later through
+//! the same `Connection` a real host feeds. Which answer comes back is decided
+//! by the wallet, so every outcome is one click away in the live stories:
 //!
 //! | wallet | answers |
 //! |---|---|
@@ -19,12 +20,14 @@
 //! host's own `cardano_account`, with the estate's fixture handle; and the
 //! synthetic `0x1f…` EVM address the egui stories use.
 //!
-//! The "real wallets" stories are the exception: they use
-//! `macroquad_wallet_flow::CardanoModalHost` over the real CIP-30 bridge and
-//! `EvmModalHost` over the real EIP-6963 one, so in the web storybook they list
-//! this browser's extensions on both chains with their own icons and connect
-//! them for real, both at once if you like. Natively there is no browser, and
-//! they say so.
+//! The "real wallets" stories are the exception: their connector holds the
+//! real `CardanoHost` over the CIP-30 bridge and the real `EvmHost` over the
+//! EIP-6963 one, so in the web storybook they list this browser's extensions
+//! on both chains with their own icons and connect them for real, both at once
+//! if you like. Natively there is no browser, and they say so.
+//!
+//! The "stress" story lists every chain family as connectable, each with a
+//! dozen made-up wallets: the most a connector will be asked to draw.
 //!
 //! The step stories open the modal settled at one state, so a capture at the
 //! default moment is that state. The walkthrough scripts a whole connect on a
@@ -43,16 +46,19 @@
 //! | 6.48 | the card leaving |
 //! | 7.5 | the button, connected |
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use macroquad::prelude::*;
 use macroquad_gamekit::paint::{Gradient, fill_gradient};
-use macroquad_gamekit::wallet_modal::Account;
+use macroquad_gamekit::wallet_connection::{Connection, ConnectionEvent};
 use macroquad_gamekit::wallet_modal::{
-    ChainFamily, ChainOption, ChainPhase, WalletModal, WalletModalAction, WalletModalVm,
-    WalletOption, wallet_button,
+    Account, ChainFamily, ChainOption, WalletModalAction, WalletOption, wallet_button,
 };
 use macroquad_gamekit::{fill_rounded, stroke_rounded};
 use macroquad_wallet_flow::{
-    CardanoModalHost, EvmModalHost, Stage, WalletFlow, cardano_account, copy_text, robinhood_chain,
+    CardanoHost, ChainHost, EvmHost, Stage, WalletConnector, WalletFlow, cardano_account,
+    robinhood_chain,
 };
 use macroquad_widgets::{Painter, TextSize};
 
@@ -62,26 +68,29 @@ const ANSWER_SECS: f32 = 1.6;
 const LOOP_SECS: f32 = 8.0;
 /// A phone's width, in points.
 const PHONE_W: f32 = 390.0;
+/// Wallets per chain in the stress story.
+const STRESS_WALLETS: usize = 12;
 
-/// A synthetic EVM address, as the egui wallet fixtures use: a real one would
-/// be a real wallet's.
-fn evm_address() -> String {
-    format!("0x{}", "1f".repeat(20))
-}
+const INTRO: &str = "Connecting shares your address. Nothing is signed or sent.";
+const TYPHON_FAILS: &str =
+    "Typhon did not answer. Check the extension is unlocked and on mainnet, then try again.";
 
 /// Which story this is.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ModalView {
     /// The button in each of its states.
     Buttons,
-    /// The button and the whole flow, live, against the fake host.
+    /// The button and the whole flow, live, against fake chains.
     Live,
     /// The flow opened at one state.
     Step(Preset),
     /// A connect scripted on a loop.
     Walkthrough,
-    /// The extensions this browser has, through the real CIP-30 bridge.
+    /// The extensions this browser has, through the real bridges.
     Real,
+    /// Every chain family connectable, a dozen wallets each, opened on the
+    /// chain step — or, given one, on that chain's wallets.
+    Stress(Option<ChainFamily>),
 }
 
 /// The state a step story opens at.
@@ -121,61 +130,19 @@ const SCRIPT: [(f32, Cue); 4] = [
     (6.4, Cue::Done),
 ];
 
-/// The roadmap as a host would list it today: two chains with bridges, four
-/// on the way.
-fn roadmap(icon: Option<Texture2D>) -> WalletModalVm {
-    let mut eternl = WalletOption::new("eternl", "Eternl");
-    if let Some(icon) = icon {
-        eternl = eternl.with_icon(icon);
-    }
-    WalletModalVm::new(vec![
-        ChainOption::ready(
-            ChainFamily::Cardano,
-            vec![
-                eternl,
-                WalletOption::new("lace", "Lace"),
-                WalletOption::new("vespr", "Vespr"),
-                WalletOption::new("typhoncip30", "Typhon"),
-            ],
-        ),
-        ChainOption::ready(
-            ChainFamily::Evm,
-            vec![
-                WalletOption::new("io.rabby", "Rabby"),
-                WalletOption::new("io.metamask", "MetaMask"),
-            ],
-        ),
-        ChainOption::soon(ChainFamily::Solana),
-        ChainOption::soon(ChainFamily::Midnight),
-        ChainOption::soon(ChainFamily::Tezos),
-        ChainOption::soon(ChainFamily::Xrpl),
-    ])
-    .with_intro("Connecting shares your address. Nothing is signed or sent.")
-}
-
-/// The roadmap with the chains this browser can actually connect — Cardano and
-/// EVM, each filled in every frame from its real host — and the rest coming.
-fn real_roadmap() -> WalletModalVm {
-    WalletModalVm::new(vec![
-        ChainOption::ready(ChainFamily::Cardano, Vec::new()),
-        ChainOption::ready(ChainFamily::Evm, Vec::new()),
-        ChainOption::soon(ChainFamily::Solana),
-        ChainOption::soon(ChainFamily::Midnight),
-        ChainOption::soon(ChainFamily::Tezos),
-        ChainOption::soon(ChainFamily::Xrpl),
-    ])
-    .with_intro("Your installed wallets. Connecting shares your address only.")
-}
-
-/// The real hosts, one per chain with a bridge: each connection its own, so
-/// both chains can be connected at once.
-struct RealHosts {
-    cardano: CardanoModalHost,
-    evm: EvmModalHost,
-}
+/// Story seconds, shared with the fake chains so they answer on the story's
+/// clock — `ChainHost::poll` has no `dt`, and a capture at `--at` must see the
+/// same frame every time.
+type Clock = Rc<Cell<f32>>;
 
 /// The estate's fixture handle (`egui-widgets`' wallet fixtures use it too).
 const HANDLE: &str = "$boef";
+
+/// A synthetic EVM address, as the egui wallet fixtures use: a real one would
+/// be a real wallet's.
+fn evm_address() -> String {
+    format!("0x{}", "1f".repeat(20))
+}
 
 /// A synthetic mainnet base address (header 0x01 over two made-up key
 /// hashes), the one the flow's tests use — not a real wallet's.
@@ -204,193 +171,340 @@ fn evm_fixture(name: Option<&str>) -> Account {
     account.copyable("Address", &address)
 }
 
-fn connected(family: ChainFamily, wallet: &str) -> ChainPhase {
-    ChainPhase::Connected {
-        wallet: wallet.to_string(),
-        account: match family {
-            ChainFamily::Evm => evm_fixture(None),
-            _ => cardano_fixture(Some(HANDLE)),
-        },
+/// The account a fake connect on `family` answers with. The chains with no
+/// bridge yet have no address format here either, so theirs says what it is.
+fn fixture(family: ChainFamily) -> Account {
+    match family {
+        ChainFamily::Cardano => cardano_fixture(Some(HANDLE)),
+        ChainFamily::Evm => evm_fixture(None),
+        other => {
+            let address = format!("synthetic {other:?} address");
+            Account::new(&address).copyable("Address", &address)
+        }
     }
 }
 
-/// Answers the modal's actions as a bridge would, a moment later.
-#[derive(Default)]
-struct FakeHost {
-    /// The wallet asked, on which chain, and the seconds until it answers.
-    pending: Option<(ChainFamily, String, f32)>,
+/// A chain with no bridge: asked, it answers [`ANSWER_SECS`] later on the
+/// story's clock, through the same `Connection` a real host feeds.
+struct FakeChain {
+    family: ChainFamily,
+    wallets: Vec<WalletOption>,
+    connection: Connection,
+    clock: Clock,
+    /// The wallet asked, and when it answers.
+    pending: Option<(String, f32)>,
+    dirty: bool,
 }
 
-impl FakeHost {
-    fn apply(&mut self, vm: &mut WalletModalVm, action: &WalletModalAction) {
-        match action {
-            WalletModalAction::Connect { family, wallet } => {
-                vm.set_phase(
-                    *family,
-                    ChainPhase::Connecting {
-                        wallet: wallet.clone(),
-                    },
-                );
-                self.pending = Some((*family, wallet.clone(), ANSWER_SECS));
-            }
-            WalletModalAction::Cancel(family) | WalletModalAction::Disconnect(family) => {
-                if self.pending.as_ref().is_some_and(|(f, _, _)| f == family) {
-                    self.pending = None;
-                }
-                vm.set_phase(*family, ChainPhase::Idle);
-            }
-            // A real copy, so the story can be pasted from.
-            WalletModalAction::Copy(text) => copy_text(text),
+impl FakeChain {
+    fn new(family: ChainFamily, wallets: Vec<WalletOption>, clock: &Clock) -> Self {
+        Self {
+            family,
+            wallets,
+            connection: Connection::new(),
+            clock: clock.clone(),
+            pending: None,
+            dirty: false,
         }
     }
 
-    fn tick(&mut self, vm: &mut WalletModalVm, dt: f32) {
-        let Some((family, wallet, left)) = &mut self.pending else {
-            return;
-        };
-        *left -= dt;
-        if *left > 0.0 {
-            return;
+    /// Cardano's wallets, Eternl with `icon` when there is one.
+    fn cardano(clock: &Clock, icon: Option<Texture2D>) -> Self {
+        let mut eternl = WalletOption::new("eternl", "Eternl");
+        if let Some(icon) = icon {
+            eternl = eternl.with_icon(icon);
         }
-        let phase = match wallet.as_str() {
-            "vespr" => ChainPhase::Declined {
-                wallet: wallet.clone(),
-            },
-            "typhoncip30" => ChainPhase::Failed {
-                wallet: wallet.clone(),
-                message: "Typhon did not answer. Check the extension is unlocked and on \
-                          mainnet, then try again."
-                    .to_string(),
-            },
-            _ => connected(*family, wallet),
-        };
-        vm.set_phase(*family, phase);
-        self.pending = None;
+        let wallets = vec![
+            eternl,
+            WalletOption::new("lace", "Lace"),
+            WalletOption::new("vespr", "Vespr"),
+            WalletOption::new("typhoncip30", "Typhon"),
+        ];
+        Self::new(ChainFamily::Cardano, wallets, clock)
     }
+
+    fn evm(clock: &Clock) -> Self {
+        let wallets = vec![
+            WalletOption::new("io.rabby", "Rabby"),
+            WalletOption::new("io.metamask", "MetaMask"),
+        ];
+        Self::new(ChainFamily::Evm, wallets, clock)
+    }
+
+    /// Start from what `events` leave behind: a preset's state.
+    fn after(mut self, events: &[ConnectionEvent]) -> Self {
+        for event in events {
+            self.connection.handle(event);
+        }
+        self
+    }
+
+    /// Start connected to `wallet` as `account`.
+    fn connected(self, wallet: &str, account: Account) -> Self {
+        self.after(&[
+            ConnectionEvent::Ask(wallet.into()),
+            ConnectionEvent::Answered {
+                wallet: wallet.into(),
+                account,
+            },
+        ])
+    }
+
+    /// What `wallet` answers with: see the table in the module docs.
+    fn answer(&self, wallet: String) -> ConnectionEvent {
+        match wallet.as_str() {
+            "vespr" => ConnectionEvent::Refused(wallet),
+            "typhoncip30" => ConnectionEvent::Faulted {
+                wallet,
+                message: TYPHON_FAILS.into(),
+            },
+            _ => ConnectionEvent::Answered {
+                wallet,
+                account: fixture(self.family),
+            },
+        }
+    }
+}
+
+impl ChainHost for FakeChain {
+    fn family(&self) -> ChainFamily {
+        self.family
+    }
+
+    fn poll(&mut self) -> bool {
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|(_, due)| self.clock.get() >= *due)
+            && let Some((wallet, _)) = self.pending.take()
+        {
+            let answer = self.answer(wallet);
+            self.dirty |= self.connection.handle(&answer);
+        }
+        std::mem::take(&mut self.dirty)
+    }
+
+    fn option(&mut self) -> ChainOption {
+        ChainOption::ready(self.family, self.wallets.clone()).with_phase(self.connection.phase())
+    }
+
+    fn apply(&mut self, action: &WalletModalAction) {
+        let event = match action {
+            WalletModalAction::Connect { wallet, .. } => {
+                self.pending = Some((wallet.clone(), self.clock.get() + ANSWER_SECS));
+                ConnectionEvent::Ask(wallet.clone())
+            }
+            WalletModalAction::Cancel(_) | WalletModalAction::Disconnect(_) => {
+                self.pending = None;
+                ConnectionEvent::Release
+            }
+            // The connector sends copies to the clipboard, never to a host.
+            WalletModalAction::Copy(_) => return,
+        };
+        self.dirty |= self.connection.handle(&event);
+    }
+
+    fn connection(&self) -> &Connection {
+        &self.connection
+    }
+}
+
+/// The roadmap as a site would register it today: two chains with bridges,
+/// four on the way.
+fn roadmap(cardano: FakeChain, evm: FakeChain) -> WalletConnector {
+    WalletConnector::new()
+        .host(cardano)
+        .host(evm)
+        .coming(ChainFamily::Solana)
+        .coming(ChainFamily::Midnight)
+        .coming(ChainFamily::Tezos)
+        .coming(ChainFamily::Xrpl)
+        .intro(INTRO)
+}
+
+/// The roadmap with the chains this browser can actually connect, through
+/// the real bridges.
+fn real_roadmap() -> WalletConnector {
+    WalletConnector::new()
+        .host(CardanoHost::new(WalletFlow::new()))
+        // Robinhood Chain, the EVM chain cnft.dev-workers onboards
+        // collections on: a wallet on any other is asked to switch, and
+        // offered the chain to add.
+        .host(EvmHost::new().expect_chain(robinhood_chain()))
+        .coming(ChainFamily::Solana)
+        .coming(ChainFamily::Midnight)
+        .coming(ChainFamily::Tezos)
+        .coming(ChainFamily::Xrpl)
+        .intro("Your installed wallets. Connecting shares your address only.")
+}
+
+/// Every family connectable, [`STRESS_WALLETS`] made-up wallets each.
+fn stress(clock: &Clock) -> WalletConnector {
+    ChainFamily::ALL
+        .into_iter()
+        .fold(WalletConnector::new().intro(INTRO), |connector, family| {
+            let wallets = (1..=STRESS_WALLETS)
+                .map(|n| WalletOption::new(format!("test-{n}"), format!("Test wallet {n}")))
+                .collect();
+            connector.host(FakeChain::new(family, wallets, clock))
+        })
+}
+
+/// The connector a step story opens at, settled.
+fn preset(preset: Preset, clock: &Clock, icon: Option<Texture2D>) -> WalletConnector {
+    use ChainFamily::{Cardano, Evm};
+    let cardano = FakeChain::cardano(clock, icon);
+    let evm = FakeChain::evm(clock);
+    let mut connector = match preset {
+        Preset::NoWallets => {
+            let mut cardano = cardano;
+            cardano.wallets.clear();
+            roadmap(cardano, evm)
+        }
+        // Asked, and never answering: the wait, held.
+        Preset::Connecting => roadmap(cardano.after(&[ConnectionEvent::Ask("eternl".into())]), evm),
+        Preset::Connected => roadmap(
+            cardano.connected("eternl", cardano_fixture(Some(HANDLE))),
+            evm,
+        ),
+        Preset::ConnectedNoHandle => {
+            roadmap(cardano.connected("eternl", cardano_fixture(None)), evm)
+        }
+        Preset::EvmNamed => roadmap(
+            cardano,
+            evm.connected("io.rabby", evm_fixture(Some("example.eth"))),
+        ),
+        Preset::Declined => roadmap(
+            cardano.after(&[
+                ConnectionEvent::Ask("vespr".into()),
+                ConnectionEvent::Refused("vespr".into()),
+            ]),
+            evm,
+        ),
+        Preset::Failed => roadmap(
+            cardano.after(&[
+                ConnectionEvent::Ask("typhoncip30".into()),
+                ConnectionEvent::Faulted {
+                    wallet: "typhoncip30".into(),
+                    message: TYPHON_FAILS.into(),
+                },
+            ]),
+            evm,
+        ),
+        Preset::TwoConnected => roadmap(
+            cardano.connected("eternl", cardano_fixture(Some(HANDLE))),
+            evm.connected("io.rabby", evm_fixture(None)),
+        ),
+        Preset::Chains | Preset::Wallets | Preset::OnlyEvm => roadmap(cardano, evm),
+    };
+    match preset {
+        Preset::Wallets | Preset::NoWallets | Preset::Connecting => connector.open_on(Cardano),
+        Preset::OnlyEvm => connector.open_on(Evm),
+        Preset::Declined | Preset::Failed => {
+            connector.open_on(Cardano);
+            // A refusal is an answer to a wallet just asked, so the flow is
+            // on that answer rather than on the list. Through the modal, not
+            // the connector: the chain already holds the answer, and asking
+            // again would start a new connect.
+            let key = if preset == Preset::Declined {
+                "vespr"
+            } else {
+                "typhoncip30"
+            };
+            let _ = connector.modal_mut().choose_wallet(key);
+        }
+        Preset::Chains
+        | Preset::Connected
+        | Preset::ConnectedNoHandle
+        | Preset::EvmNamed
+        | Preset::TwoConnected => connector.open(),
+    }
+    connector.settle();
+    connector
+}
+
+/// The button gallery's rows: each a connector left in one state.
+fn gallery(clock: &Clock) -> Vec<(&'static str, WalletConnector)> {
+    let cardano = || FakeChain::cardano(clock, None);
+    let evm = || FakeChain::evm(clock);
+    let eternl = || cardano().connected("eternl", cardano_fixture(Some(HANDLE)));
+    let rabby = || evm().connected("io.rabby", evm_fixture(None));
+    vec![
+        ("nothing connected", roadmap(cardano(), evm())),
+        (
+            "connecting",
+            roadmap(
+                cardano().after(&[ConnectionEvent::Ask("eternl".into())]),
+                evm(),
+            ),
+        ),
+        ("Cardano connected", roadmap(eternl(), evm())),
+        ("EVM connected", roadmap(cardano(), rabby())),
+        ("two chains connected", roadmap(eternl(), rabby())),
+    ]
 }
 
 pub struct WalletModalStory {
     view: ModalView,
     /// Laid out at a phone's width, where the card is a bottom sheet.
     phone: bool,
-    modal: WalletModal,
-    vm: WalletModalVm,
     icon: Option<Texture2D>,
-    host: FakeHost,
-    /// Story seconds, for the walkthrough's script.
+    /// Story seconds, never reset: what the fake chains answer by.
+    clock: Clock,
+    /// The connector, as a game holds one.
+    connector: WalletConnector,
+    /// The button gallery's connectors, one per state.
+    gallery: Vec<(&'static str, WalletConnector)>,
+    /// Seconds into the walkthrough's loop.
     t: f32,
     /// The next cue the walkthrough plays.
     cue: usize,
     /// The last thing the modal or a button reported.
     last: String,
-    /// The real hosts, made the first time a real story draws: making them
-    /// lists the extensions and reconnects the remembered wallets, which no
-    /// other story should set off at startup.
-    real: Option<RealHosts>,
+    /// Whether the real connector has been made. It is made the first time a
+    /// real story draws: making it lists the extensions and reconnects the
+    /// remembered wallets, which no other story should set off at startup.
+    real: bool,
 }
 
 impl WalletModalStory {
     pub fn new(view: ModalView, phone: bool, icon: Option<Texture2D>) -> Self {
-        let mut story = Self {
+        let clock = Clock::default();
+        let connector = match view {
+            ModalView::Step(at) => preset(at, &clock, icon.clone()),
+            ModalView::Stress(on) => {
+                let mut connector = stress(&clock);
+                match on {
+                    Some(family) => connector.open_on(family),
+                    None => connector.open(),
+                }
+                connector.settle();
+                connector
+            }
+            // Made on first draw, not here.
+            ModalView::Real | ModalView::Buttons => WalletConnector::new(),
+            ModalView::Live | ModalView::Walkthrough => roadmap(
+                FakeChain::cardano(&clock, icon.clone()),
+                FakeChain::evm(&clock),
+            ),
+        };
+        let gallery = if view == ModalView::Buttons {
+            gallery(&clock)
+        } else {
+            Vec::new()
+        };
+        Self {
             view,
             phone,
-            modal: WalletModal::new(),
-            vm: if view == ModalView::Real {
-                real_roadmap()
-            } else {
-                roadmap(icon.clone())
-            },
             icon,
-            host: FakeHost::default(),
+            clock,
+            connector,
+            gallery,
             t: 0.0,
             cue: 0,
             last: String::new(),
-            real: None,
-        };
-        if let ModalView::Step(preset) = view {
-            story.preset(preset);
+            real: false,
         }
-        story
-    }
-
-    fn preset(&mut self, preset: Preset) {
-        use ChainFamily::{Cardano, Evm};
-        let vm = &mut self.vm;
-        let mut modal = WalletModal::new();
-        match preset {
-            Preset::Chains => modal.open(),
-            Preset::Wallets => modal.open_on(Cardano),
-            Preset::NoWallets => {
-                if let Some(chain) = vm.chain_mut(Cardano) {
-                    chain.wallets.clear();
-                }
-                modal.open_on(Cardano);
-            }
-            Preset::Connecting => {
-                vm.set_phase(
-                    Cardano,
-                    ChainPhase::Connecting {
-                        wallet: "eternl".into(),
-                    },
-                );
-                modal.open_on(Cardano);
-            }
-            Preset::Connected => {
-                vm.set_phase(Cardano, connected(Cardano, "eternl"));
-                modal.open();
-            }
-            Preset::ConnectedNoHandle => {
-                vm.set_phase(
-                    Cardano,
-                    ChainPhase::Connected {
-                        wallet: "eternl".into(),
-                        account: cardano_fixture(None),
-                    },
-                );
-                modal.open();
-            }
-            Preset::EvmNamed => {
-                vm.set_phase(
-                    Evm,
-                    ChainPhase::Connected {
-                        wallet: "io.rabby".into(),
-                        account: evm_fixture(Some("example.eth")),
-                    },
-                );
-                modal.open();
-            }
-            Preset::Declined | Preset::Failed => {
-                let phase = if preset == Preset::Declined {
-                    ChainPhase::Declined {
-                        wallet: "vespr".into(),
-                    }
-                } else {
-                    ChainPhase::Failed {
-                        wallet: "typhoncip30".into(),
-                        message: "Typhon did not answer. Check the extension is unlocked and \
-                                  on mainnet, then try again."
-                            .into(),
-                    }
-                };
-                vm.set_phase(Cardano, phase);
-                modal.open_on(Cardano);
-                // A refusal is an answer to a wallet just asked, so the flow
-                // is on that answer rather than on the list.
-                let key = if preset == Preset::Declined {
-                    "vespr"
-                } else {
-                    "typhoncip30"
-                };
-                modal.choose_wallet(key);
-            }
-            Preset::OnlyEvm => modal.open_on(Evm),
-            Preset::TwoConnected => {
-                vm.set_phase(Cardano, connected(Cardano, "eternl"));
-                vm.set_phase(Evm, connected(Evm, "io.rabby"));
-                modal.open();
-            }
-        }
-        self.modal = modal.settled();
     }
 
     pub fn draw(&mut self, p: &Painter, area: Rect, dt: f32) {
@@ -416,27 +530,20 @@ impl WalletModalStory {
     }
 
     fn flow(&mut self, p: &Painter, stage: Rect, dt: f32) {
+        self.clock.set(self.clock.get() + dt);
         if self.view == ModalView::Walkthrough {
             self.play(dt);
         }
-        self.host.tick(&mut self.vm, dt);
         if self.view == ModalView::Real {
-            let real = self.real.get_or_insert_with(|| RealHosts {
-                cardano: CardanoModalHost::new(WalletFlow::new()),
-                // Robinhood Chain, the EVM chain cnft.dev-workers onboards
-                // collections on: a wallet on any other is asked to switch,
-                // and offered the chain to add.
-                evm: EvmModalHost::new().expect_chain(robinhood_chain()),
-            });
-            real.cardano.poll();
-            real.evm.poll();
-            if let Some(cardano) = self.vm.chain_mut(ChainFamily::Cardano) {
-                *cardano = real.cardano.chain();
+            if !self.real {
+                self.connector = real_roadmap();
+                self.real = true;
             }
-            if let Some(evm) = self.vm.chain_mut(ChainFamily::Evm) {
-                *evm = real.evm.chain();
-            }
-            if matches!(real.cardano.flow().stage(), Stage::Unavailable) {
+            let unavailable = self
+                .connector
+                .host_ref::<CardanoHost>()
+                .is_some_and(|host| matches!(host.flow().stage(), Stage::Unavailable));
+            if unavailable {
                 p.text(
                     "Real wallets need a browser: build the web storybook (see its Cargo.toml).",
                     stage.x + 16.0,
@@ -447,33 +554,13 @@ impl WalletModalStory {
             }
         }
 
-        // The screen behind the modal takes no tap while the modal is up.
-        let behind = Painter::new(
-            p.font,
-            p.mono,
-            p.theme,
-            if self.modal.is_visible() { None } else { p.tap },
-        )
-        .at_time(p.time());
         let w = if self.phone { 180.0 } else { 220.0 };
         let button = Rect::new(stage.right() - w - 16.0, stage.y + 16.0, w, 44.0);
-        if wallet_button(&behind, &self.vm, button) {
-            self.modal.open();
+        if self.connector.button(p, button) {
             self.last = "button: open".into();
         }
-
-        if let Some(action) = self.modal.show(p, &self.vm, stage, dt) {
+        if let Some(action) = self.connector.show(p, stage, dt) {
             self.last = format!("action: {action:?}");
-            match (&mut self.real, &action) {
-                // Once, not once per host.
-                (Some(_), WalletModalAction::Copy(text)) => copy_text(text),
-                // Each host takes its own chain's actions and ignores the rest.
-                (Some(real), _) => {
-                    real.cardano.apply(&action);
-                    real.evm.apply(&action);
-                }
-                (None, _) => self.host.apply(&mut self.vm, &action),
-            }
         }
     }
 
@@ -483,9 +570,10 @@ impl WalletModalStory {
         if self.t >= LOOP_SECS {
             self.t -= LOOP_SECS;
             self.cue = 0;
-            self.modal = WalletModal::new();
-            self.vm = roadmap(self.icon.clone());
-            self.host = FakeHost::default();
+            self.connector = roadmap(
+                FakeChain::cardano(&self.clock, self.icon.clone()),
+                FakeChain::evm(&self.clock),
+            );
         }
         while let Some(&(at, cue)) = SCRIPT.get(self.cue) {
             if self.t < at {
@@ -493,54 +581,28 @@ impl WalletModalStory {
             }
             self.cue += 1;
             match cue {
-                Cue::Open => self.modal.open(),
-                Cue::Chain(family) => self.modal.choose_chain(&self.vm, family),
-                Cue::Wallet(key) => {
-                    if let Some(action) = self.modal.choose_wallet(key) {
-                        self.host.apply(&mut self.vm, &action);
-                    }
-                }
-                Cue::Done => self.modal.close(),
+                Cue::Open => self.connector.open(),
+                Cue::Chain(family) => self.connector.choose_chain(family),
+                Cue::Wallet(key) => self.connector.choose_wallet(key),
+                Cue::Done => self.connector.close(),
             }
         }
     }
 
     /// The button in each state it can be in, side by side, each live to hover.
     fn buttons(&mut self, p: &Painter, stage: Rect) {
-        use ChainFamily::{Cardano, Evm};
         let c = p.theme.color;
-        let mut vms: Vec<(&str, WalletModalVm)> = Vec::new();
-        vms.push(("nothing connected", roadmap(None)));
-        let mut vm = roadmap(None);
-        vm.set_phase(
-            Cardano,
-            ChainPhase::Connecting {
-                wallet: "eternl".into(),
-            },
-        );
-        vms.push(("connecting", vm));
-        let mut vm = roadmap(None);
-        vm.set_phase(Cardano, connected(Cardano, "eternl"));
-        vms.push(("Cardano connected", vm));
-        let mut vm = roadmap(None);
-        vm.set_phase(Evm, connected(Evm, "io.rabby"));
-        vms.push(("EVM connected", vm));
-        let mut vm = roadmap(None);
-        vm.set_phase(Cardano, connected(Cardano, "eternl"));
-        vm.set_phase(Evm, connected(Evm, "io.rabby"));
-        vms.push(("two chains connected", vm));
-
         // Below the backdrop's "your game" plate.
         let x = stage.x + 24.0;
         let mut y = stage.y + 84.0;
-        for (label, vm) in &vms {
+        for (label, connector) in &self.gallery {
             p.text_mid(label, x, y + 22.0, p.size(TextSize::Md), c.text_muted);
             for (i, w) in [220.0, 170.0].into_iter().enumerate() {
                 let bx = x + 170.0 + i as f32 * 240.0;
                 if bx + w > stage.right() - 8.0 {
                     break;
                 }
-                if wallet_button(p, vm, Rect::new(bx, y, w, 44.0)) {
+                if wallet_button(p, connector.vm(), Rect::new(bx, y, w, 44.0)) {
                     self.last = format!("tapped: {label}");
                 }
             }

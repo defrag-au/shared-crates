@@ -19,6 +19,7 @@ mod wallet_modal_stories;
 use chain_fixture::{ChainSim, Scenario};
 use gamekit_stories::{KitStory, KitView};
 use macroquad::prelude::*;
+use macroquad_gamekit::wallet_modal::ChainFamily;
 use macroquad_widgets::{
     BlockPulseVm, BlockTrainVm, Button, ButtonVariant, CalloutTone, CalloutVm, CheckoutAction,
     CheckoutState, Eligibility, FloatingStick, FulfilmentAction, FulfilmentStatus, FulfilmentTx,
@@ -605,8 +606,8 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
     let modal_stories = vec![
         // The live story first: the whole flow, from the one button.
         modal("live", ModalView::Live),
-        // This browser's own extensions, over the real CIP-30 bridge: the
-        // web storybook only (see Cargo.toml).
+        // This browser's own extensions, over the real CIP-30 and EIP-6963
+        // bridges: the web storybook only (see Cargo.toml).
         modal("real wallets", ModalView::Real),
         phone("phone · real wallets", ModalView::Real),
         modal("walkthrough", ModalView::Walkthrough),
@@ -634,6 +635,17 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         phone("phone · connected", ModalView::Step(Preset::Connected)),
         phone("phone · two chains", ModalView::Step(Preset::TwoConnected)),
         phone("phone · failed", ModalView::Step(Preset::Failed)),
+        // Every chain family connectable, a dozen wallets each.
+        modal("stress · six chains", ModalView::Stress(None)),
+        modal(
+            "stress · a dozen wallets",
+            ModalView::Stress(Some(ChainFamily::Solana)),
+        ),
+        phone("phone · stress", ModalView::Stress(None)),
+        phone(
+            "phone · stress wallets",
+            ModalView::Stress(Some(ChainFamily::Solana)),
+        ),
     ];
     let mut stories = vec![
         Story::buttons("atoms", "buttons"),
@@ -902,6 +914,7 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::kit("rounded art", KitView::Art),
         Story::kit("preloader", KitView::Preload),
         Story::kit("card face", KitView::Face),
+        Story::kit("wall", KitView::Wall),
         Story::admin("operator panel", 640.0, true),
         // Tall enough for the one-column form: a portrait phone's 16 facts,
         // its sparklines and the commands.

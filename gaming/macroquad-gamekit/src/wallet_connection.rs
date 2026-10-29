@@ -30,10 +30,11 @@
 //!
 //! A new chain's host is three things: its wallets as
 //! [`crate::wallet_modal::WalletOption`]s, its account written out as an
-//! [`Account`], and its bridge's outcomes turned into events here. Feeding the
-//! current truth every frame is fine — every event is idempotent where it
-//! should be (an answer for an already-connected wallet updates its account;
-//! a refusal while not asking is ignored).
+//! [`Account`], and its bridge's outcomes turned into events here. Every event
+//! is idempotent where it should be (an answer for an already-connected wallet
+//! updates its account; a refusal while not asking is ignored), and
+//! [`Connection::handle`] says whether it changed anything — so a host feeds
+//! outcomes as they arrive, and knows when its listing needs writing again.
 
 use statig::prelude::*;
 
@@ -179,9 +180,16 @@ impl Connection {
         }
     }
 
-    /// Feed what the bridge reported.
-    pub fn handle(&mut self, event: &ConnectionEvent) {
+    /// Feed what the bridge reported. `true` when it changed the connection —
+    /// a new state, or the connected account updated in place — which is a
+    /// host's cue that the chain's listing needs writing again.
+    ///
+    /// Feed outcomes, not the current truth every frame: this compares a copy
+    /// of the state, which carries the account.
+    pub fn handle(&mut self, event: &ConnectionEvent) -> bool {
+        let before = self.machine.state().clone();
         self.machine.handle(event);
+        *self.machine.state() != before
     }
 
     /// The connection in the modal's words.
@@ -334,6 +342,24 @@ mod tests {
         assert!(matches!(c.phase(), ChainPhase::Failed { .. }));
         c.handle(&ConnectionEvent::Release);
         assert_eq!(c.phase(), ChainPhase::Idle);
+    }
+
+    /// A host learns from `handle` when to write its listing again: an event
+    /// that moves the connection says so, a repeat or a stale one does not.
+    #[test]
+    fn handle_says_when_something_changed() {
+        let mut c = Connection::new();
+        assert!(c.handle(&ConnectionEvent::Ask("eternl".into())));
+        assert!(!c.handle(&ConnectionEvent::Refused("lace".into())), "stale");
+        let answered = ConnectionEvent::Answered {
+            wallet: "eternl".into(),
+            account: Account::new("addr1"),
+        };
+        assert!(c.handle(&answered));
+        assert!(!c.handle(&answered), "a repeat of what it knows");
+        assert!(c.handle(&ConnectionEvent::AccountChanged(
+            Account::new("addr1").with_label("$name")
+        )));
     }
 
     /// Two chains, two connections: neither knows about the other.

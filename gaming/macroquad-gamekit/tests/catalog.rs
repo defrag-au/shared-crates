@@ -65,11 +65,20 @@ fn catalogue_is_current() {
     let mut entries: BTreeMap<String, String> = BTreeMap::new();
     let mut undocumented = Vec::new();
     for entry in std::fs::read_dir(dir.join("src")).expect("read src/") {
-        let path = entry.expect("dir entry").path();
-        if path.extension().is_none_or(|e| e != "rs") {
+        let mut path = entry.expect("dir entry").path();
+        let stem = path.file_stem().unwrap().to_string_lossy().to_string();
+        // A module that grew into a directory (`wall/mod.rs`) is still one
+        // module: its header is in `mod.rs`. Skipping it silently is how one
+        // went missing from this list.
+        if path.is_dir() {
+            let module = path.join("mod.rs");
+            if !module.exists() {
+                continue;
+            }
+            path = module;
+        } else if path.extension().is_none_or(|e| e != "rs") {
             continue;
         }
-        let stem = path.file_stem().unwrap().to_string_lossy().to_string();
         if stem == "lib" {
             continue;
         }

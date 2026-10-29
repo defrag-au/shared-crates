@@ -1,6 +1,6 @@
-//! [`EvmModalHost`] — the browser's EVM wallets, for `macroquad_gamekit`'s
-//! `WalletModal`: the counterpart of [`crate::CardanoModalHost`], over
-//! `wallet_miniquad::evm`.
+//! [`EvmHost`] — the browser's EVM wallets, as a [`ChainHost`] for the
+//! [`crate::WalletConnector`]: the counterpart of [`crate::CardanoHost`],
+//! over `wallet_miniquad::evm`.
 //!
 //! The same shape as the Cardano host, which is the point of the connection
 //! machine: wallets listed with their own icons, the bridge's outcomes fed to a
@@ -24,7 +24,7 @@
 //! ## The chain it plays on
 //!
 //! A host for a game that plays on one chain says so with
-//! [`EvmModalHost::expect_chain`]. A connect then ends on that chain: a wallet
+//! [`EvmHost::expect_chain`]. A connect then ends on that chain: a wallet
 //! on another is asked to switch (EIP-3326), and offered the chain to add
 //! first (EIP-3085) when it does not know it. Refusing the switch is a fault
 //! that says which chain the wallet is on and which the game needs, with Try
@@ -50,9 +50,9 @@ use wallet_miniquad::evm::{self, EvmChanges, EvmWallet};
 pub use wallet_miniquad::evm::{AddChain, ChainTarget, NativeCurrency};
 use wallet_miniquad::{FailureKind, PollResultDetailed, ReqId};
 
-use crate::copy_text;
+use crate::ChainHost;
+use crate::cardano::RELIST_EVERY;
 use crate::icons::{ICON_PX, IconCache};
-use crate::modal::RELIST_EVERY;
 
 /// What the host needs from an EVM bridge. [`MiniquadEvmBridge`] is the real
 /// one; tests drive a fake through every step.
@@ -185,7 +185,7 @@ pub fn robinhood_chain() -> ChainTarget {
 }
 
 /// See the [module docs](self).
-pub struct EvmModalHost<B: EvmBridge = MiniquadEvmBridge> {
+pub struct EvmHost<B: EvmBridge = MiniquadEvmBridge> {
     bridge: B,
     wallets: Vec<EvmWallet>,
     connection: Connection,
@@ -203,21 +203,23 @@ pub struct EvmModalHost<B: EvmBridge = MiniquadEvmBridge> {
     /// The connection failed because the wallet is on another chain: a
     /// switch back in the wallet reconnects it.
     wrong_chain: bool,
+    /// The listing needs writing again.
+    dirty: bool,
 }
 
-impl EvmModalHost<MiniquadEvmBridge> {
+impl EvmHost<MiniquadEvmBridge> {
     pub fn new() -> Self {
         Self::with_bridge(MiniquadEvmBridge)
     }
 }
 
-impl Default for EvmModalHost<MiniquadEvmBridge> {
+impl Default for EvmHost<MiniquadEvmBridge> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<B: EvmBridge> EvmModalHost<B> {
+impl<B: EvmBridge> EvmHost<B> {
     /// A host over `bridge`. A remembered wallet that has announced is
     /// reconnected silently, before the first frame.
     pub fn with_bridge(bridge: B) -> Self {
@@ -240,6 +242,7 @@ impl<B: EvmBridge> EvmModalHost<B> {
             since_list: 0,
             target: None,
             wrong_chain: false,
+            dirty: true,
         };
         host.try_remembered();
         host.ask_icons();
@@ -253,36 +256,49 @@ impl<B: EvmBridge> EvmModalHost<B> {
         self
     }
 
-    /// The connection, for a host that wants its account or wallet directly.
-    pub fn connection(&self) -> &Connection {
-        &self.connection
-    }
-
-    /// Advance the reads, the wallet's own reports and the icons. Call once
-    /// per frame.
-    pub fn poll(&mut self) {
+    /// Advance the reads, the wallet's own reports and the icons.
+    fn advance(&mut self) {
         self.since_list += 1;
         if self.since_list >= RELIST_EVERY {
             self.since_list = 0;
-            if self.bridge.available() {
-                self.wallets = self.bridge.list_wallets();
-            }
+            self.relist();
             self.try_remembered();
         }
         self.ask_icons();
-        for req in self.icons.waiting() {
-            let result = self.bridge.poll(req);
-            let bridge = &mut self.bridge;
-            self.icons
-                .settle(req, result, || bridge.take_icon(req, ICON_PX));
-        }
+        let bridge = &mut self.bridge;
+        self.dirty |= self.icons.poll_all(|req| {
+            let result = bridge.poll(req);
+            let pixels = match result {
+                PollResultDetailed::Ok { .. } => bridge.take_icon(req, ICON_PX),
+                _ => None,
+            };
+            (result, pixels)
+        });
         self.poll_step();
         self.poll_changes();
     }
 
-    /// Apply what the modal reported. Actions for any other chain are not
-    /// this host's, and are ignored.
-    pub fn apply(&mut self, action: &WalletModalAction) {
+    /// Re-read the announced wallets; a wallet may announce after the page
+    /// loaded. Marks the listing stale only when the list actually changed.
+    fn relist(&mut self) {
+        if !self.bridge.available() {
+            return;
+        }
+        let wallets = self.bridge.list_wallets();
+        if wallets != self.wallets {
+            self.wallets = wallets;
+            self.dirty = true;
+        }
+    }
+
+    /// Tell the connection, and mark the listing stale when that changed it.
+    fn feed(&mut self, event: &ConnectionEvent) {
+        self.dirty |= self.connection.handle(event);
+    }
+
+    /// What the modal asked of EVM. Another chain's action is not this
+    /// host's; the connector never passes one, and it is ignored if it does.
+    fn act(&mut self, action: &WalletModalAction) {
         match action {
             WalletModalAction::Connect {
                 family: ChainFamily::Evm,
@@ -294,7 +310,7 @@ impl<B: EvmBridge> EvmModalHost<B> {
             WalletModalAction::Cancel(ChainFamily::Evm) => {
                 self.drop_step();
                 self.wrong_chain = false;
-                self.connection.handle(&ConnectionEvent::Release);
+                self.feed(&ConnectionEvent::Release);
             }
             WalletModalAction::Disconnect(ChainFamily::Evm) => {
                 self.drop_step();
@@ -303,16 +319,16 @@ impl<B: EvmBridge> EvmModalHost<B> {
                 self.bridge.remember(None);
                 self.address = None;
                 self.chain = None;
-                self.connection.handle(&ConnectionEvent::Release);
+                self.feed(&ConnectionEvent::Release);
             }
-            WalletModalAction::Copy(text) => copy_text(text),
             _ => {}
         }
     }
 
     /// EVM as the modal lists it: the announced wallets, with their icons
     /// once loaded, and the connection's phase.
-    pub fn chain(&mut self) -> ChainOption {
+    fn listing(&mut self) -> ChainOption {
+        self.dirty = false;
         let mut options = Vec::with_capacity(self.wallets.len());
         for wallet in &self.wallets {
             let mut option = WalletOption::new(wallet.id.clone(), wallet.name.clone());
@@ -331,8 +347,7 @@ impl<B: EvmBridge> EvmModalHost<B> {
     fn ask(&mut self, wallet: &str, silent: bool) {
         self.drop_step();
         self.wrong_chain = false;
-        self.connection
-            .handle(&ConnectionEvent::Ask(wallet.to_string()));
+        self.feed(&ConnectionEvent::Ask(wallet.to_string()));
         let req = self.bridge.connect(wallet, silent);
         self.step = Step::Accounts { req, silent };
     }
@@ -382,11 +397,11 @@ impl<B: EvmBridge> EvmModalHost<B> {
                     PollResultDetailed::Err { .. } if silent => {
                         self.step = Step::Idle;
                         self.bridge.remember(None);
-                        self.connection.handle(&ConnectionEvent::Release);
+                        self.feed(&ConnectionEvent::Release);
                     }
                     PollResultDetailed::Err { data, kind } => {
                         self.step = Step::Idle;
-                        self.connection.handle(&match kind {
+                        self.feed(&match kind {
                             FailureKind::Declined => ConnectionEvent::Refused(wallet),
                             FailureKind::Failed => ConnectionEvent::Faulted {
                                 wallet,
@@ -448,7 +463,7 @@ impl<B: EvmBridge> EvmModalHost<B> {
                         ..
                     } => self.fault_wrong_chain(wallet),
                     PollResultDetailed::Err { data, .. } => {
-                        self.connection.handle(&ConnectionEvent::Faulted {
+                        self.feed(&ConnectionEvent::Faulted {
                             wallet,
                             message: data,
                         });
@@ -464,8 +479,7 @@ impl<B: EvmBridge> EvmModalHost<B> {
         self.wrong_chain = false;
         self.bridge.remember(Some(&wallet));
         if let Some(account) = self.account() {
-            self.connection
-                .handle(&ConnectionEvent::Answered { wallet, account });
+            self.feed(&ConnectionEvent::Answered { wallet, account });
         }
     }
 
@@ -494,8 +508,7 @@ impl<B: EvmBridge> EvmModalHost<B> {
         let message = format!(
             "{name} is on {on}, and this game plays on {want}. Switch to {want} in {name}, then try again."
         );
-        self.connection
-            .handle(&ConnectionEvent::Faulted { wallet, message });
+        self.feed(&ConnectionEvent::Faulted { wallet, message });
     }
 
     /// What the connected wallet said on its own: another account, another
@@ -512,8 +525,7 @@ impl<B: EvmBridge> EvmModalHost<B> {
                 {
                     // A failed connection takes no answer until it is asked
                     // again; the reader's switch is that ask.
-                    self.connection
-                        .handle(&ConnectionEvent::Ask(wallet.clone()));
+                    self.feed(&ConnectionEvent::Ask(wallet.clone()));
                     self.connected(wallet);
                 }
             }
@@ -534,7 +546,7 @@ impl<B: EvmBridge> EvmModalHost<B> {
                     self.address = None;
                     self.chain = None;
                     self.bridge.remember(None);
-                    self.connection.handle(&ConnectionEvent::Release);
+                    self.feed(&ConnectionEvent::Release);
                     return;
                 }
             }
@@ -551,8 +563,7 @@ impl<B: EvmBridge> EvmModalHost<B> {
             }
         }
         if changed && let Some(account) = self.account() {
-            self.connection
-                .handle(&ConnectionEvent::AccountChanged(account));
+            self.feed(&ConnectionEvent::AccountChanged(account));
         }
     }
 
@@ -566,6 +577,29 @@ impl<B: EvmBridge> EvmModalHost<B> {
             self.icons
                 .ask(&wallet.id, || bridge.icon(&wallet.id, ICON_PX));
         }
+    }
+}
+
+impl<B: EvmBridge + 'static> ChainHost for EvmHost<B> {
+    fn family(&self) -> ChainFamily {
+        ChainFamily::Evm
+    }
+
+    fn poll(&mut self) -> bool {
+        self.advance();
+        self.dirty
+    }
+
+    fn option(&mut self) -> ChainOption {
+        self.listing()
+    }
+
+    fn apply(&mut self, action: &WalletModalAction) {
+        self.act(action);
+    }
+
+    fn connection(&self) -> &Connection {
+        &self.connection
     }
 }
 
@@ -692,23 +726,39 @@ mod tests {
         }
     }
 
-    fn connect(host: &mut EvmModalHost<Fake>) {
+    fn connect(host: &mut EvmHost<Fake>) {
         host.apply(&WalletModalAction::Connect {
             family: ChainFamily::Evm,
             wallet: "uuid-rabby".into(),
         });
     }
 
-    fn run(host: &mut EvmModalHost<Fake>, frames: usize) {
+    fn run(host: &mut EvmHost<Fake>, frames: usize) {
         for _ in 0..frames {
             host.poll();
         }
     }
 
+    /// Once settled, a frame where nothing moved reports no change.
+    #[test]
+    fn an_idle_host_reports_no_change() {
+        let mut bridge = fake();
+        bridge.accounts.push_back(ok(&address()));
+        bridge.chains.push_back(ok("0x1"));
+        let mut host = EvmHost::with_bridge(bridge);
+        connect(&mut host);
+        run(&mut host, 2);
+        let _ = host.option();
+        for frame in 0..(RELIST_EVERY as usize * 3) {
+            assert!(!host.poll(), "frame {frame}: nothing moved");
+        }
+        assert!(host.connection().is_connected());
+    }
+
     #[test]
     fn announced_wallets_are_listed() {
-        let mut host = EvmModalHost::with_bridge(fake());
-        let chain = host.chain();
+        let mut host = EvmHost::with_bridge(fake());
+        let chain = host.option();
         assert_eq!(chain.family, ChainFamily::Evm);
         assert_eq!(chain.wallets.len(), 1);
         assert_eq!(chain.wallets[0].name, "Rabby");
@@ -720,7 +770,7 @@ mod tests {
         let mut bridge = fake();
         bridge.accounts.push_back(ok(&address()));
         bridge.chains.push_back(ok("0x1237"));
-        let mut host = EvmModalHost::with_bridge(bridge);
+        let mut host = EvmHost::with_bridge(bridge);
         connect(&mut host);
         assert!(matches!(host.phase(), ChainPhase::Connecting { .. }));
         assert_eq!(host.bridge.asked, [("uuid-rabby".to_string(), false)]);
@@ -749,7 +799,7 @@ mod tests {
             data: "User rejected the request.".into(),
             kind: FailureKind::Declined,
         });
-        let mut host = EvmModalHost::with_bridge(bridge);
+        let mut host = EvmHost::with_bridge(bridge);
         connect(&mut host);
         run(&mut host, 1);
         assert_eq!(
@@ -768,7 +818,7 @@ mod tests {
             data: "The wallet already has a request open.".into(),
             kind: FailureKind::Failed,
         });
-        let mut host = EvmModalHost::with_bridge(bridge);
+        let mut host = EvmHost::with_bridge(bridge);
         connect(&mut host);
         run(&mut host, 1);
         let ChainPhase::Failed { message, .. } = host.phase() else {
@@ -791,7 +841,7 @@ mod tests {
             accounts: Some(vec![other.clone()]),
             chain: Some("0x1237".into()),
         });
-        let mut host = EvmModalHost::with_bridge(bridge);
+        let mut host = EvmHost::with_bridge(bridge);
         connect(&mut host);
         run(&mut host, 3);
         let account = host.connection().account().expect("still connected");
@@ -812,7 +862,7 @@ mod tests {
             accounts: Some(Vec::new()),
             chain: None,
         });
-        let mut host = EvmModalHost::with_bridge(bridge);
+        let mut host = EvmHost::with_bridge(bridge);
         connect(&mut host);
         run(&mut host, 3);
         assert_eq!(host.phase(), ChainPhase::Idle);
@@ -826,7 +876,7 @@ mod tests {
         bridge.remembered = Some("uuid-rabby".into());
         bridge.accounts.push_back(ok(&address()));
         bridge.chains.push_back(ok("0x1"));
-        let mut host = EvmModalHost::with_bridge(bridge);
+        let mut host = EvmHost::with_bridge(bridge);
         assert_eq!(host.bridge.asked, [("uuid-rabby".to_string(), true)]);
         run(&mut host, 2);
         assert!(host.connection().is_connected());
@@ -841,7 +891,7 @@ mod tests {
             data: "not permitted".into(),
             kind: FailureKind::Declined,
         });
-        let mut host = EvmModalHost::with_bridge(bridge);
+        let mut host = EvmHost::with_bridge(bridge);
         run(&mut host, 1);
         assert_eq!(host.phase(), ChainPhase::Idle);
         assert_eq!(host.bridge.stored, [None]);
@@ -855,7 +905,7 @@ mod tests {
             ..Fake::default()
         };
         bridge.accounts.push_back(ok(&address()));
-        let mut host = EvmModalHost::with_bridge(bridge);
+        let mut host = EvmHost::with_bridge(bridge);
         assert!(host.bridge.asked.is_empty());
         host.bridge.wallets.push(rabby());
         run(&mut host, RELIST_EVERY as usize);
@@ -867,7 +917,7 @@ mod tests {
         let mut bridge = fake();
         bridge.accounts.push_back(ok(&address()));
         bridge.chains.push_back(ok("0x1"));
-        let mut host = EvmModalHost::with_bridge(bridge);
+        let mut host = EvmHost::with_bridge(bridge);
         connect(&mut host);
         run(&mut host, 2);
         host.apply(&WalletModalAction::Disconnect(ChainFamily::Evm));
@@ -878,7 +928,7 @@ mod tests {
 
     #[test]
     fn a_cardano_action_is_left_alone() {
-        let mut host = EvmModalHost::with_bridge(fake());
+        let mut host = EvmHost::with_bridge(fake());
         host.apply(&WalletModalAction::Connect {
             family: ChainFamily::Cardano,
             wallet: "eternl".into(),
@@ -887,12 +937,12 @@ mod tests {
     }
 
     /// A Robinhood host whose wallet is on chain 1, with one switch answer.
-    fn on_chain_one(switch: Option<PollResultDetailed>) -> EvmModalHost<Fake> {
+    fn on_chain_one(switch: Option<PollResultDetailed>) -> EvmHost<Fake> {
         let mut bridge = fake();
         bridge.accounts.push_back(ok(&address()));
         bridge.chains.push_back(ok("0x1"));
         bridge.switches.extend(switch);
-        EvmModalHost::with_bridge(bridge).expect_chain(robinhood_chain())
+        EvmHost::with_bridge(bridge).expect_chain(robinhood_chain())
     }
 
     #[test]
@@ -931,7 +981,10 @@ mod tests {
         let ChainPhase::Failed { message, .. } = host.phase() else {
             panic!("expected failed, got {:?}", host.phase());
         };
-        assert!(message.contains("Rabby is on Ethereum Mainnet"), "{message}");
+        assert!(
+            message.contains("Rabby is on Ethereum Mainnet"),
+            "{message}"
+        );
         assert!(message.contains("Robinhood Chain"), "{message}");
         assert!(host.bridge.stored.is_empty());
     }
@@ -957,7 +1010,7 @@ mod tests {
         bridge.remembered = Some("uuid-rabby".into());
         bridge.accounts.push_back(ok(&address()));
         bridge.chains.push_back(ok("0x1"));
-        let mut host = EvmModalHost::with_bridge(bridge).expect_chain(robinhood_chain());
+        let mut host = EvmHost::with_bridge(bridge).expect_chain(robinhood_chain());
         run(&mut host, 2);
         assert!(host.bridge.switched_to.is_empty());
         assert!(matches!(host.phase(), ChainPhase::Failed { .. }));
@@ -982,7 +1035,7 @@ mod tests {
                 chain: Some("0x1237".into()),
             },
         ]);
-        let mut host = EvmModalHost::with_bridge(bridge).expect_chain(robinhood_chain());
+        let mut host = EvmHost::with_bridge(bridge).expect_chain(robinhood_chain());
         connect(&mut host);
         run(&mut host, 3);
         assert!(matches!(host.phase(), ChainPhase::Failed { .. }));
@@ -1002,7 +1055,7 @@ mod tests {
         let mut bridge = fake();
         bridge.accounts.push_back(ok(&address()));
         bridge.chains.push_back(ok("0x1"));
-        let mut host = EvmModalHost::with_bridge(bridge);
+        let mut host = EvmHost::with_bridge(bridge);
         connect(&mut host);
         run(&mut host, 2);
         assert!(host.connection().is_connected());

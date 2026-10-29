@@ -1,38 +1,37 @@
-//! [`CardanoModalHost`] — the real Cardano wallets, for `macroquad_gamekit`'s
-//! `WalletModal`.
+//! [`CardanoHost`] — the browser's Cardano wallets, as a [`ChainHost`] for
+//! the [`crate::WalletConnector`].
 //!
-//! The modal owns no connection: it reports actions and draws the phase the
-//! host writes back. This is that host for Cardano, built on [`WalletFlow`] —
-//! the same connect sequence, network check and remembered wallet every
-//! macroquad surface already uses — plus the wallets' own icons, which the flow
-//! never needed.
+//! Built on [`WalletFlow`] — the same connect sequence, network check and
+//! remembered wallet every macroquad surface already uses — plus the wallets'
+//! own icons, which the flow never needed.
 //!
 //! The flow is CIP-30's mechanics; what they *mean* is a
 //! `macroquad_gamekit::wallet_connection::Connection`, the lifecycle machine
-//! every chain's host feeds. Each frame the flow's stage is reported to it as
-//! an event, and the modal's phase is read back from it — so an EVM host
-//! written the same way gets the same rules for free: a late answer to a
-//! replaced request is dropped, a refusal is not a fault, an account can change
-//! without a reconnect.
+//! every chain's host feeds. When the flow's stage moves, the move is reported
+//! to it as an event, and the modal's phase is read back from it — so every
+//! chain's host gets the same rules: a late answer to a replaced request is
+//! dropped, a refusal is not a fault, an account can change without a
+//! reconnect.
 //!
 //! ```ignore
-//! let mut cardano = CardanoModalHost::new(WalletFlow::new().expect_network(1));
-//! // every frame:
-//! cardano.poll();
-//! vm.chains[0] = cardano.chain();
-//! if let Some(action) = modal.show(&p, &vm, area, dt) {
-//!     cardano.apply(&action);
-//! }
+//! let wallets = WalletConnector::new()
+//!     .host(CardanoHost::new(WalletFlow::new().expect_network(1)));
 //! ```
+//!
+//! ## Only what changed
+//!
+//! A frame where nothing moved costs the bridge's polls and nothing else: the
+//! account is written out and reported only when the flow's stage, its notice
+//! or the handle changes, and the listing is rebuilt only when the connection,
+//! the wallet list or an icon did.
 //!
 //! ## Icons
 //!
 //! Each detected wallet's CIP-30 `icon` is asked for once, through
 //! [`Bridge::icon`], and arrives as RGBA the browser rasterised — SVG or PNG
 //! alike. A wallet whose icon is missing or will not load keeps its monogram.
-//! Pixels become a texture the first time [`CardanoModalHost::chain`] runs
-//! after they arrive, which is why that takes `&mut self` and must run where a
-//! graphics context exists.
+//! Pixels become a texture the first time the listing is read after they
+//! arrive, which must happen where a graphics context exists.
 //!
 //! ## The account
 //!
@@ -43,11 +42,6 @@
 //! per address — no network call, and nothing to trust but the wallet. Until
 //! it arrives, or for a wallet without one, the account is its address.
 //!
-//! ## Copying
-//!
-//! The modal's `Copy` goes through [`copy_text`]: the page's clipboard on the
-//! web, miniquad's natively.
-
 use macroquad_gamekit::wallet_connection::{Connection, ConnectionEvent};
 use macroquad_gamekit::wallet_modal::{
     Account, ChainFamily, ChainOption, ChainPhase, WalletModalAction, WalletOption,
@@ -56,7 +50,7 @@ use wallet_miniquad::{PollResultDetailed, ReqId};
 
 pub use crate::icons::ICON_PX;
 use crate::icons::IconCache;
-use crate::{Bridge, MiniquadBridge, Stage, WalletFlow, network_message};
+use crate::{Bridge, ChainHost, MiniquadBridge, Stage, WalletFlow, network_message};
 
 /// Polls between re-reads of the extension list while nothing is connected:
 /// half a second at 60 frames a second.
@@ -78,15 +72,13 @@ enum Handle {
     },
 }
 
-/// Put `text` on the clipboard: the page's on the web, miniquad's natively.
-pub fn copy_text(text: &str) {
-    if !miniquad_platform::clipboard_write(text) {
-        macroquad::miniquad::window::clipboard_set(text);
-    }
-}
+/// What the connection was last told about, so an unchanged frame reports
+/// nothing: the flow's stage revision, whether it held a notice, and the
+/// handle's revision.
+type Reported = (u64, bool, u64);
 
 /// See the [module docs](self).
-pub struct CardanoModalHost<B: Bridge = MiniquadBridge> {
+pub struct CardanoHost<B: Bridge = MiniquadBridge> {
     flow: WalletFlow<B>,
     /// The connection's lifecycle, the same machine every chain's host
     /// feeds: the flow is CIP-30's mechanics, this is what they mean.
@@ -96,9 +88,14 @@ pub struct CardanoModalHost<B: Bridge = MiniquadBridge> {
     /// Polls since the extension list was last read.
     since_list: u32,
     handle: Handle,
+    /// Bumped when the handle read settles.
+    handle_rev: u64,
+    reported: Option<Reported>,
+    /// The listing needs writing again.
+    dirty: bool,
 }
 
-impl<B: Bridge> CardanoModalHost<B> {
+impl<B: Bridge> CardanoHost<B> {
     /// Wrap a flow. A flow that is already connecting its remembered wallet
     /// hands that wallet over, so the button says who it is waiting on.
     pub fn new(flow: WalletFlow<B>) -> Self {
@@ -112,6 +109,9 @@ impl<B: Bridge> CardanoModalHost<B> {
             icons: IconCache::default(),
             since_list: 0,
             handle: Handle::Unasked,
+            handle_rev: 0,
+            reported: None,
+            dirty: true,
         };
         host.ask_icons();
         host
@@ -127,8 +127,9 @@ impl<B: Bridge> CardanoModalHost<B> {
         &mut self.flow
     }
 
-    /// Advance the connect and the icons. Call once per frame.
-    pub fn poll(&mut self) {
+    /// Advance the connect, the wallet list, the icons and the handle, and
+    /// report a moved stage to the connection.
+    fn advance(&mut self) {
         self.flow.poll();
         self.since_list += 1;
         if self.since_list >= RELIST_EVERY {
@@ -136,22 +137,38 @@ impl<B: Bridge> CardanoModalHost<B> {
             self.relist();
         }
         self.ask_icons();
-        for req in self.icons.waiting() {
-            let result = self.flow.bridge.poll(req);
-            let bridge = &mut self.flow.bridge;
-            self.icons
-                .settle(req, result, || bridge.take_icon(req, ICON_PX));
-        }
+        let bridge = &mut self.flow.bridge;
+        self.dirty |= self.icons.poll_all(|req| {
+            let result = bridge.poll(req);
+            let pixels = match result {
+                PollResultDetailed::Ok { .. } => bridge.take_icon(req, ICON_PX),
+                _ => None,
+            };
+            (result, pixels)
+        });
         self.poll_handle();
-        if let Some(event) = self.outcome() {
-            self.connection.handle(&event);
+        let now = (
+            self.flow.revision(),
+            self.flow.notice().is_some(),
+            self.handle_rev,
+        );
+        if self.reported != Some(now) {
+            self.reported = Some(now);
+            if let Some(event) = self.outcome() {
+                self.feed(&event);
+            }
         }
     }
 
+    /// Tell the connection, and mark the listing stale when that changed it.
+    fn feed(&mut self, event: &ConnectionEvent) {
+        self.dirty |= self.connection.handle(event);
+    }
+
     /// What the flow's stage means for the wallet being asked, as the
-    /// connection's event. The current truth every frame: the machine treats
-    /// a repeat as nothing new, and drops an answer for a wallet it is no
-    /// longer asking.
+    /// connection's event. Read only when the stage, its notice or the handle
+    /// has moved; the machine drops an answer for a wallet it is no longer
+    /// asking.
     fn outcome(&self) -> Option<ConnectionEvent> {
         let wallet = self.connection.wallet()?.to_string();
         Some(match &self.flow.stage {
@@ -191,16 +208,14 @@ impl<B: Bridge> CardanoModalHost<B> {
         })
     }
 
-    /// The connection, for a host that wants its account or wallet directly.
-    pub fn connection(&self) -> &Connection {
-        &self.connection
-    }
-
     /// Ask for the connected wallet's handle once its address is known, and
     /// again only if the address changes; read it when the balance arrives.
     fn poll_handle(&mut self) {
         let Stage::Ready { address_hex, .. } = &self.flow.stage else {
-            self.handle = Handle::Unasked;
+            if !matches!(self.handle, Handle::Unasked) {
+                self.handle = Handle::Unasked;
+                self.handle_rev += 1;
+            }
             return;
         };
         let current = match &self.handle {
@@ -229,6 +244,7 @@ impl<B: Bridge> CardanoModalHost<B> {
                 address: address.clone(),
                 handle,
             };
+            self.handle_rev += 1;
         }
     }
 
@@ -240,39 +256,38 @@ impl<B: Bridge> CardanoModalHost<B> {
         }
     }
 
-    /// Apply what the modal reported. Actions for any other chain are not
-    /// this host's, and are ignored.
-    pub fn apply(&mut self, action: &WalletModalAction) {
+    /// What the modal asked of Cardano. Another chain's action is not this
+    /// host's; the connector never passes one, and it is ignored if it does.
+    fn act(&mut self, action: &WalletModalAction) {
         match action {
             WalletModalAction::Connect {
                 family: ChainFamily::Cardano,
                 wallet,
             } => {
-                self.connection
-                    .handle(&ConnectionEvent::Ask(wallet.clone()));
+                self.feed(&ConnectionEvent::Ask(wallet.clone()));
                 self.flow.connect(wallet);
             }
             // Back to the picker, with the wallet's dialog let go of. Not a
             // disconnect: nothing was connected, and the remembered wallet is
             // not this request's to forget.
             WalletModalAction::Cancel(ChainFamily::Cardano) => {
-                self.connection.handle(&ConnectionEvent::Release);
+                self.feed(&ConnectionEvent::Release);
                 self.flow.retry();
             }
             WalletModalAction::Disconnect(ChainFamily::Cardano) => {
-                self.connection.handle(&ConnectionEvent::Release);
+                self.feed(&ConnectionEvent::Release);
                 self.handle = Handle::Unasked;
+                self.handle_rev += 1;
                 self.flow.disconnect();
             }
-            // Any chain's: a copy is the same act wherever the value came from.
-            WalletModalAction::Copy(text) => copy_text(text),
             _ => {}
         }
     }
 
     /// Cardano as the modal lists it: the detected wallets, with their icons
     /// once loaded, and the connection's phase.
-    pub fn chain(&mut self) -> ChainOption {
+    fn listing(&mut self) -> ChainOption {
+        self.dirty = false;
         let mut wallets = Vec::with_capacity(self.flow.providers.len());
         for provider in &self.flow.providers {
             let mut option = WalletOption::new(provider.key.clone(), provider.name.clone());
@@ -307,6 +322,7 @@ impl<B: Bridge> CardanoModalHost<B> {
             self.flow.providers = providers;
             let stage = self.flow.stage.clone();
             self.flow.set_stage(stage);
+            self.dirty = true;
         }
     }
 
@@ -317,6 +333,29 @@ impl<B: Bridge> CardanoModalHost<B> {
             self.icons
                 .ask(&provider.key, || bridge.icon(&provider.key, ICON_PX));
         }
+    }
+}
+
+impl<B: Bridge + 'static> ChainHost for CardanoHost<B> {
+    fn family(&self) -> ChainFamily {
+        ChainFamily::Cardano
+    }
+
+    fn poll(&mut self) -> bool {
+        self.advance();
+        self.dirty
+    }
+
+    fn option(&mut self) -> ChainOption {
+        self.listing()
+    }
+
+    fn apply(&mut self, action: &WalletModalAction) {
+        self.act(action);
+    }
+
+    fn connection(&self) -> &Connection {
+        &self.connection
     }
 }
 
@@ -431,15 +470,15 @@ mod tests {
         }
     }
 
-    fn host(results: Vec<PollResultDetailed>) -> CardanoModalHost<Fake> {
+    fn host(results: Vec<PollResultDetailed>) -> CardanoHost<Fake> {
         host_with_balance(results, None)
     }
 
     fn host_with_balance(
         results: Vec<PollResultDetailed>,
         balance: Option<String>,
-    ) -> CardanoModalHost<Fake> {
-        CardanoModalHost::new(
+    ) -> CardanoHost<Fake> {
+        CardanoHost::new(
             WalletFlow::with_bridge(Fake {
                 results: results.into(),
                 icons_asked: Vec::new(),
@@ -464,7 +503,7 @@ mod tests {
         )
     }
 
-    fn connect(host: &mut CardanoModalHost<Fake>) {
+    fn connect(host: &mut CardanoHost<Fake>) {
         host.apply(&WalletModalAction::Connect {
             family: ChainFamily::Cardano,
             wallet: "eternl".into(),
@@ -477,9 +516,25 @@ mod tests {
         host.poll();
         host.poll();
         assert_eq!(host.flow.bridge.icons_asked, vec!["eternl".to_string()]);
-        let chain = host.chain();
+        let chain = host.option();
         assert_eq!(chain.wallets.len(), 1);
         assert!(chain.wallets[0].icon.is_none(), "no pixels arrived");
+    }
+
+    /// Once settled, a frame where nothing moved reports no change — so the
+    /// connector rebuilds nothing.
+    #[test]
+    fn an_idle_host_reports_no_change() {
+        let mut host = host(vec![ok("eternl"), ok("1"), ok(&base_address()), ok("")]);
+        connect(&mut host);
+        for _ in 0..4 {
+            host.poll();
+        }
+        let _ = host.option();
+        for frame in 0..(RELIST_EVERY as usize * 3) {
+            assert!(!host.poll(), "frame {frame}: nothing moved");
+        }
+        assert!(host.connection().is_connected());
     }
 
     #[test]
@@ -587,19 +642,19 @@ mod tests {
     /// has its icon asked for — without a reload.
     #[test]
     fn a_wallet_that_arrives_late_is_picked_up() {
-        let mut host = CardanoModalHost::new(WalletFlow::with_bridge(Fake {
+        let mut host = CardanoHost::new(WalletFlow::with_bridge(Fake {
             results: VecDeque::new(),
             icons_asked: Vec::new(),
             providers: Vec::new(),
             balance: None,
             balances_asked: 0,
         }));
-        assert!(host.chain().wallets.is_empty());
+        assert!(host.option().wallets.is_empty());
         host.flow.bridge.providers.push(eternl());
         for _ in 0..RELIST_EVERY {
             host.poll();
         }
-        let chain = host.chain();
+        let chain = host.option();
         assert_eq!(chain.wallets.len(), 1);
         assert_eq!(chain.wallets[0].name, "Eternl");
         assert_eq!(host.flow.bridge.icons_asked, vec!["eternl".to_string()]);
