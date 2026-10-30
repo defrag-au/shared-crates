@@ -41,6 +41,14 @@ impl EventId {
     /// adapter states its own; the [`holder`](crate::holder) and
     /// [`market`](crate::market) modules document the ones their facts support.
     ///
+    /// **Position is not identity.** [`TxRef`] carries where the transaction sits in its
+    /// block and where the fact sits within the transaction, and neither is hashed here.
+    /// A reporter may or may not know them — the archive records an in-block position, a
+    /// marketplace feed and the forward walk have none — and the same fact must not
+    /// change its id according to how much its reporter happened to see. They stay on the
+    /// event for ordering; uniqueness comes from the discriminator. `coord` is excluded
+    /// for the same reason.
+    ///
     /// Every component is length-prefixed before it enters the hash, so `("ab", "c")`
     /// and `("a", "bc")` cannot be made to collide by moving a boundary.
     pub fn derive(
@@ -58,16 +66,8 @@ impl EventId {
         let asset = asset.map(|asset| asset.to_string());
         feed_opt_str(&mut state, asset.as_deref());
         match tx {
-            Some(tx) => {
-                feed(&mut state, tx.hash.as_bytes());
-                feed(&mut state, &tx.index.to_le_bytes());
-                feed(&mut state, &tx.event_index.to_le_bytes());
-            }
-            None => {
-                feed(&mut state, b"");
-                feed(&mut state, &[0; 4]);
-                feed(&mut state, &[0; 4]);
-            }
+            Some(tx) => feed(&mut state, tx.hash.as_bytes()),
+            None => feed(&mut state, b""),
         }
         feed(&mut state, discriminator.as_bytes());
         Self(state)
@@ -234,6 +234,46 @@ mod tests {
     }
 
     #[test]
+    fn the_position_of_a_fact_is_not_part_of_its_identity() {
+        // The same fact reported by two tools that know different amounts about where it
+        // sits: the archive records the transaction's position in its block and the
+        // fact's position within it; the forward walk and a marketplace feed have
+        // neither. Both must land on one row, so neither coordinate is hashed.
+        let at = |index: u32, event_index: u32| TxRef {
+            hash: "ab".repeat(32),
+            index,
+            event_index,
+        };
+        let archived = EventId::derive(
+            chain(),
+            &transfer(1),
+            Some(&asset()),
+            Some(&at(28, 3)),
+            "parties",
+        );
+        let walked = EventId::derive(
+            chain(),
+            &transfer(1),
+            Some(&asset()),
+            Some(&at(0, 0)),
+            "parties",
+        );
+        assert_eq!(archived, walked);
+    }
+
+    #[test]
+    fn a_different_transaction_is_a_different_id() {
+        // Dropping the positions must not drop the transaction: two identical moves in
+        // different transactions are different facts.
+        let first = TxRef::new("ab".repeat(32), 0);
+        let second = TxRef::new("cd".repeat(32), 0);
+        assert_ne!(
+            EventId::derive(chain(), &transfer(1), Some(&asset()), Some(&first), "d"),
+            EventId::derive(chain(), &transfer(1), Some(&asset()), Some(&second), "d"),
+        );
+    }
+
+    #[test]
     fn a_family_change_is_a_different_id() {
         let tx = TxRef {
             hash: "ef".repeat(32),
@@ -243,7 +283,9 @@ mod tests {
         let holder = EventId::derive(chain(), &transfer(1), Some(&asset()), Some(&tx), "");
         let market = EventId::derive(
             chain(),
-            &EventBody::Market(crate::MarketEvent::new(crate::MarketKind::Sold)),
+            &EventBody::Market(crate::MarketEvent::Invalidated {
+                order: crate::OrderRef::new("order"),
+            }),
             Some(&asset()),
             Some(&tx),
             "",

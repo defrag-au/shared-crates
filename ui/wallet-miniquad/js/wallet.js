@@ -21,6 +21,10 @@
 // Plugin version 4: adds `wallet_icon` and `wallet_icon_pixels` — a wallet's
 // announced icon, rasterised here on a canvas so Rust gets plain RGBA and
 // never has to decode an SVG.
+//
+// Plugin version 5: adds `wallet_refresh` — a fresh handle from a wallet that
+// already allows the site, never prompting, so an account switched in the
+// extension is seen.
 
 (function () {
     let nextReqId = 1;
@@ -84,6 +88,45 @@
             }
         }
         return jsonObj(providers);
+    }
+
+    // Take a fresh API handle from a wallet that already allows this site,
+    // without ever prompting. A CIP-30 handle belongs to the account that was
+    // selected when it was enabled: after the reader switches account in the
+    // extension, the old handle keeps answering for the old account, or fails
+    // with APIError -4 ("account changed, call enable() again"), depending on
+    // the wallet. `isEnabled()` never prompts, and `enable()` on a site
+    // already allowed answers silently with a handle for the account selected
+    // now. A site no longer allowed fails `declined` and keeps the old handle.
+    function wallet_refresh(name_handle) {
+        const name = consume_js_object(name_handle);
+        const id = nextReqId++;
+        pending.set(id, { status: 'pending' });
+        const provider = window.cardano && window.cardano[name];
+        if (!provider) {
+            fail(id, `wallet '${name}' not found`);
+            return id;
+        }
+        const allowed = typeof provider.isEnabled === 'function'
+            ? Promise.resolve(provider.isEnabled())
+            : Promise.resolve(true);
+        allowed
+            .then(ok => {
+                if (!ok) {
+                    fail(id, 'the wallet no longer allows this site', 'declined');
+                    return;
+                }
+                return provider.enable().then(enabled => {
+                    if (!pending.has(id)) return;
+                    api = enabled;
+                    pending.set(id, { status: 'ok', data: name });
+                });
+            })
+            .catch(err => {
+                const f = failure_of(err);
+                fail(id, f.message, f.kind);
+            });
+        return id;
     }
 
     function wallet_connect(name_handle) {
@@ -359,6 +402,7 @@
     register_plugin = function (importObject) {
         importObject.env.wallet_list_providers = wallet_list_providers;
         importObject.env.wallet_connect = wallet_connect;
+        importObject.env.wallet_refresh = wallet_refresh;
         importObject.env.wallet_network_id = wallet_network_id;
         importObject.env.wallet_reward_address = wallet_reward_address;
         importObject.env.wallet_balance = wallet_balance;
@@ -374,5 +418,5 @@
         importObject.env.wallet_icon_pixels = wallet_icon_pixels;
     };
 
-    miniquad_add_plugin({ register_plugin, version: 4, name: 'wallet' });
+    miniquad_add_plugin({ register_plugin, version: 5, name: 'wallet' });
 })();

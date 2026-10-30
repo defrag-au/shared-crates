@@ -207,6 +207,13 @@ impl<K: Clone + Eq + Hash> Wall<K> {
         }
     }
 
+    /// Whether `key` has a tile on the wall yet (or still, while it leaves).
+    /// A pulse for a key the wall has not placed does nothing, and a host
+    /// acting on one (selecting it, say) should wait for it.
+    pub fn contains(&self, key: &K) -> bool {
+        self.motion.contains_key(key)
+    }
+
     /// Advance the motion by `dt` seconds.
     pub fn update(&mut self, dt: f32) {
         let _s = profile::scope("wall.update");
@@ -647,6 +654,16 @@ mod tests {
         // below, is loaded but not drawn.
         assert_eq!(on, 18);
         assert_eq!(near, 21);
+    }
+
+    /// A host waiting to act on a key can tell when the wall has placed it.
+    #[test]
+    fn the_wall_says_which_keys_it_has_placed() {
+        let mut wall = Wall::new(3);
+        assert!(!wall.contains(&1));
+        wall.arrange((0..3).map(|k| (k, 1)));
+        assert!(wall.contains(&1));
+        assert!(!wall.contains(&7));
     }
 
     #[test]

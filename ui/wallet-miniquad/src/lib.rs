@@ -141,12 +141,12 @@ pub const AVAILABLE: bool = cfg!(target_arch = "wasm32");
 
 /// Plugin version handshake. miniquad's `gl.js` looks for an export
 /// named `<plugin>_crate_version` and compares it to the plugin's JS
-/// `version` field. `wallet.js` declares `version: 4`, so we return 4.
+/// `version` field. `wallet.js` declares `version: 5`, so we return 5.
 ///
 /// Bumped 1 → 2 when the tx-signing surface (`utxos` / `change_address`
 /// / `sign_tx` / `submit_tx`) was added; bumped 2 → 3 with `network_id`,
 /// `cancel`, and the typed failure `kind` on poll errors; bumped 3 → 4 with
-/// `icon` and its pixels. A consumer carrying
+/// `icon` and its pixels; bumped 4 → 5 with `refresh`. A consumer carrying
 /// a stale `wallet.js` then fails the handshake loudly rather than
 /// link-erroring on the missing imports. Re-stamp [`PLUGIN_JS`] (build.rs) to
 /// clear it.
@@ -155,7 +155,7 @@ pub const AVAILABLE: bool = cfg!(target_arch = "wasm32");
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn wallet_crate_version() -> u32 {
-    4
+    5
 }
 
 #[cfg(test)]

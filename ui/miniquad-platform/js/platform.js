@@ -158,6 +158,38 @@
         fullscreenZone = x1 > x0 && y1 > y0 ? [x0, y0, x1, y1] : null;
     }
 
+    // ── Links ───────────────────────────────────────────────────────────────
+    //
+    // Opening a new tab is a popup to the browser, allowed only from inside a
+    // gesture's handler, like fullscreen. So the game names where a link is
+    // drawn and where it goes (`platform_link_zone`), and a tap that ends in
+    // the zone opens it from this handler. Only `https:` links: the zone is
+    // the game's, the address may have come from anywhere.
+
+    let linkZone = null;
+
+    document.addEventListener('pointerup', function (e) {
+        if (!linkZone) return;
+        const canvas = document.querySelector('#glcanvas') || document.querySelector('canvas');
+        if (!canvas) return;
+        const r = canvas.getBoundingClientRect();
+        const fx = (e.clientX - r.left) / r.width;
+        const fy = (e.clientY - r.top) / r.height;
+        const z = linkZone.box;
+        if (fx >= z[0] && fx <= z[2] && fy >= z[1] && fy <= z[3]) {
+            window.open(linkZone.url, '_blank', 'noopener,noreferrer');
+        }
+    }, { capture: true, passive: true });
+
+    // The link's box as fractions of the canvas and its address; a right edge
+    // not past the left, or an address that is not `https:`, clears it.
+    function platform_link_zone(x0, y0, x1, y1, url_js) {
+        const url = consume_js_object(url_js);
+        linkZone = x1 > x0 && y1 > y0 && /^https:\/\//i.test(url)
+            ? { box: [x0, y0, x1, y1], url: url }
+            : null;
+    }
+
     // 0: no fullscreen here (an iPhone's Safari, an embed that does not allow
     // it), 1: windowed, 2: fullscreen.
     function platform_fullscreen_state() {
@@ -219,6 +251,7 @@
 
     register_plugin = function (importObject) {
         importObject.env.platform_focus_returns = platform_focus_returns;
+        importObject.env.platform_link_zone = platform_link_zone;
         importObject.env.platform_clipboard_write = platform_clipboard_write;
         importObject.env.platform_fullscreen_zone = platform_fullscreen_zone;
         importObject.env.platform_fullscreen_state = platform_fullscreen_state;
@@ -233,9 +266,9 @@
     };
 
     // v2 added the storage calls, v3 the page's host and path, v4 fullscreen,
-    // v5 the clipboard, v6 the focus count. A consumer whose committed
-    // `platform.js` predates it fails the handshake at instantiate rather than
-    // calling a stubbed function — which is why the Rust export and this
-    // number move together.
-    miniquad_add_plugin({ register_plugin, version: 6, name: 'platform' });
+    // v5 the clipboard, v6 the focus count, v7 link zones. A consumer whose
+    // committed `platform.js` predates it fails the handshake at instantiate
+    // rather than calling a stubbed function — which is why the Rust export
+    // and this number move together.
+    miniquad_add_plugin({ register_plugin, version: 7, name: 'platform' });
 })();

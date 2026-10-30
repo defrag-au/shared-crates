@@ -40,6 +40,11 @@
 //! that signed the old account in compares the two and decides what that
 //! means (see `SignInPhase::Changed`).
 //!
+//! Every [`RECHECK_EVERY_SECS`] as well, whatever the focus did: whether
+//! closing a wallet extension's popup gives the page its focus back depends on
+//! the browser and the wallet, and a switch made in the popup should not wait
+//! for the reader to change tabs.
+//!
 //! ## What it does not own
 //!
 //! The chains themselves. Each host is independent — its own connection, its
@@ -110,7 +115,15 @@ pub struct WalletConnector {
     clipboard: fn(&str),
     /// The page coming back into view, which is when every host rechecks.
     focus: FocusWatch,
+    /// When every host was last asked to recheck (wall clock, seconds).
+    rechecked_at: f64,
 }
+
+/// Seconds between rechecks while the page stays in view. Each is a few
+/// quiet calls to the wallet (CIP-30 `isEnabled`, `enable` and
+/// `getRewardAddresses`; EIP-1193 `eth_accounts` and `eth_chainId`), never a
+/// prompt.
+pub const RECHECK_EVERY_SECS: f64 = 15.0;
 
 impl Default for WalletConnector {
     fn default() -> Self {
@@ -127,6 +140,7 @@ impl WalletConnector {
             vm: WalletModalVm::new(Vec::new()),
             clipboard: copy_text,
             focus: FocusWatch::new(),
+            rechecked_at: macroquad::miniquad::date::now(),
         }
     }
 
@@ -179,8 +193,7 @@ impl WalletConnector {
     /// also press the button under it.
     pub fn button(&mut self, p: &Painter, rect: Rect) -> bool {
         let tapped = if self.modal.is_visible() {
-            let behind = Painter::new(p.font, p.mono, p.theme, None).at_time(p.time());
-            wallet_button(&behind, &self.vm, rect)
+            wallet_button(&p.untapped(), &self.vm, rect)
         } else {
             wallet_button(p, &self.vm, rect)
         };
@@ -205,10 +218,12 @@ impl WalletConnector {
     /// For a frame where the modal is not drawn, and for tests.
     ///
     /// On the first frame after the page comes back into view (the tab shown
-    /// again, the window focused again), every host is asked to
-    /// [recheck](ChainHost::recheck) its wallet first.
+    /// again, the window focused again), and every [`RECHECK_EVERY_SECS`]
+    /// besides, every host is asked to [recheck](ChainHost::recheck) its
+    /// wallet first.
     pub fn poll(&mut self) {
-        if self.focus.returned() {
+        let now = macroquad::miniquad::date::now();
+        if self.focus.returned() || now - self.rechecked_at >= RECHECK_EVERY_SECS {
             self.recheck();
         }
         for host in &mut self.hosts {
@@ -232,6 +247,7 @@ impl WalletConnector {
     /// Ask every connected wallet which account it is on now, as a return to
     /// the page does. For a site with its own reason to ask, and for tests.
     pub fn recheck(&mut self) {
+        self.rechecked_at = macroquad::miniquad::date::now();
         for host in &mut self.hosts {
             host.recheck();
         }

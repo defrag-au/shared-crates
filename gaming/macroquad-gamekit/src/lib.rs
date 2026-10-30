@@ -44,6 +44,7 @@ pub use discord_auth::miniquad as auth;
 #[cfg(feature = "audio")]
 pub mod audio;
 pub mod bake;
+pub mod cart;
 pub mod clip;
 pub mod dir;
 pub mod ease;

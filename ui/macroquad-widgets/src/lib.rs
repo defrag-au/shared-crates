@@ -110,7 +110,9 @@ pub use route_graph::{
     LegState, ROUTE_STRIP_H, RouteCard, RouteGraphVm, RouteMeter, RouteNode, route_graph,
     route_graph_height, route_strip,
 };
-pub use scroll::{NOTCH_POINTS, Scroll, ScrollAxis, ScrollInput, wheel_points};
+pub use scroll::{
+    NOTCH_POINTS, Scroll, ScrollAxis, ScrollInput, WHEEL_IN_POINTS, wheel_points, wheel_points_on,
+};
 pub use segmented::{pill_rects, segmented, segmented_pills};
 pub use slider::{AmountSliderVm, SliderStop, amount_slider};
 pub use squad_picker::{

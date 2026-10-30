@@ -13,8 +13,8 @@ use opensea_stream::{EventStamp, StreamEvent};
 
 use chain_events::{
     AccountRef, AssetKind, ChainEvent, Coverage, Currency, EventBody, EventId, EventSource,
-    HolderEvent, MarketKind, MarketReason, OfferScope, PartyDelta, TranslateError, TxRef,
-    from_opensea,
+    HolderEvent, MarketEvent, OfferScope, Order, PartyDelta, PartyRole, Side, TranslateError,
+    TxRef, from_opensea,
 };
 
 const ITEM_TRANSFERRED: &str =
@@ -103,24 +103,40 @@ fn a_sale_is_a_market_row_and_the_movement_it_implies() {
     let events = translate(ITEM_SOLD, &collection);
     assert_eq!(events.len(), 2);
 
-    let EventBody::Market(sale) = &events[0].body else {
-        panic!("expected a sale");
+    let EventBody::Market(MarketEvent::Filled {
+        order: sale_order,
+        side,
+        price,
+        parties,
+    }) = &events[0].body
+    else {
+        panic!("expected a fill");
     };
-    assert_eq!(sale.kind, MarketKind::Sold);
-    assert_eq!(sale.price.as_ref().unwrap().amount, 227_000_000_000_000);
+    // A sale takes a listing.
+    assert_eq!(*side, Side::Ask);
+    assert_eq!(price.as_ref().unwrap().amount, 227_000_000_000_000);
     assert_eq!(
-        sale.seller.as_ref().map(|seller| seller.address.as_str()),
-        Some("0x3deaa70597437963c437788dc3fc9950c2ce1681")
-    );
-    assert_eq!(
-        sale.buyer.as_ref().map(|buyer| buyer.address.as_str()),
-        Some("0xd502f0842657e29dfadd6747c9f232f37b3128d7")
+        parties
+            .iter()
+            .map(|party| (party.role, party.account.address.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                PartyRole::Seller,
+                "0x3deaa70597437963c437788dc3fc9950c2ce1681"
+            ),
+            (
+                PartyRole::Buyer,
+                "0xd502f0842657e29dfadd6747c9f232f37b3128d7"
+            ),
+        ]
     );
     // The capture's sale settled with an empty order hash and the zero settlement
-    // contract, so there is no order to name.
-    assert!(sale.order.is_none());
+    // contract, so the source names no order — a state, not a missing value.
+    assert!(matches!(sale_order, Order::Unknown));
+    assert!(sale_order.named().is_none());
     assert!(matches!(
-        sale.price.as_ref().unwrap().currency,
+        price.as_ref().unwrap().currency,
         Currency::Contract { .. }
     ));
 
@@ -177,27 +193,30 @@ fn a_metadata_update_fingerprints_the_document_under_the_envelope_time() {
 }
 
 #[test]
-fn a_cancellation_is_an_invalidation_that_keeps_its_price() {
+fn a_cancellation_admits_no_side_and_keeps_its_price() {
     let events = translate(
         ITEM_CANCELLED,
         &collection("eip155:4663", "0x027aca2794e44f24950d81227dcd516ffbb49d6e"),
     );
-    let EventBody::Market(order) = &events[0].body else {
-        panic!("expected a market fact");
+    let EventBody::Market(MarketEvent::Cancelled {
+        order: cancelled,
+        side,
+        price,
+        parties,
+    }) = &events[0].body
+    else {
+        panic!("expected a cancellation");
     };
 
-    // The message does not say whether the order was a listing or a bid, so it is not
-    // promoted to `Delisted`.
-    assert_eq!(order.kind, MarketKind::OrderInvalidated);
-    assert_eq!(order.reason, Some(MarketReason::Cancelled));
+    // The message does not say whether the order was a listing or a bid, so the side is
+    // stated as absent rather than guessed.
+    assert_eq!(*side, None);
+    assert_eq!(price.as_ref().unwrap().amount, 1_470_000_000_000_000_000);
     assert_eq!(
-        order.price.as_ref().unwrap().amount,
-        1_470_000_000_000_000_000
-    );
-    assert_eq!(
-        order.order.as_ref().map(|order| order.id.as_str()),
+        cancelled.named().map(|order| order.id.as_str()),
         Some("0x4aeaa2b25dfed843afefb267c2de26cca7a99dd9fdd1779a460f58e51f146cba")
     );
+    assert!(parties.is_empty());
 }
 
 #[test]
@@ -206,18 +225,23 @@ fn a_listing_carries_its_ask_and_a_native_price_is_not_a_null_token() {
         ITEM_LISTED,
         &collection("eip155:80094", "0x88888888a9361f15aadbaca355a6b2938c6a674e"),
     );
-    let EventBody::Market(listing) = &events[0].body else {
+    let EventBody::Market(MarketEvent::Placed {
+        side,
+        price,
+        parties,
+        ..
+    }) = &events[0].body
+    else {
         panic!("expected a listing");
     };
 
-    assert_eq!(listing.kind, MarketKind::Listed);
-    assert_eq!(
-        listing.price.as_ref().unwrap().amount,
-        88_956_480_000_000_000_000
-    );
+    assert_eq!(*side, Side::Ask);
+    assert_eq!(price.amount, 88_956_480_000_000_000_000);
     // BERA arrives with the zero address, which is the stream's way of saying "the
     // chain's own coin".
-    assert_eq!(listing.price.as_ref().unwrap().currency, Currency::Native);
+    assert_eq!(price.currency, Currency::Native);
+    assert_eq!(parties.len(), 1);
+    assert_eq!(parties[0].role, PartyRole::Seller);
 }
 
 #[test]
@@ -226,17 +250,18 @@ fn a_bid_is_an_offer_whose_maker_is_the_buyer() {
         ITEM_RECEIVED_BID,
         &collection("eip155:1", "0xb8ea78fcacef50d41375e44e6814ebba36bb33c4"),
     );
-    let EventBody::Market(offer) = &events[0].body else {
+    let EventBody::Market(MarketEvent::Placed { side, parties, .. }) = &events[0].body else {
         panic!("expected an offer");
     };
 
-    assert_eq!(offer.kind, MarketKind::OfferMade);
-    assert_eq!(offer.scope, Some(OfferScope::Item));
+    assert_eq!(*side, Side::Bid(OfferScope::Item));
+    assert_eq!(parties.len(), 1);
+    // A bid's maker is the bidder, so it is the buying side of the eventual trade.
+    assert_eq!(parties[0].role, PartyRole::Buyer);
     assert_eq!(
-        offer.buyer.as_ref().map(|buyer| buyer.address.as_str()),
-        Some("0x0d67de0f32fc67a483336011d2e8fe794fcd630d")
+        parties[0].account.address.as_str(),
+        "0x0d67de0f32fc67a483336011d2e8fe794fcd630d"
     );
-    assert!(offer.seller.is_none());
 }
 
 #[test]
@@ -247,14 +272,11 @@ fn a_collection_offer_is_collection_scoped_and_names_no_asset() {
     );
 
     assert!(events[0].asset.is_none());
-    let EventBody::Market(offer) = &events[0].body else {
+    let EventBody::Market(MarketEvent::Placed { side, price, .. }) = &events[0].body else {
         panic!("expected an offer");
     };
-    assert_eq!(offer.scope, Some(OfferScope::Collection));
-    assert_eq!(
-        offer.price.as_ref().unwrap().amount,
-        758_000_000_000_000_000
-    );
+    assert_eq!(*side, Side::Bid(OfferScope::Collection));
+    assert_eq!(price.amount, 758_000_000_000_000_000);
 }
 
 #[test]
@@ -265,10 +287,10 @@ fn a_trait_offer_is_trait_scoped() {
     );
 
     assert!(events[0].asset.is_none());
-    let EventBody::Market(offer) = &events[0].body else {
+    let EventBody::Market(MarketEvent::Placed { side, .. }) = &events[0].body else {
         panic!("expected an offer");
     };
-    assert_eq!(offer.scope, Some(OfferScope::Trait));
+    assert_eq!(*side, Side::Bid(OfferScope::Trait));
 }
 
 #[test]
@@ -277,15 +299,15 @@ fn an_invalidation_admits_no_side_and_no_price() {
         ORDER_INVALIDATE,
         &collection("eip155:4663", "0xe5143de9d3ccbc31ffb4e7fc66d8320e0e2693d2"),
     );
-    let EventBody::Market(order) = &events[0].body else {
+    let EventBody::Market(event) = &events[0].body else {
         panic!("expected a market fact");
     };
 
-    assert_eq!(order.kind, MarketKind::OrderInvalidated);
-    assert!(order.price.is_none());
-    assert!(order.seller.is_none());
-    assert!(order.buyer.is_none());
-    assert!(order.reason.is_none());
+    // The message says an order stopped being valid and no more. That is its own
+    // transition rather than a withdrawal with a caveat, so there is no price and no
+    // side to carry — the shape cannot state them.
+    assert_eq!(event.kind(), "invalidated");
+    assert!(matches!(event, MarketEvent::Invalidated { .. }));
 }
 
 #[test]
@@ -298,13 +320,12 @@ fn a_revalidation_is_collection_scoped_because_the_frame_names_no_item() {
     );
 
     assert!(events[0].asset.is_none());
-    let EventBody::Market(order) = &events[0].body else {
-        panic!("expected a market fact");
+    let EventBody::Market(MarketEvent::Reopened { order }) = &events[0].body else {
+        panic!("expected a reopened order");
     };
-    assert_eq!(order.kind, MarketKind::OrderRevalidated);
     assert_eq!(
-        order.order.as_ref().map(|order| order.id.as_str()),
-        Some("0x56e64fad8c81401b8d7bca874d2c53394ab034ad68cd90f7e108592b47da0357")
+        order.id,
+        "0x56e64fad8c81401b8d7bca874d2c53394ab034ad68cd90f7e108592b47da0357"
     );
 }
 

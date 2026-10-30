@@ -26,9 +26,10 @@
 //!   moving stops it, and that tap is not a tap on whatever was under it:
 //!   [`Scroll::filter_tap`] drops it, as a phone does.
 //!
-//! The wheel moves the offset at once and stops any coast. Natively a mouse
-//! wheel reports notches and a trackpad reports points; the browser reports
-//! points. [`wheel_points`] reads both as points.
+//! The wheel moves the offset at once and stops any coast; it never starts
+//! one. A trackpad's own glide after the fingers lift comes from the
+//! operating system as more wheel deltas, and is followed as it arrives.
+//! [`wheel_points`] reads every platform's reports as points.
 
 use macroquad::prelude::{Rect, Vec2, mouse_wheel};
 
@@ -75,14 +76,31 @@ impl ScrollInput {
     }
 }
 
-/// A wheel's report as points: a notch (about ±1, from a native mouse wheel)
-/// is [`NOTCH_POINTS`]; anything larger is already points (a trackpad, or the
-/// browser, which reports pixels).
+/// Whether this platform's wheel reports already arrive as points. In the
+/// browser miniquad passes the wheel event's pixel delta straight through;
+/// on macOS it passes a trackpad's precise points, and scales a mouse
+/// wheel's lines to points itself. Native Windows and Linux report a mouse
+/// wheel in notches.
+pub const WHEEL_IN_POINTS: bool = cfg!(any(target_arch = "wasm32", target_os = "macos"));
+
+/// A wheel's report as points, on this platform ([`wheel_points_on`]).
 pub fn wheel_points(raw: f32) -> f32 {
-    if raw.abs() <= 1.5 {
-        raw * NOTCH_POINTS
-    } else {
+    wheel_points_on(raw, WHEEL_IN_POINTS)
+}
+
+/// A wheel's report as points. Where reports are points already they pass
+/// through untouched. Elsewhere a notch (about ±1) is [`NOTCH_POINTS`] and
+/// anything larger is points.
+///
+/// Never guess notches where reports are points: a trackpad's slow moves,
+/// and the operating system's own glide after the fingers lift, report
+/// deltas of 1 or less, and reading those as notches turned the tail of
+/// every trackpad gesture into a long, forty-fold glide.
+pub fn wheel_points_on(raw: f32, in_points: bool) -> f32 {
+    if in_points || raw.abs() > 1.5 {
         raw
+    } else {
+        raw * NOTCH_POINTS
     }
 }
 
@@ -323,7 +341,7 @@ mod tests {
         let was = s.offset();
         let wheel = ScrollInput {
             // A notch towards the end: macroquad reports it negative.
-            wheel: Vec2::new(0.0, wheel_points(-1.0)),
+            wheel: Vec2::new(0.0, -NOTCH_POINTS),
             ..up()
         };
         s.update(AREA, &wheel, MAX, DT);
@@ -339,9 +357,15 @@ mod tests {
 
     #[test]
     fn notches_and_points_both_read_as_points() {
-        assert_eq!(wheel_points(1.0), NOTCH_POINTS);
-        assert_eq!(wheel_points(-120.0), -120.0);
-        assert_eq!(wheel_points(0.0), 0.0);
+        // Native Windows and Linux: a notch is about ±1.
+        assert_eq!(wheel_points_on(1.0, false), NOTCH_POINTS);
+        assert_eq!(wheel_points_on(-120.0, false), -120.0);
+        assert_eq!(wheel_points_on(0.0, false), 0.0);
+        // The browser and macOS: a trackpad's slow move, or its glide's
+        // tail, is a point or less and stays one.
+        assert_eq!(wheel_points_on(1.0, true), 1.0);
+        assert_eq!(wheel_points_on(-0.5, true), -0.5);
+        assert_eq!(wheel_points_on(-120.0, true), -120.0);
     }
 
     #[test]

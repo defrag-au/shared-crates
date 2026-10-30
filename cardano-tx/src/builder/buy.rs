@@ -77,14 +77,15 @@ pub enum BuyCostCurve {
 }
 
 impl BuyCostCurve {
-    /// The curve for a book's `contract_version` string (`"V1"`, `"V2"`, …).
+    /// The curve for a book's `contract_version` string (`"V1"`, `"V2"`, …,
+    /// `"Wayup"`).
     ///
     /// Unknown values fall back to [`Self::JpgV1`] — the expensive curve — so a
     /// generation nobody has measured yet batches conservatively rather than
     /// optimistically.
     pub fn from_contract_version(version: &str) -> Self {
         match version {
-            "V2" | "V3" => Self::JpgV2V3,
+            "V2" | "V3" | "Wayup" => Self::JpgV2V3,
             _ => Self::JpgV1,
         }
     }
@@ -727,6 +728,7 @@ pub fn total_payout_lovelace(listings: &[ParsedListing]) -> u64 {
 mod tests {
     use super::*;
     use address_registry::MarketplaceType;
+    use pallas_txbuilder::BuildConway;
 
     fn buyer() -> Address {
         Address::from_bech32(
@@ -895,6 +897,11 @@ mod tests {
         assert_eq!(
             BuyCostCurve::from_contract_version("V3"),
             BuyCostCurve::JpgV2V3
+        );
+        assert_eq!(
+            BuyCostCurve::from_contract_version("Wayup"),
+            BuyCostCurve::JpgV2V3,
+            "Wayup locates its payouts by index, like V2/V3"
         );
     }
 
@@ -1221,14 +1228,16 @@ mod tests {
         );
     }
 
-    /// Both jpg versions we can actually buy must resolve a reference script
-    /// and a redeemer. If this fails the registry has regressed.
+    /// Both jpg versions we can actually buy, and Wayup, must resolve a
+    /// reference script and a redeemer. If this fails the registry has
+    /// regressed.
     #[test]
-    fn buyable_jpg_versions_resolve_contract_parameters() {
+    fn buyable_versions_resolve_contract_parameters() {
         for version in [
             MarketplaceType::JpgStoreV1,
             MarketplaceType::JpgStoreV2,
             MarketplaceType::JpgStoreV3,
+            MarketplaceType::Wayup,
         ] {
             assert!(
                 version.script_reference(RegistryNetwork::Mainnet).is_some(),
@@ -1307,6 +1316,155 @@ mod tests {
                 "listing {listing_idx}'s payouts must begin at index+1"
             );
         }
+    }
+
+    /// A Wayup settlement block is byte-for-byte the shape the sample
+    /// two-buy transaction produced: a fee output carrying the BLAKE2b-256 of
+    /// the listing's out-ref, then the datum's payouts in order, with the
+    /// redeemer naming the fee output's index.
+    #[test]
+    fn a_wayup_listing_builds_the_sample_settlement_block() {
+        use crate::builder::marketplace::parse_listing_datum;
+
+        // The sample's second listing: `7336a5a4…#3`, 1.31886 ADA of escrow,
+        // 34 ADA of payouts, spent with redeemer `Constr 0 [3]`.
+        const DATUM: &str = "d8799f9fd8799fd8799fd8799f581cb902ff69f1fd1049bc501cf92efc4f2bfdbcc0c2e88614739251a555ffd8799fd8799fd8799f581cd31c3e7061f9f61d26fee258a2eaef81f95bef5c71c360597492b7b4ffffffff1a01e6c160ffd8799fd8799fd8799f581c1a5901ac66ddfaae9e6d934659513a43e63b02473c824a9710aaf080ffd8799fd8799fd8799f581ca77381cb2a35f3451f053d68681f168e278e31db69ab720056d5289cffffffff1a00200b20ffff581cd31c3e7061f9f61d26fee258a2eaef81f95bef5c71c360597492b7b4ff";
+        let datum_cbor = hex::decode(DATUM).unwrap();
+        let payouts = parse_listing_datum(&datum_cbor, MarketplaceType::Wayup, 1).unwrap();
+        let listing = ParsedListing {
+            utxo: UtxoApi {
+                tx_hash: "7336a5a446b3ea3765deb8ec266ec57d456a809ebf6eacec55fffdcd47228fd7".into(),
+                output_index: 3,
+                lovelace: 1_318_860,
+                assets: vec![],
+                tags: vec![],
+            },
+            datum_cbor,
+            datum_is_inline: false,
+            payouts,
+            marketplace_version: MarketplaceType::Wayup,
+            script_ref: crate::builder::marketplace::ScriptRefInfo {
+                language: pallas_txbuilder::ScriptKind::PlutusV2,
+                size: 1606,
+            },
+        };
+
+        // The fee datum is the hash of this listing's out-ref, and it is the
+        // value output 3 carried on chain.
+        assert_eq!(
+            hex::encode(fee_output_datum_tag(&listing).unwrap()),
+            "5820952716d7ba52b87bc73d3cf7656a7b950d310833f0ebe876ea0e16a46707d880"
+        );
+
+        let params = TxBuildParams {
+            coins_per_utxo_byte: 4310,
+            ..TxBuildParams::default()
+        };
+        let blocks =
+            build_settlement_blocks(&[listing], 0, &params, RegistryNetwork::Mainnet).unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].redeemer_index, 0, "the fee output is at index 0");
+        assert_eq!(blocks[0].outputs.len(), 3, "fee plus two payouts");
+        // 2% of 34 ADA is under 1 ADA, so the datum-bearing fee output's
+        // min-UTxO is what the sample paid.
+        assert_eq!(blocks[0].outputs[0].lovelace, 1_155_080);
+        assert_eq!(blocks[0].outputs[1].lovelace, 31_900_000);
+        assert_eq!(blocks[0].outputs[2].lovelace, 2_100_000);
+    }
+
+    /// The two real Wayup listings from `c7cb2289…`, built into one buy. The
+    /// listing UTxOs are the transaction's own inputs and their datums are the
+    /// on-chain preimages, so this exercises the whole builder against the
+    /// shape the validator really saw.
+    #[test]
+    fn the_sample_two_buy_transaction_rebuilds() {
+        use crate::builder::marketplace::parse_listing_datum;
+
+        const SELLER_0465: &str = "d8799f9fd8799fd8799fd8799f581cb902ff69f1fd1049bc501cf92efc4f2bfdbcc0c2e88614739251a555ffd8799fd8799fd8799f581cd31c3e7061f9f61d26fee258a2eaef81f95bef5c71c360597492b7b4ffffffff1a01e6c160ffd8799fd8799fd8799f581c1a5901ac66ddfaae9e6d934659513a43e63b02473c824a9710aaf080ffd8799fd8799fd8799f581ca77381cb2a35f3451f053d68681f168e278e31db69ab720056d5289cffffffff1a00200b20ffff581cd31c3e7061f9f61d26fee258a2eaef81f95bef5c71c360597492b7b4ff";
+        const SELLER_2332: &str = "d8799f9fd8799fd8799fd8799f581cb902ff69f1fd1049bc501cf92efc4f2bfdbcc0c2e88614739251a555ffd8799fd8799fd8799f581cd31c3e7061f9f61d26fee258a2eaef81f95bef5c71c360597492b7b4ffffffff1a02037120ffd8799fd8799fd8799f581c1a5901ac66ddfaae9e6d934659513a43e63b02473c824a9710aaf080ffd8799fd8799fd8799f581ca77381cb2a35f3451f053d68681f168e278e31db69ab720056d5289cffffffff1a0021dfe0ffff581cd31c3e7061f9f61d26fee258a2eaef81f95bef5c71c360597492b7b4ff";
+        const POLICY: &str = "285c0b8e91ba323da4ca083c9db837e111dafbf3143ece4d03eba8f4";
+
+        let listing = |index: u32, datum_hex: &str, name: &str| {
+            let datum_cbor = hex::decode(datum_hex).unwrap();
+            ParsedListing {
+                utxo: UtxoApi {
+                    tx_hash: "7336a5a446b3ea3765deb8ec266ec57d456a809ebf6eacec55fffdcd47228fd7"
+                        .into(),
+                    output_index: index,
+                    lovelace: 1_318_860,
+                    assets: vec![cardano_assets::utxo::AssetQuantity {
+                        asset_id: cardano_assets::AssetId::new(
+                            POLICY.to_string(),
+                            name.to_string(),
+                        )
+                        .unwrap(),
+                        quantity: 1,
+                    }],
+                    tags: vec![],
+                },
+                datum_cbor: datum_cbor.clone(),
+                datum_is_inline: false,
+                payouts: parse_listing_datum(&datum_cbor, MarketplaceType::Wayup, 1).unwrap(),
+                marketplace_version: MarketplaceType::Wayup,
+                script_ref: crate::builder::marketplace::ScriptRefInfo {
+                    language: pallas_txbuilder::ScriptKind::PlutusV2,
+                    size: 1606,
+                },
+            }
+        };
+
+        // Mainnet fee parameters, coins-per-UTxO-byte and ExUnit prices.
+        let params = TxBuildParams {
+            min_fee_coefficient: 44,
+            min_fee_constant: 155_381,
+            coins_per_utxo_byte: 4310,
+            max_tx_size: 16_384,
+            max_tx_ex_units: ExUnits {
+                mem: 16_500_000,
+                steps: 10_000_000_000,
+            },
+            max_value_size: 5_000,
+            price_mem: Some((577, 10_000)),
+            price_step: Some((721, 10_000_000)),
+            min_fee_ref_script_cost_per_byte: 15,
+            ..TxBuildParams::default()
+        };
+        let buyer_address = Address::from_bech32(
+            "addr1q99qpegypskhugq6nss8gjkwvjlj35wd54venfynreqxjgkt55dzuk6msq4qgq4g0dmz6tkvdvdfkmgd6uyd4urms2ksl0yc60",
+        )
+        .unwrap();
+        let deps = BuyDeps {
+            // The sample's own funding input (spent on chain now; a builder
+            // does not care, and using it keeps the fixture real).
+            buyer_utxos: vec![UtxoApi {
+                tx_hash: "e7630eac4f47be4030494610fa011976acf6fe54a4a1f3bdef9b900ee2295109".into(),
+                output_index: 7,
+                lovelace: 672_068_137,
+                assets: vec![],
+                tags: vec![],
+            }],
+            params,
+            buyer_address,
+            network_id: 1,
+            collateral_utxo: None,
+            validity_slots: None,
+        };
+
+        let listings = [
+            listing(0, SELLER_0465, "546f6f6c6865616430343635"),
+            listing(3, SELLER_2332, "546f6f6c6865616432323332"),
+        ];
+        let unsigned = build_buy(&deps, &listings).expect("the sample buy must build");
+        let built = unsigned
+            .staging
+            .build_conway_raw()
+            .expect("the sample buy must serialise");
+        assert!(
+            built.tx_bytes.0.len() < 16_384,
+            "the sample two-buy must fit a transaction, got {} bytes",
+            built.tx_bytes.0.len()
+        );
+        assert!(unsigned.fee > 0, "a fee is charged");
     }
 
     #[test]

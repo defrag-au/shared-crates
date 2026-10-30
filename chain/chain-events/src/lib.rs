@@ -28,9 +28,12 @@
 //!   declines to guess when the deltas do not determine one.
 //! - **A content change is a hash and its algorithm.** A datum hash and a JSON
 //!   fingerprint are not comparable, so [`HashAlgo`] travels with every one.
-//! - **A market fact is a fact, not a message.** `OrderInvalidated` exists because
-//!   OpenSea's `order_invalidate` does not say whether it killed a listing or a bid,
-//!   and inventing an answer would be worse than stating the gap.
+//! - **A market fact is an order transition**, not a message. Six transitions carry it:
+//!   placed, updated, reopened, filled, cancelled, invalidated. An order's cancellation
+//!   and a fill are different facts, so they are different variants rather than one kind
+//!   with a nullable price; and `Invalidated` exists because OpenSea's `order_invalidate`
+//!   does not say whether the order was withdrawn, filled or expired, which is a gap
+//!   worth stating rather than guessing at.
 //!
 //! # Two feeds, one vocabulary
 //!
@@ -67,13 +70,17 @@ pub use event::{
 };
 pub use holder::{Direction, HolderEvent, HolderKind, PartyDelta, direction};
 pub use id::{BadEventId, EventId};
-pub use market::{Currency, MarketEvent, MarketKind, MarketReason, OfferScope, OrderRef, Price};
+pub use market::{
+    Currency, MarketEvent, MarketParty, OfferScope, Order, OrderRef, PartyRole, Price, Side,
+};
 #[cfg(feature = "opensea")]
 pub use opensea::{TranslateError, from_opensea};
 
 // The identity types, re-exported so a consumer names an asset or a chain without
-// also taking `chains` as a dependency of its own.
-pub use chains::{AssetType, ChainRef, TokenRef};
+// also taking `chains` as a dependency of its own. `AssetRefError` comes with them because
+// it is the error `AssetType::new` returns, and a caller that cannot name it cannot
+// propagate the failure.
+pub use chains::{AssetRefError, AssetType, ChainRef, TokenRef};
 
 #[cfg(test)]
 mod tests {

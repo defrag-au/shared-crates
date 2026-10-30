@@ -109,18 +109,18 @@ impl ChainCoord {
 }
 
 /// The transaction behind a fact, and where the fact sits inside it.
+///
+/// Both positions are coordinates rather than identity: a source may not know them, zero
+/// is "not stated", and neither is hashed into [`EventId`](crate::EventId). See
+/// [`EventId::derive`](crate::EventId::derive) for why.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TxRef {
     /// The chain-native transaction hash, lower-case hex without a prefix.
     pub hash: String,
-    /// The transaction's position in its block.
+    /// The transaction's position in its block. Zero when the source does not say.
     pub index: u32,
     /// The fact's position within the transaction: a log index on EVM, a position
-    /// among the transaction's movements on Cardano.
-    ///
-    /// Zero when the source does not say — OpenSea's feed gives a transaction hash and
-    /// no log index. Uniqueness comes from the [`EventId`] discriminator, not from
-    /// this field, so a zero here is not a collision.
+    /// among the transaction's movements on Cardano. Zero when the source does not say.
     pub event_index: u32,
 }
 
@@ -277,7 +277,7 @@ impl EventBody {
         match self {
             Self::Holder(event) => event.kind.as_str(),
             Self::Asset(event) => event.kind.as_str(),
-            Self::Market(event) => event.kind.as_str(),
+            Self::Market(event) => event.kind(),
             Self::Admin(event) => event.kind.as_str(),
         }
     }
@@ -483,7 +483,9 @@ mod tests {
         let event = ChainEvent::draft(
             chain(),
             collection(),
-            EventBody::Market(crate::MarketEvent::new(crate::MarketKind::Sold)),
+            EventBody::Market(crate::MarketEvent::Invalidated {
+                order: crate::OrderRef::new("order"),
+            }),
             1_700_000_000,
             EventSource::OpenseaStream,
         )

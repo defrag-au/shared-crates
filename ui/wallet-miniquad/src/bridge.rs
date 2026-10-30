@@ -106,6 +106,7 @@ mod imp {
     unsafe extern "C" {
         fn wallet_list_providers() -> JsObject;
         fn wallet_connect(name: JsObject) -> i32;
+        fn wallet_refresh(name: JsObject) -> i32;
         fn wallet_network_id() -> i32;
         fn wallet_reward_address() -> i32;
         fn wallet_balance() -> i32;
@@ -134,6 +135,16 @@ mod imp {
 
     pub fn connect(name: &str) -> ReqId {
         ReqId(unsafe { wallet_connect(JsObject::string(name)) })
+    }
+
+    /// A fresh handle from wallet `name`, never prompting: `isEnabled()`, then
+    /// `enable()` only if the site is still allowed. A CIP-30 handle belongs
+    /// to the account selected when it was enabled, so this is how a switch
+    /// made in the extension is seen. On ok, every later read answers for the
+    /// account selected now; a site no longer allowed fails `Declined` and
+    /// keeps the old handle.
+    pub fn refresh(name: &str) -> ReqId {
+        ReqId(unsafe { wallet_refresh(JsObject::string(name)) })
     }
 
     /// CIP-30 `getNetworkId`: 0 = testnet, 1 = mainnet.
@@ -245,6 +256,9 @@ mod imp {
         Vec::new()
     }
     pub fn connect(_name: &str) -> ReqId {
+        ReqId(0)
+    }
+    pub fn refresh(_name: &str) -> ReqId {
         ReqId(0)
     }
     pub fn network_id() -> ReqId {

@@ -12,10 +12,14 @@
 //! - `item_transferred` is a movement. `item_sold` is a **sale**, and it is also a
 //!   movement when `taker` is present — the two rows get the same [`EventId`] as the
 //!   separate transfer message, so the merge is an upsert rather than a double count.
-//! - `item_cancelled` and `order_invalidate` both become [`MarketKind::OrderInvalidated`].
-//!   Neither says whether the order was a listing or a bid, so neither is promoted to
-//!   `Delisted` or `OfferCancelled`; the order hash is the join that would tell you, and
-//!   a projection is where that join belongs.
+//! - `item_cancelled` is a [`Cancelled`](MarketEvent::Cancelled) with no [`Side`] — the
+//!   message does not say whether a listing or a bid was withdrawn, and the order hash is
+//!   the join that would tell you, which belongs in a projection rather than here.
+//! - `order_invalidate` is [`Invalidated`](MarketEvent::Invalidated), not a cancellation.
+//!   The message says the order stopped being valid and no more; an expiry read as a
+//!   withdrawal would remove an order that is still there.
+//! - `order_revalidate` is [`Reopened`](MarketEvent::Reopened): the order is live again at
+//!   the terms it already had, which the message does not repeat.
 //! - A metadata update carries the whole document and no before-state, so the event
 //!   records the [`ImageMetadataV1`] fingerprint it produced and no `before_hash`.
 //!
@@ -37,7 +41,9 @@ use opensea_stream::{
 use crate::asset::{AssetEvent, AssetKind, HashAlgo, ImageMetadataV1};
 use crate::event::{AccountRef, ChainEvent, EventBody, EventDraft, EventSource, TxRef};
 use crate::holder::HolderEvent;
-use crate::market::{MarketEvent, MarketKind, MarketReason, OfferScope, OrderRef, Price};
+use crate::market::{
+    MarketEvent, MarketParty, OfferScope, Order, OrderRef, PartyRole, Price, Side,
+};
 
 /// One message, translated.
 ///
@@ -89,6 +95,13 @@ pub enum TranslateError {
     },
     /// An `nft_id` that is not `{chain}/{contract}/{token}`.
     MalformedNftId(String),
+    /// A message that is *about an order* arrived without an order id.
+    ///
+    /// A placement, a reopening or an invalidation cannot be applied to an order nobody
+    /// can name, so this is refused rather than stored as a row no reader can use. A
+    /// settlement or a withdrawal is a standalone fact and carries `None` instead — see
+    /// [`MarketEvent`].
+    MissingOrderId(EventType),
     /// A timestamp that is not the RFC 3339 the stream sends.
     BadTimestamp {
         /// Which field it came from.
@@ -123,6 +136,10 @@ impl fmt::Display for TranslateError {
                     "{nft_id:?} is not {{chain}}/{{contract}}/{{token}}"
                 )
             }
+            Self::MissingOrderId(event_type) => write!(
+                formatter,
+                "{event_type:?} names no order, and the fact is about one"
+            ),
             Self::BadTimestamp { field, value } => {
                 write!(formatter, "{field} is not RFC 3339: {value:?}")
             }
@@ -182,11 +199,25 @@ fn sold(
     let asset = asset_ref(collection, &sale.item.nft_id)?;
     let occurred_at = parse_timestamp("event_timestamp", &sale.event_timestamp)?;
 
-    let mut market = MarketEvent::new(MarketKind::Sold);
-    market.price = Some(price(sale.sale_price, &sale.payment_token));
-    market.seller = Some(account(chain, &sale.maker));
-    market.buyer = sale.taker.as_ref().map(|taker| account(chain, taker));
-    market.order = order_ref(&sale.order_hash);
+    let market = MarketEvent::Filled {
+        order: order_of(&sale.order_hash),
+        // A sale takes a listing: the ask is what was accepted.
+        side: Side::Ask,
+        price: Some(price(sale.sale_price, &sale.payment_token)),
+        parties: {
+            let mut parties = vec![MarketParty {
+                role: PartyRole::Seller,
+                account: account(chain, &sale.maker),
+            }];
+            if let Some(taker) = &sale.taker {
+                parties.push(MarketParty {
+                    role: PartyRole::Buyer,
+                    account: account(chain, taker),
+                });
+            }
+            parties
+        },
+    };
     let market_discriminator = market.discriminator();
 
     let mut events = vec![
@@ -283,10 +314,14 @@ fn cancelled(
     let asset = asset_ref(collection, &order.item.nft_id)?;
     let occurred_at = parse_timestamp("event_timestamp", &order.event_timestamp)?;
 
-    let mut market = MarketEvent::new(MarketKind::OrderInvalidated);
-    market.reason = Some(MarketReason::Cancelled);
-    market.price = Some(price(order.base_price, &order.payment_token));
-    market.order = order_ref(&order.order_hash);
+    // The message does not say whether it withdrew a listing or a bid, and a later
+    // `Invalidated` is a different fact, so neither is promoted into the other.
+    let market = MarketEvent::Cancelled {
+        order: order_of(&order.order_hash),
+        side: None,
+        price: Some(price(order.base_price, &order.payment_token)),
+        parties: Vec::new(),
+    };
     let discriminator = market.discriminator();
 
     Ok(vec![
@@ -312,10 +347,15 @@ fn listed(
     let asset = asset_ref(collection, &listed.item.nft_id)?;
     let occurred_at = parse_timestamp("event_timestamp", &listed.event_timestamp)?;
 
-    let mut market = MarketEvent::new(MarketKind::Listed);
-    market.price = Some(price(listed.base_price, &listed.payment_token));
-    market.seller = Some(account(chain, &listed.maker));
-    market.order = order_ref(&listed.order_hash);
+    let market = MarketEvent::Placed {
+        order: required_order(&listed.order_hash, EventType::ItemListed)?,
+        side: Side::Ask,
+        price: price(listed.base_price, &listed.payment_token),
+        parties: vec![MarketParty {
+            role: PartyRole::Seller,
+            account: account(chain, &listed.maker),
+        }],
+    };
     let discriminator = market.discriminator();
 
     Ok(vec![
@@ -340,12 +380,16 @@ fn bid(
     let asset = asset_ref(collection, &bid.item.nft_id)?;
     let occurred_at = parse_timestamp("event_timestamp", &bid.event_timestamp)?;
 
-    let mut market = MarketEvent::new(MarketKind::OfferMade);
-    market.scope = Some(OfferScope::Item);
-    market.price = Some(price(bid.base_price, &bid.payment_token));
-    // A bid's maker is the bidder, so it is the buyer side of the eventual trade.
-    market.buyer = Some(account(chain, &bid.maker));
-    market.order = order_ref(&bid.order_hash);
+    let market = MarketEvent::Placed {
+        order: required_order(&bid.order_hash, EventType::ItemReceivedBid)?,
+        side: Side::Bid(OfferScope::Item),
+        price: price(bid.base_price, &bid.payment_token),
+        // A bid's maker is the bidder, so it is the buying side of the eventual trade.
+        parties: vec![MarketParty {
+            role: PartyRole::Buyer,
+            account: account(chain, &bid.maker),
+        }],
+    };
     let discriminator = market.discriminator();
 
     Ok(vec![
@@ -369,11 +413,15 @@ fn collection_offer(
     let chain = check_chain(collection, &offer.chain)?;
     let occurred_at = parse_timestamp("event_timestamp", &offer.event_timestamp)?;
 
-    let mut market = MarketEvent::new(MarketKind::OfferMade);
-    market.scope = Some(OfferScope::Collection);
-    market.price = Some(price(offer.base_price, &offer.payment_token));
-    market.buyer = Some(account(chain, &offer.maker));
-    market.order = order_ref(&offer.order_hash);
+    let market = MarketEvent::Placed {
+        order: required_order(&offer.order_hash, EventType::CollectionOffer)?,
+        side: Side::Bid(OfferScope::Collection),
+        price: price(offer.base_price, &offer.payment_token),
+        parties: vec![MarketParty {
+            role: PartyRole::Buyer,
+            account: account(chain, &offer.maker),
+        }],
+    };
     let discriminator = market.discriminator();
 
     // Collection-scoped: the frame's `item` is `{}`, so there is no asset to name.
@@ -397,11 +445,15 @@ fn trait_offer(
     let chain = check_chain(collection, &offer.chain)?;
     let occurred_at = parse_timestamp("event_timestamp", &offer.event_timestamp)?;
 
-    let mut market = MarketEvent::new(MarketKind::OfferMade);
-    market.scope = Some(OfferScope::Trait);
-    market.price = Some(price(offer.base_price, &offer.payment_token));
-    market.buyer = Some(account(chain, &offer.maker));
-    market.order = order_ref(&offer.order_hash);
+    let market = MarketEvent::Placed {
+        order: required_order(&offer.order_hash, EventType::TraitOffer)?,
+        side: Side::Bid(OfferScope::Trait),
+        price: price(offer.base_price, &offer.payment_token),
+        parties: vec![MarketParty {
+            role: PartyRole::Buyer,
+            account: account(chain, &offer.maker),
+        }],
+    };
     let discriminator = market.discriminator();
 
     Ok(vec![
@@ -424,8 +476,9 @@ fn invalidated(
     let chain = check_chain(collection, &order.chain)?;
     let occurred_at = parse_timestamp("event_timestamp", &order.event_timestamp)?;
 
-    let mut market = MarketEvent::new(MarketKind::OrderInvalidated);
-    market.order = order_ref(&order.order_hash);
+    let market = MarketEvent::Invalidated {
+        order: required_order(&order.order_hash, EventType::OrderInvalidate)?,
+    };
     let discriminator = market.discriminator();
 
     Ok(vec![
@@ -449,8 +502,9 @@ fn revalidated(
     let chain = check_chain(collection, &order.chain)?;
     let occurred_at = parse_timestamp("event_timestamp", &order.event_timestamp)?;
 
-    let mut market = MarketEvent::new(MarketKind::OrderRevalidated);
-    market.order = order_ref(&order.order_hash);
+    let market = MarketEvent::Reopened {
+        order: required_order(&order.order_hash, EventType::OrderRevalidate)?,
+    };
     let discriminator = market.discriminator();
 
     Ok(vec![
@@ -527,6 +581,25 @@ fn order_ref(order_hash: &str) -> Option<OrderRef> {
     // An empty hash is observed on real settlements, so it is an absent identifier
     // rather than an order whose id is "".
     (!order_hash.is_empty()).then(|| OrderRef::new(order_hash))
+}
+
+/// The order for a fact that is allowed to arrive without one.
+///
+/// Separate from [`order_ref`] because the absence is a state, not a missing value: a
+/// settlement or a withdrawal can state its fact without naming the order.
+fn order_of(order_hash: &str) -> Order {
+    match order_ref(order_hash) {
+        Some(reference) => Order::Named(reference),
+        None => Order::Unknown,
+    }
+}
+
+/// The order a message that is *about* an order must name.
+///
+/// Separate from [`order_ref`] because the two cases differ: a settlement may legitimately
+/// arrive without one, a placement or an invalidation may not.
+fn required_order(order_hash: &str, event_type: EventType) -> Result<OrderRef, TranslateError> {
+    order_ref(order_hash).ok_or(TranslateError::MissingOrderId(event_type))
 }
 
 fn tx(transaction: &Option<TransactionRef>) -> Option<TxRef> {
@@ -657,5 +730,28 @@ impl EventDraft {
             Some(asset) => self.asset(asset),
             None => self,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_order_about_fact_must_name_its_order() {
+        // A placement, a reopening or an invalidation cannot be applied to an order
+        // nobody can name, so an empty hash is refused rather than stored un-keyed.
+        assert!(required_order("0xabc", EventType::ItemListed).is_ok());
+        assert_eq!(
+            required_order("", EventType::ItemListed),
+            Err(TranslateError::MissingOrderId(EventType::ItemListed))
+        );
+    }
+
+    #[test]
+    fn a_settlement_may_arrive_without_one() {
+        // Observed on a real capture: a sale settled with an empty `order_hash`.
+        assert!(order_ref("").is_none());
+        assert!(order_ref("0xabc").is_some());
     }
 }

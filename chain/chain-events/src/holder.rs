@@ -71,6 +71,22 @@ impl HolderEvent {
         }
     }
 
+    /// Builds the event from a supply delta and the parties whose balances changed.
+    ///
+    /// The kind comes from `net_mint` and **never** from the shape of the party list: a
+    /// batched fill is still a transfer, a mint that pays two addresses is still a mint,
+    /// and [`direction`] declining to name a sender does not mean the movement has no
+    /// kind. That is exactly the rule `policy-archive`'s `UnitMove` needs, stated once
+    /// here so a second adapter cannot answer it differently.
+    pub fn from_net_mint(net_mint: i64, parties: Vec<PartyDelta>) -> Self {
+        let kind = match net_mint {
+            mint if mint > 0 => HolderKind::Mint,
+            burn if burn < 0 => HolderKind::Burn,
+            _ => HolderKind::Transfer,
+        };
+        Self { kind, parties }
+    }
+
     /// How many units moved — the sum of the positive deltas.
     pub fn quantity(&self) -> u64 {
         self.parties
@@ -296,6 +312,66 @@ mod tests {
             }],
         };
         assert_eq!(direction(&event), Direction::Ambiguous);
+    }
+
+    #[test]
+    fn the_kind_comes_from_the_supply_delta_not_the_party_shape() {
+        // A split: one seller, two recipients, no supply change. `direction` declines to
+        // name a sender, but the movement still has a kind — the two answer different
+        // questions, and an adapter that used `direction` for the kind would drop this.
+        let event = HolderEvent::from_net_mint(
+            0,
+            vec![
+                PartyDelta {
+                    account: account("addr1vseller"),
+                    delta: -10,
+                },
+                PartyDelta {
+                    account: account("addr1vroyalty"),
+                    delta: 7,
+                },
+                PartyDelta {
+                    account: account("addr1vmarket"),
+                    delta: 3,
+                },
+            ],
+        );
+
+        assert_eq!(event.kind, HolderKind::Transfer);
+        assert_eq!(direction(&event), Direction::Ambiguous);
+        assert_eq!(event.quantity(), 10);
+    }
+
+    #[test]
+    fn a_mint_that_pays_two_addresses_is_still_a_mint() {
+        let event = HolderEvent::from_net_mint(
+            10,
+            vec![
+                PartyDelta {
+                    account: account("addr1va"),
+                    delta: 6,
+                },
+                PartyDelta {
+                    account: account("addr1vb"),
+                    delta: 4,
+                },
+            ],
+        );
+
+        assert_eq!(event.kind, HolderKind::Mint);
+        assert_eq!(direction(&event), Direction::Ambiguous);
+    }
+
+    #[test]
+    fn a_burn_is_a_negative_supply_delta() {
+        let event = HolderEvent::from_net_mint(
+            -1,
+            vec![PartyDelta {
+                account: account("addr1va"),
+                delta: -1,
+            }],
+        );
+        assert_eq!(event.kind, HolderKind::Burn);
     }
 
     #[test]

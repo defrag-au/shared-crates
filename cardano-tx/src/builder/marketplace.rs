@@ -122,10 +122,17 @@ pub fn parse_listing_datum(
     match version {
         // Abandonware is the V2/V3 validator with different constants; its
         // datum type is identical.
+        //
+        // Wayup's listing datum is the same SHAPE as V2/V3's layout B: a
+        // payouts list first, then the seller's credential. A payout is still
+        // `[address, lovelace]`, and the second field is still bytes that the
+        // payout parser ignores. Verified against the two listings spent by
+        // `c7cb2289…`.
         MarketplaceType::JpgStoreV1
         | MarketplaceType::JpgStoreV2
         | MarketplaceType::JpgStoreV3
-        | MarketplaceType::Abandonware => parse_jpg_v1_v2_v3_datum(datum_cbor, network_id),
+        | MarketplaceType::Abandonware
+        | MarketplaceType::Wayup => parse_jpg_v1_v2_v3_datum(datum_cbor, network_id),
         _ => Err(TxBuildError::BuildFailed(format!(
             "Unsupported marketplace version for buy TX: {version:?}"
         ))),
@@ -545,6 +552,35 @@ mod tests {
         // proves we read the right integers: shape B nests a decoy `Int 0`
         // beside the real amount, and picking it would total 0.
         assert_eq!(amounts.iter().sum::<u64>(), 5_000_000_000);
+    }
+
+    /// The real hash-kind datum of the 34 ADA Wayup listing spent by
+    /// `c7cb2289…` (UTxO `7336a5a4…#3`, pulled from Koios `/datum_info` on
+    /// 2026-10-30). Layout B: the payouts list comes first, then the seller's
+    /// 28-byte stake credential.
+    const WAYUP_LISTING_DATUM: &str = "d8799f9fd8799fd8799fd8799f581cb902ff69f1fd1049bc501cf92efc4f2bfdbcc0c2e88614739251a555ffd8799fd8799fd8799f581cd31c3e7061f9f61d26fee258a2eaef81f95bef5c71c360597492b7b4ffffffff1a01e6c160ffd8799fd8799fd8799f581c1a5901ac66ddfaae9e6d934659513a43e63b02473c824a9710aaf080ffd8799fd8799fd8799f581ca77381cb2a35f3451f053d68681f168e278e31db69ab720056d5289cffffffff1a00200b20ffff581cd31c3e7061f9f61d26fee258a2eaef81f95bef5c71c360597492b7b4ff";
+
+    /// A Wayup listing is parseable by the same parser as jpg V2/V3, and its
+    /// two payouts are exactly the outputs the sample buy made: the seller's
+    /// 31.9 ADA and the 2.1 ADA royalty.
+    #[test]
+    fn test_parse_live_wayup_listing_datum() {
+        let bytes = hex::decode(WAYUP_LISTING_DATUM).expect("fixture hex");
+        let payouts = parse_listing_datum(&bytes, MarketplaceType::Wayup, 1)
+            .expect("live Wayup listing datum must parse");
+
+        assert_eq!(payouts.len(), 2);
+        assert_eq!(payouts[0].lovelace, 31_900_000);
+        assert_eq!(
+            payouts[0].address.to_bech32().unwrap(),
+            "addr1qxus9lmf7873qjdu2qw0jthufu4lm0xqct5gv9rnjfg624wnrsl8qc0e7cwjdlhztz3w4mupl9d77hr3cds9jayjk76qrz674f"
+        );
+        assert_eq!(payouts[1].lovelace, 2_100_000);
+        assert_eq!(
+            payouts[1].address.to_bech32().unwrap(),
+            "addr1qyd9jqdvvmwl4t57dkf5vk238fp7vwczgu7gyj5hzz40pq98wwquk2347dz37pfadp5p795wy78rrkmf4deqq4k49zwqctn800"
+        );
+        assert_eq!(payouts.iter().map(|p| p.lovelace).sum::<u64>(), 34_000_000);
     }
 
     #[test]

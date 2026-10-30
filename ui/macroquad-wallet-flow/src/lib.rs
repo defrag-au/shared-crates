@@ -122,6 +122,16 @@ pub trait Bridge {
     fn balance(&mut self) -> Option<ReqId> {
         None
     }
+
+    /// Take a fresh handle from wallet `key`, which is connected, without
+    /// prompting: CIP-30 `isEnabled()`, then `enable()` if the site is still
+    /// allowed. A handle answers for the account selected when it was
+    /// enabled, so this is what lets a recheck see an account switched in the
+    /// extension. `None` when this bridge has no such step (a native run, a
+    /// test), and the recheck reads through the handle it has.
+    fn refresh(&mut self, _key: &str) -> Option<ReqId> {
+        None
+    }
 }
 
 /// The production bridge: the miniquad plugin over `window.cardano`.
@@ -174,6 +184,9 @@ impl Bridge for MiniquadBridge {
     }
     fn balance(&mut self) -> Option<ReqId> {
         wallet::AVAILABLE.then(wallet::balance)
+    }
+    fn refresh(&mut self, key: &str) -> Option<ReqId> {
+        wallet::AVAILABLE.then(|| wallet::refresh(key))
     }
 }
 
@@ -239,10 +252,21 @@ enum InFlight {
         address_hex: String,
         network_id: u8,
     },
-    /// [`WalletFlow::recheck`]'s first read: the reward address, which is the
-    /// account's identity. The stage stays `Ready` throughout, and a failure
-    /// leaves it as it was.
-    RecheckStake { req: ReqId, held: Held },
+    /// [`WalletFlow::recheck`]'s first step, where the bridge can take it: a
+    /// fresh handle from the wallet, never prompting ([`Bridge::refresh`]).
+    /// A CIP-30 handle answers for the account selected when it was enabled,
+    /// so without this an account switched in the extension is never seen.
+    RecheckEnable {
+        req: ReqId,
+        held: Held,
+    },
+    /// The recheck's read of the reward address, which is the account's
+    /// identity. The stage stays `Ready` throughout, and a failure leaves it
+    /// as it was.
+    RecheckStake {
+        req: ReqId,
+        held: Held,
+    },
     /// The recheck's second read, made only when the identity looks different
     /// or the wallet gave no reward address: the change address. `stake` is
     /// the reward address the first read found, if any.
@@ -269,13 +293,17 @@ impl InFlight {
             | Self::Address { req, .. }
             | Self::Stake { req, .. }
             | Self::RefreshingAddress { req, .. }
+            | Self::RecheckEnable { req, .. }
             | Self::RecheckStake { req, .. }
             | Self::RecheckAddress { req, .. } => *req,
         }
     }
 
     fn is_recheck(&self) -> bool {
-        matches!(self, Self::RecheckStake { .. } | Self::RecheckAddress { .. })
+        matches!(
+            self,
+            Self::RecheckEnable { .. } | Self::RecheckStake { .. } | Self::RecheckAddress { .. }
+        )
     }
 }
 
@@ -296,6 +324,9 @@ pub struct WalletFlow<B: Bridge = MiniquadBridge> {
     /// The key of the connect attempt in flight, so a `Ready` knows what to
     /// remember and a failed `enable()` knows what to forget.
     attempt: Option<String>,
+    /// The key of the wallet connected now, so a recheck can take a fresh
+    /// handle from it.
+    connected: Option<String>,
     /// Bumped whenever the stage is written, so a host can tell "nothing
     /// changed" without comparing the stage — which carries the addresses.
     revision: u64,
@@ -335,6 +366,7 @@ impl<B: Bridge> WalletFlow<B> {
             expected_network: None,
             notice: None,
             attempt: None,
+            connected: None,
             revision: 0,
         };
         flow.auto_connect();
@@ -449,9 +481,13 @@ impl<B: Bridge> WalletFlow<B> {
     /// Ask the connected wallet which account it is on now, quietly.
     ///
     /// For the page coming back into view: a CIP-30 wallet can switch account
-    /// while the page is hidden and never say so. The reward address is read
-    /// first, because it is what a sign-in proves; only when it looks
-    /// different (or the wallet has none) is the change address read too.
+    /// while the page is hidden and never say so. First, where the bridge can,
+    /// a fresh handle is taken from the wallet without prompting
+    /// ([`Bridge::refresh`]): the handle from the connect answers for the
+    /// account selected then, so reading through it would never see the
+    /// switch. Then the reward address is read, because it is the account's
+    /// identity; only when it looks different (or the wallet has none) is the
+    /// change address read too.
     /// The stage stays `Ready` throughout. A different account replaces the
     /// connection and leaves the "Wallet account changed" notice, as
     /// [`Self::refresh_address`] does; a failed read changes nothing, because
@@ -477,8 +513,17 @@ impl<B: Bridge> WalletFlow<B> {
             stake_address: stake_address.clone(),
             network_id: *network_id,
         };
-        let req = self.bridge.reward_address();
-        self.pending = Some(InFlight::RecheckStake { req, held });
+        let refresh = self
+            .connected
+            .clone()
+            .and_then(|key| self.bridge.refresh(&key));
+        self.pending = Some(match refresh {
+            Some(req) => InFlight::RecheckEnable { req, held },
+            None => InFlight::RecheckStake {
+                req: self.bridge.reward_address(),
+                held,
+            },
+        });
     }
 
     /// Whether a [`Self::recheck`] is in flight.
@@ -602,6 +647,7 @@ impl<B: Bridge> WalletFlow<B> {
             self.bridge.cancel(pending.req());
         }
         self.attempt = None;
+        self.connected = None;
         self.providers = self.bridge.list_providers();
         let stage = if self.bridge.available() {
             Stage::Disconnected
@@ -704,6 +750,10 @@ impl<B: Bridge> WalletFlow<B> {
                 self.ready(name, data, stake_address, network_id);
                 self.notice = Some("Wallet account changed".to_string());
             }
+            InFlight::RecheckEnable { held, .. } => {
+                let req = self.bridge.reward_address();
+                self.pending = Some(InFlight::RecheckStake { req, held });
+            }
             InFlight::RecheckStake { held, .. } => {
                 let stake = reward_bech32(&data);
                 if stake.is_some() && stake == held.stake_address {
@@ -744,7 +794,9 @@ impl<B: Bridge> WalletFlow<B> {
             }
             // A recheck is a question, not a step: a locked wallet or a
             // refused read leaves the connection as it was.
-            InFlight::RecheckStake { .. } | InFlight::RecheckAddress { .. } => {}
+            InFlight::RecheckEnable { .. }
+            | InFlight::RecheckStake { .. }
+            | InFlight::RecheckAddress { .. } => {}
             InFlight::RefreshingAddress { .. } => {
                 self.bridge.disconnect();
                 self.providers = self.bridge.list_providers();
@@ -786,6 +838,7 @@ impl<B: Bridge> WalletFlow<B> {
         // connect completed, so the next page load may bring it back.
         if let Some(key) = self.attempt.take() {
             self.bridge.remember(Some(&key));
+            self.connected = Some(key);
         }
         let address_bech32 = wallet::hex_to_bech32(&address_hex);
         self.set_stage(Stage::Ready {
@@ -879,6 +932,8 @@ mod tests {
         remembered: Option<String>,
         /// Every `remember` the flow asked for, in order.
         stored: Vec<Option<String>>,
+        /// Whether this bridge can take a fresh handle, as the browser's can.
+        refreshes: bool,
     }
 
     impl FakeBridge {
@@ -895,6 +950,7 @@ mod tests {
                 available: true,
                 remembered: None,
                 stored: Vec::new(),
+                refreshes: false,
             }
         }
 
@@ -944,6 +1000,12 @@ mod tests {
         }
         fn remember(&mut self, key: Option<&str>) {
             self.stored.push(key.map(str::to_string));
+        }
+        fn refresh(&mut self, _key: &str) -> Option<ReqId> {
+            self.refreshes.then(|| {
+                self.calls.push("refresh");
+                ReqId(5)
+            })
         }
     }
 
@@ -1078,6 +1140,58 @@ mod tests {
             flow.take_notice().as_deref(),
             Some("Wallet account changed")
         );
+    }
+
+    /// In the browser the handle from the connect answers for the account
+    /// selected then, so the recheck takes a fresh one first and reads
+    /// through it: that is the only way a switch made in the extension is
+    /// seen (dev, 2026-10-29: switching account did nothing).
+    #[test]
+    fn a_recheck_takes_a_fresh_handle_and_sees_the_switch() {
+        let mut flow = ready_flow();
+        flow.bridge.refreshes = true;
+        flow.bridge.calls.clear();
+        let address = format!("01{}{}", "66".repeat(28), "77".repeat(28));
+        let reward = format!("e1{}", "77".repeat(28));
+        flow.bridge.results.push_back(ok("eternl"));
+        flow.bridge.results.push_back(ok(&reward));
+        flow.bridge.results.push_back(ok(&address));
+
+        flow.recheck();
+        assert!(flow.is_rechecking());
+        for _ in 0..3 {
+            flow.poll();
+        }
+
+        assert_eq!(flow.bridge.calls, ["refresh", "reward", "change"]);
+        assert_eq!(flow.address_hex(), Some(address.as_str()));
+        assert!(!flow.is_rechecking());
+    }
+
+    /// A wallet that no longer allows the site refuses the fresh handle: the
+    /// page keeps what it had rather than dropping it on a tab switch.
+    #[test]
+    fn a_refused_refresh_keeps_the_connection() {
+        let mut flow = ready_flow();
+        flow.bridge.refreshes = true;
+        flow.bridge.calls.clear();
+        let before = flow.address_hex().map(str::to_string);
+        flow.bridge.results.push_back(err(
+            "the wallet no longer allows this site",
+            FailureKind::Declined,
+        ));
+
+        flow.recheck();
+        flow.poll();
+
+        assert_eq!(
+            flow.bridge.calls,
+            ["refresh"],
+            "nothing read after a refusal"
+        );
+        assert!(matches!(flow.stage(), Stage::Ready { .. }));
+        assert_eq!(flow.address_hex().map(str::to_string), before);
+        assert!(!flow.is_rechecking());
     }
 
     /// A locked wallet refuses the read. That is not a disconnect.
