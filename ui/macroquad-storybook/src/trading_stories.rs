@@ -13,17 +13,51 @@ use macroquad_widgets::theme::with_alpha;
 use macroquad_widgets::{
     BoardRow, ChangeChipVm, ChartLabels, ChartPoint, FEED_ROW_STEP, FeedRow, FeedVm, Gesture,
     HolderBoardVm, HolderMapLayout, HolderMapState, HolderMapVm, Holding, HoldingKind, KindInk,
-    LifeBucket, LifeStripVm, MapGroup, MapTile, MarketInk, Painter, PriceChartVm, SplitBarVm,
-    StatMark, StatTile, StatTilesVm, TokenHeaderVm, TokenLogo, TradeMark, TradeSide, TradeSize,
-    TreemapGroup, TreemapState, TreemapTile, TreemapVm, change_chip, draw_rounded_rect, feed,
-    format, holder_board, holder_map, life_strip, price_chart, split_bar, stat_tiles, time_at_x,
-    token_header, treemap,
+    LifeBucket, LifeStripVm, MapGroup, MapTile, MarketInk, Painter, PriceChartVm, RateChartLabels,
+    RateChartVm, RateStep, SplitBarVm, StatMark, StatTile, StatTilesVm, TokenHeaderVm, TokenLogo,
+    TradeMark, TradeSide, TradeSize, TreemapGroup, TreemapState, TreemapTile, TreemapVm, change_chip,
+    draw_rounded_rect, feed, format, holder_board, holder_map, life_strip, price_chart, rate_chart,
+    split_bar, stat_tiles, time_at_x, token_header, treemap,
 };
 
 /// Where the fixture's history starts: 13 Oct 2026, 10:13 UTC.
 const T0: u64 = 1_792_000_000;
 /// One fixture point an hour.
 const STEP: u64 = 3_600;
+
+/// The rate story's month: season 2's anchor, so the axis reads as a real
+/// season. `RATE_MEAN` is what a host computes over the priced stretch.
+const RATE_T0: u64 = 1_790_812_800;
+const RATE_MEAN: f64 = 52.5;
+
+/// A wallet's rate over that month: two buys, a sale, and the campaign's rate
+/// rising once — the shape the staking site's history draws. A layout fixture
+/// like the price path, not anybody's ledger.
+fn rate_steps() -> Vec<RateStep> {
+    let d = 86_400;
+    vec![
+        RateStep {
+            at: RATE_T0,
+            value: 0.0,
+        },
+        RateStep {
+            at: RATE_T0 + 2 * d,
+            value: 30.0,
+        },
+        RateStep {
+            at: RATE_T0 + 5 * d,
+            value: 76.0,
+        },
+        RateStep {
+            at: RATE_T0 + 12 * d,
+            value: 41.0,
+        },
+        RateStep {
+            at: RATE_T0 + 19 * d,
+            value: 82.0,
+        },
+    ]
+}
 
 /// The arena's burn ink, where its role palette differs from the shared seven:
 /// a burned token is orange-red there, not a sell's pink. The stories pass it so
@@ -40,6 +74,8 @@ pub enum TradingView {
     ChartPhone,
     ChartScrub,
     ChartHigh,
+    Rate,
+    RatePhone,
     Strip,
     StripPhone,
     StripPending,
@@ -195,6 +231,49 @@ impl TradingStory {
                     },
                 };
                 price_chart(p, &vm, plot);
+            }
+            TradingView::Rate | TradingView::RatePhone => {
+                let width = if self.view == TradingView::RatePhone {
+                    w.min(350.0)
+                } else {
+                    w
+                };
+                let plot = Rect::new(x, y + 26.0, width, (area.h - 52.0).clamp(120.0, 240.0));
+                draw_rounded_rect(
+                    plot.x - 10.0,
+                    plot.y - 12.0,
+                    plot.w + 20.0,
+                    plot.h + 20.0,
+                    10.0,
+                    with_alpha(p.theme.color.bg_secondary, 0.7),
+                );
+                let steps = rate_steps();
+                // A month of a season, three weeks of it priced: past `earned`
+                // the line is what the rate would go on to earn.
+                let t0 = RATE_T0;
+                let t1 = RATE_T0 + 30 * 86_400;
+                let earned = RATE_T0 + 22 * 86_400;
+                let peak = steps.iter().map(|s| s.value).fold(0.0f64, f64::max);
+                let peak_label = format!("PEAK {peak:.0} $PERP/DAY");
+                let mean_label = format!("MEAN {RATE_MEAN:.0}");
+                let start = format::day(t0);
+                let end = format::day(t1);
+                let vm = RateChartVm {
+                    steps: &steps,
+                    t0,
+                    t1,
+                    earned_to: Some(earned),
+                    mean: Some(RATE_MEAN),
+                    line: p.theme.color.accent,
+                    fill: with_alpha(p.theme.color.accent, 0.18),
+                    labels: RateChartLabels {
+                        peak: Some(&peak_label),
+                        mean: Some(&mean_label),
+                        start: Some(&start),
+                        end: Some(&end),
+                    },
+                };
+                rate_chart(p, &vm, plot);
             }
             TradingView::Strip | TradingView::StripPhone | TradingView::StripPending => {
                 let width = if self.view == TradingView::StripPhone {

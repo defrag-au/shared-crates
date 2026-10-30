@@ -8,7 +8,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p macroquad-widgets --test catalog`
 Note: these are MACROQUAD widgets. They cannot use wasm-bindgen, so they do not
 interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime pairs.
 
-34 widgets.
+35 widgets.
 
 | module | what it is |
 |---|---|
@@ -33,6 +33,7 @@ interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime p
 | `price_chart` | `PriceChart` — a price over time as a step line, with the volume it traded split into buys and sells at the foot, a mark for each trade while there is room for one, the playhead, and a finger's scrub |
 | `quantity_stepper` | `QuantityStepper` molecule — `[−] [ n ] [+]`, clamped to `[min, max]` |
 | `radar` | `Radar` — a round scope: range rings, a turning sweep, blips that flare as the sweep passes and fade after, and an optional gauge arc around the rim |
+| `rate_chart` | `RateChart` — what a stake earned a day over a campaign, as a step line: a flat run per rate, a riser where it changes, the stretch already earned filled, and the mean as a hairline across it |
 | `route_graph` | `RouteGraph` — an amount splitting across several routes and joining again: a source node fanning out through pipes as thick as each share, one card per route, then a sink node; and `route_strip`, the same split as one labelled bar |
 | `scroll` | `Scroll` — one scrolling container's offset, as a phone's lists move: the content follows a finger that drags it, coasts on after a flick and slows to a stop, and a wheel or trackpad moves it too |
 | `segmented` | `Segmented` molecule — a row of mutually exclusive options in one track, the picked one filled |

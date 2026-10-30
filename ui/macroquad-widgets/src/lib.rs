@@ -61,6 +61,8 @@ mod marks;
 #[cfg(feature = "trading")]
 mod price_chart;
 #[cfg(feature = "trading")]
+mod rate_chart;
+#[cfg(feature = "trading")]
 mod split_bar;
 #[cfg(feature = "trading")]
 mod stat_tiles;
@@ -161,6 +163,10 @@ pub use market_ink::MarketInk;
 pub use price_chart::{
     ChartLabels, ChartPoint, PriceChartVm, RoughStretch, TradeMark, TradeSide, TradeSize, View,
     beat_at_x, chart_view, price_chart, time_at_x,
+};
+#[cfg(feature = "trading")]
+pub use rate_chart::{
+    RateChartLabels, RateChartVm, RateStep, Run, range, rate_chart, runs, value_at,
 };
 #[cfg(feature = "trading")]
 pub use split_bar::{SplitBarVm, split_bar};

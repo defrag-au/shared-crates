@@ -970,6 +970,8 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::trading("price chart · phone", TradingView::ChartPhone),
         Story::trading("price chart · scrub", TradingView::ChartScrub),
         Story::trading("price chart · new high", TradingView::ChartHigh),
+        Story::trading("rate chart", TradingView::Rate),
+        Story::trading("rate chart · phone", TradingView::RatePhone),
         Story::trading("life strip · brush", TradingView::Strip),
         Story::trading("life strip · phone", TradingView::StripPhone),
         Story::trading("life strip · pending", TradingView::StripPending),
