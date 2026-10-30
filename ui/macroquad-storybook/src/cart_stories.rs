@@ -174,7 +174,6 @@ impl CartStory {
             blocker: (self.view == CartView::Blocked)
                 .then(|| "Connect a wallet to buy.".to_string()),
             empty: "Nothing in the cart yet. Tap a Perp for sale, then Add to cart.".into(),
-            band: 0.0,
         }
     }
 

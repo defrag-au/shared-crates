@@ -87,7 +87,10 @@ use std::f32::consts::TAU;
 
 use macroquad::models::{Mesh, Vertex, draw_mesh};
 use macroquad::prelude::*;
-use macroquad_widgets::{Align, Painter, SheetForm, TextSize, Theme};
+use macroquad_widgets::{
+    COPIED_SECS, Painter, Pill, PillStyle, SHEET_SIDE_INSET, SheetForm, TextSize, Theme, Trailing,
+    WellRow, check_badge, sheet_close, sheet_surface, well, well_height, well_value_width,
+};
 use statig::prelude::{InitializedStateMachine, IntoStateMachineExt};
 
 /// The chain vocabulary the modal is expressed in, re-exported so a host can
@@ -113,15 +116,12 @@ const SLIDE_PX: f32 = 40.0;
 const STAGGER: f32 = 0.04;
 /// How long one row takes to arrive.
 const ROW_IN_SECS: f32 = 0.22;
-/// How long a copied value's row says so.
-const COPIED_SECS: f32 = 1.8;
 
 const CARD_MAX_W: f32 = 420.0;
 const SHEET_MAX_W: f32 = 560.0;
 /// Room kept between a modal card and the edge of its area.
 const MARGIN: f32 = 16.0;
 const PAD: f32 = 20.0;
-const RADIUS: f32 = 20.0;
 /// Title, breadcrumb and step bar.
 const HEADER_H: f32 = 104.0;
 /// The grab handle a bottom sheet adds above its header.
@@ -148,14 +148,6 @@ const HERO_H: f32 = 108.0;
 const IDENTITY_H: f32 = 60.0;
 const ACCOUNT_RING: f32 = 27.0;
 const TABS_H: f32 = 30.0;
-/// The Copy button's square.
-const COPY_W: f32 = 30.0;
-/// A copyable detail's label, above its value.
-const DETAIL_LABEL_H: f32 = 16.0;
-/// A one-line fact.
-const FACT_H: f32 = 16.0;
-/// Between detail rows, and round the panel's edge.
-const ROW_PAD: f32 = 12.0;
 
 // ============================================================================
 // The view model
@@ -1080,7 +1072,7 @@ impl WalletModal {
         let form = SheetForm::for_area(area);
         let card_w = match form {
             SheetForm::Modal => CARD_MAX_W.min(area.w - 2.0 * MARGIN),
-            SheetForm::Bottom => SHEET_MAX_W.min(area.w),
+            SheetForm::Bottom => SHEET_MAX_W.min(area.w - 2.0 * SHEET_SIDE_INSET),
         };
         let handle = match form {
             SheetForm::Modal => 0.0,
@@ -1117,53 +1109,10 @@ impl WalletModal {
         };
         let tint = self.family.map_or(c.accent, |f| chain_tint(&p.theme, f));
 
-        // Scrim and card.
-        draw_rectangle(
-            area.x,
-            area.y,
-            area.w,
-            area.h,
-            alpha(c.bg_primary, 0.74 * e),
-        );
-        // The sheet's bottom corners are pushed off the bottom edge, so it reads
-        // as rising out of it rather than floating above it.
-        let shape = match form {
-            SheetForm::Modal => card,
-            SheetForm::Bottom => Rect::new(card.x, card.y, card.w, card.h + RADIUS),
-        };
-        // A shadow falling below the card: one plate, since overlapping
-        // translucent plates stack into a visible halo.
-        fill_rounded(
-            Rect::new(shape.x + 2.0, shape.y + 10.0, shape.w - 4.0, shape.h),
-            RADIUS,
-            alpha(c.bg_primary, 0.8 * e),
-        );
-        fill_gradient(
-            shape,
-            RADIUS,
-            Gradient::Vertical {
-                top: alpha(Color::lerp(c.bg_secondary, c.bg_highlight, 0.3), e),
-                bottom: alpha(c.bg_secondary, e),
-            },
-        );
-        // A glow in the chain's colour across the top: the card takes on the
-        // chain the reader is connecting.
-        fill_gradient(
-            Rect::new(shape.x, shape.y, shape.w, 140.0f32.min(shape.h)),
-            RADIUS,
-            Gradient::Vertical {
-                top: alpha(tint, 0.16 * e),
-                bottom: alpha(tint, 0.0),
-            },
-        );
-        stroke_rounded(shape, RADIUS, 1.0, alpha(c.border, e));
-        if form == SheetForm::Bottom {
-            fill_rounded(
-                Rect::new(card.center().x - 20.0, card.y + 8.0, 40.0, 4.0),
-                2.0,
-                alpha(c.text_muted, 0.6 * e),
-            );
-        }
+        // Scrim and card: the widgets' sheet surface, the same card every
+        // sheet in the kit is painted with. Its glow is the chain's colour, so
+        // the card takes on the chain the reader is connecting.
+        sheet_surface(p, area, card, form, e, tint);
 
         let live = self.is_open() && e > 0.85;
         let mut act = self.draw_header(p, vm, card, handle, tint, e, live);
@@ -1493,12 +1442,7 @@ impl WalletModal {
         p.text_mid(&title, title_x, mid, title_size, alpha(c.text_primary, e));
 
         let close = Rect::new(x + w - ICON_BUTTON, top, ICON_BUTTON, ICON_BUTTON);
-        let hit = p.interact(close, live);
-        if hit.hover || hit.pressed {
-            draw_circle(close.center().x, mid, 16.0, alpha(c.bg_highlight, 0.8 * e));
-        }
-        cross(close.center(), 5.5, alpha(c.text_muted, e));
-        if hit.clicked {
+        if sheet_close(p, close, live, e) {
             act = Some(Act::Close);
         }
 
@@ -2039,110 +1983,16 @@ impl WalletModal {
             alpha(ink, a),
         );
 
-        // The details, in a well of their own.
+        // The details, in a well of their own: the widgets' facts panel, the
+        // same one every sheet groups its facts in.
         let panel = Rect::new(x, body.y + layout.panel_top, body.w, layout.panel_h);
-        if !layout.rows.is_empty() {
-            let pa = a * layer.room(panel.bottom());
-            fill_rounded(panel, 14.0, alpha(c.bg_primary, 0.65 * pa));
-            stroke_rounded(panel, 14.0, 1.0, alpha(c.border, pa));
-        }
-        let label_size = p.size(TextSize::Sm);
-        let mono = p.size(TextSize::Md);
-        for (i, (detail, row)) in account.details.iter().zip(&layout.rows).enumerate() {
-            let ry = panel.y + row.y;
-            let ra = a * layer.room(ry + row.h);
-            if i > 0 {
-                draw_line(
-                    panel.x + 12.0,
-                    ry - ROW_PAD * 0.5,
-                    panel.right() - 12.0,
-                    ry - ROW_PAD * 0.5,
-                    1.0,
-                    alpha(c.border, 0.6 * ra),
-                );
-            }
-            let inner = panel.x + 12.0;
-            match detail.kind {
-                DetailKind::Fact => {
-                    let line = Rect::new(inner, ry, panel.w - 24.0, row.h);
-                    p.text_in(
-                        &detail.label,
-                        line,
-                        label_size,
-                        alpha(c.text_muted, ra),
-                        Align::Start,
-                    );
-                    p.text_in(
-                        &detail.value,
-                        line,
-                        p.size(TextSize::Md),
-                        alpha(c.text_primary, ra),
-                        Align::End,
-                    );
-                }
-                DetailKind::Copyable => {
-                    p.text_top(
-                        &detail.label,
-                        inner,
-                        ry,
-                        label_size,
-                        alpha(c.text_muted, ra),
-                    );
-                    p.mono_top(
-                        &row.shown,
-                        inner,
-                        ry + DETAIL_LABEL_H + 2.0,
-                        mono,
-                        alpha(c.text_primary, ra),
-                    );
-                    // The Copy button, or the word that it worked.
-                    let button = Rect::new(
-                        panel.right() - 12.0 - COPY_W,
-                        ry + (row.h - COPY_W) * 0.5,
-                        COPY_W,
-                        COPY_W,
-                    );
-                    let copied = self
-                        .copied
-                        .as_ref()
-                        .filter(|(v, _)| *v == detail.value)
-                        .map(|(_, age)| *age);
-                    let hit = p.interact(button, layer.live && ra > 0.9);
-                    let hv = self.hover_at(200 + i, hit.hover || hit.pressed);
-                    if hv > 0.01 {
-                        fill_rounded(button, 8.0, alpha(c.bg_highlight, 0.8 * hv * ra));
-                    }
-                    match copied {
-                        Some(age) => {
-                            let fade = (1.0 - (age - (COPIED_SECS - 0.4)) / 0.4).clamp(0.0, 1.0);
-                            let pop = Ease::BackOut.apply(age / 0.25);
-                            check_badge(
-                                button.center(),
-                                9.0 * pop,
-                                c.success,
-                                c.bg_primary,
-                                ra * fade,
-                            );
-                            let word = "Copied";
-                            let ww = p.measure(word, label_size).width;
-                            p.text_mid(
-                                word,
-                                button.x - ww - 6.0,
-                                ry + 6.0,
-                                label_size,
-                                alpha(c.success, ra * fade),
-                            );
-                        }
-                        None => copy_glyph(
-                            button.center(),
-                            alpha(Color::lerp(c.text_muted, tint, hv), ra),
-                        ),
-                    }
-                    if hit.clicked {
-                        act = Some(Act::Copy(detail.value.clone()));
-                    }
-                }
-            }
+        let rows = detail_rows(&account.details, &layout.shown, self.copied.as_ref());
+        let pa = a * layer.room(panel.bottom());
+        let answer = well(p, panel, &rows, layer.live && pa > 0.9, pa);
+        if let Some(i) = answer.copy
+            && let Some(detail) = account.details.get(i)
+        {
+            act = Some(Act::Copy(detail.value.clone()));
         }
 
         // Connected and not yet signed in: the step that is still owed, as the
@@ -2335,15 +2185,6 @@ impl Layer {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum PillStyle {
-    Filled,
-    Ghost,
-    /// Outlined and inked in the error colour: an exit that is plainly there
-    /// without being the step's primary action.
-    Danger,
-}
-
 /// The account view, laid out once so its height and its drawing agree. Every
 /// y is from the top of the body.
 struct AccountLayout {
@@ -2352,20 +2193,40 @@ struct AccountLayout {
     hero_top: f32,
     panel_top: f32,
     panel_h: f32,
-    /// One per detail, from the top of the panel.
-    rows: Vec<DetailRow>,
+    /// One per detail: a copyable value on one line beside its Copy button,
+    /// shortened as `IdPill` shortens one; a fact's value as it is. The Copy
+    /// button takes the whole value.
+    shown: Vec<String>,
     /// The "Sign in" button, when a sign-in is offered.
     sign_in_top: Option<f32>,
     buttons_top: f32,
     height: f32,
 }
 
-struct DetailRow {
-    y: f32,
-    h: f32,
-    /// A copyable value on one line beside its Copy button, shortened as
-    /// `IdPill` shortens one. The Copy button takes the whole value.
-    shown: String,
+/// The account's details as the facts panel's rows: a fact inline, a
+/// copyable value stacked under its label with a Copy button, and the "Copied"
+/// tick on the one just copied.
+fn detail_rows<'a>(
+    details: &'a [AccountDetail],
+    shown: &'a [String],
+    copied: Option<&(String, f32)>,
+) -> Vec<WellRow<'a>> {
+    details
+        .iter()
+        .zip(shown)
+        .map(|(detail, shown)| match detail.kind {
+            DetailKind::Fact => WellRow::inline(&detail.label, &detail.value),
+            DetailKind::Copyable => {
+                WellRow::stacked(&detail.label, shown)
+                    .mono()
+                    .trailing(Trailing::Copy {
+                        copied: copied
+                            .filter(|(value, _)| *value == detail.value)
+                            .map(|(_, age)| *age),
+                    })
+            }
+        })
+        .collect()
 }
 
 fn account_layout(
@@ -2394,22 +2255,17 @@ fn account_layout(
     y += IDENTITY_H + 14.0;
 
     let panel_top = y;
-    let value_w = w - 24.0 - COPY_W - 8.0;
+    let value_w = well_value_width(w, Trailing::Copy { copied: None });
     let mono = p.size(TextSize::Md);
-    let mut ry = ROW_PAD;
-    let mut rows = Vec::with_capacity(account.details.len());
-    for detail in &account.details {
-        let (h, shown) = match detail.kind {
-            DetailKind::Fact => (FACT_H, String::new()),
-            DetailKind::Copyable => (
-                DETAIL_LABEL_H + LINE_H,
-                fit_address(p, &detail.value, mono, value_w),
-            ),
-        };
-        rows.push(DetailRow { y: ry, h, shown });
-        ry += h + ROW_PAD;
-    }
-    let panel_h = if rows.is_empty() { 0.0 } else { ry };
+    let shown: Vec<String> = account
+        .details
+        .iter()
+        .map(|detail| match detail.kind {
+            DetailKind::Fact => detail.value.clone(),
+            DetailKind::Copyable => fit_address(p, &detail.value, mono, value_w),
+        })
+        .collect();
+    let panel_h = well_height(p, &detail_rows(&account.details, &shown, None));
     y += panel_h + 16.0;
     let sign_in_top = offer_sign_in.then(|| {
         let top = y;
@@ -2423,27 +2279,11 @@ fn account_layout(
         hero_top,
         panel_top,
         panel_h,
-        rows,
+        shown,
         sign_in_top,
         buttons_top,
         height: y,
     }
-}
-
-/// Two overlapping sheets: the Copy mark.
-fn copy_glyph(at: Vec2, color: Color) {
-    stroke_rounded(
-        Rect::new(at.x - 5.0, at.y - 3.0, 9.0, 10.0),
-        2.0,
-        1.6,
-        color,
-    );
-    stroke_rounded(
-        Rect::new(at.x - 2.0, at.y - 7.0, 9.0, 10.0),
-        2.0,
-        1.6,
-        color,
-    );
 }
 
 /// What the answer step says, and what it offers.
@@ -2946,17 +2786,6 @@ fn wallet_glyph(r: Rect, color: Color, under: Color) {
     draw_circle(pocket.x + 0.15 * s, pocket.center().y, 0.06 * s, under);
 }
 
-fn check_badge(at: Vec2, r: f32, fill: Color, ink: Color, a: f32) {
-    draw_circle(at.x, at.y, r, alpha(fill, a));
-    let k = r / 7.0;
-    let th = 1.8 * k;
-    let p0 = at + vec2(-3.2, 0.2) * k;
-    let p1 = at + vec2(-0.8, 2.6) * k;
-    let p2 = at + vec2(3.4, -2.4) * k;
-    draw_line(p0.x, p0.y, p1.x, p1.y, th, alpha(ink, a));
-    draw_line(p1.x, p1.y, p2.x, p2.y, th, alpha(ink, a));
-}
-
 /// `>` (dir 1) or `<` (dir −1), `size` from point to tail.
 fn chevron(at: Vec2, size: f32, dir: f32, color: Color) {
     let tip = at + vec2(size * 0.5 * dir, 0.0);
@@ -2965,26 +2794,9 @@ fn chevron(at: Vec2, size: f32, dir: f32, color: Color) {
     draw_line(tail, at.y + size, tip.x, tip.y, 2.0, color);
 }
 
-fn cross(at: Vec2, half: f32, color: Color) {
-    draw_line(
-        at.x - half,
-        at.y - half,
-        at.x + half,
-        at.y + half,
-        2.0,
-        color,
-    );
-    draw_line(
-        at.x - half,
-        at.y + half,
-        at.x + half,
-        at.y - half,
-        2.0,
-        color,
-    );
-}
-
-/// A rounded button in the modal's own fade, so it leaves with its step.
+/// A pill in the modal's own fade, so it leaves with its step: the widgets'
+/// [`Pill`], the button every sheet's actions are. A Ghost pill keeps the
+/// theme's ink; the others take `fill`.
 fn pill_button(
     p: &Painter,
     rect: Rect,
@@ -2994,58 +2806,13 @@ fn pill_button(
     live: bool,
     a: f32,
 ) -> bool {
-    let c = p.theme.color;
-    let hit = p.interact(rect, live);
-    let r = rect.h * 0.5;
-    let size = p.size(TextSize::Lg);
-    let label = p.fit(label, size, rect.w - 24.0);
-    match style {
-        PillStyle::Filled => {
-            let base = if hit.pressed {
-                Color::lerp(fill, c.bg_primary, 0.15)
-            } else if hit.hover {
-                Color::lerp(fill, c.text_primary, 0.12)
-            } else {
-                fill
-            };
-            fill_gradient(
-                rect,
-                r,
-                Gradient::Vertical {
-                    top: alpha(Color::lerp(base, c.text_primary, 0.14), a),
-                    bottom: alpha(base, a),
-                },
-            );
-            p.text_centred(&label, rect, size, alpha(c.bg_primary, a));
-        }
-        PillStyle::Ghost => {
-            let k = if hit.pressed {
-                0.7
-            } else if hit.hover {
-                0.45
-            } else {
-                0.0
-            };
-            if k > 0.0 {
-                fill_rounded(rect, r, alpha(c.bg_highlight, k * a));
-            }
-            stroke_rounded(rect, r, 1.0, alpha(c.border, a));
-            p.text_centred(&label, rect, size, alpha(c.text_primary, a));
-        }
-        PillStyle::Danger => {
-            let k = if hit.pressed {
-                0.28
-            } else if hit.hover {
-                0.18
-            } else {
-                0.08
-            };
-            fill_rounded(rect, r, alpha(fill, k * a));
-            stroke_rounded(rect, r, 1.0, alpha(fill, 0.7 * a));
-            p.text_centred(&label, rect, size, alpha(fill, a));
-        }
-    }
-    hit.clicked
+    let pill = Pill::styled(label, style).live(live).alpha(a);
+    let pill = if style == PillStyle::Ghost {
+        pill
+    } else {
+        pill.ink(fill)
+    };
+    pill.show(p, rect)
 }
 
 // ============================================================================

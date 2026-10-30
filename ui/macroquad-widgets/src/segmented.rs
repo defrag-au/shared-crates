@@ -43,6 +43,14 @@ pub fn segmented(
         radius,
         p.theme.color.bg_highlight,
     );
+    // The hairline every surface wears, inset half a line so it keeps its
+    // whole width.
+    crate::shape::stroke_rounded(
+        Rect::new(rect.x + 0.5, rect.y + 0.5, rect.w - 1.0, rect.h - 1.0),
+        (radius - 0.5).max(0.0),
+        1.0,
+        p.theme.color.border,
+    );
     let inset = 3.0;
     let w = (rect.w - inset * 2.0) / options.len() as f32;
     let mut tapped = None;

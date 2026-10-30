@@ -23,15 +23,17 @@
 //! So a transaction pipeline drives the cart without knowing how it is drawn,
 //! and a story drives it with no pipeline at all.
 //!
-//! A host with more to show than words (a block train under a submitted
-//! purchase) asks for a band of its own with [`CartVm::band`]: the card grows
-//! to fit it under the stage line, and [`Cart::band`] says where it landed so
-//! the host can draw there after [`Cart::show`].
+//! ## How it looks
+//!
+//! The widgets' sheet chrome, like every modal in the kit: the title in the
+//! header with the count in a chip beside it, the rows in a panel of their own,
+//! the totals in a [`macroquad_widgets::well`], and the action as a pill across
+//! the footer.
 //!
 //! ## Input
 //!
 //! While [`Cart::visible`] the host should give the screen behind it no tap
-//! and no drag. A tap on the dimmed screen, or on Close, reports
+//! and no drag. A tap on the dimmed screen, or on the header's cross, reports
 //! [`CartAction::Close`]; the host decides whether to close (a cart mid-way
 //! through a signature might not).
 //!
@@ -40,12 +42,12 @@
 use macroquad::prelude::*;
 use macroquad_widgets::painter::with_alpha;
 use macroquad_widgets::{
-    Align, Button, ButtonVariant, Painter, Scroll, ScrollInput, SheetForm, SheetState, TextSize,
-    draw_rounded_rect, sheet_card, sheet_chrome,
+    Align, Painter, Pill, Scroll, ScrollInput, Sheet, SheetForm, SheetState, TextSize, WellRow,
+    draw_rounded_rect, sheet_card, sheet_chrome, well, well_height,
 };
 
 use crate::clip::with_clip;
-use crate::shape::{fill_rounded, fill_texture_rounded};
+use crate::shape::{fill_rounded, fill_texture_rounded, stroke_rounded};
 
 /// How a row's figure, or a total, is inked.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -112,18 +114,6 @@ pub struct CartVm {
     pub blocker: Option<String>,
     /// What an empty cart says.
     pub empty: String,
-    /// Height of a band under the stage line that the host draws into itself,
-    /// after [`Cart::show`], at [`Cart::band`]: a block train under a
-    /// submitted purchase, say. `0.0` for none.
-    pub band: f32,
-}
-
-/// Where the host draws its band this frame, and the card's fade to draw it
-/// with.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CartBand {
-    pub rect: Rect,
-    pub alpha: f32,
 }
 
 /// What the reader asked for.
@@ -138,9 +128,11 @@ pub enum CartAction {
 /// A row's height.
 const ROW_H: f32 = 60.0;
 const THUMB: f32 = 46.0;
-const TITLE_BAND: f32 = 34.0;
-const TOTAL_H: f32 = 24.0;
-const STAGE_H: f32 = 26.0;
+/// The rows' panel, above and below the list.
+const LIST_PAD: f32 = 4.0;
+/// Between the rows' panel and the totals.
+const SECTION_GAP: f32 = 12.0;
+const STAGE_H: f32 = 30.0;
 /// A remove button's hit area: a thumb, not a pixel.
 const REMOVE_HIT: f32 = 40.0;
 /// Screen the card leaves uncovered: more than the sheet chrome's own clamp
@@ -152,7 +144,6 @@ const SCREEN_MARGIN: f32 = 72.0;
 pub struct Cart {
     sheet: SheetState,
     scroll: Scroll,
-    band: Option<CartBand>,
 }
 
 impl Cart {
@@ -184,12 +175,6 @@ impl Cart {
         self.sheet.visible()
     }
 
-    /// The host's band from the last [`Cart::show`], when the cart is showing
-    /// and its view asked for one.
-    pub fn band(&self) -> Option<CartBand> {
-        self.band
-    }
-
     /// Draw the cart over `area` (the whole screen) if any of it is showing,
     /// and report what the reader asked for. `input` scrolls a list longer
     /// than the sheet; `dt` moves the slide.
@@ -207,7 +192,6 @@ impl Cart {
         // tap on the dimmed screen: the cart would close the moment it
         // opened.
         let was_visible = self.sheet.visible();
-        self.band = None;
         self.sheet.update(dt);
         if !self.sheet.visible() {
             return None;
@@ -215,62 +199,77 @@ impl Cart {
         let quiet = p.untapped();
         let p = if was_visible { p } else { &quiet };
         let form = SheetForm::for_area(area);
-        let fixed = fixed_height(form, area, vm);
+        let chrome = Sheet::new().title(&vm.title);
+        let totals: Vec<WellRow> = vm
+            .totals
+            .iter()
+            .map(|t| {
+                WellRow::inline(&t.label, &t.value)
+                    .mono()
+                    .ink(ink(p, t.tone))
+                    .strong(t.strong)
+            })
+            .collect();
+        let totals_h = well_height(p, &totals);
+        let fixed = fixed_height(form, area, vm, totals_h);
         let wanted = vm.rows.len().max(1) as f32 * ROW_H;
         // A desk's card is clamped to the screen less its margins (and a
         // phone's sheet keeps a strip of page above it), so the list is sized
         // to what the card will really be, not to the screen.
         let room = (area.h - SCREEN_MARGIN - fixed).max(ROW_H);
         let list_h = wanted.min(room);
-        let card = sheet_card(p, &self.sheet, area, fixed + list_h)?;
+        let card = sheet_card(p, &self.sheet, area, fixed + list_h, &chrome)?;
         let t = p.theme.color;
         let a = card.alpha;
         let c = card.content;
         let working = matches!(vm.stage, CartStage::Working { .. });
         let mut action = None;
 
-        // The title, and the count beside it.
-        let band = Rect::new(c.x, c.y, c.w, TITLE_BAND);
-        p.text_in(
-            &vm.title,
-            band,
-            p.size(TextSize::Lg),
-            with_alpha(t.text_primary, a),
-            Align::Start,
-        );
+        // The count, in a chip after the title.
         if !vm.rows.is_empty() {
+            let title_w = p.measure(&vm.title, p.size(TextSize::Xl2)).width;
             let count = format!("{}", vm.rows.len());
-            p.mono_in(
-                &count,
-                band,
-                p.size(TextSize::Sm),
-                with_alpha(t.text_muted, a),
-                Align::End,
+            let xs = p.size(TextSize::Sm);
+            let w = p.measure_mono(&count, xs).width + 16.0;
+            let chip = Rect::new(
+                card.header.x + title_w + 10.0,
+                card.header.center().y - 11.0,
+                w.max(22.0),
+                22.0,
             );
+            if chip.right() < card.header.right() - 40.0 {
+                fill_rounded(chip, 11.0, with_alpha(t.accent, 0.18 * a));
+                p.mono_centred(&count, chip, xs, with_alpha(t.accent, a));
+            }
         }
 
-        // The rows, scrolled when there are more than the sheet holds.
-        let list = Rect::new(c.x, band.bottom(), c.w, list_h);
+        // The rows, in a panel of their own, scrolled when there are more
+        // than the sheet holds.
+        let panel = Rect::new(c.x, c.y, c.w, list_h + LIST_PAD * 2.0);
+        fill_rounded(panel, 14.0, with_alpha(t.bg_primary, 0.65 * a));
+        stroke_rounded(panel, 14.0, 1.0, with_alpha(t.border, a));
+        let list = Rect::new(panel.x + 12.0, panel.y + LIST_PAD, panel.w - 24.0, list_h);
         let max = (wanted - list_h).max(0.0);
         self.scroll.update(list, input, Some(max), dt);
         let offset = self.scroll.offset();
         let tap = self.scroll.filter_tap(p.tap);
         if vm.rows.is_empty() {
             p.text_in(
-                &vm.empty,
+                &p.fit(&vm.empty, p.size(TextSize::Sm), list.w),
                 Rect::new(list.x, list.y, list.w, ROW_H),
                 p.size(TextSize::Sm),
                 with_alpha(t.text_secondary, a),
                 Align::Start,
             );
         }
+        let rows = vm.rows.len();
         with_clip(list, || {
             for (i, row) in vm.rows.iter().enumerate() {
                 let r = Rect::new(list.x, list.y + i as f32 * ROW_H - offset, list.w, ROW_H);
                 if r.bottom() < list.y || r.y > list.bottom() {
                     continue;
                 }
-                if draw_row(p, r, row, a, !working, tap) {
+                if draw_row(p, r, row, a, !working, tap, i + 1 < rows) {
                     action = Some(CartAction::Remove(row.id.clone()));
                 }
             }
@@ -281,7 +280,7 @@ impl Cart {
             let thumb = (track * list.h / wanted).max(20.0);
             let y = list.y + 4.0 + (track - thumb) * (offset / max);
             draw_rounded_rect(
-                list.right() - 2.0,
+                panel.right() - 6.0,
                 y,
                 3.0,
                 thumb,
@@ -290,37 +289,11 @@ impl Cart {
             );
         }
 
-        // The totals.
-        let mut y = list.bottom() + 8.0;
-        draw_line(c.x, y, c.right(), y, 1.0, with_alpha(t.bg_highlight, a));
-        y += 6.0;
-        for total in &vm.totals {
-            let size = p.size(if total.strong {
-                TextSize::Md
-            } else {
-                TextSize::Sm
-            });
-            let r = Rect::new(c.x, y, c.w, TOTAL_H);
-            let label_ink = if total.strong {
-                t.text_primary
-            } else {
-                t.text_secondary
-            };
-            p.text_in(
-                &total.label,
-                r,
-                size,
-                with_alpha(label_ink, a),
-                Align::Start,
-            );
-            p.mono_in(
-                &total.value,
-                r,
-                size,
-                with_alpha(ink(p, total.tone), a),
-                Align::End,
-            );
-            y += TOTAL_H;
+        // The totals, in a well.
+        let mut y = panel.bottom() + SECTION_GAP;
+        if totals_h > 0.0 {
+            well(p, Rect::new(c.x, y, c.w, totals_h), &totals, card.live, a);
+            y += totals_h;
         }
 
         // Where buying stands, or why it cannot start.
@@ -332,7 +305,7 @@ impl Cart {
             (CartStage::Editing, None) => None,
         };
         if let Some((text, color, spinning)) = stage_line {
-            let r = Rect::new(c.x, y + 4.0, c.w, STAGE_H - 4.0);
+            let r = Rect::new(c.x, y + 8.0, c.w, STAGE_H - 4.0);
             let xs = p.size(TextSize::Sm);
             let mut text_r = r;
             if spinning {
@@ -352,56 +325,42 @@ impl Cart {
                 with_alpha(color, a),
                 Align::Start,
             );
-            y += STAGE_H;
         }
 
-        // The host's band: reserved here, drawn by the host after this call.
-        if vm.band > 0.0 {
-            self.band = Some(CartBand {
-                rect: Rect::new(c.x, y + 4.0, c.w, vm.band),
-                alpha: a,
-            });
-        }
-
-        // Close, and the action.
-        let gap = 10.0;
-        let close_w = (card.close.w * 0.34).max(90.0);
-        let close_r = Rect::new(card.close.x, card.close.y, close_w, card.close.h);
-        let go_r = Rect::new(
-            close_r.right() + gap,
-            card.close.y,
-            card.close.w - close_w - gap,
-            card.close.h,
-        );
-        if Button::new("Close")
-            .variant(ButtonVariant::Tonal)
-            .show(p, close_r)
-        {
-            action = Some(CartAction::Close);
-        }
+        // The action, across the footer. The cross and the scrim close it.
         let can_go = !working
             && !vm.rows.is_empty()
             && vm.blocker.is_none()
             && !matches!(vm.stage, CartStage::Done { .. });
-        if Button::new(&vm.action).enabled(can_go).show(p, go_r) {
+        if Pill::filled(&vm.action)
+            .enabled(can_go)
+            .live(card.live)
+            .alpha(a)
+            .show(p, card.footer)
+        {
             action = Some(CartAction::Go);
         }
-        if action.is_none() && tap.is_some_and(|at| !card.rect.contains(at)) {
+        if action.is_none() && card.dismissed {
             action = Some(CartAction::Close);
         }
         action
     }
 }
 
-/// Everything but the list: the chrome, the title, the totals, the stage.
-fn fixed_height(form: SheetForm, area: Rect, vm: &CartVm) -> f32 {
+/// Everything but the list: the chrome with its header and footer, the rows'
+/// panel padding, the totals' well (`totals_h`) and the stage line.
+fn fixed_height(form: SheetForm, area: Rect, vm: &CartVm, totals_h: f32) -> f32 {
     let stage = if matches!(vm.stage, CartStage::Editing) && vm.blocker.is_none() {
         0.0
     } else {
         STAGE_H
     };
-    let band = if vm.band > 0.0 { vm.band + 8.0 } else { 0.0 };
-    sheet_chrome(form, area) + TITLE_BAND + 14.0 + vm.totals.len() as f32 * TOTAL_H + stage + band
+    let totals = if totals_h > 0.0 {
+        SECTION_GAP + totals_h
+    } else {
+        0.0
+    };
+    sheet_chrome(form, area, &Sheet::new().title(&vm.title)) + LIST_PAD * 2.0 + totals + stage
 }
 
 fn ink(p: &Painter, tone: CartTone) -> Color {
@@ -415,7 +374,9 @@ fn ink(p: &Painter, tone: CartTone) -> Color {
 }
 
 /// One row: the picture, the title over its detail, the figure, and a remove
-/// button when `removable`. `true` when that button was tapped.
+/// button when `removable`, and a hairline under it when `rule`. `true` when
+/// that button was tapped.
+#[allow(clippy::too_many_arguments)]
 fn draw_row(
     p: &Painter,
     r: Rect,
@@ -423,15 +384,17 @@ fn draw_row(
     a: f32,
     removable: bool,
     tap: Option<Vec2>,
+    rule: bool,
 ) -> bool {
     let t = p.theme.color;
     let thumb = Rect::new(r.x, r.center().y - THUMB * 0.5, THUMB, THUMB);
     match &row.image {
-        Some(texture) => fill_texture_rounded(texture, thumb, 8.0, Color::new(1.0, 1.0, 1.0, a)),
-        None => fill_rounded(thumb, 8.0, with_alpha(t.bg_highlight, a)),
+        Some(texture) => fill_texture_rounded(texture, thumb, 10.0, Color::new(1.0, 1.0, 1.0, a)),
+        None => fill_rounded(thumb, 10.0, with_alpha(t.bg_highlight, a)),
     }
-    let sm = p.size(TextSize::Sm);
-    let xs = p.size(TextSize::Xs);
+    stroke_rounded(thumb, 10.0, 1.0, with_alpha(t.border, 0.8 * a));
+    let sm = p.size(TextSize::Md);
+    let xs = p.size(TextSize::Sm);
     let remove = Rect::new(
         r.right() - REMOVE_HIT,
         r.center().y - REMOVE_HIT * 0.5,
@@ -449,7 +412,8 @@ fn draw_row(
     );
     let words_x = thumb.right() + 12.0;
     let words_w = (figure_r.x - 10.0 - words_x).max(0.0);
-    let title = Rect::new(words_x, r.y + 10.0, words_w, sm + 4.0);
+    let block = sm + 4.0 + 3.0 + xs + 4.0;
+    let title = Rect::new(words_x, r.center().y - block * 0.5, words_w, sm + 4.0);
     let detail = Rect::new(words_x, title.bottom() + 3.0, words_w, xs + 4.0);
     p.text_in(
         &p.fit(&row.title, sm, title.w),
@@ -475,14 +439,16 @@ fn draw_row(
     let k = 5.0;
     draw_line(c.x - k, c.y - k, c.x + k, c.y + k, 1.6, with_alpha(ink, a));
     draw_line(c.x - k, c.y + k, c.x + k, c.y - k, 1.6, with_alpha(ink, a));
-    draw_line(
-        r.x,
-        r.bottom() - 0.5,
-        r.right(),
-        r.bottom() - 0.5,
-        1.0,
-        with_alpha(t.bg_highlight, 0.6 * a),
-    );
+    if rule {
+        draw_line(
+            r.x,
+            r.bottom() - 0.5,
+            r.right(),
+            r.bottom() - 0.5,
+            1.0,
+            with_alpha(t.border, 0.6 * a),
+        );
+    }
     removable && tap.is_some_and(|at| remove.contains(at))
 }
 
@@ -519,6 +485,19 @@ pub fn cart_button(p: &Painter, rect: Rect, count: usize, label: &str) -> bool {
         with_alpha(t.bg_highlight, if hit.hover { 0.9 } else { 0.7 })
     };
     draw_rounded_rect(rect.x, rect.y, rect.w, rect.h, r, ground);
+    // The wallet button's hairline, inset half a line so it keeps its whole
+    // width; in the accent while there is something in the cart.
+    let border = if filled {
+        with_alpha(t.accent, 0.55)
+    } else {
+        t.border
+    };
+    stroke_rounded(
+        Rect::new(rect.x + 0.5, rect.y + 0.5, rect.w - 1.0, rect.h - 1.0),
+        r - 0.5,
+        1.0,
+        border,
+    );
     let sm = p.size(TextSize::Sm);
     let xs = p.size(TextSize::Xs);
     // The count in a disc at the start.
@@ -579,19 +558,7 @@ mod tests {
             action: "Buy".into(),
             blocker: None,
             empty: "Nothing yet".into(),
-            band: 0.0,
         }
-    }
-
-    /// A host's band is room the card makes for it, below everything else.
-    #[test]
-    fn a_band_adds_its_height_and_a_gap() {
-        let area = Rect::new(0.0, 0.0, 1200.0, 800.0);
-        let form = SheetForm::for_area(area);
-        let plain = fixed_height(form, area, &vm(2, CartStage::Editing));
-        let mut banded = vm(2, CartStage::Editing);
-        banded.band = 90.0;
-        assert_eq!(fixed_height(form, area, &banded) - plain, 98.0);
     }
 
     /// The stage line takes room only when it has something to say.
@@ -599,7 +566,7 @@ mod tests {
     fn the_stage_line_takes_room_only_when_there_is_one() {
         let area = Rect::new(0.0, 0.0, 1200.0, 800.0);
         let form = SheetForm::for_area(area);
-        let editing = fixed_height(form, area, &vm(2, CartStage::Editing));
+        let editing = fixed_height(form, area, &vm(2, CartStage::Editing), 60.0);
         let working = fixed_height(
             form,
             area,
@@ -609,11 +576,15 @@ mod tests {
                     step: "Signing".into(),
                 },
             ),
+            60.0,
         );
         assert_eq!(working - editing, STAGE_H);
         let mut blocked = vm(2, CartStage::Editing);
         blocked.blocker = Some("Connect a wallet first".into());
-        assert_eq!(fixed_height(form, area, &blocked) - editing, STAGE_H);
+        assert_eq!(fixed_height(form, area, &blocked, 60.0) - editing, STAGE_H);
+        // No totals, no well and no gap above it.
+        let bare = fixed_height(form, area, &vm(2, CartStage::Editing), 0.0);
+        assert_eq!(editing - bare, SECTION_GAP + 60.0);
     }
 
     #[test]

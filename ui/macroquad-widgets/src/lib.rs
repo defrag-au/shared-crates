@@ -6,6 +6,7 @@
 //! widget returns actions → host dispatches. No async, no I/O, no backend deps.
 
 pub mod painter;
+pub mod shape;
 pub mod theme;
 
 #[cfg(feature = "chain")]
@@ -25,6 +26,7 @@ mod gesture;
 mod mint_checkout;
 mod momentum;
 mod order_fulfilment;
+mod pill;
 mod quantity_stepper;
 mod radar;
 mod route_graph;
@@ -34,6 +36,7 @@ mod slider;
 mod squad_picker;
 mod wallet_connect;
 mod wallet_list;
+mod well;
 
 // The trading views. Gated as a feature rather than a separate crate: they are
 // still VM-in/actions-out widgets for a buyer-facing surface, and the renderer
@@ -81,9 +84,9 @@ pub use button::{Button, ButtonVariant};
 pub use callout::{CalloutTone, CalloutVm, callout, tone_ink};
 pub use choice_stepper::{ChoiceStepperVm, choice_stepper};
 pub use detail_sheet::{
-    BOTTOM_SHEET_BELOW, DetailRow, DetailSheetVm, RowTone, SheetCard, SheetForm, SheetResponse,
-    SheetState, detail_sheet, info_button, sheet_card, sheet_chrome, sheet_content_width,
-    sheet_rect,
+    BOTTOM_SHEET_BELOW, DetailRow, DetailSheetVm, RowTone, SHEET_SIDE_INSET, Sheet, SheetCard,
+    SheetForm, SheetResponse, SheetState, detail_sheet, info_button, sheet_card, sheet_chrome,
+    sheet_close, sheet_content_width, sheet_rect, sheet_surface,
 };
 pub use floating_stick::{
     Cardinal, FloatingStick, Release, StickFrame, StickView, floating_stick,
@@ -104,6 +107,7 @@ pub use order_fulfilment::{
 #[allow(deprecated)]
 pub use painter::frame_tap;
 pub use painter::{Hit, Line, Painter, draw_rounded_rect};
+pub use pill::{Pill, PillStyle, pill_row};
 pub use quantity_stepper::{QuantityStepperVm, StepperAction, StepperResponse, quantity_stepper};
 pub use radar::{Blip, RadarVm, behind_sweep, radar, sweep_bearing};
 pub use route_graph::{
@@ -114,6 +118,7 @@ pub use scroll::{
     NOTCH_POINTS, Scroll, ScrollAxis, ScrollInput, WHEEL_IN_POINTS, wheel_points, wheel_points_on,
 };
 pub use segmented::{pill_rects, segmented, segmented_pills};
+pub use shape::{Gradient, fill_gradient, fill_rounded, fill_texture_rounded, stroke_rounded};
 pub use slider::{AmountSliderVm, SliderStop, amount_slider};
 pub use squad_picker::{
     SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerResponse, SquadPickerVm,
@@ -129,6 +134,10 @@ pub use wallet_connect::{
 };
 pub use wallet_list::{
     WalletListAction, WalletListResponse, WalletListState, WalletListVm, WalletRow, wallet_list,
+};
+pub use well::{
+    COPIED_SECS, Trailing, WellLayout, WellResponse, WellRow, check_badge, copy_glyph, well,
+    well_height, well_value_width,
 };
 
 #[cfg(feature = "trading")]

@@ -562,6 +562,30 @@ nix develop -c cargo tree --target wasm32-unknown-unknown -p <crate>
   tree, not the direct dependency.
 
 
+## Every macroquad modal draws through the widgets' sheet chrome, and a better look upgrades it
+<!-- rule: rules/org/defrag/macroquad-one-modal-chrome -->
+
+Every macroquad modal draws its card with `macroquad_widgets::sheet_card` and a `Sheet` spec
+(title, subtitle, tint, footer). Never paint a scrim, a card or a close button of its own. When
+one modal looks better than the shared chrome, upgrade `sheet_card` and its parts to draw that
+way, then move every modal onto them. Do not fork a one-off chrome for the good-looking one.
+
+Inside the card:
+
+- **Facts** go in a `macroquad_widgets::well`, as `WellRow`s: inline for label and value,
+  stacked for a label over its value, with a trailing figure or Copy, a meter, or `.strong(true)`
+  for a total.
+- **Actions** are `Pill`s (filled, ghost or danger) in `SheetCard::footer`, laid out with
+  `pill_row`. Pass `.live(card.live)` so a sheet that is still sliding takes no tap.
+- **Closing** is the header's cross plus a tap on the scrim, both reported as
+  `SheetCard::dismissed`. A sheet has no Close button.
+- **A modal with its own motion and layout**, like the gamekit's wallet modal, still paints with
+  `sheet_surface` and closes with `sheet_close`, so it cannot drift from the rest.
+
+The rounded shapes and the gradient they draw with live in `macroquad_widgets::shape`. The
+gamekit re-exports them.
+
+
 ## A macroquad scrolling container scrolls with momentum, through the widgets' Scroll
 <!-- rule: rules/org/defrag/macroquad-scroll-momentum -->
 
