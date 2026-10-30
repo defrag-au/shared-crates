@@ -939,6 +939,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chain-events"
+version = "0.1.0"
+dependencies = [
+ "chains",
+ "opensea-stream",
+ "serde",
+ "serde_json",
+ "wasm_safe_serde",
+]
+
+[[package]]
 name = "chain-heartbeat"
 version = "0.1.0"
 dependencies = [
@@ -4002,11 +4013,14 @@ dependencies = [
 name = "macroquad-gamekit"
 version = "0.1.0"
 dependencies = [
+ "chains",
  "discord-auth",
  "gamepads",
  "macroquad",
  "macroquad-text",
  "macroquad-widgets",
+ "perf-probe",
+ "statig",
 ]
 
 [[package]]
@@ -4017,8 +4031,11 @@ dependencies = [
  "chain-heartbeat",
  "macroquad",
  "macroquad-gamekit",
+ "macroquad-wallet-flow",
  "macroquad-widgets",
+ "miniquad-platform",
  "ui-theme",
+ "wallet-miniquad",
 ]
 
 [[package]]
@@ -4041,7 +4058,9 @@ dependencies = [
 name = "macroquad-wallet-flow"
 version = "0.1.0"
 dependencies = [
+ "chains",
  "macroquad",
+ "macroquad-gamekit",
  "macroquad-widgets",
  "miniquad-platform",
  "wallet-miniquad",
@@ -4390,6 +4409,13 @@ checksum = "bb85c154ba489f01b25c0d36ae69a87e4a1c73a72631fc6c0eb6dde34a73e44b"
 dependencies = [
  "num-traits",
  "pxfm",
+]
+
+[[package]]
+name = "mq-bundle"
+version = "0.1.0"
+dependencies = [
+ "macroquad-bundle",
 ]
 
 [[package]]
@@ -5096,6 +5122,7 @@ dependencies = [
 name = "opensea-ws-client"
 version = "0.1.0"
 dependencies = [
+ "dotenvy",
  "futures-util",
  "opensea-stream",
  "rustls",

@@ -12,15 +12,26 @@
 // consumed it).
 //
 // Surface: list, connect, network id, reward address, balance, utxos,
-// change address, signTx, submitTx, signData, disconnect, cancel, poll.
+// change address, signTx, submitTx, signData, disconnect, cancel, poll, icon.
 //
 // Plugin version 3: adds `wallet_network_id` and `wallet_cancel`, and gives
 // every error a `kind` (`declined` or `failed`) so a host can tell a user's
 // refusal from a wallet fault without matching on prose.
+//
+// Plugin version 4: adds `wallet_icon` and `wallet_icon_pixels` — a wallet's
+// announced icon, rasterised here on a canvas so Rust gets plain RGBA and
+// never has to decode an SVG.
+//
+// Plugin version 5: adds `wallet_refresh` — a fresh handle from a wallet that
+// already allows the site, never prompting, so an account switched in the
+// extension is seen.
 
 (function () {
     let nextReqId = 1;
     const pending = new Map();
+    // Rasterised icons, keyed by the request that asked for them, until Rust
+    // takes the pixels with `wallet_icon_pixels`.
+    const icons = new Map();
     let api = null; // the currently-enabled CIP-30 API handle
 
     function errMsg(e) {
@@ -77,6 +88,45 @@
             }
         }
         return jsonObj(providers);
+    }
+
+    // Take a fresh API handle from a wallet that already allows this site,
+    // without ever prompting. A CIP-30 handle belongs to the account that was
+    // selected when it was enabled: after the reader switches account in the
+    // extension, the old handle keeps answering for the old account, or fails
+    // with APIError -4 ("account changed, call enable() again"), depending on
+    // the wallet. `isEnabled()` never prompts, and `enable()` on a site
+    // already allowed answers silently with a handle for the account selected
+    // now. A site no longer allowed fails `declined` and keeps the old handle.
+    function wallet_refresh(name_handle) {
+        const name = consume_js_object(name_handle);
+        const id = nextReqId++;
+        pending.set(id, { status: 'pending' });
+        const provider = window.cardano && window.cardano[name];
+        if (!provider) {
+            fail(id, `wallet '${name}' not found`);
+            return id;
+        }
+        const allowed = typeof provider.isEnabled === 'function'
+            ? Promise.resolve(provider.isEnabled())
+            : Promise.resolve(true);
+        allowed
+            .then(ok => {
+                if (!ok) {
+                    fail(id, 'the wallet no longer allows this site', 'declined');
+                    return;
+                }
+                return provider.enable().then(enabled => {
+                    if (!pending.has(id)) return;
+                    api = enabled;
+                    pending.set(id, { status: 'ok', data: name });
+                });
+            })
+            .catch(err => {
+                const f = failure_of(err);
+                fail(id, f.message, f.kind);
+            });
+        return id;
     }
 
     function wallet_connect(name_handle) {
@@ -270,11 +320,68 @@
         return id;
     }
 
+    // CIP-30 `icon`: a URI the wallet announces on window.cardano[key] — a
+    // data URI in practice, SVG as often as PNG. The browser decodes it; it is
+    // drawn centred and contained on a `size`×`size` canvas and read back as
+    // RGBA, so the Rust side gets pixels whatever the format. On ok, `data` is
+    // the size; the pixels wait in `icons` for `wallet_icon_pixels`.
+    function wallet_icon(key_handle, size) {
+        const key = consume_js_object(key_handle);
+        const id = nextReqId++;
+        pending.set(id, { status: 'pending' });
+        const provider = window.cardano && window.cardano[key];
+        const src = provider && provider.icon;
+        if (typeof src !== 'string' || src.length === 0) {
+            fail(id, `wallet '${key}' announces no icon`);
+            return id;
+        }
+        const img = new Image();
+        // A remote icon can only be read back if its server allows it; a data
+        // URI never needs this.
+        if (/^https?:/i.test(src)) img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            if (!pending.has(id)) return; // cancelled while loading
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                // An SVG with no intrinsic size reports 0; fill the square.
+                const w = img.naturalWidth || size;
+                const h = img.naturalHeight || size;
+                const scale = Math.min(size / w, size / h);
+                const dw = w * scale;
+                const dh = h * scale;
+                ctx.drawImage(img, (size - dw) / 2, (size - dh) / 2, dw, dh);
+                const rgba = ctx.getImageData(0, 0, size, size).data;
+                icons.set(id, new Uint8Array(rgba.buffer.slice(0)));
+                pending.set(id, { status: 'ok', data: String(size) });
+            } catch (e) {
+                // A tainted canvas (a remote icon without CORS) lands here.
+                fail(id, `wallet '${key}' icon could not be read: ${errMsg(e)}`);
+            }
+        };
+        img.onerror = () => {
+            if (pending.has(id)) fail(id, `wallet '${key}' icon did not load`);
+        };
+        img.src = src;
+        return id;
+    }
+
+    // The pixels a resolved `wallet_icon` produced, once: taken, then dropped.
+    // An empty buffer for an id with none.
+    function wallet_icon_pixels(req_id) {
+        const px = icons.get(req_id);
+        icons.delete(req_id);
+        return js_object(px || new Uint8Array(0));
+    }
+
     // Abandon a request. The JS side drops the entry; a promise that resolves
     // later has nowhere to land. Used when a host times out a read so the map
     // cannot grow without bound.
     function wallet_cancel(req_id) {
         pending.delete(req_id);
+        icons.delete(req_id);
     }
 
     function wallet_poll(req_id) {
@@ -295,6 +402,7 @@
     register_plugin = function (importObject) {
         importObject.env.wallet_list_providers = wallet_list_providers;
         importObject.env.wallet_connect = wallet_connect;
+        importObject.env.wallet_refresh = wallet_refresh;
         importObject.env.wallet_network_id = wallet_network_id;
         importObject.env.wallet_reward_address = wallet_reward_address;
         importObject.env.wallet_balance = wallet_balance;
@@ -306,7 +414,9 @@
         importObject.env.wallet_sign_data = wallet_sign_data;
         importObject.env.wallet_cancel = wallet_cancel;
         importObject.env.wallet_poll = wallet_poll;
+        importObject.env.wallet_icon = wallet_icon;
+        importObject.env.wallet_icon_pixels = wallet_icon_pixels;
     };
 
-    miniquad_add_plugin({ register_plugin, version: 3, name: 'wallet' });
+    miniquad_add_plugin({ register_plugin, version: 5, name: 'wallet' });
 })();

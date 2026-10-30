@@ -57,7 +57,143 @@ unsafe extern "C" {
     fn platform_storage_get(key: JsObject) -> JsObject;
     fn platform_storage_set(key: JsObject, value: JsObject);
     fn platform_storage_remove(key: JsObject);
+    fn platform_fullscreen_zone(x0: f32, y0: f32, x1: f32, y1: f32);
+    fn platform_fullscreen_state() -> u32;
+    fn platform_clipboard_write(text: JsObject);
+    fn platform_focus_returns() -> u32;
+    fn platform_link_zone(x0: f32, y0: f32, x1: f32, y1: f32, url: JsObject);
 }
+
+/// How many times the page has come back to the visitor: the tab shown again,
+/// or the window focused again. Only the change matters, so read it through a
+/// [`FocusWatch`]. Natively it never moves.
+#[cfg(target_arch = "wasm32")]
+pub fn focus_returns() -> u32 {
+    unsafe { platform_focus_returns() }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn focus_returns() -> u32 {
+    0
+}
+
+/// Notices the page coming back to the visitor, once per return.
+///
+/// The moment to recheck whatever may have changed while the visitor was
+/// elsewhere — a wallet switched to another account in its extension is the
+/// case this exists for. A tab switch usually fires both the browser's
+/// visibility and focus events; that is still one return here, as long as
+/// [`FocusWatch::returned`] is read each frame.
+#[derive(Debug, Default)]
+pub struct FocusWatch {
+    seen: u32,
+}
+
+impl FocusWatch {
+    /// Starts from the page's count now, so a watch made late does not report
+    /// returns from before it existed.
+    pub fn new() -> Self {
+        Self {
+            seen: focus_returns(),
+        }
+    }
+
+    /// `true` once for each frame on which the page has come back since the
+    /// last call.
+    pub fn returned(&mut self) -> bool {
+        self.saw(focus_returns())
+    }
+
+    /// The comparison, apart from the browser: the count wraps rather than
+    /// overflowing, and any change is a return.
+    fn saw(&mut self, now: u32) -> bool {
+        let changed = now != self.seen;
+        self.seen = now;
+        changed
+    }
+}
+
+/// Put `text` on the system clipboard, from a tap. `true` when the page took
+/// it; `false` natively, where there is no page and the caller writes through
+/// miniquad's own `clipboard_set` instead.
+///
+/// On the web miniquad's clipboard only answers the browser's copy event, so a
+/// Copy button needs this. The browser allows it within the activation a tap
+/// grants — the frame that handles the tap is still inside it — and the plugin
+/// falls back to `execCommand('copy')` where the async clipboard is refused.
+#[cfg(target_arch = "wasm32")]
+pub fn clipboard_write(text: &str) -> bool {
+    unsafe { platform_clipboard_write(JsObject::string(text)) };
+    true
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn clipboard_write(_text: &str) -> bool {
+    false
+}
+
+/// Whether the page can go fullscreen, and whether it is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fullscreen {
+    /// No fullscreen here: an iPhone's Safari (only video gets it; Add to
+    /// Home Screen is the way there), an embed that does not allow it, or a
+    /// native build. Offer no button.
+    Unavailable,
+    Windowed,
+    Full,
+}
+
+/// The page's fullscreen now.
+#[cfg(target_arch = "wasm32")]
+pub fn fullscreen() -> Fullscreen {
+    match unsafe { platform_fullscreen_state() } {
+        2 => Fullscreen::Full,
+        1 => Fullscreen::Windowed,
+        _ => Fullscreen::Unavailable,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn fullscreen() -> Fullscreen {
+    Fullscreen::Unavailable
+}
+
+/// Where the game's fullscreen button is, as `[left, top, right, bottom]`
+/// fractions of the canvas, or `None` while there is none. Call it every
+/// frame the button is drawn: a layout moves it.
+///
+/// A browser grants fullscreen only from inside a gesture's handler, and the
+/// frame loop is not one — macroquad's `set_fullscreen` is refused on the
+/// web. So `platform.js` listens for the tap itself, and one that ends inside
+/// the zone toggles fullscreen there. The game sees the same tap and should
+/// do nothing with it.
+#[cfg(target_arch = "wasm32")]
+pub fn fullscreen_zone(zone: Option<[f32; 4]>) {
+    let [x0, y0, x1, y1] = zone.unwrap_or([0.0; 4]);
+    unsafe { platform_fullscreen_zone(x0, y0, x1, y1) }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn fullscreen_zone(_zone: Option<[f32; 4]>) {}
+
+/// Where a link is drawn, as `[left, top, right, bottom]` fractions of the
+/// canvas, and the `https:` address it opens in a new tab; `None` while no
+/// link is drawn. Call it every frame the link is shown, and with `None` on
+/// the frames it is not: a stale zone would open the link from a tap meant
+/// for something else.
+///
+/// A browser opens a new tab only from inside a gesture's handler, so, as
+/// with [`fullscreen_zone`], `platform.js` listens for the tap itself. The
+/// game sees the same tap and should do nothing more with it. Natively there
+/// is no browser: nothing happens, and the host shows the address instead.
+#[cfg(target_arch = "wasm32")]
+pub fn link_zone(zone: Option<([f32; 4], &str)>) {
+    let ([x0, y0, x1, y1], url) = zone.unwrap_or(([0.0; 4], ""));
+    unsafe { platform_link_zone(x0, y0, x1, y1, JsObject::string(url)) }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn link_zone(_zone: Option<([f32; 4], &str)>) {}
 
 /// Reload the page: the way back for a game whose connection died while the
 /// phone was locked or the tab was hidden, when its transport cannot
@@ -197,14 +333,35 @@ getrandom::register_custom_getrandom!(webcrypto_getrandom);
 
 /// Plugin handshake for `gl.js` — silences the
 /// `Plugin platform is present in JS bundle, but is not used in the
-/// rust code` warning. JS-side `version: 3`, must match.
+/// rust code` warning. JS-side `version: 7`, must match.
 ///
-/// Bumped 1 → 2 with the `localStorage` calls, and 2 → 3 with the page's host
-/// and path: a consumer carrying an older `platform.js` then fails the
-/// handshake at instantiate rather than calling a function gl.js would stub
-/// out.
+/// Bumped 1 → 2 with the `localStorage` calls, 2 → 3 with the page's host
+/// and path, 3 → 4 with fullscreen, 4 → 5 with the clipboard, 5 → 6 with the
+/// focus count, and 6 → 7 with link zones: a consumer carrying an older
+/// `platform.js` then fails the handshake at instantiate rather than calling
+/// a function gl.js would stub out.
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn platform_crate_version() -> u32 {
-    3
+    7
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FocusWatch;
+
+    #[test]
+    fn a_return_is_reported_once() {
+        let mut watch = FocusWatch::default();
+        assert!(!watch.saw(0));
+        assert!(watch.saw(2), "a tab switch's two events, one return");
+        assert!(!watch.saw(2));
+        assert!(watch.saw(3));
+    }
+
+    #[test]
+    fn natively_nothing_returns() {
+        let mut watch = FocusWatch::new();
+        assert!(!watch.returned());
+    }
 }

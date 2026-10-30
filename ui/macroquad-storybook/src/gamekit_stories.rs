@@ -1,6 +1,7 @@
 //! Stories for `macroquad-gamekit`: easing curves, a fanned card hand you can
 //! hover, drag and long-press, rich text with inline icons, hit effects,
-//! rounded art, and the preloader's cover lifting off a screen.
+//! rounded art, the preloader's cover lifting off a screen, and a shuffling
+//! wall of tiles to drive by hand.
 //!
 //! Every story is driven by the storybook's clock (`dt` and `t`), so P pauses,
 //! `.` steps a frame and S slows time: the way to judge a 150 ms settle. With
@@ -11,13 +12,16 @@
 //! content.
 
 use macroquad::prelude::*;
+use macroquad_gamekit::wall::{
+    ColourTile, FnTile, ImageSource, ImageTile, ImageView, Layered, TileCtx, Tiles,
+};
 use macroquad_gamekit::{
     Align, Animated, Baked, Ease, HoverGrace, Icon, MacroquadMeasure, Particles, Pointer,
     PointerConfig, PointerEvent, Popups, Pose, Preloader, RichText, RoundedArt, Sequencer, Shake,
     Sprite, TextStyle, draw_icon, draw_order, emblem, fill_rounded, gem, line, plate,
     shrink_to_fit, stroke_rounded, topmost,
 };
-use macroquad_widgets::{Gesture, Painter};
+use macroquad_widgets::{Gesture, Painter, Scroll, ScrollInput};
 use ui_theme::TextSize;
 
 /// Which kit story this is.
@@ -30,6 +34,7 @@ pub enum KitView {
     Art,
     Preload,
     Face,
+    Wall,
 }
 
 /// Card size in points. // theme-exempt: geometry, not text
@@ -163,6 +168,8 @@ pub struct KitStory {
     hand: Option<Hand>,
     fx: FxStage,
     preload: PreloadStage,
+    /// Made on first draw: only the wall story pays for its tiles.
+    wall: Option<WallStage>,
 }
 
 impl KitStory {
@@ -183,6 +190,7 @@ impl KitStory {
                 preloader: Preloader::new(),
                 started: 0.0,
             },
+            wall: None,
         }
     }
 
@@ -196,6 +204,7 @@ impl KitStory {
             KitView::Art => self.art_story(p, area),
             KitView::Preload => self.preload_story(p, area, g, dt, t),
             KitView::Face => face_story(p, area),
+            KitView::Wall => self.wall_story(p, area, g, dt, t),
         }
     }
 
@@ -845,5 +854,348 @@ fn text_story(p: &Painter, area: Rect) {
         );
         l.draw(&t, origin, dpi, 1.0, icon);
         y += l.size.y + 40.0;
+    }
+}
+
+// ── wall ────────────────────────────────────────────────────────────────────
+
+/// A wall to drive by hand: tiles that load, tick and shuffle.
+///
+/// - tap a tile to spotlight it (it grows and the wall repacks around it);
+///   otherwise the spotlight moves on every few seconds;
+/// - drag, flick or wheel to scroll: a flick coasts on and slows to a stop,
+///   and a tap on a coasting wall only stops it;
+/// - `[` and `]` shrink or grow the spotlight (1 to 3 cells); `B` toggles
+///   boosted tiles;
+///   `R` reshuffles the ranking; `U` pulses a few tiles; `+` / `-` add or
+///   remove tiles; `A` stops or starts the spotlight moving by itself.
+struct WallStage {
+    wall: macroquad_gamekit::Wall<u32>,
+    tiles: Tiles<u32, WallLoaders>,
+    loaders: WallLoaders,
+    /// The ranking: keys in order.
+    order: Vec<u32>,
+    count: u32,
+    spotlight: u32,
+    spot_span: u8,
+    boosted: bool,
+    auto: bool,
+    since: f64,
+    /// Drag, flick and coast, or the wheel: the kit's scroll, as every
+    /// scrolling container should hold.
+    scroll: Scroll,
+    seed: u32,
+}
+
+/// The story's injected loaders: a stand-in image source that paints a face
+/// for a URL after a latency of its own, and fails one in thirteen.
+#[derive(Default)]
+struct WallLoaders {
+    asked: std::collections::HashMap<String, f64>,
+    ready: std::collections::HashMap<String, (Texture2D, f64)>,
+    failed: std::collections::HashSet<String>,
+    clock: f64,
+}
+
+impl WallLoaders {
+    fn update(&mut self, clock: f64) {
+        self.clock = clock;
+        let due: Vec<String> = self
+            .asked
+            .iter()
+            .filter(|(url, at)| clock - **at >= wall_latency(url))
+            .map(|(url, _)| url.clone())
+            .collect();
+        for url in due {
+            self.asked.remove(&url);
+            let n = wall_key(&url);
+            if wall_hash(n).is_multiple_of(13) {
+                self.failed.insert(url);
+            } else {
+                self.ready.insert(url, (wall_face(n), clock));
+            }
+        }
+    }
+}
+
+impl ImageSource for WallLoaders {
+    fn request(&mut self, url: &str, _priority: i32) {
+        if !self.ready.contains_key(url) && !self.failed.contains(url) {
+            self.asked.entry(url.to_string()).or_insert(self.clock);
+        }
+    }
+
+    fn view(&mut self, url: &str) -> ImageView<'_> {
+        if let Some((texture, at)) = self.ready.get(url) {
+            return ImageView::Ready {
+                texture,
+                age: (self.clock - at) as f32,
+            };
+        }
+        if self.failed.contains(url) {
+            ImageView::Failed
+        } else {
+            ImageView::Loading
+        }
+    }
+}
+
+fn wall_hash(n: u32) -> u32 {
+    let mut x = n.wrapping_mul(0x9E37_79B9) ^ 0x85EB_CA6B;
+    x ^= x >> 15;
+    x = x.wrapping_mul(0x2C1B_3C6D);
+    x ^= x >> 12;
+    x
+}
+
+fn wall_key(url: &str) -> u32 {
+    url.trim_start_matches("story://").parse().unwrap_or(0)
+}
+
+fn wall_latency(url: &str) -> f64 {
+    0.25 + f64::from(wall_hash(wall_key(url) ^ 0xABCD) % 1500) / 1000.0
+}
+
+fn wall_hue(n: u32) -> Color {
+    let h = (wall_hash(n) % 360) as f32 / 360.0;
+    macroquad::color::hsl_to_rgb(h, 0.62, 0.58)
+}
+
+/// A small face on a flat colour, painted for key `n`.
+fn wall_face(n: u32) -> Texture2D {
+    const S: u16 = 64;
+    let (bg, skin) = (wall_hue(n), wall_hue(n.wrapping_add(7)));
+    let mut px = Vec::with_capacity(usize::from(S) * usize::from(S) * 4);
+    for y in 0..S {
+        for x in 0..S {
+            let (fx, fy) = (f32::from(x) - 32.0, f32::from(y) - 36.0);
+            let head = fx * fx + fy * fy < 22.0 * 22.0;
+            let eye = |ex: f32| (fx - ex).powi(2) + (fy + 4.0).powi(2) < 16.0;
+            let c = if head && (eye(-8.0) || eye(8.0)) {
+                Color::new(0.08, 0.08, 0.12, 1.0)
+            } else if head {
+                skin
+            } else {
+                bg
+            };
+            px.extend([
+                (c.r * 255.0) as u8,
+                (c.g * 255.0) as u8,
+                (c.b * 255.0) as u8,
+                255,
+            ]);
+        }
+    }
+    let t = Texture2D::from_rgba8(S, S, &px);
+    t.set_filter(FilterMode::Linear);
+    t
+}
+
+/// A live tile: a sweep going round on the wall's clock.
+fn wall_live(ctx: TileCtx, ground: Color) {
+    let r = ctx.rect;
+    fill_rounded(r, ctx.radius, ground.with_alpha(0.25 * ctx.alpha));
+    let c = r.center();
+    let radius = r.w.min(r.h) * 0.3;
+    let tau = std::f32::consts::TAU;
+    let sweep = (ctx.time * 1.4).rem_euclid(tau);
+    for i in 0..24 {
+        let a = i as f32 / 24.0 * tau;
+        let k = (1.0 - (sweep - a).rem_euclid(tau) / tau).powi(3);
+        draw_circle(
+            c.x + a.cos() * radius,
+            c.y + a.sin() * radius,
+            radius * 0.09,
+            ground.with_alpha((0.25 + 0.75 * k) * ctx.alpha),
+        );
+    }
+}
+
+/// A gold ring while a tile is lifted (growing, or pulsed).
+fn wall_ring(ctx: TileCtx) {
+    if ctx.lift <= 0.01 {
+        return;
+    }
+    let a = ctx.lift * ctx.alpha;
+    stroke_rounded(ctx.rect, ctx.radius, 3.0, Color::new(1.0, 0.85, 0.35, a));
+}
+
+impl WallStage {
+    fn new() -> Self {
+        let mut stage = Self {
+            wall: macroquad_gamekit::Wall::new(3),
+            tiles: Tiles::new(),
+            loaders: WallLoaders::default(),
+            order: Vec::new(),
+            count: 0,
+            spotlight: 0,
+            spot_span: 3,
+            boosted: true,
+            auto: true,
+            since: 0.0,
+            // `--scroll N`: start scrolled, for a capture of the clipped edge.
+            scroll: {
+                let mut scroll = Scroll::new();
+                scroll.set(macroquad_gamekit::harness::flag_num::<f32>("--scroll").unwrap_or(0.0));
+                scroll
+            },
+            seed: 1,
+        };
+        stage.set_count(120);
+        stage
+    }
+
+    /// Grow or shrink the collection; new keys get a tile of their own kind.
+    fn set_count(&mut self, count: u32) {
+        let count = count.clamp(1, 400);
+        for k in self.count..count {
+            if k % 9 == 4 {
+                let ground = wall_hue(k);
+                self.tiles.insert(
+                    k,
+                    FnTile(move |ctx: TileCtx, _: &mut WallLoaders| wall_live(ctx, ground)),
+                );
+            } else if k % 17 == 11 {
+                self.tiles.insert(k, ColourTile(wall_hue(k)));
+            } else {
+                self.tiles.insert(
+                    k,
+                    Layered(vec![
+                        Box::new(ImageTile::new(
+                            format!("story://{k}"),
+                            wall_hue(k).with_alpha(0.35),
+                        )),
+                        Box::new(FnTile(|ctx: TileCtx, _: &mut WallLoaders| wall_ring(ctx))),
+                    ]),
+                );
+            }
+            self.order.push(k);
+        }
+        for k in count..self.count {
+            self.tiles.remove(&k);
+        }
+        self.order.retain(|k| *k < count);
+        if self.spotlight >= count {
+            self.spotlight = 0;
+        }
+        self.count = count;
+    }
+
+    fn arrangement(&self) -> Vec<(u32, u8)> {
+        let mut out = vec![(self.spotlight, self.spot_span)];
+        let cols = self.wall.cols();
+        out.extend(
+            self.order
+                .iter()
+                .filter(|k| **k != self.spotlight)
+                .map(|&k| {
+                    let boost = self.boosted && wall_hash(k).is_multiple_of(7) && cols >= 4;
+                    (k, if boost { 2 } else { 1 })
+                }),
+        );
+        out
+    }
+}
+
+impl KitStory {
+    fn wall_story(&mut self, p: &Painter, area: Rect, g: &Gesture, dt: f32, t: f64) {
+        let s = self.wall.get_or_insert_with(WallStage::new);
+        let theme = p.theme.color;
+        let head = Rect::new(area.x, area.y, area.w, 40.0);
+        let field = Rect::new(area.x, area.y + 44.0, area.w, area.h - 44.0);
+
+        // Keys.
+        // Not the number keys: the storybook switches stories with those.
+        if is_key_pressed(KeyCode::LeftBracket) {
+            s.spot_span = s.spot_span.saturating_sub(1).max(1);
+        }
+        if is_key_pressed(KeyCode::RightBracket) {
+            s.spot_span = (s.spot_span + 1).min(3);
+        }
+        if is_key_pressed(KeyCode::B) {
+            s.boosted = !s.boosted;
+        }
+        if is_key_pressed(KeyCode::A) {
+            s.auto = !s.auto;
+        }
+        if is_key_pressed(KeyCode::R) {
+            // A new ranking: the same keys, scrambled.
+            s.seed = s.seed.wrapping_add(1);
+            let seed = s.seed;
+            s.order
+                .sort_by_key(|k| wall_hash(k ^ seed.wrapping_mul(0x51ED)));
+        }
+        if is_key_pressed(KeyCode::U) {
+            for i in 0..5 {
+                let k = wall_hash(s.seed.wrapping_add(i).wrapping_add(t as u32)) % s.count.min(30);
+                s.wall.pulse(&k);
+            }
+        }
+        if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
+            s.set_count(s.count + 24);
+        }
+        if is_key_pressed(KeyCode::Minus) || is_key_pressed(KeyCode::KpSubtract) {
+            s.set_count(s.count.saturating_sub(24));
+        }
+
+        // Scroll: a drag that starts on the wall, its flick coasting on, or
+        // the wheel over it. Not clamped before the wall has rows: a
+        // `--scroll` asked for at the start would be clamped to nothing. A
+        // tap that only caught a coasting wall spotlights nothing.
+        let input = ScrollInput::read(g.drag, Vec2::from(mouse_position()));
+        let max = (s.wall.rows() > 0).then(|| s.wall.max_scroll(field));
+        s.scroll.update(field, &input, max, dt);
+        let tap = s.scroll.filter_tap(g.tap);
+        let scroll = s.scroll.offset();
+
+        // Columns from the width; the spotlight by tap or by itself.
+        let gap = s.wall.style().gap;
+        s.wall
+            .set_cols(macroquad_gamekit::Wall::<u32>::cols_for(field.w, 92.0, gap));
+        s.since += f64::from(dt);
+        if let Some(tap) = tap
+            && let Some(key) = s.wall.hit(field, scroll, tap)
+        {
+            s.spotlight = key;
+            s.since = 0.0;
+        } else if s.auto && s.since >= 3.0 {
+            let at = s.order.iter().position(|k| *k == s.spotlight).unwrap_or(0);
+            s.spotlight = s.order[(at + 1) % s.order.len().clamp(1, 12)];
+            s.since = 0.0;
+        }
+        s.wall.arrange(s.arrangement());
+        s.wall.update(dt);
+        s.wall
+            .update_tiles(field, scroll, &mut s.tiles, &mut s.loaders, dt);
+        s.loaders.update(t);
+
+        // Draw: the wall clips its own scrolled rows, so nothing covers them.
+        s.wall
+            .draw_tiles(field, scroll, &mut s.tiles, &mut s.loaders);
+        p.text(
+            &format!(
+                "{} tiles · {} cols · spotlight {} at {}x{} · boosted {} · auto {} · scrolled {:.0} of {:.0}",
+                s.count,
+                s.wall.cols(),
+                s.spotlight,
+                s.spot_span,
+                s.spot_span,
+                if s.boosted { "on" } else { "off" },
+                if s.auto { "on" } else { "off" },
+                scroll,
+                s.wall.max_scroll(field),
+            ),
+            head.x + 4.0,
+            head.y + 14.0,
+            p.size(TextSize::Sm),
+            theme.text_primary,
+        );
+        p.text(
+            "tap: spotlight · drag, flick or wheel: scroll · [ ]: spotlight size · B: boosts · R: reshuffle · U: pulse · + -: tiles · A: auto",
+            head.x + 4.0,
+            head.y + 32.0,
+            p.size(TextSize::Xs),
+            theme.text_muted,
+        );
     }
 }

@@ -11,107 +11,13 @@
 //! draws, so its stories in `macroquad-storybook` ("gamekit / card frame") are
 //! where it gets reviewed.
 
-use macroquad::models::{Mesh, Vertex, draw_mesh};
 use macroquad::prelude::*;
 
 use crate::shape::stroke_rounded;
-use crate::tween::Lerp;
 
-/// How colour runs across a filled shape.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Gradient {
-    /// `top` at the top edge to `bottom` at the bottom edge.
-    Vertical { top: Color, bottom: Color },
-    /// `left` at the left edge to `right` at the right edge.
-    Horizontal { left: Color, right: Color },
-    /// `centre` in the middle to `edge` at the rim.
-    Radial { centre: Color, edge: Color },
-}
-
-impl Gradient {
-    fn at(self, rect: Rect, p: Vec2, rim: bool) -> Color {
-        match self {
-            Gradient::Vertical { top, bottom } => Color::lerp(
-                top,
-                bottom,
-                ((p.y - rect.y) / rect.h.max(1e-3)).clamp(0.0, 1.0),
-            ),
-            Gradient::Horizontal { left, right } => Color::lerp(
-                left,
-                right,
-                ((p.x - rect.x) / rect.w.max(1e-3)).clamp(0.0, 1.0),
-            ),
-            Gradient::Radial { centre, edge } => {
-                if rim {
-                    edge
-                } else {
-                    centre
-                }
-            }
-        }
-    }
-}
-
-/// Points around a rounded rectangle, clockwise from the top-left corner's
-/// start, `segments` per corner.
-fn rounded_outline(rect: Rect, radius: f32, segments: usize) -> Vec<Vec2> {
-    let r = radius.min(rect.w / 2.0).min(rect.h / 2.0).max(0.0);
-    let corners = [
-        (vec2(rect.x + r, rect.y + r), std::f32::consts::PI),
-        (
-            vec2(rect.right() - r, rect.y + r),
-            std::f32::consts::PI * 1.5,
-        ),
-        (vec2(rect.right() - r, rect.bottom() - r), 0.0),
-        (
-            vec2(rect.x + r, rect.bottom() - r),
-            std::f32::consts::FRAC_PI_2,
-        ),
-    ];
-    let mut pts = Vec::with_capacity(4 * (segments + 1));
-    for (c, start) in corners {
-        for i in 0..=segments {
-            let a = start + std::f32::consts::FRAC_PI_2 * i as f32 / segments as f32;
-            pts.push(c + vec2(a.cos(), a.sin()) * r);
-        }
-    }
-    pts
-}
-
-/// Fill a rounded rectangle with a gradient.
-pub fn fill_gradient(rect: Rect, radius: f32, gradient: Gradient) {
-    let pts = rounded_outline(rect, radius, 10);
-    let centre = rect.center();
-    let mut vertices = Vec::with_capacity(pts.len() + 1);
-    vertices.push(Vertex::new(
-        centre.x,
-        centre.y,
-        0.0,
-        0.0,
-        0.0,
-        gradient.at(rect, centre, false),
-    ));
-    for p in &pts {
-        vertices.push(Vertex::new(
-            p.x,
-            p.y,
-            0.0,
-            0.0,
-            0.0,
-            gradient.at(rect, *p, true),
-        ));
-    }
-    let n = pts.len() as u16;
-    let mut indices = Vec::with_capacity(pts.len() * 3);
-    for i in 0..n {
-        indices.extend([0, 1 + i, 1 + (i + 1) % n]);
-    }
-    draw_mesh(&Mesh {
-        vertices,
-        indices,
-        texture: None,
-    });
-}
+/// The gradient plate lives in the widgets, where the sheet chrome fills its
+/// card with it; the kit's callers keep reaching it here.
+pub use macroquad_widgets::shape::{Gradient, fill_gradient};
 
 /// A filled circle shaded from `centre` to `edge`: a gem or a coin.
 pub fn fill_circle_gradient(at: Vec2, radius: f32, centre: Color, edge: Color) {
@@ -264,32 +170,5 @@ mod tests {
             a.as_chunks::<4>().0.iter().all(|p| p[3] == 127),
             "alpha is the strength"
         );
-    }
-
-    #[test]
-    fn the_outline_runs_round_the_box() {
-        let r = Rect::new(0.0, 0.0, 100.0, 50.0);
-        let pts = rounded_outline(r, 10.0, 4);
-        assert_eq!(pts.len(), 20);
-        assert!(
-            pts.iter()
-                .all(|p| p.x >= -1e-3 && p.x <= 100.001 && p.y >= -1e-3 && p.y <= 50.001)
-        );
-        assert!(
-            (pts[0] - vec2(0.0, 10.0)).length() < 1e-3,
-            "starts at the top-left corner's left end"
-        );
-    }
-
-    #[test]
-    fn a_vertical_gradient_runs_top_to_bottom() {
-        let r = Rect::new(0.0, 0.0, 10.0, 100.0);
-        let g = Gradient::Vertical {
-            top: BLACK,
-            bottom: WHITE,
-        };
-        assert_eq!(g.at(r, vec2(5.0, 0.0), true), BLACK);
-        assert_eq!(g.at(r, vec2(5.0, 100.0), true), WHITE);
-        assert!((g.at(r, vec2(5.0, 50.0), true).r - 0.5).abs() < 1e-5);
     }
 }

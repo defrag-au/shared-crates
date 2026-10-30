@@ -12,6 +12,10 @@
 //!   spent 3.4 of them waiting on the wallet".
 //! - **How much memory are we holding?** [`mem`] — honest on wasm, and honest
 //!   about being unavailable elsewhere.
+//! - **What was a frame's time spent on?** [`scopes`] — named, nested scopes
+//!   per frame, read as text: the busiest recent frame, and every scope's
+//!   cost across the window. For a runtime with no puffin (macroquad on the
+//!   web, where puffin's clock needs wasm-bindgen).
 //!
 //! Rendering is somebody else's job. `egui-widgets`' `perf_strip` draws this;
 //! nothing here knows what a pixel is.
@@ -55,6 +59,8 @@
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering::Relaxed};
+
+pub mod scopes;
 
 // ─── Gauges ──────────────────────────────────────────────────────────────────
 

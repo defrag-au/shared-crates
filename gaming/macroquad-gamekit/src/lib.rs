@@ -44,6 +44,8 @@ pub use discord_auth::miniquad as auth;
 #[cfg(feature = "audio")]
 pub mod audio;
 pub mod bake;
+pub mod cart;
+pub mod clip;
 pub mod dir;
 pub mod ease;
 pub mod face;
@@ -62,6 +64,7 @@ pub mod pixel;
 pub mod plan;
 pub mod pointer;
 pub mod preload;
+pub mod profile;
 pub mod sequence;
 pub mod shape;
 pub mod sprite;
@@ -74,12 +77,16 @@ pub mod text;
 pub mod thumbs;
 pub mod tween;
 pub mod viewer;
+pub mod wall;
+pub mod wallet_connection;
+pub mod wallet_modal;
 pub mod web;
 
 pub use app::{Backdrop, Frame, Game, Stage};
 #[cfg(feature = "audio")]
 pub use audio::{Audio, Panned, Voices, load_pcm, pan_gains, pan_mono, wav, wav_stereo};
 pub use bake::{Baked, Baker};
+pub use clip::with_clip;
 pub use dir::Dir4;
 pub use ease::Ease;
 pub use face::{emblem, gem, line, plate, shrink_to_fit, tab, tab_width};
@@ -103,7 +110,7 @@ pub use pixel::{Grid, Onion, Palette, PixelError, PixelSprite, parse_frames};
 pub use pointer::{HoverGrace, Pointer, PointerConfig, PointerEvent, Swipe, Swipes};
 pub use preload::Preloader;
 pub use sequence::{Sequencer, stagger};
-pub use shape::{RoundedArt, cover_source, fill_rounded, stroke_rounded};
+pub use shape::{RoundedArt, cover_source, fill_rounded, fill_texture_rounded, stroke_rounded};
 pub use sprite::{Pose, Sprite, draw_order, topmost};
 pub use sprite_file::{SpriteFile, SpriteFileError};
 pub use starfield::{Star, Starfield};
@@ -117,3 +124,10 @@ pub use text::{
 };
 pub use thumbs::{Finger, StickShown, ThumbFrame, Thumbs};
 pub use tween::{Animated, Lerp};
+pub use wall::{Wall, WallStyle};
+pub use wallet_connection::{Connection, ConnectionEvent};
+pub use wallet_modal::{
+    Account, AccountDetail, ChainOption, ChainPhase, DetailKind, SignInPhase, Support, WalletModal,
+    WalletModalAction, WalletModalVm, WalletOption, chain_mark, chain_tint, wallet_button,
+    wallet_icon, wallet_icon_shaped,
+};

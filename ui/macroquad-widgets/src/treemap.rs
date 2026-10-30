@@ -39,6 +39,10 @@ pub const SEEN_AREA: f32 = 400.0;
 /// The aspect past which a kept tree is rebuilt, when that helps enough.
 pub const DEFAULT_MAX_ASPECT: f32 = 10.0;
 
+/// The depth past which a kept tree is rebuilt: its walks recurse, and a
+/// browser's stack is small.
+pub const MAX_DEPTH: usize = 400;
+
 /// A node: one item, or a cut across (side by side) or down (one above the
 /// other) into two.
 #[derive(Debug, Clone)]
@@ -115,6 +119,38 @@ impl<K: Clone + Eq + Hash> Tree<K> {
         self.root = Some(with_last(root, key, across));
     }
 
+    /// Add `items` (in order) as one block cut out of the last leaf: the
+    /// last leaf and the newcomers built into a tree of their own in the
+    /// last leaf's place. One layout of the whole, however many arrive.
+    fn append_all(&mut self, items: Vec<(K, f64)>, weights: &HashMap<K, f64>, area: Rect) {
+        if items.is_empty() {
+            return;
+        }
+        let Some(root) = self.root.take() else {
+            self.root = build_node(&items, area);
+            return;
+        };
+        let last = last_key(&root);
+        let laid = layout_node(&root, weights, area);
+        let place = laid
+            .iter()
+            .find(|(k, _)| *k == last)
+            .map_or(area, |(_, r)| *r);
+        let mut block = Vec::with_capacity(items.len() + 1);
+        block.push((last.clone(), weights.get(&last).copied().unwrap_or(0.0)));
+        block.extend(items);
+        // A last leaf of no weight cannot be cut at a share: the newcomers
+        // take its place by themselves.
+        let built = match block[0].1 > 0.0 {
+            true => build_node(&block, place),
+            false => build_node(&block[1..], place),
+        };
+        self.root = match built {
+            Some(node) => Some(with_last_node(root, node)),
+            None => Some(root),
+        };
+    }
+
     /// Lay the tree out in `area` by `weights`: every cut where the weights
     /// put it, every leaf's area its share. A key of no weight gets no
     /// rectangle.
@@ -161,19 +197,37 @@ pub fn keep<K: Clone + Eq + Hash>(
         *tree = Tree::build(items, area);
     } else {
         let have = tree.keys();
-        for k in have.iter().filter(|k| !weights.contains_key(*k)) {
-            tree.remove(k);
+        // Leavers out in one pass over the tree, not one pass each.
+        let gone: HashSet<&K> = have.iter().filter(|k| !weights.contains_key(*k)).collect();
+        if !gone.is_empty()
+            && let Some(root) = tree.root.take()
+        {
+            tree.root = without_all(root, &gone);
         }
-        for (k, w) in items {
-            if *w > 0.0 && !have.contains(k) {
-                tree.append(k.clone(), &weights, area);
-            }
-        }
+        // This layout's newcomers, in order, as one block cut out of the
+        // last tile: one layout to find it, and a balanced block rather
+        // than a chain a newcomer deep (which a launch's thousands of
+        // arrivals made thousands deep).
+        let fresh: Vec<(K, f64)> = items
+            .iter()
+            .filter(|(k, w)| *w > 0.0 && w.is_finite() && !have.contains(k))
+            .cloned()
+            .collect();
+        tree.append_all(fresh, &weights, area);
     }
     let laid = tree.layout(&weights, area);
     let worst = Tree::worst_aspect(&laid);
-    if worst <= max_aspect {
+    // Every frame's newcomers deepen the tree's last corner by a level or
+    // so. A layout walks it in one pass however deep, but by recursion, and
+    // a browser's stack is small: past [`MAX_DEPTH`] it is rebuilt, which
+    // re-packs the map once in a long while.
+    let deep = tree.root.as_ref().is_some_and(|n| depth(n) > MAX_DEPTH);
+    if worst <= max_aspect && !deep {
         return laid;
+    }
+    if deep {
+        *tree = Tree::build(items, area);
+        return tree.layout(&weights, area);
     }
     // Rebuilt only if that is much better: a [large, tiny] pair is a
     // sliver however it is cut, and rebuilding for it every frame would be
@@ -364,6 +418,42 @@ fn without<K: Eq>(n: Node<K>, key: &K) -> Option<Node<K>> {
     }
 }
 
+fn without_all<K: Eq + Hash>(n: Node<K>, gone: &HashSet<&K>) -> Option<Node<K>> {
+    match n {
+        Node::Leaf(k) if gone.contains(&k) => None,
+        Node::Leaf(k) => Some(Node::Leaf(k)),
+        Node::Cut {
+            across,
+            first,
+            second,
+        } => match (without_all(*first, gone), without_all(*second, gone)) {
+            (Some(a), Some(b)) => Some(Node::Cut {
+                across,
+                first: Box::new(a),
+                second: Box::new(b),
+            }),
+            (Some(only), None) | (None, Some(only)) => Some(only),
+            (None, None) => None,
+        },
+    }
+}
+
+/// `n` with its last leaf replaced by `node`.
+fn with_last_node<K>(n: Node<K>, node: Node<K>) -> Node<K> {
+    match n {
+        Node::Leaf(_) => node,
+        Node::Cut {
+            across,
+            first,
+            second,
+        } => Node::Cut {
+            across,
+            first,
+            second: Box::new(with_last_node(*second, node)),
+        },
+    }
+}
+
 fn last_key<K: Clone>(n: &Node<K>) -> K {
     match n {
         Node::Leaf(k) => k.clone(),
@@ -390,10 +480,34 @@ fn with_last<K>(n: Node<K>, key: K, across: bool) -> Node<K> {
     }
 }
 
-fn weight<K: Eq + Hash>(n: &Node<K>, weights: &HashMap<K, f64>) -> f64 {
-    match n {
+/// Every node's weight, in pre-order: one pass over the tree, so a layout
+/// costs a visit per node. Summing a subtree at each cut instead cost a visit
+/// per node per level — and a tree that newcomers have grown at its end is
+/// deep, which made a layout quadratic in the holders.
+fn weigh<K: Eq + Hash>(n: &Node<K>, weights: &HashMap<K, f64>, out: &mut Vec<f64>) -> f64 {
+    let at = out.len();
+    out.push(0.0);
+    let w = match n {
         Node::Leaf(k) => weights.get(k).copied().unwrap_or(0.0),
-        Node::Cut { first, second, .. } => weight(first, weights) + weight(second, weights),
+        Node::Cut { first, second, .. } => weigh(first, weights, out) + weigh(second, weights, out),
+    };
+    out[at] = w;
+    w
+}
+
+/// How many nodes `n` holds, itself included: how far past a cut's first
+/// child its second starts, in pre-order.
+fn size<K>(n: &Node<K>) -> usize {
+    match n {
+        Node::Leaf(_) => 1,
+        Node::Cut { first, second, .. } => 1 + size(first) + size(second),
+    }
+}
+
+fn depth<K>(n: &Node<K>) -> usize {
+    match n {
+        Node::Leaf(_) => 1,
+        Node::Cut { first, second, .. } => 1 + depth(first).max(depth(second)),
     }
 }
 
@@ -402,20 +516,28 @@ fn layout_node<K: Clone + Eq + Hash>(
     weights: &HashMap<K, f64>,
     area: Rect,
 ) -> Vec<(K, Rect)> {
+    let mut sums = Vec::new();
+    weigh(n, weights, &mut sums);
     let mut out = Vec::new();
-    place(n, weights, area, &mut out);
+    let mut at = 0;
+    place(n, &sums, &mut at, area, &mut out);
     out
 }
 
-fn place<K: Clone + Eq + Hash>(
+/// Lay `n` out in `area` from its pre-order weights, `at` being its index
+/// there; leaves `at` past its last node.
+fn place<K: Clone>(
     n: &Node<K>,
-    weights: &HashMap<K, f64>,
+    sums: &[f64],
+    at: &mut usize,
     area: Rect,
     out: &mut Vec<(K, Rect)>,
 ) {
+    let me = *at;
+    *at += 1;
     match n {
         Node::Leaf(k) => {
-            if weights.get(k).is_some_and(|w| *w > 0.0) {
+            if sums[me] > 0.0 {
                 out.push((k.clone(), area));
             }
         }
@@ -424,13 +546,15 @@ fn place<K: Clone + Eq + Hash>(
             first,
             second,
         } => {
-            let (a, b) = (weight(first, weights), weight(second, weights));
-            if a + b <= 0.0 {
+            // The first child is next in pre-order; its weight is there.
+            let (whole, a) = (sums[me], sums[me + 1]);
+            if whole <= 0.0 {
+                *at += size(first) + size(second);
                 return;
             }
-            let (ra, rb) = cut(area, (a / (a + b)) as f32, *across);
-            place(first, weights, ra, out);
-            place(second, weights, rb, out);
+            let (ra, rb) = cut(area, (a / whole) as f32, *across);
+            place(first, sums, at, ra, out);
+            place(second, sums, at, rb, out);
         }
     }
 }
@@ -580,6 +704,32 @@ mod tests {
         let laid = keep(&mut tree, &fewer, space, 10.0);
         assert!(laid.iter().all(|(k, _)| *k != 7), "the leaver has none");
         assert_eq!(laid.len(), fewer.len());
+        let filled: f64 = laid.iter().map(|(_, r)| area(r)).sum();
+        assert!((filled - area(&space)).abs() / area(&space) < 1e-3);
+    }
+
+    /// A launch: holders arriving a few a layout for thousands of layouts.
+    /// Each arrival once deepened the tree's last corner by a level and laid
+    /// the whole tree out again, which made a frame quadratic in the
+    /// holders; the tree stays within its depth, and every holder has a
+    /// tile.
+    #[test]
+    fn thousands_of_arrivals_keep_the_tree_shallow_and_whole() {
+        let space = Rect::new(0.0, 0.0, 900.0, 520.0);
+        let mut state = TreemapState::default();
+        let mut items: Vec<(usize, f64)> = Vec::new();
+        // Past MAX_DEPTH arrivals, so the rebuild is exercised too.
+        for frame in 0..MAX_DEPTH + 100 {
+            for j in 0..3 {
+                let k = frame * 3 + j;
+                items.push((k, 1.0 + (k % 97) as f64));
+            }
+            let laid = state.layout(&items, space);
+            assert_eq!(laid.len(), items.len(), "frame {frame}");
+        }
+        let root = state.tree.root.as_ref().expect("a tree");
+        assert!(depth(root) <= MAX_DEPTH, "depth {}", depth(root));
+        let laid = state.layout(&items, space);
         let filled: f64 = laid.iter().map(|(_, r)| area(r)).sum();
         assert!((filled - area(&space)).abs() / area(&space) < 1e-3);
     }

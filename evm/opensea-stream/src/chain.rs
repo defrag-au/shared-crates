@@ -202,7 +202,7 @@ mod tests {
         );
         assert_eq!(
             chain_ref("ethereum"),
-            Some(ChainRef::Evm(chains::EvmChain::Id(1)))
+            Some(ChainRef::Evm(chains::EvmChain::Ethereum))
         );
     }
 

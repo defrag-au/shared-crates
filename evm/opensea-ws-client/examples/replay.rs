@@ -87,6 +87,38 @@ fn summarise(event: &StreamEvent) -> String {
             update.item.nft_id,
             update.item.metadata.traits.len()
         ),
+        StreamEvent::ItemCancelled(cancelled) => format!(
+            "cancelled {} {} {}",
+            cancelled.item.nft_id, cancelled.base_price, cancelled.payment_token.symbol
+        ),
+        StreamEvent::OrderInvalidate(invalidated) => format!(
+            "invalid   {} {}",
+            invalidated
+                .item
+                .as_ref()
+                .map(|item| item.nft_id.as_str())
+                .unwrap_or("-"),
+            invalidated.order_hash
+        ),
+        StreamEvent::ItemListed(listed) => format!(
+            "list      {} {} {}",
+            listed.item.nft_id, listed.base_price, listed.payment_token.symbol
+        ),
+        StreamEvent::ItemReceivedBid(bid) => format!(
+            "bid       {} {} {}",
+            bid.item.nft_id, bid.base_price, bid.payment_token.symbol
+        ),
+        StreamEvent::CollectionOffer(offer) => format!(
+            "colloffer {} {} {}",
+            offer.collection.slug, offer.base_price, offer.payment_token.symbol
+        ),
+        StreamEvent::TraitOffer(offer) => format!(
+            "traitoff  {} {} {}",
+            offer.collection.slug, offer.base_price, offer.payment_token.symbol
+        ),
+        StreamEvent::OrderRevalidate(order) => {
+            format!("revalid   {} {}", order.collection.slug, order.order_hash)
+        }
         StreamEvent::Unmodelled(unmodelled) => format!("other     {}", unmodelled.event_type),
     }
 }

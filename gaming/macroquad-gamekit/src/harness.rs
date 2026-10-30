@@ -18,6 +18,7 @@
 //! game --view [whale]                                # the sprite viewer, for a person: tune and print
 //! game --shot strip.png --at 9 --strip 12 [--every 2] [--crop x,y,w,h]  # frames in a row: motion in the scene
 //! game --frame-log                                   # print every frame over 50 ms
+//! game --shot shot.png --at 4 --profile              # and where each frame's time went, in the report
 //! ```
 //!
 //! ## Pixel art is reviewed on its own sheet
@@ -289,6 +290,9 @@ pub struct Args {
     pub size: Option<(i32, i32)>,
     /// `--frame-log`: print every frame slower than [`SLOW_FRAME`].
     pub frame_log: bool,
+    /// `--profile`: time each frame's scopes ([`crate::profile`]) and add
+    /// where the time went to a capture's report.
+    pub profile: bool,
     /// `--keys "10:Up,20-40:Right"`: keys the loop presses for the game, by
     /// frame, merged into [`Frame::input`](crate::Frame::input) so the game
     /// cannot tell them from a player's. See [`KeyScript`].
@@ -478,6 +482,7 @@ impl Args {
                 Some((w.parse().ok()?, h.parse().ok()?))
             }),
             frame_log: argv.iter().any(|a| a == "--frame-log"),
+            profile: argv.iter().any(|a| a == "--profile"),
             keys: flag_in(argv, "--keys")
                 .map(|s| {
                     KeyScript::parse_all(&s).unwrap_or_else(|e| {
@@ -824,7 +829,10 @@ pub fn sprite_film(
 pub fn write_capture(texture: &Texture2D, path: &str, note: &str) -> std::io::Result<PathBuf> {
     save_texture_png(texture, path);
     let txt = Path::new(path).with_extension("txt");
-    std::fs::write(&txt, report::render(path, note))?;
+    let mut text = report::render(path, note);
+    // Empty unless `--profile` turned the profiler on.
+    text.push_str(&crate::profile::report());
+    std::fs::write(&txt, text)?;
     Ok(txt)
 }
 

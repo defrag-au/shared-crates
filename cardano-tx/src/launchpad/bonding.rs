@@ -32,7 +32,7 @@
 //! parses both forms, so this is a determinism choice, not a compatibility one.
 
 use pallas_primitives::conway::PlutusData;
-use pallas_primitives::{BigInt, Fragment};
+use pallas_primitives::{BigInt, Fragment, MaybeIndefArray};
 
 use cardano_assets::UtxoApi;
 use pallas_addresses::Address;
@@ -41,6 +41,7 @@ use pallas_txbuilder::{ExUnits, ScriptKind};
 
 use crate::blueprint::{PlutusLanguage, script_hash};
 use crate::builder::fluent::TxBuilder;
+use crate::builder::listing::address_to_plutus;
 use crate::builder::script::{
     CollateralConfig, MintEntry, ScriptSource, bytes, constr, constr0_empty, encode_plutus_data,
     int,
@@ -218,6 +219,94 @@ impl Deposit {
             name,
             account: field_u64(&fields[2], "account")?,
         })
+    }
+}
+
+/// `Constr` index of each settlement arm, in the order the Aiken `Redeemer`
+/// declares them — `contracts/bonding-pool/validators/settlement.ak`.
+pub const SETTLE_SWEEP: u32 = 0;
+pub const SETTLE_CHECKPOINT: u32 = 1;
+pub const SETTLE_SETTLE: u32 = 2;
+pub const SETTLE_RECLAIM: u32 = 3;
+
+/// `Constr` index and field count of a settlement leg.
+pub const PAYOUT_CONSTRUCTOR: u32 = 0;
+pub const PAYOUT_FIELDS: usize = 3;
+
+/// One leg of a settlement: cash **and** units of the bonded token, in the same
+/// output. A bond pays one UTxO per holder, not two.
+///
+/// The address is encoded the way every payout in this crate is
+/// (`listing::address_to_plutus`), so a stake credential travels with it and
+/// `Settle` checks the recipient the sequencer actually meant.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Payout {
+    pub address: Address,
+    pub lovelace: u64,
+    /// Units of the bonded token. Zero on a death, and on a bond for an account
+    /// that held none.
+    pub tokens: u64,
+}
+
+impl Payout {
+    pub fn to_data(&self) -> Result<PlutusData, BondingError> {
+        Ok(constr(
+            PAYOUT_CONSTRUCTOR,
+            vec![
+                address_to_plutus(&self.address)
+                    .map_err(|error| BondingError::Invalid(format!("payout address: {error}")))?,
+                amount(self.lovelace, "lovelace")?,
+                amount(self.tokens, "tokens")?,
+            ],
+        ))
+    }
+}
+
+/// The four things `settlement.ak` permits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SettlementRedeemer {
+    /// Anyone: merge valid deposits into the anchor.
+    Sweep,
+    /// Operator: advance the tick and the settlement root.
+    Checkpoint { state: PoolState },
+    /// Close the pool. v1 requires the operator's signature.
+    Settle {
+        state: PoolState,
+        payouts: Vec<Payout>,
+    },
+    /// Operator: recover dateless ADA, or a deposit naming another pool.
+    Reclaim,
+}
+
+impl SettlementRedeemer {
+    pub fn to_data(&self) -> Result<PlutusData, BondingError> {
+        match self {
+            Self::Sweep => Ok(constr(SETTLE_SWEEP, vec![])),
+            Self::Checkpoint { state } => Ok(constr(SETTLE_CHECKPOINT, vec![state.to_data()?])),
+            Self::Settle { state, payouts } => {
+                let legs = payouts
+                    .iter()
+                    .map(Payout::to_data)
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(constr(
+                    SETTLE_SETTLE,
+                    vec![
+                        state.to_data()?,
+                        PlutusData::Array(MaybeIndefArray::Def(legs)),
+                    ],
+                ))
+            }
+            Self::Reclaim => Ok(constr(SETTLE_RECLAIM, vec![])),
+        }
+    }
+
+    /// The bytes a `ScriptInput` carries.
+    ///
+    /// Definite-length arrays throughout. A redeemer is executed, never hashed, so
+    /// the form is a determinism choice rather than a compatibility one — the same
+    /// reason the datums here are definite.
+    pub fn to_cbor(&self) -> Result<Vec<u8>, BondingError> {
+        encode_plutus_data(&self.to_data()?).map_err(|e| BondingError::Encoding(e.to_string()))
     }
 }
 
@@ -635,6 +724,90 @@ mod tests {
         };
         assert_eq!(constr.tag, 122, "Constr 1 is CBOR tag 122");
         assert_eq!(constr.fields.len(), DEPOSIT_FIELDS);
+    }
+
+    fn payout() -> Payout {
+        Payout {
+            address: Address::from_bech32(
+                "addr_test1qrnwcxxqhnjscwnpxcruqy69t325lp4kllzw0tdk2320g4g33nnjk5kxxpml4v4ktxpmx4mzmtulhghk704gj67pv8vqx4ccxj",
+            )
+            .expect("a real preprod address"),
+            lovelace: 5_000_000,
+            tokens: 7,
+        }
+    }
+
+    /// `Sweep` and `Reclaim` are the empty `Constr`s. Pinned because a shifted
+    /// declaration order in the Aiken would silently run the wrong arm.
+    #[test]
+    fn the_empty_arms_are_constr_zero_and_three() {
+        assert_eq!(
+            hex::encode(SettlementRedeemer::Sweep.to_cbor().expect("encodes")),
+            "d87980"
+        );
+        assert_eq!(
+            hex::encode(SettlementRedeemer::Reclaim.to_cbor().expect("encodes")),
+            "d87c80"
+        );
+    }
+
+    #[test]
+    fn the_checkpoint_redeemer_carries_exactly_the_state() {
+        let data = SettlementRedeemer::Checkpoint { state: state() }
+            .to_data()
+            .expect("encodes");
+        let PlutusData::Constr(constr) = &data else {
+            panic!("not a Constr");
+        };
+        assert_eq!(constr.tag, 122, "Constr 1 is CBOR tag 122");
+        assert_eq!(constr.fields.len(), 1);
+        assert_eq!(constr.fields[0], state().to_data().expect("encodes"));
+    }
+
+    #[test]
+    fn the_settle_redeemer_carries_the_state_and_one_leg_per_payout() {
+        let data = SettlementRedeemer::Settle {
+            state: state(),
+            payouts: vec![payout(), payout()],
+        }
+        .to_data()
+        .expect("encodes");
+        let PlutusData::Constr(constr) = &data else {
+            panic!("not a Constr");
+        };
+        assert_eq!(constr.tag, 123, "Constr 2 is CBOR tag 123");
+        assert_eq!(constr.fields.len(), 2);
+        assert_eq!(constr.fields[0], state().to_data().expect("encodes"));
+
+        let legs = match &constr.fields[1] {
+            PlutusData::Array(MaybeIndefArray::Def(items)) => items.clone(),
+            other => panic!("legs must be a definite array, got {other:?}"),
+        };
+        assert_eq!(legs.len(), 2);
+        for leg in legs {
+            let PlutusData::Constr(leg) = leg else {
+                panic!("a leg is a Constr");
+            };
+            assert_eq!(leg.tag, 121, "a Payout is Constr 0");
+            assert_eq!(leg.fields.len(), PAYOUT_FIELDS);
+        }
+    }
+
+    #[test]
+    fn a_payout_carries_the_address_the_cash_and_the_units() {
+        let data = payout().to_data().expect("encodes");
+        let PlutusData::Constr(constr) = &data else {
+            panic!("not a Constr");
+        };
+        assert_eq!(constr.fields.len(), PAYOUT_FIELDS);
+
+        let PlutusData::Constr(address) = &constr.fields[0] else {
+            panic!("the address is a Constr");
+        };
+        assert_eq!(address.fields.len(), 2, "payment credential and stake");
+
+        assert_eq!(constr.fields[1], int(5_000_000));
+        assert_eq!(constr.fields[2], int(7));
     }
 
     #[test]

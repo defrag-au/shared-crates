@@ -1,0 +1,21 @@
+[package]
+name = "mq-bundle"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+description = "Build and stage a macroquad client as a web bundle — runs this workspace's macroquad-bundle"
+
+# A one-line binary over the library, because cargo runs only this workspace's
+# own binaries — the same runner augminted-bots and cnft.dev-workers carry.
+# Everything it does is documented in ui/macroquad-bundle/src/lib.rs.
+#
+#   cargo run -q -p mq-bundle -- --package <crate> --wasm <bin>.wasm \
+#       --title "<Title>" --dest <dir> [--web <crate>/web] [--base /path/]
+#   cargo run -q -p mq-bundle -- check <bundle-dir> <file.wasm>
+
+[[bin]]
+name = "mq-bundle"
+path = "src/main.rs"
+
+[dependencies]
+macroquad-bundle = { path = "../../ui/macroquad-bundle" }

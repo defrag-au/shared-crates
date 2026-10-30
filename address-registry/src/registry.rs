@@ -328,14 +328,30 @@ impl MarketplaceType {
     pub const fn fee_formula(self) -> Option<FeeFormula> {
         match self {
             MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3 => Some(FeeFormula::JpgV2),
+            // Wayup's sale validator is the jpg V2/V3 shape: a fee output at
+            // the redeemer's index, then the datum payouts. Its fee is the
+            // buyer's 2% of gross, which is `payouts / 49` — the same integer
+            // expression as `JpgV2`, truncation included. Verified on chain
+            // 2026-07-20: a 71,050 ADA settlement paid 1,450 ADA.
+            MarketplaceType::Wayup => Some(FeeFormula::JpgV2),
             // `marketplace_pct = 5` in the fork's `lib/jpg/constants.ak`.
             MarketplaceType::Abandonware => Some(FeeFormula::GrossPercent { pct: 5 }),
-            // jpg V1 carries its fee INSIDE the datum payouts; Wayup and V4
-            // are not built against.
+            // jpg V1 carries its fee INSIDE the datum payouts; V4 is not built
+            // against.
             MarketplaceType::JpgStoreV1
             | MarketplaceType::JpgStoreV4
-            | MarketplaceType::Wayup
             | MarketplaceType::Unknown => None,
+        }
+    }
+
+    /// A floor the validator itself imposes on its fee output, independent of
+    /// the ledger's min-UTxO. Only Wayup has one: 1 ADA, below the datum-bearing
+    /// fee output's own min-UTxO at current parameters, but still the
+    /// contract's rule rather than an inference from what the ledger charged.
+    pub const fn minimum_fee_lovelace(self) -> u64 {
+        match self {
+            MarketplaceType::Wayup => 1_000_000,
+            _ => 0,
         }
     }
 
@@ -368,24 +384,22 @@ impl MarketplaceType {
     ///
     /// **V1: yes** — evaluated against the live validator, single and swept.
     ///
-    /// **V2/V3: not yet, and the remaining gap is narrow.** Everything
-    /// observable has been reproduced and still the validator says no:
+    /// **V2/V3: yes.** The fee datum's content is the listing's out-ref hashed
+    /// exactly as `cardano-tx`'s `fee_output_datum_tag` does it, verified
+    /// against real V2 buys and reproduced byte-for-byte.
     ///
-    /// - redeemer `Constr 0 [index]` (a bare constructor fails with "Expected a
-    ///   non-empty list"),
-    /// - `index` **is** that listing's fee-output index — confirmed on a
-    ///   6-listing buy whose indices `[2,8,5,14,17,11]` are exactly its fee
-    ///   outputs `[2,5,8,11,14,17]`,
-    /// - a [`MarketplaceFee`] output at that index paying `84cc25ea…`, with the
-    ///   listing's payouts immediately after,
-    /// - the fee at the min-UTxO floor for a datum-bearing output,
-    /// - an inline datum on it (22 of 22 sampled fee outputs carry one),
-    /// - a validity interval, and no disclosed signer.
+    /// **Wayup: yes.** The sale validator is the same shape as V2/V3, and the
+    /// sample two-buy transaction `c7cb2289…` carries the evidence for every
+    /// piece the builder produces:
     ///
-    /// The likely remaining requirement is the fee datum's **content**: jpg's
-    /// is a 32-byte value that matches neither the listing's oref, nor its
-    /// hash, nor the listing datum's hash — most likely an off-chain order id.
-    /// Confirming that needs the contract source rather than more sampling.
+    /// - redeemer `Constr 0 [fee_output_index]` (`0` and `3`),
+    /// - a fee output at each index, each with the inline datum
+    ///   `blake2b_256(Constr 0 [Constr 0 [txid], index])` of its own listing,
+    /// - that listing's datum payouts immediately after it,
+    /// - the reference input carrying script `a76f0fb8…`, which is the payment
+    ///   credential of every Wayup sale address.
+    ///
+    /// **Abandonware: yes** — the V2/V3 validator with different constants.
     ///
     /// Callers should surface an unsupported contract as *unbuyable* rather
     /// than building a transaction that fails at evaluation.
@@ -398,6 +412,7 @@ impl MarketplaceType {
                 // Same validator logic as V2/V3 — see the variant's docs. The
                 // constants differ, and the registry supplies those.
                 | MarketplaceType::Abandonware
+                | MarketplaceType::Wayup
         )
     }
 
@@ -410,10 +425,14 @@ impl MarketplaceType {
             MarketplaceType::JpgStoreV1 => Some(BUY_REDEEMER_CONSTR_1),
             // Abandonware is the V2/V3 validator with different constants;
             // `Buy { payout_outputs_offset }` is unchanged.
+            // Wayup's sale validator is the same shape: its sample two-buy
+            // transaction carries `Constr 0 [0]` and `Constr 0 [3]`, exactly
+            // the fee-output indices of the two settlement blocks.
             MarketplaceType::JpgStoreV2
             | MarketplaceType::JpgStoreV3
-            | MarketplaceType::Abandonware => Some(BUY_REDEEMER_CONSTR_0),
-            // V4 and Wayup redeemers can be added as discovered
+            | MarketplaceType::Abandonware
+            | MarketplaceType::Wayup => Some(BUY_REDEEMER_CONSTR_0),
+            // V4's redeemer can be added as discovered.
             _ => None,
         }
     }
@@ -452,9 +471,11 @@ impl MarketplaceType {
 // `deployment_addresses_are_the_script` checks that every listing address's
 // payment credential IS the stated script hash.
 //
-// Only validators we BUILD AGAINST live here. Wayup stays in the plain
-// address table: it is classified, never driven, and its "sale" rows mix a
-// script escrow with a key-held settlement wallet.
+// Only validators we BUILD AGAINST live here. Wayup's sale validator is one
+// of them now: its buy redeemer, fee output and datum layout are the jpg
+// V2/V3 shape, verified against a real two-buy transaction. Its per-seller
+// sale addresses stay in the plain address tables (the staking part is the
+// SELLER's), so the record below names the script's enterprise form.
 
 /// Where a validator's CIP-33 reference script is parked.
 #[derive(Debug, Clone, Copy)]
@@ -523,9 +544,9 @@ pub const fn deployment(
         (Some(address), Some(formula)) => Some(MarketplaceFee {
             address,
             formula,
-            // Neither validator imposes a minimum of its own; the only floor
-            // is the ledger's min-UTxO, applied by the builder.
-            minimum_lovelace: 0,
+            // The contract's own floor, where it has one. Neither jpg nor
+            // abandonware imposes one; Wayup requires 1 ADA.
+            minimum_lovelace: kind.minimum_fee_lovelace(),
         }),
         (None, _) => None,
         (Some(_), None) => {
@@ -641,6 +662,38 @@ pub static MARKETPLACE_DEPLOYMENTS: &[MarketplaceDeployment] = &[
             output_index: 0,
         }),
     ),
+    // Wayup's SALE validator on mainnet. Not a settlement wallet: the sale
+    // address's payment credential is this script hash, and the sample two-buy
+    // transaction `c7cb2289…` shows the validator doing what the builder
+    // expects — `Constr 0 [fee_output_index]` redeemers (`0` and `3`), a fee
+    // output at each named index whose inline datum is the BLAKE2b-256 of that
+    // listing's out-ref, and the datum payouts immediately after it.
+    //
+    // The reference UTxO is the one the sample buy spent as a reference input:
+    // `c8d428cc…#0`, resolved 2026-10-30 as unspent, carrying PlutusV2 script
+    // `a76f0fb8…` of 1,606 bytes. It sits in a wallet rather than at the script,
+    // so it can in principle be spent — check it before relying on it.
+    //
+    // A Wayup sale address is this payment script plus the SELLER's stake key,
+    // so no one full address can represent it and the enterprise form below is
+    // the canonical one. Per-seller addresses are matched by the prefix and
+    // payment-credential tables.
+    deployment(
+        MarketplaceType::Wayup,
+        RegistryNetwork::Mainnet,
+        "a76f0fb801a29f591e9871576508d85b0b5f3c38774f65032f58fdad",
+        &[sale_address(
+            "addr1wxnk7racqx3f7kg7npc4weggmpdskheu8pm57egr9av0mtg578qlk",
+            MarketplaceType::Wayup,
+        )],
+        Some(
+            "addr1q90s3fj0tq89s9e4qu8pk8fvu2dwd9p2k3wvladpw37j9qeg79la6tvt3a2e44s73x0rr6hfpw0zp897mv0w32xxclgs3zy35v",
+        ),
+        Some(ReferenceUtxo {
+            tx_hash: "c8d428cc0903d9f70555ae4c167386696df59af5c3dbd155f8102414d62fb930",
+            output_index: 0,
+        }),
+    ),
 ];
 
 /// A deployment's own addresses, looked up the way the phf table is.
@@ -708,20 +761,21 @@ pub fn abandonware_fee_calculation(base_price_lovelace: u64, _marketplace_addres
     fee.max(FEE_OUTPUT_MIN_UTXO_LOVELACE)
 }
 
-/// Wayup fee calculation - 2% of base price with 1 ADA minimum and 10 ADA maximum
-/// Rounded up to nearest 0.1 ADA (100,000 lovelace)
+/// Wayup fee calculation: the buyer's 2% of gross, which on a settlement of
+/// `base_price_lovelace` is `base / 49` — the same integer expression the
+/// contract applies, with a 1 ADA floor and NO cap. The recorded 10 ADA cap was
+/// removed by Wayup; a sale above ~490 ADA pays more than it.
+///
+/// The fee is paid as its own output, so the ledger's min-UTxO for a
+/// datum-bearing output is the floor a cheap sale actually pays — the same
+/// `1,155,080` every jpg V2 buy pays when the percentage is under it.
 pub fn wayup_fee_calculation(base_price_lovelace: u64, _marketplace_address: &str) -> u64 {
-    const WAYUP_FEE_RATE: f64 = 0.02; // 2%
-    const MIN_FEE_LOVELACE: u64 = 1_000_000; // 1 ADA minimum
-    const MAX_FEE_LOVELACE: u64 = 10_000_000; // 10 ADA maximum
-    const ROUNDING_INCREMENT: u64 = 100_000; // Round to nearest 0.1 ADA
+    const MIN_FEE_LOVELACE: u64 = 1_000_000; // 1 ADA, the contract's floor
+    const FEE_OUTPUT_MIN_UTXO_LOVELACE: u64 = 1_155_080;
 
-    let calculated_fee = (base_price_lovelace as f64 * WAYUP_FEE_RATE) as u64;
-
-    // Round up to nearest 0.1 ADA increment
-    let rounded_fee = calculated_fee.div_ceil(ROUNDING_INCREMENT) * ROUNDING_INCREMENT;
-
-    rounded_fee.clamp(MIN_FEE_LOVELACE, MAX_FEE_LOVELACE)
+    (base_price_lovelace / 49)
+        .max(MIN_FEE_LOVELACE)
+        .max(FEE_OUTPUT_MIN_UTXO_LOVELACE)
 }
 use AddressCategory as AC;
 use Marketplace as MP;
@@ -2854,12 +2908,20 @@ mod tests {
             "the Wayup settlement address is expected to be a KEY address; if it is now a \
              script, it has become a contract and the version tables need revisiting"
         );
-        assert!(
-            MarketplaceType::Wayup
-                .script_reference(RegistryNetwork::Mainnet)
-                .is_none(),
-            "a Wayup reference script has been registered — check it against the sale \
-             validator, not the settlement wallet"
+        // ...and it is NOT the sale validator. The reference script Wayup buys
+        // spend is `a76f0fb8…`, the payment credential of the sale addresses —
+        // which is a different key from the settlement wallet above.
+        let reference = MarketplaceType::Wayup
+            .script_reference(RegistryNetwork::Mainnet)
+            .expect("Wayup buys spend a reference script");
+        assert_eq!(
+            reference.script_hash, "a76f0fb801a29f591e9871576508d85b0b5f3c38774f65032f58fdad",
+            "the Wayup reference script must be the SALE validator"
+        );
+        assert_ne!(
+            shelley.payment().to_hex(),
+            reference.script_hash,
+            "the settlement wallet must not be registered as the sale script"
         );
     }
 
@@ -3527,5 +3589,57 @@ mod tests {
             matches!(shelley.delegation(), ShelleyDelegationPart::Null),
             "a burn sink must carry no stake part"
         );
+    }
+
+    /// The pieces a Wayup buy needs, all cross-checked against the real
+    /// two-buy transaction `c7cb2289…`.
+    #[test]
+    fn wayup_buys_have_the_contract_the_builder_expects() {
+        let wayup = MarketplaceType::Wayup;
+        assert!(wayup.buy_supported());
+
+        // `Constr 0 [fee_output_index]` — the sample's two spends carry 0 and
+        // 3, exactly their settlement blocks' fee-output positions.
+        let redeemer = wayup.buy_redeemer().expect("Wayup has a buy redeemer");
+        assert_eq!(redeemer.encode_hex(0), "d8799f00ff");
+        assert_eq!(redeemer.encode_hex(3), "d8799f03ff");
+
+        let reference = wayup
+            .script_reference(RegistryNetwork::Mainnet)
+            .expect("Wayup buys spend a reference script");
+        assert_eq!(
+            reference.tx_hash,
+            "c8d428cc0903d9f70555ae4c167386696df59af5c3dbd155f8102414d62fb930"
+        );
+        assert_eq!(reference.output_index, 0);
+        assert_eq!(
+            reference.script_hash,
+            "a76f0fb801a29f591e9871576508d85b0b5f3c38774f65032f58fdad"
+        );
+
+        let fee = wayup
+            .marketplace_fee(RegistryNetwork::Mainnet)
+            .expect("Wayup charges a fee output");
+        assert_eq!(
+            fee.address,
+            "addr1q90s3fj0tq89s9e4qu8pk8fvu2dwd9p2k3wvladpw37j9qeg79la6tvt3a2e44s73x0rr6hfpw0zp897mv0w32xxclgs3zy35v"
+        );
+        assert_eq!(fee.minimum_lovelace, 1_000_000);
+        // The sample's two settlements, in lovelace.
+        assert_eq!(fee.due_on_payouts(34_000_000), 693_877);
+        assert_eq!(fee.due_on_payouts(71_050_000_000), 1_450_000_000);
+    }
+
+    /// A cheap Wayup sale still pays the datum-bearing fee output's min-UTxO;
+    /// an expensive one pays the contract's 2% of gross with no 10 ADA cap.
+    #[test]
+    fn wayup_fee_is_a_forty_ninth_with_a_one_ada_floor_and_no_cap() {
+        // 34 ADA of payouts: 2% is under 1 ADA, so the ledger floor wins —
+        // exactly the 1,155,080 the sample pays twice.
+        assert_eq!(wayup_fee_calculation(34_000_000, ""), 1_155_080);
+        // 71,050 ADA settled, 1,450 ADA paid — verified on chain 2026-07-20.
+        assert_eq!(wayup_fee_calculation(71_050_000_000, ""), 1_450_000_000);
+        // The removed 10 ADA cap would have clamped this.
+        assert!(wayup_fee_calculation(1_000_000_000_000, "") > 10_000_000);
     }
 }

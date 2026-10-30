@@ -13,7 +13,7 @@
 //! draw_at(x.get());
 //! ```
 
-use macroquad::prelude::{Color, Vec2};
+use macroquad::prelude::{Color, Rect, Vec2};
 
 use crate::ease::Ease;
 
@@ -31,6 +31,18 @@ impl Lerp for f32 {
 impl Lerp for Vec2 {
     fn lerp(a: Vec2, b: Vec2, t: f32) -> Vec2 {
         a + (b - a) * t
+    }
+}
+
+/// Position and size together: a tile sliding and growing in one tween.
+impl Lerp for Rect {
+    fn lerp(a: Rect, b: Rect, t: f32) -> Rect {
+        Rect::new(
+            f32::lerp(a.x, b.x, t),
+            f32::lerp(a.y, b.y, t),
+            f32::lerp(a.w, b.w, t),
+            f32::lerp(a.h, b.h, t),
+        )
     }
 }
 

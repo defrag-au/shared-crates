@@ -34,7 +34,8 @@
 //! fixed at the default level — `RUST_LOG` is not consulted — so what it shows is
 //! what the client emits.
 //!
-//! The key comes from the environment and is never written anywhere.
+//! The key comes from the environment — or from a `.env` in the working directory or
+//! one of its parents — and is never written anywhere.
 
 use std::io::Write;
 
@@ -58,6 +59,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .try_init();
+
+    // `.env` is optional, and an exported key wins: dotenv does not override a
+    // variable that is already set. It searches the working directory and its
+    // parents, so one file at the workspace root serves every example.
+    let _ = dotenvy::dotenv();
 
     let api_key = std::env::var("OPENSEA_API_KEY")
         .map_err(|_| "OPENSEA_API_KEY is not set in the environment")?;
@@ -138,6 +144,38 @@ fn summarise(event: &StreamEvent) -> String {
             update.item.nft_id,
             update.item.metadata.traits.len()
         ),
+        StreamEvent::ItemCancelled(cancelled) => format!(
+            "cancelled {} {} {}",
+            cancelled.item.nft_id, cancelled.base_price, cancelled.payment_token.symbol
+        ),
+        StreamEvent::OrderInvalidate(invalidated) => format!(
+            "invalid   {} {}",
+            invalidated
+                .item
+                .as_ref()
+                .map(|item| item.nft_id.as_str())
+                .unwrap_or("-"),
+            invalidated.order_hash
+        ),
+        StreamEvent::ItemListed(listed) => format!(
+            "list      {} {} {}",
+            listed.item.nft_id, listed.base_price, listed.payment_token.symbol
+        ),
+        StreamEvent::ItemReceivedBid(bid) => format!(
+            "bid       {} {} {}",
+            bid.item.nft_id, bid.base_price, bid.payment_token.symbol
+        ),
+        StreamEvent::CollectionOffer(offer) => format!(
+            "colloffer {} {} {}",
+            offer.collection.slug, offer.base_price, offer.payment_token.symbol
+        ),
+        StreamEvent::TraitOffer(offer) => format!(
+            "traitoff  {} {} {}",
+            offer.collection.slug, offer.base_price, offer.payment_token.symbol
+        ),
+        StreamEvent::OrderRevalidate(order) => {
+            format!("revalid   {} {}", order.collection.slug, order.order_hash)
+        }
         StreamEvent::Unmodelled(unmodelled) => format!("other     {}", unmodelled.event_type),
     }
 }

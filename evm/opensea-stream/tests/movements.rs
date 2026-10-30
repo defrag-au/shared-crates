@@ -9,9 +9,6 @@ const ITEM_TRANSFERRED: &str = include_str!("fixtures/item_transferred.json");
 /// A real `item_sold` frame.
 const ITEM_SOLD: &str = include_str!("fixtures/item_sold.json");
 
-/// A real `item_cancelled` frame — an event this crate does not model.
-const ITEM_CANCELLED: &str = include_str!("fixtures/item_cancelled.json");
-
 #[test]
 fn a_captured_transfer_decodes_into_a_typed_movement() {
     let event = StreamEvent::from_wire(ITEM_TRANSFERRED).unwrap().unwrap();
@@ -94,13 +91,20 @@ fn the_metadata_block_is_tolerated_without_being_carried() {
 }
 
 #[test]
-fn an_event_this_crate_does_not_model_is_kept_rather_than_dropped() {
-    let event = StreamEvent::from_wire(ITEM_CANCELLED).unwrap().unwrap();
+fn an_event_type_this_crate_has_never_seen_is_kept_rather_than_dropped() {
+    // A type name the crate does not know. The frame is synthetic because there is no
+    // capture of an event OpenSea has not shipped — the pass-through path is what is
+    // under test here, not the payload.
+    let raw = r#"["1",null,"collection:*","item_something_new",{"event_type":"item_something_new","version":2,"sent_at":"2026-09-27T01:07:37.101000Z","payload":{}}]"#;
+    let event = StreamEvent::from_wire(raw).unwrap().unwrap();
     let StreamEvent::Unmodelled(unmodelled) = event else {
         panic!("expected an unmodelled event");
     };
 
-    assert_eq!(unmodelled.event_type, EventType::ItemCancelled);
+    assert_eq!(
+        unmodelled.event_type,
+        EventType::Unknown("item_something_new".to_owned())
+    );
     assert_eq!(unmodelled.version, 2);
     assert_eq!(unmodelled.sent_at, "2026-09-27T01:07:37.101000Z");
 }

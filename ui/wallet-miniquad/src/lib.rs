@@ -28,9 +28,14 @@
 //!   fault
 //! - [`cancel`] — drop an in-flight request the host has abandoned, so the
 //!   JS-side map cannot grow without bound
+//! - [`icon`] / [`take_icon`] — the wallet's announced CIP-30 `icon`,
+//!   rasterised by the browser to a square of RGBA, so an SVG icon needs no
+//!   decoder on this side
 //! - [`hex_to_bech32`] — address hex → `stake1…` / `addr1…` via pallas
 //! - [`stake_address_bech32`] — the stake address a payment address delegates to
 //! - [`balance::extract_handle`] — walk the balance CBOR for an ADA Handle
+//! - [`evm`] — EVM wallets: EIP-6963 discovery and the EIP-1193 provider,
+//!   in their own plugin ([`EVM_PLUGIN_JS`])
 //!
 //! ## Wiring it into a consumer
 //!
@@ -60,6 +65,7 @@
 
 pub mod balance;
 pub mod bridge;
+pub mod evm;
 
 pub use bridge::*;
 
@@ -101,6 +107,11 @@ pub fn stake_address_bech32(hex: &str) -> Option<String> {
 /// into their HTML shell directory (typically via `build.rs`).
 pub const PLUGIN_JS: &str = include_str!("../js/wallet.js");
 
+/// JavaScript source for the EVM plugin ([`evm`]), stamped beside
+/// [`PLUGIN_JS`] as `evm.js` by a consumer that connects EVM wallets. A
+/// consumer that never calls [`evm`] imports none of it, and needs none.
+pub const EVM_PLUGIN_JS: &str = include_str!("../js/evm.js");
+
 /// Convert a CIP-30 hex address into its bech32 form. Falls back to
 /// returning the raw hex when the header byte is unknown or the
 /// payload doesn't round-trip.
@@ -130,11 +141,12 @@ pub const AVAILABLE: bool = cfg!(target_arch = "wasm32");
 
 /// Plugin version handshake. miniquad's `gl.js` looks for an export
 /// named `<plugin>_crate_version` and compares it to the plugin's JS
-/// `version` field. `wallet.js` declares `version: 3`, so we return 3.
+/// `version` field. `wallet.js` declares `version: 5`, so we return 5.
 ///
 /// Bumped 1 → 2 when the tx-signing surface (`utxos` / `change_address`
 /// / `sign_tx` / `submit_tx`) was added; bumped 2 → 3 with `network_id`,
-/// `cancel`, and the typed failure `kind` on poll errors. A consumer carrying
+/// `cancel`, and the typed failure `kind` on poll errors; bumped 3 → 4 with
+/// `icon` and its pixels; bumped 4 → 5 with `refresh`. A consumer carrying
 /// a stale `wallet.js` then fails the handshake loudly rather than
 /// link-erroring on the missing imports. Re-stamp [`PLUGIN_JS`] (build.rs) to
 /// clear it.
@@ -143,7 +155,7 @@ pub const AVAILABLE: bool = cfg!(target_arch = "wasm32");
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn wallet_crate_version() -> u32 {
-    3
+    5
 }
 
 #[cfg(test)]

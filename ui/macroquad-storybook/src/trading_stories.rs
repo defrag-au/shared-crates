@@ -173,6 +173,7 @@ impl TradingStory {
                 let high_label = format!("HIGH {}", format::price(high));
                 let vm = PriceChartVm {
                     points,
+                    rough: &[],
                     lead: None,
                     t0,
                     t1,
@@ -439,6 +440,8 @@ impl TradingStory {
                     speed_lit: live,
                     paused: false,
                     settings_open: false,
+                    // Live shows the button windowed; the replay without it.
+                    fullscreen: live.then_some(false),
                     ink,
                 };
                 token_header(p, p, &vm, col);

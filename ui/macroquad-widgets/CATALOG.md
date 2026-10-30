@@ -8,7 +8,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p macroquad-widgets --test catalog`
 Note: these are MACROQUAD widgets. They cannot use wasm-bindgen, so they do not
 interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime pairs.
 
-29 widgets.
+34 widgets.
 
 | module | what it is |
 |---|---|
@@ -27,12 +27,16 @@ interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime p
 | `holder_map` | `HolderMap` — holdings by area, grouped by what they are, on a treemap that holds still as shares move |
 | `life_strip` | `LifeStrip` — a token's whole life on one axis: a fuzzy price band, how busy each stretch was, the window being replayed as a brush, and the playhead |
 | `mint_checkout` | `MintCheckout` organism — the mint initiator: phase + eligibility, a [`quantity_stepper`], the live total, and the Mint CTA |
+| `momentum` | `Momentum` — inertial scrolling for a list a finger drags: the content follows the finger while it is down, and after a flick it keeps going and slows to a stop, as a phone's own lists do |
 | `order_fulfilment` | `OrderFulfilment` — the buyer-facing "what's happening to my order" widget |
+| `pill` | `Pill` — a modal's buttons: fully rounded, drawn in the sheet's own fade so they leave with it |
 | `price_chart` | `PriceChart` — a price over time as a step line, with the volume it traded split into buys and sells at the foot, a mark for each trade while there is room for one, the playhead, and a finger's scrub |
 | `quantity_stepper` | `QuantityStepper` molecule — `[−] [ n ] [+]`, clamped to `[min, max]` |
 | `radar` | `Radar` — a round scope: range rings, a turning sweep, blips that flare as the sweep passes and fade after, and an optional gauge arc around the rim |
 | `route_graph` | `RouteGraph` — an amount splitting across several routes and joining again: a source node fanning out through pipes as thick as each share, one card per route, then a sink node; and `route_strip`, the same split as one labelled bar |
+| `scroll` | `Scroll` — one scrolling container's offset, as a phone's lists move: the content follows a finger that drags it, coasts on after a flick and slows to a stop, and a wheel or trackpad moves it too |
 | `segmented` | `Segmented` molecule — a row of mutually exclusive options in one track, the picked one filled |
+| `shape` | Rounded shapes and gradient fills: the surfaces every card, sheet, badge and pill is drawn from |
 | `slider` | `AmountSlider` — pick an amount from a short ladder of snapping stops, for surfaces with no text input |
 | `split_bar` | `SplitBar` — one horizontal bar split between two amounts, with a label at each end and a marker at the split |
 | `squad_picker` | Squad picker — choose N assets from a roster to deploy on a mission |
@@ -41,6 +45,7 @@ interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime p
 | `treemap` | `Treemap` — weights laid out as rectangles whose areas are proportional, by a kept tree of cuts that is built once and only re-weighted, then drawn with labels where they fit |
 | `wallet_connect` | `WalletConnect` organism — the buyer-facing wallet selector + connected state, the front door of the mint flow |
 | `wallet_list` | `WalletList` organism — a user's linked wallets, in their own order |
+| `well` | `Well` — facts in a panel of their own: a recessed, bordered plate with a row per fact and a hairline between them |
 
 ## Text placement
 

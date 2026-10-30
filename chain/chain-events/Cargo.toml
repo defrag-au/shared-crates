@@ -1,0 +1,28 @@
+[package]
+name = "chain-events"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "One envelope for chain and marketplace facts — the vocabulary a Cardano ledger and an EVM marketplace feed are both translated into"
+
+[dependencies]
+# Chain and asset identity: CAIP-2 and CAIP-19, already parsed and already what the
+# consumers persist. Reusing them here is what stops this crate inventing a sixth id.
+chains = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+# A price is an integer in the currency's smallest unit. Wei-scale values do not
+# survive a JSON number in a Worker, so the field is a string on the wire and this
+# is the workspace's one place that knows how to read either form.
+wasm_safe_serde = { workspace = true }
+# Only behind `opensea`: a Cardano-only consumer must not pay for the feed's protocol
+# types. `opensea-stream` never depends on this crate, so the direction stays one way.
+opensea-stream = { path = "../../evm/opensea-stream", optional = true }
+
+[features]
+# The translation from OpenSea's messages into this vocabulary.
+opensea = ["dep:opensea-stream"]
+
+[dev-dependencies]
+# The round-trip and wire-shape tests read the serialised form, and a `ChainEvent`'s
+# contract with the store is that JSON — so the tests use the codec the store does.
+serde_json = { workspace = true }

@@ -86,6 +86,16 @@ pub struct DataSignature {
     pub key: String,
 }
 
+/// Whether `rgba` is a whole `size`×`size` RGBA image. The one check between
+/// the plugin's buffer and a texture: a short buffer would make
+/// `Texture2D::from_rgba8` read past its end.
+///
+/// `allow(dead_code)` on native, where the stub has no buffer to check.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+fn icon_len_ok(rgba: &[u8], size: u16) -> bool {
+    size > 0 && rgba.len() == usize::from(size) * usize::from(size) * 4
+}
+
 #[cfg(target_arch = "wasm32")]
 mod imp {
     use super::{FailureKind, PollResult, PollResultDetailed, Provider, ReqId};
@@ -96,6 +106,7 @@ mod imp {
     unsafe extern "C" {
         fn wallet_list_providers() -> JsObject;
         fn wallet_connect(name: JsObject) -> i32;
+        fn wallet_refresh(name: JsObject) -> i32;
         fn wallet_network_id() -> i32;
         fn wallet_reward_address() -> i32;
         fn wallet_balance() -> i32;
@@ -107,6 +118,8 @@ mod imp {
         fn wallet_sign_data(addr: JsObject, payload_hex: JsObject) -> i32;
         fn wallet_cancel(req_id: i32);
         fn wallet_poll(req_id: i32) -> JsObject;
+        fn wallet_icon(key: JsObject, size: u32) -> i32;
+        fn wallet_icon_pixels(req_id: i32) -> JsObject;
     }
 
     fn js_to_string(js: JsObject) -> String {
@@ -122,6 +135,16 @@ mod imp {
 
     pub fn connect(name: &str) -> ReqId {
         ReqId(unsafe { wallet_connect(JsObject::string(name)) })
+    }
+
+    /// A fresh handle from wallet `name`, never prompting: `isEnabled()`, then
+    /// `enable()` only if the site is still allowed. A CIP-30 handle belongs
+    /// to the account selected when it was enabled, so this is how a switch
+    /// made in the extension is seen. On ok, every later read answers for the
+    /// account selected now; a site no longer allowed fails `Declined` and
+    /// keeps the old handle.
+    pub fn refresh(name: &str) -> ReqId {
+        ReqId(unsafe { wallet_refresh(JsObject::string(name)) })
     }
 
     /// CIP-30 `getNetworkId`: 0 = testnet, 1 = mainnet.
@@ -185,6 +208,22 @@ mod imp {
         ReqId(unsafe { wallet_sign_data(JsObject::string(addr), JsObject::string(payload_hex)) })
     }
 
+    /// Ask for the icon wallet `key` announces, rasterised to `size`×`size`
+    /// RGBA. Polls like any request; once it resolves `Ok`, take the pixels
+    /// with [`take_icon`]. A wallet with no icon resolves `Err`.
+    pub fn icon(key: &str, size: u16) -> ReqId {
+        ReqId(unsafe { wallet_icon(JsObject::string(key), u32::from(size)) })
+    }
+
+    /// The pixels of a resolved [`icon`] request — `size * size * 4` bytes of
+    /// RGBA, rows top to bottom — or `None` when there are none of that
+    /// length. Taken once.
+    pub fn take_icon(id: ReqId, size: u16) -> Option<Vec<u8>> {
+        let mut rgba = Vec::new();
+        unsafe { wallet_icon_pixels(id.0) }.to_byte_buffer(&mut rgba);
+        super::icon_len_ok(&rgba, size).then_some(rgba)
+    }
+
     /// Abandon a request. A promise that resolves later has nowhere to land.
     pub fn cancel(id: ReqId) {
         unsafe { wallet_cancel(id.0) }
@@ -219,6 +258,9 @@ mod imp {
     pub fn connect(_name: &str) -> ReqId {
         ReqId(0)
     }
+    pub fn refresh(_name: &str) -> ReqId {
+        ReqId(0)
+    }
     pub fn network_id() -> ReqId {
         ReqId(0)
     }
@@ -244,6 +286,12 @@ mod imp {
     pub fn sign_data(_addr: &str, _payload_hex: &str) -> ReqId {
         ReqId(0)
     }
+    pub fn icon(_key: &str, _size: u16) -> ReqId {
+        ReqId(0)
+    }
+    pub fn take_icon(_id: ReqId, _size: u16) -> Option<Vec<u8>> {
+        None
+    }
     pub fn cancel(_id: ReqId) {}
     pub fn poll(_id: ReqId) -> PollResult {
         PollResult::Err {
@@ -259,3 +307,19 @@ mod imp {
 }
 
 pub use imp::*;
+
+#[cfg(test)]
+mod tests {
+    use super::icon_len_ok;
+
+    #[test]
+    fn only_a_whole_image_passes() {
+        assert!(icon_len_ok(&[0; 2 * 2 * 4], 2));
+        assert!(!icon_len_ok(&[0; 2 * 2 * 4 - 1], 2));
+        assert!(
+            !icon_len_ok(&[], 2),
+            "a wallet with no pixels is not an icon"
+        );
+        assert!(!icon_len_ok(&[], 0));
+    }
+}

@@ -2,7 +2,9 @@
 // but which the miniquad WASM runtime doesn't provide out of the box.
 //
 // Currently exposes: the page's query string, host and path, a page reload,
-// cryptographically-secure random bytes (backed by
+// a fullscreen button the page itself answers, a count of the page's returns
+// to focus, cryptographically-secure
+// random bytes (backed by
 // `crypto.getRandomValues()`), and small-value persistence over
 // `localStorage`. Rust's `getrandom` crate routes through this plugin via
 // `register_custom_getrandom!` so pallas-crypto + bip39 + everything else that
@@ -102,7 +104,157 @@
         }
     }
 
+    // ── Fullscreen ──────────────────────────────────────────────────────────
+    //
+    // A browser grants fullscreen only from inside a user gesture's handler,
+    // and the wasm's frame loop is not one: miniquad's `set_fullscreen` is
+    // refused on the web. So the game names where its fullscreen button is
+    // (`platform_fullscreen_zone`, as fractions of the canvas) and this page
+    // listens for the tap itself: one that ends inside the zone toggles
+    // fullscreen from its own handler, where the browser allows it.
+    //
+    // `pointerup` is a gesture for a finger or pen; for a mouse, the
+    // `mousedown` before it already was, and that lasts past the release.
+
+    let fullscreenZone = null;
+
+    function fullscreenElement() {
+        return document.fullscreenElement || document.webkitFullscreenElement || null;
+    }
+
+    function fullscreenEnabled() {
+        return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+    }
+
+    function toggleFullscreen() {
+        try {
+            const asked = fullscreenElement()
+                ? (document.exitFullscreen || document.webkitExitFullscreen).call(document)
+                : (function () {
+                    const el = document.documentElement;
+                    return (el.requestFullscreen || el.webkitRequestFullscreen)
+                        .call(el, { navigationUI: 'hide' });
+                })();
+            if (asked && asked.catch) asked.catch(function () {});
+        } catch (e) {
+            console.warn('platform: fullscreen was refused', e);
+        }
+    }
+
+    document.addEventListener('pointerup', function (e) {
+        if (!fullscreenZone || !fullscreenEnabled()) return;
+        const canvas = document.querySelector('#glcanvas') || document.querySelector('canvas');
+        if (!canvas) return;
+        const r = canvas.getBoundingClientRect();
+        const fx = (e.clientX - r.left) / r.width;
+        const fy = (e.clientY - r.top) / r.height;
+        const z = fullscreenZone;
+        if (fx >= z[0] && fx <= z[2] && fy >= z[1] && fy <= z[3]) toggleFullscreen();
+    }, { capture: true, passive: true });
+
+    // The button's box as fractions of the canvas, left, top, right, bottom;
+    // a right edge not past the left clears it.
+    function platform_fullscreen_zone(x0, y0, x1, y1) {
+        fullscreenZone = x1 > x0 && y1 > y0 ? [x0, y0, x1, y1] : null;
+    }
+
+    // ── Links ───────────────────────────────────────────────────────────────
+    //
+    // Opening a new tab is a popup to the browser, allowed only from inside a
+    // gesture's handler, like fullscreen. So the game names where a link is
+    // drawn and where it goes (`platform_link_zone`), and a tap that ends in
+    // the zone opens it from this handler. Only `https:` links: the zone is
+    // the game's, the address may have come from anywhere.
+
+    let linkZone = null;
+
+    document.addEventListener('pointerup', function (e) {
+        if (!linkZone) return;
+        const canvas = document.querySelector('#glcanvas') || document.querySelector('canvas');
+        if (!canvas) return;
+        const r = canvas.getBoundingClientRect();
+        const fx = (e.clientX - r.left) / r.width;
+        const fy = (e.clientY - r.top) / r.height;
+        const z = linkZone.box;
+        if (fx >= z[0] && fx <= z[2] && fy >= z[1] && fy <= z[3]) {
+            window.open(linkZone.url, '_blank', 'noopener,noreferrer');
+        }
+    }, { capture: true, passive: true });
+
+    // The link's box as fractions of the canvas and its address; a right edge
+    // not past the left, or an address that is not `https:`, clears it.
+    function platform_link_zone(x0, y0, x1, y1, url_js) {
+        const url = consume_js_object(url_js);
+        linkZone = x1 > x0 && y1 > y0 && /^https:\/\//i.test(url)
+            ? { box: [x0, y0, x1, y1], url: url }
+            : null;
+    }
+
+    // 0: no fullscreen here (an iPhone's Safari, an embed that does not allow
+    // it), 1: windowed, 2: fullscreen.
+    function platform_fullscreen_state() {
+        if (!fullscreenEnabled()) return 0;
+        return fullscreenElement() ? 2 : 1;
+    }
+
+    // ── Clipboard ───────────────────────────────────────────────────────────
+    //
+    // miniquad's own clipboard on the web only answers the browser's copy
+    // event (Ctrl+C); it cannot put text on the clipboard when a button is
+    // tapped. `navigator.clipboard.writeText` can, inside the transient
+    // activation a tap grants — which the next frame is still within. Where it
+    // is missing or refused (an insecure origin, an older browser), the
+    // hidden-textarea `execCommand('copy')` is the fallback.
+
+    function copyByCommand(text) {
+        try {
+            const area = document.createElement('textarea');
+            area.value = text;
+            area.setAttribute('readonly', '');
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(area);
+            if (!ok) console.warn('platform: copy was refused');
+        } catch (e) {
+            console.warn('platform: copy is unavailable', e);
+        }
+    }
+
+    function platform_clipboard_write(text_js) {
+        const text = consume_js_object(text_js);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).catch(function () { copyByCommand(text); });
+        } else {
+            copyByCommand(text);
+        }
+    }
+
+    // Each time the page comes back to the visitor: the tab is shown again or
+    // the window takes focus again (a tab switch usually fires both, and a
+    // wallet extension's popup closing fires the second). The game compares
+    // the count with the one it last saw, so a double count is harmless and
+    // nothing is missed between frames.
+    let focusReturns = 0;
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') focusReturns += 1;
+    });
+    window.addEventListener('focus', function () {
+        focusReturns += 1;
+    });
+
+    function platform_focus_returns() {
+        return focusReturns;
+    }
+
     register_plugin = function (importObject) {
+        importObject.env.platform_focus_returns = platform_focus_returns;
+        importObject.env.platform_link_zone = platform_link_zone;
+        importObject.env.platform_clipboard_write = platform_clipboard_write;
+        importObject.env.platform_fullscreen_zone = platform_fullscreen_zone;
+        importObject.env.platform_fullscreen_state = platform_fullscreen_state;
         importObject.env.platform_random_bytes = platform_random_bytes;
         importObject.env.platform_query_param = platform_query_param;
         importObject.env.platform_location_host = platform_location_host;
@@ -113,9 +265,10 @@
         importObject.env.platform_storage_remove = platform_storage_remove;
     };
 
-    // v2 added the storage calls, v3 the page's host and path. A consumer whose
+    // v2 added the storage calls, v3 the page's host and path, v4 fullscreen,
+    // v5 the clipboard, v6 the focus count, v7 link zones. A consumer whose
     // committed `platform.js` predates it fails the handshake at instantiate
-    // rather than calling a stubbed function — which is why the Rust export and
-    // this number move together.
-    miniquad_add_plugin({ register_plugin, version: 3, name: 'platform' });
+    // rather than calling a stubbed function — which is why the Rust export
+    // and this number move together.
+    miniquad_add_plugin({ register_plugin, version: 7, name: 'platform' });
 })();

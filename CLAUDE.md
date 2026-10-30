@@ -562,6 +562,57 @@ nix develop -c cargo tree --target wasm32-unknown-unknown -p <crate>
   tree, not the direct dependency.
 
 
+## Every macroquad modal draws through the widgets' sheet chrome, and a better look upgrades it
+<!-- rule: rules/org/defrag/macroquad-one-modal-chrome -->
+
+Every macroquad modal draws its card with `macroquad_widgets::sheet_card` and a `Sheet` spec
+(title, subtitle, tint, footer). Never paint a scrim, a card or a close button of its own. When
+one modal looks better than the shared chrome, upgrade `sheet_card` and its parts to draw that
+way, then move every modal onto them. Do not fork a one-off chrome for the good-looking one.
+
+Inside the card:
+
+- **Facts** go in a `macroquad_widgets::well`, as `WellRow`s: inline for label and value,
+  stacked for a label over its value, with a trailing figure or Copy, a meter, or `.strong(true)`
+  for a total.
+- **Actions** are `Pill`s (filled, ghost or danger) in `SheetCard::footer`, laid out with
+  `pill_row`. Pass `.live(card.live)` so a sheet that is still sliding takes no tap.
+- **Closing** is the header's cross plus a tap on the scrim, both reported as
+  `SheetCard::dismissed`. A sheet has no Close button.
+- **A modal with its own motion and layout**, like the gamekit's wallet modal, still paints with
+  `sheet_surface` and closes with `sheet_close`, so it cannot drift from the rest.
+
+The rounded shapes and the gradient they draw with live in `macroquad_widgets::shape`. The
+gamekit re-exports them.
+
+
+## A macroquad scrolling container scrolls with momentum, through the widgets' Scroll
+<!-- rule: rules/org/defrag/macroquad-scroll-momentum -->
+
+Every macroquad container that scrolls holds a `macroquad_widgets::Scroll` and reads its offset
+from `Scroll::offset`. Never hand-roll an `f32` offset with its own wheel and drag code. A list
+that steps a whole row at a time uses `macroquad_widgets::Momentum::rows` instead.
+
+Each frame, before laying out:
+
+```rust
+let input = ScrollInput::read(frame.input.gesture.drag, frame.pointer());
+self.scroll.update(area, &input, Some(content_len - area.h), frame.dt);
+let tap = self.scroll.filter_tap(frame.input.gesture.tap);
+```
+
+- Pass `None` for the maximum until the content's length is known, so a position asked for
+  early (a `--scroll` flag) is not clamped to nothing.
+- Hit-test with the tap from `filter_tap`. A finger that lands on a coasting list only stops it.
+- Behind a modal, pass `ScrollInput::none()`. The container then takes no new input, and a coast
+  already under way runs out.
+- Jump with `Scroll::set` for a reveal, a key or a restored position. It stops any coast.
+
+Between them, `Scroll` and `Momentum` decide which drag is the container's, the flick and its
+coast, the wheel in notches or points, the clamped ends, and the tap that only caught a coast.
+A hand-rolled offset gets each of these wrong in its own way.
+
+
 ## A game's rules crate reports what happened; the client animates it and decides nothing
 <!-- rule: rules/org/defrag/rules-emit-events -->
 

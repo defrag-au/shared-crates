@@ -72,6 +72,20 @@ impl<'a> Painter<'a> {
         self.now
     }
 
+    /// The same painter with no tap: its fonts, theme, pixel scale and clock,
+    /// for drawing something this frame's tap must not press — a screen under
+    /// a modal, a sheet in the frame it opens.
+    pub fn untapped(&self) -> Painter<'a> {
+        Painter {
+            font: self.font,
+            mono: self.mono,
+            theme: self.theme,
+            tap: None,
+            px: self.px,
+            now: self.now,
+        }
+    }
+
     /// Point size for a step of the type ramp — **the one way a widget gets a
     /// size**.
     ///

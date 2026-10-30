@@ -10,28 +10,33 @@
 //! The story list scrolls with the mouse wheel or trackpad over the sidebar,
 //! and a story chosen by key or `--story` is scrolled into view.
 
+mod cart_stories;
 mod chain_fixture;
 mod gamekit_stories;
 mod route_stories;
 mod trading_stories;
+mod wallet_modal_stories;
 
+use cart_stories::{CartStory, CartView};
 use chain_fixture::{ChainSim, Scenario};
 use gamekit_stories::{KitStory, KitView};
 use macroquad::prelude::*;
+use macroquad_gamekit::wallet_modal::ChainFamily;
 use macroquad_widgets::{
     BlockPulseVm, BlockTrainVm, Button, ButtonVariant, CalloutTone, CalloutVm, CheckoutAction,
     CheckoutState, Eligibility, FloatingStick, FulfilmentAction, FulfilmentStatus, FulfilmentTx,
     Gesture, Gestures, MintCheckoutVm, OrderFulfilmentVm, OrderStatus, Painter, PulseDetail,
-    PulseTicker, QuantityStepperVm, RiderState, SheetState, SquadCandidate, SquadCommit,
-    SquadPickerAction, SquadPickerVm, StepperAction, StickView, SwipeDir, Theme, TrainRider,
-    TrainState, WalletAction, WalletConnectVm, WalletItem, WalletListAction, WalletListState,
-    WalletListVm, WalletRow, WalletState, block_pulse, block_train, callout, floating_stick,
-    mint_checkout, order_fulfilment, quantity_stepper, segmented, segmented_pills, squad_picker,
-    theme, wallet_connect, wallet_list,
+    PulseTicker, QuantityStepperVm, RiderState, Scroll, ScrollInput, SheetState, SquadCandidate,
+    SquadCommit, SquadPickerAction, SquadPickerVm, StepperAction, StickView, SwipeDir, Theme,
+    TrainRider, TrainState, WalletAction, WalletConnectVm, WalletItem, WalletListAction,
+    WalletListState, WalletListVm, WalletRow, WalletState, block_pulse, block_train, callout,
+    floating_stick, mint_checkout, order_fulfilment, quantity_stepper, segmented, segmented_pills,
+    squad_picker, theme, wallet_connect, wallet_list,
 };
 use route_stories::RouteStory;
 use trading_stories::{TradingStory, TradingView};
 use ui_theme::{TextSize, Token};
+use wallet_modal_stories::{ModalView, Preset, WalletModalStory};
 
 const SIDEBAR_W: f32 = 210.0;
 /// The sidebar's fixed title band; the story list scrolls beneath it.
@@ -143,6 +148,10 @@ enum Body {
     Trading(Box<TradingStory>),
     /// The operator panel, whose commands are live.
     Admin(Box<AdminStory>),
+    /// The one-button wallet connector and its modal, against a fake host.
+    WalletModal(Box<WalletModalStory>),
+    /// The gamekit's cart, in a stage or driven by hand.
+    Cart(Box<CartStory>),
 }
 
 /// The operator panel with a game's numbers in it and its buttons wired to an
@@ -195,6 +204,8 @@ enum Kind {
     Route,
     Trading,
     Admin,
+    WalletModal,
+    Cart,
 }
 
 struct Story {
@@ -319,6 +330,29 @@ impl Story {
             Body::Route(_) => Kind::Route,
             Body::Trading(_) => Kind::Trading,
             Body::Admin(_) => Kind::Admin,
+            Body::WalletModal(_) => Kind::WalletModal,
+            Body::Cart(_) => Kind::Cart,
+        }
+    }
+
+    fn wallet_modal(
+        name: &'static str,
+        view: ModalView,
+        phone: bool,
+        icon: &Option<Texture2D>,
+    ) -> Self {
+        Self {
+            category: "wallet modal",
+            name,
+            body: Body::WalletModal(Box::new(WalletModalStory::new(view, phone, icon.clone()))),
+        }
+    }
+
+    fn cart(name: &'static str, view: CartView, phone: bool, icon: &Option<Texture2D>) -> Self {
+        Self {
+            category: "cart",
+            name,
+            body: Body::Cart(Box::new(CartStory::new(view, phone, icon.clone()))),
         }
     }
 
@@ -580,7 +614,77 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
     use FulfilmentStatus as F;
     use OrderStatus as S;
     use StoryMode::*;
-    vec![
+    let icon = &sample_icon;
+    let modal = |name, view| Story::wallet_modal(name, view, false, icon);
+    let phone = |name, view| Story::wallet_modal(name, view, true, icon);
+    let modal_stories = vec![
+        // The live story first: the whole flow, from the one button.
+        modal("live", ModalView::Live),
+        // This browser's own extensions, over the real CIP-30 and EIP-6963
+        // bridges: the web storybook only (see Cargo.toml).
+        modal("real wallets", ModalView::Real),
+        phone("phone · real wallets", ModalView::Real),
+        modal("walkthrough", ModalView::Walkthrough),
+        modal("button · states", ModalView::Buttons),
+        modal("chains", ModalView::Step(Preset::Chains)),
+        modal("wallets", ModalView::Step(Preset::Wallets)),
+        modal("no wallets", ModalView::Step(Preset::NoWallets)),
+        modal("connecting", ModalView::Step(Preset::Connecting)),
+        modal("connected", ModalView::Step(Preset::Connected)),
+        modal(
+            "connected · no handle",
+            ModalView::Step(Preset::ConnectedNoHandle),
+        ),
+        modal("connected · EVM named", ModalView::Step(Preset::EvmNamed)),
+        modal("declined", ModalView::Step(Preset::Declined)),
+        modal("failed", ModalView::Step(Preset::Failed)),
+        modal("only EVM", ModalView::Step(Preset::OnlyEvm)),
+        // A site that signs in, as the staking site does.
+        modal("sign in · live", ModalView::SignIn),
+        modal("sign in · offered", ModalView::Step(Preset::SignInOffered)),
+        modal("sign in · signing", ModalView::Step(Preset::SigningIn)),
+        modal(
+            "sign in · declined",
+            ModalView::Step(Preset::SignInDeclined),
+        ),
+        modal("sign in · failed", ModalView::Step(Preset::SignInFailed)),
+        modal("sign in · signed in", ModalView::Step(Preset::SignedIn)),
+        modal(
+            "sign in · wallet changed",
+            ModalView::Step(Preset::SignInChanged),
+        ),
+        phone(
+            "phone · sign in · wallet changed",
+            ModalView::Step(Preset::SignInChanged),
+        ),
+        phone("phone · sign in · live", ModalView::SignIn),
+        phone(
+            "phone · sign in · signing",
+            ModalView::Step(Preset::SigningIn),
+        ),
+        modal(
+            "two chains connected",
+            ModalView::Step(Preset::TwoConnected),
+        ),
+        phone("phone · live", ModalView::Live),
+        phone("phone · chains", ModalView::Step(Preset::Chains)),
+        phone("phone · wallets", ModalView::Step(Preset::Wallets)),
+        phone("phone · connected", ModalView::Step(Preset::Connected)),
+        phone("phone · two chains", ModalView::Step(Preset::TwoConnected)),
+        phone("phone · failed", ModalView::Step(Preset::Failed)),
+        // Every chain family connectable, a dozen wallets each.
+        modal("stress · six chains", ModalView::Stress(None)),
+        modal(
+            "stress · a dozen wallets",
+            ModalView::Stress(Some(ChainFamily::Solana)),
+        ),
+        phone("phone · stress", ModalView::Stress(None)),
+        phone(
+            "phone · stress wallets",
+            ModalView::Stress(Some(ChainFamily::Solana)),
+        ),
+    ];
+    let mut stories = vec![
         Story::buttons("atoms", "buttons"),
         Story::stepper("atoms", "quantity stepper", 2),
         Story::segmented("atoms", "segmented · track", false),
@@ -596,7 +700,7 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
                 WalletItem {
                     key: "eternl".into(),
                     name: "Eternl".into(),
-                    icon: sample_icon,
+                    icon: sample_icon.clone(),
                 },
                 WalletItem::new("vespr", "Vespr"),
                 WalletItem::new("lace", "Lace"),
@@ -847,6 +951,7 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::kit("rounded art", KitView::Art),
         Story::kit("preloader", KitView::Preload),
         Story::kit("card face", KitView::Face),
+        Story::kit("wall", KitView::Wall),
         Story::admin("operator panel", 640.0, true),
         // Tall enough for the one-column form: a portrait phone's 16 facts,
         // its sparklines and the commands.
@@ -879,7 +984,25 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::trading("token header · replay", TradingView::Header),
         Story::trading("token header · live", TradingView::HeaderLive),
         Story::trading("treemap", TradingView::Treemap),
-    ]
+    ];
+    stories.extend(modal_stories);
+    stories.extend([
+        // "cart · …" so `--story` finds these, not another category's
+        // "failed" or "live".
+        Story::cart("cart · live", CartView::Live, false, icon),
+        Story::cart("cart · editing", CartView::Editing, false, icon),
+        Story::cart("cart · many · scrolls", CartView::Many, false, icon),
+        Story::cart("cart · empty", CartView::Empty, false, icon),
+        Story::cart("cart · blocked", CartView::Blocked, false, icon),
+        Story::cart("cart · working", CartView::Working, false, icon),
+        Story::cart("cart · failed", CartView::Failed, false, icon),
+        Story::cart("cart · done", CartView::Done, false, icon),
+        Story::cart("cart · phone · live", CartView::Live, true, icon),
+        Story::cart("cart · phone · editing", CartView::Editing, true, icon),
+        Story::cart("cart · phone · many", CartView::Many, true, icon),
+        Story::cart("cart · phone · working", CartView::Working, true, icon),
+    ]);
+    stories
 }
 
 /// The stories' time. Paused, stepped and slowed from the keyboard, so an
@@ -1017,8 +1140,8 @@ struct Storybook {
     clock: Clock,
     /// This frame's story `dt`, from the clock.
     dt: f32,
-    /// How far the sidebar list is scrolled, in points.
-    scroll: f32,
+    /// The sidebar list's scroll: drag, flick or wheel.
+    scroll: Scroll,
     /// Scroll the selected story into view on the next sidebar draw: set when
     /// a story is chosen by key or `--story`, which may be off-screen.
     reveal: bool,
@@ -1039,7 +1162,7 @@ impl Storybook {
             gesture: Gesture::default(),
             clock: Clock::new(),
             dt: 0.0,
-            scroll: 0.0,
+            scroll: Scroll::new(),
             reveal: false,
         }
     }
@@ -1129,29 +1252,33 @@ impl Storybook {
         }
         let content = y;
 
-        if mouse.x < SIDEBAR_W {
-            let (_, wheel) = mouse_wheel();
-            // A wheel reports notches (about ±1); a trackpad reports points.
-            let step = if wheel.abs() <= 1.5 {
-                wheel * 36.0
-            } else {
-                wheel
-            };
-            self.scroll -= step;
-        }
         if std::mem::take(&mut self.reveal)
             && let Some(&row_y) = rows.get(self.selected)
         {
             let (top, bottom) = (row_y - 13.0, row_y + 13.0);
-            if top < self.scroll {
-                self.scroll = top - 8.0;
-            } else if bottom > self.scroll + visible {
-                self.scroll = bottom - visible + 8.0;
+            let at = self.scroll.offset();
+            if top < at {
+                self.scroll.set(top - 8.0);
+            } else if bottom > at + visible {
+                self.scroll.set(bottom - visible + 8.0);
             }
         }
+        // Drag, flick or wheel, on the real clock: a paused or slowed story
+        // clock must not freeze the list beside it.
+        let list = Rect::new(0.0, list_top, SIDEBAR_W, visible);
+        let input = ScrollInput::read(self.gesture.drag, mouse);
         let max_scroll = (content - visible).max(0.0);
-        self.scroll = self.scroll.clamp(0.0, max_scroll);
-        let off = list_top - self.scroll;
+        self.scroll
+            .update(list, &input, Some(max_scroll), get_frame_time());
+        // A tap that only caught the coasting list chooses no story.
+        let p = &Painter::new(
+            p.font,
+            p.mono,
+            p.theme,
+            self.scroll.filter_tap(self.gesture.tap),
+        )
+        .at_time(p.time());
+        let off = list_top - self.scroll.offset();
 
         for (hy, cat) in &headings {
             p.text(cat, 16.0, hy + off, 11.0, p.theme.color.text_muted);
@@ -1213,7 +1340,7 @@ impl Storybook {
             1.0,
             theme::with_alpha(
                 p.theme.color.bg_highlight,
-                if self.scroll > 0.0 { 1.0 } else { 0.0 },
+                if self.scroll.offset() > 0.0 { 1.0 } else { 0.0 },
             ),
         );
 
@@ -1221,7 +1348,7 @@ impl Storybook {
         if max_scroll > 0.0 {
             let track = visible - 8.0;
             let thumb = (track * visible / content).max(24.0);
-            let ty = list_top + 4.0 + (track - thumb) * (self.scroll / max_scroll);
+            let ty = list_top + 4.0 + (track - thumb) * (self.scroll.offset() / max_scroll);
             draw_rectangle(
                 SIDEBAR_W - 5.0,
                 ty,
@@ -1256,7 +1383,7 @@ impl Storybook {
         );
         y += 20.0;
         let help = match self.stories[sel].kind() {
-            Kind::Kit | Kind::Route | Kind::Trading => format!(
+            Kind::Kit | Kind::Route | Kind::Trading | Kind::WalletModal | Kind::Cart => format!(
                 "arrows / click to switch  ·  t = theme: {}  ·  p pause · . step · s slow  ·  {}",
                 p.theme.name,
                 self.clock.label()
@@ -1381,6 +1508,30 @@ impl Storybook {
                         screen_height() - y - 20.0,
                     );
                     story.draw(p, area, &g, t);
+                }
+            }
+            Kind::Cart => {
+                let (dt, g) = (self.dt, self.gesture);
+                if let Body::Cart(story) = &mut self.stories[sel].body {
+                    let area = Rect::new(
+                        x0,
+                        y,
+                        screen_width() - x0 - 20.0,
+                        screen_height() - y - 44.0,
+                    );
+                    story.draw(p, area, &g, dt);
+                }
+            }
+            Kind::WalletModal => {
+                let dt = self.dt;
+                if let Body::WalletModal(story) = &mut self.stories[sel].body {
+                    let area = Rect::new(
+                        x0,
+                        y,
+                        screen_width() - x0 - 20.0,
+                        screen_height() - y - 44.0,
+                    );
+                    story.draw(p, area, dt);
                 }
             }
             Kind::Admin => {
@@ -1945,7 +2096,8 @@ fn window_conf() -> Conf {
     }
 }
 
-/// Command line: `--story <substring>` and `--shot <path>`.
+/// Command line: `--story <substring>` and `--shot <path>`; in a browser,
+/// `?story=<substring>`.
 ///
 /// Both exist for the same reason: the sidebar doesn't scroll and the number
 /// keys stop at 9, so a story added late in the list is otherwise unreachable —
@@ -1969,7 +2121,8 @@ fn args() -> Args {
             .cloned()
     };
     Args {
-        story: value("--story"),
+        // A browser has no command line: `?story=` is the same switch there.
+        story: value("--story").or_else(|| miniquad_platform::launch_query("story")),
         shot: value("--shot"),
         at: value("--at").and_then(|s| s.parse().ok()),
     }

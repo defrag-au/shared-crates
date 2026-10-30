@@ -13,59 +13,11 @@
 use macroquad::miniquad::{BlendFactor, BlendState, BlendValue, Equation, PipelineParams};
 use macroquad::prelude::*;
 
-/// Fill a rounded rectangle.
-pub fn fill_rounded(rect: Rect, radius: f32, color: Color) {
-    macroquad_widgets::draw_rounded_rect(rect.x, rect.y, rect.w, rect.h, radius, color);
-}
-
-/// Outline a rounded rectangle, the line centred on the edge.
-pub fn stroke_rounded(rect: Rect, radius: f32, thickness: f32, color: Color) {
-    let r = radius.min(rect.w / 2.0).min(rect.h / 2.0).max(0.0);
-    let (x0, y0, x1, y1) = (rect.x, rect.y, rect.x + rect.w, rect.y + rect.h);
-    draw_line(x0 + r, y0, x1 - r, y0, thickness, color);
-    draw_line(x0 + r, y1, x1 - r, y1, thickness, color);
-    draw_line(x0, y0 + r, x0, y1 - r, thickness, color);
-    draw_line(x1, y0 + r, x1, y1 - r, thickness, color);
-    if r > 0.0 {
-        // draw_arc takes degrees, clockwise from +x in screen space.
-        for (cx, cy, start) in [
-            (x1 - r, y0 + r, 270.0),
-            (x1 - r, y1 - r, 0.0),
-            (x0 + r, y1 - r, 90.0),
-            (x0 + r, y0 + r, 180.0),
-        ] {
-            // `sides` is per full circle; 48 keeps a quarter smooth at card size.
-            // The arc grows outward from its radius, so start half a line in.
-            draw_arc(
-                cx,
-                cy,
-                48,
-                r - thickness / 2.0,
-                start,
-                thickness,
-                90.0,
-                color,
-            );
-        }
-    }
-}
-
-/// The part of a `texture_size` image, in pixels, that fills a frame of
-/// `frame` aspect without stretching: as much as fits, centred.
-pub fn cover_source(texture_size: Vec2, frame: Vec2) -> Rect {
-    if texture_size.x <= 0.0 || texture_size.y <= 0.0 || frame.x <= 0.0 || frame.y <= 0.0 {
-        return Rect::new(0.0, 0.0, texture_size.x, texture_size.y);
-    }
-    let want = frame.x / frame.y;
-    let have = texture_size.x / texture_size.y;
-    if have > want {
-        let w = texture_size.y * want;
-        Rect::new((texture_size.x - w) / 2.0, 0.0, w, texture_size.y)
-    } else {
-        let h = texture_size.x / want;
-        Rect::new(0.0, (texture_size.y - h) / 2.0, texture_size.x, h)
-    }
-}
+/// The rounded fills, outlines and clipped art live in the widgets, where the
+/// sheet chrome draws with them too; the kit's callers keep reaching them here.
+pub use macroquad_widgets::shape::{
+    cover_source, fill_rounded, fill_texture_rounded, stroke_rounded,
+};
 
 const VERTEX: &str = r#"#version 100
 attribute vec3 position;
@@ -182,34 +134,5 @@ impl RoundedArt {
 impl Default for RoundedArt {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_wide_image_in_a_tall_frame_is_cropped_at_the_sides() {
-        let r = cover_source(vec2(400.0, 200.0), vec2(100.0, 100.0));
-        assert_eq!(r, Rect::new(100.0, 0.0, 200.0, 200.0));
-    }
-
-    #[test]
-    fn a_tall_image_in_a_wide_frame_is_cropped_top_and_bottom() {
-        let r = cover_source(vec2(200.0, 400.0), vec2(200.0, 100.0));
-        assert_eq!(r, Rect::new(0.0, 150.0, 200.0, 100.0));
-    }
-
-    #[test]
-    fn a_matching_shape_uses_the_whole_image() {
-        let r = cover_source(vec2(300.0, 150.0), vec2(60.0, 30.0));
-        assert_eq!(r, Rect::new(0.0, 0.0, 300.0, 150.0));
-    }
-
-    #[test]
-    fn a_degenerate_frame_uses_the_whole_image() {
-        let r = cover_source(vec2(300.0, 150.0), vec2(0.0, 30.0));
-        assert_eq!(r, Rect::new(0.0, 0.0, 300.0, 150.0));
     }
 }

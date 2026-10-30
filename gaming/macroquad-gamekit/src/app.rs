@@ -357,6 +357,9 @@ async fn run_loop(stage: Stage, mut game: impl Game) {
     if capturing {
         harness::report::enable();
     }
+    if args.profile {
+        crate::profile::enable();
+    }
     enable_glyph_gate();
     let mut canvas = match fitted(stage, &args) {
         Stage::Pixel { width, height } => Some(pixel_canvas(width, height)),
@@ -410,6 +413,7 @@ async fn run_loop(stage: Stage, mut game: impl Game) {
                 let placed = place(stage, &args);
                 let text = startup.text();
                 let keys = (&args.keys[..], sim.frames);
+                crate::profile::begin_frame(crate::profile::UPDATE_ONLY);
                 simulate(
                     &mut game,
                     &mut sim,
@@ -419,6 +423,7 @@ async fn run_loop(stage: Stage, mut game: impl Game) {
                     harness::FIXED_DT,
                     text,
                 );
+                crate::profile::end_frame();
                 sim.frames += 1;
             }
         }
@@ -443,6 +448,7 @@ async fn run_loop(stage: Stage, mut game: impl Game) {
             while run.until_next().is_some_and(|n| n > DRAWN_BEFORE_AT) {
                 let placed = place(stage, &args);
                 let text = startup.text();
+                crate::profile::begin_frame(crate::profile::UPDATE_ONLY);
                 simulate(
                     &mut game,
                     &mut sim,
@@ -452,12 +458,14 @@ async fn run_loop(stage: Stage, mut game: impl Game) {
                     harness::FIXED_DT,
                     text,
                 );
+                crate::profile::end_frame();
                 sim.frames += 1;
                 run.advance();
             }
         }
 
         let mut timer = FrameTimer::start();
+        crate::profile::begin_frame(crate::profile::DRAWN);
         let dt = frame_dt(capturing);
         let placed = place(stage, &args);
         let Placed {
@@ -490,7 +498,9 @@ async fn run_loop(stage: Stage, mut game: impl Game) {
         let keys = plan
             .as_ref()
             .map_or((&args.keys[..], sim.frames), PlanRun::keys);
-        let (input, alpha) = simulate(&mut game, &mut sim, &args, keys, placed, dt, text);
+        let (input, alpha) = crate::profile::time("update", || {
+            simulate(&mut game, &mut sim, &args, keys, placed, dt, text)
+        });
         let frames = sim.frames;
         // Where a plan's capture of this frame goes, if it takes one.
         let plan_shot = plan.as_ref().and_then(|run| run.due().map(str::to_string));
@@ -544,17 +554,20 @@ async fn run_loop(stage: Stage, mut game: impl Game) {
         if board {
             clear_background(game.backdrop().bottom);
         }
-        game.draw(&frame);
-        if board {
-            let fill = game.backdrop().bottom;
-            for m in margins(placed.bounds, viewport.size) {
-                draw_rectangle(m.x, m.y, m.w, m.h, fill);
+        {
+            let _s = crate::profile::scope("draw");
+            game.draw(&frame);
+            if board {
+                let fill = game.backdrop().bottom;
+                for m in margins(placed.bounds, viewport.size) {
+                    draw_rectangle(m.x, m.y, m.w, m.h, fill);
+                }
+                game.draw_margin(&frame);
             }
-            game.draw_margin(&frame);
         }
         timer.mark(FrameMark::Draw);
 
-        let finished = startup.finish(dt, game.ready());
+        let finished = crate::profile::time("glyphs", || startup.finish(dt, game.ready()));
         timer.mark(FrameMark::Glyphs);
         let flushed = finished.flushed;
         if flushed.cached > 0 {
@@ -669,7 +682,13 @@ async fn run_loop(stage: Stage, mut game: impl Game) {
         }
         game.presented(&frame);
 
-        next_frame().await;
+        {
+            // Waiting for the display as well as presenting: on macOS this
+            // is where a frame idles until vsync, so it is wait, not work.
+            let _s = crate::profile::scope("present");
+            next_frame().await;
+        }
+        crate::profile::end_frame();
         timer.mark(FrameMark::Present);
         if let Some(line) = timer.slow() {
             log(&line);
@@ -783,9 +802,9 @@ fn simulate(
         text,
         canvas: None,
     };
-    game.update(&frame);
+    crate::profile::time("game.update", || game.update(&frame));
     for tick in ticks.into_iter().flatten() {
-        game.tick(&tick, &frame);
+        crate::profile::time("tick", || game.tick(&tick, &frame));
     }
     (input, alpha)
 }
