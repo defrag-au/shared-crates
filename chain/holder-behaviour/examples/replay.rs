@@ -282,7 +282,7 @@ fn run() -> Result<(), String> {
     );
     println!(
         "families    holder {holder} · market {market} · asset {asset} · admin {admin} · \
-         {changed} changed a lot"
+         {changed} changed the store"
     );
     println!("subjects    {}", subjects.len());
     if let Some((rows, matched, unmatched)) = seeded {
@@ -347,6 +347,8 @@ fn run() -> Result<(), String> {
         .map(|definition| (definition.id, [0; 4]))
         .collect();
     let mut standings: Vec<(String, Vec<Outcome<'_>>)> = Vec::new();
+    // (core earned, flavour earned) per subject, for the standings summary.
+    let mut per_holder: Vec<(u32, u32)> = Vec::new();
     for subject in &subjects {
         let outcomes =
             evaluate(&store, *subject, &at, &definitions).map_err(|error| format!("{error:?}"))?;
@@ -358,6 +360,20 @@ fn run() -> Result<(), String> {
                 Progress::Missed => slot[2] += 1,
                 Progress::Unavailable(_) => slot[3] += 1,
             }
+        }
+        if let Some(catalogue) = &catalogue {
+            let mut core = 0u32;
+            let mut flavour = 0u32;
+            for (outcome, position) in outcomes.iter().zip(&positions) {
+                if !matches!(outcome.progress, Progress::Earned { .. }) {
+                    continue;
+                }
+                match catalogue.role_at(*position) {
+                    Some("core") => core += 1,
+                    _ => flavour += 1,
+                }
+            }
+            per_holder.push((core, flavour));
         }
         if let Some(wanted) = &args.subject {
             let account = store
@@ -382,6 +398,10 @@ fn run() -> Result<(), String> {
             "{:<14} {earned:>8} {pending:>8} {missed:>8} {unavailable:>13}",
             definition.id
         );
+    }
+
+    if let Some(catalogue) = &catalogue {
+        print_standings(catalogue, &positions, &definitions, &tally, &per_holder);
     }
 
     for (account, outcomes) in &standings {
@@ -662,6 +682,86 @@ fn build_snapshot(
     })
 }
 
+/// How the earned set lands across the population — the distribution report the design doc
+/// asks for before any allocation rule, and the input to a holder-facing page.
+fn print_standings(
+    catalogue: &LoadedCatalogue,
+    positions: &[usize],
+    definitions: &[Definition<'_>],
+    tally: &BTreeMap<&str, [u64; 4]>,
+    per_holder: &[(u32, u32)],
+) {
+    let total = per_holder.len();
+    if total == 0 {
+        return;
+    }
+    fn percentile(values: &mut [u64], p: f64) -> u64 {
+        values.sort_unstable();
+        let index = ((values.len() as f64 - 1.0) * p).round() as usize;
+        values[index]
+    }
+    let mut earned: Vec<u64> = per_holder.iter().map(|(c, f)| u64::from(c + f)).collect();
+    let mut core: Vec<u64> = per_holder.iter().map(|(c, _)| u64::from(*c)).collect();
+    let max = earned.iter().copied().max().unwrap_or(0);
+    let median = percentile(&mut earned, 0.5);
+    let p90 = percentile(&mut earned, 0.9);
+    let median_core = percentile(&mut core, 0.5);
+    let p90_core = percentile(&mut core, 0.9);
+    let none_core = core.iter().filter(|count| **count == 0).count();
+    let none_at_all = per_holder
+        .iter()
+        .filter(|(c, f)| *c == 0 && *f == 0)
+        .count();
+
+    println!();
+    println!("standings   {total} subjects · earned median {median} · p90 {p90} · max {max}");
+    println!(
+        "            core median {median_core} · p90 {p90_core} · {none_core} with none · {none_at_all} with nothing"
+    );
+
+    // The catalogue's proposed gate: GTD at two core, FCFS at one core or three flavour.
+    let gtd = per_holder.iter().filter(|(c, _)| *c >= 2).count();
+    let fcfs = per_holder
+        .iter()
+        .filter(|(c, f)| *c < 2 && (*c >= 1 || *f >= 3))
+        .count();
+    let public = total - gtd - fcfs;
+    let share = |count: usize| count as f64 * 100.0 / total as f64;
+    println!(
+        "            gate gtd {gtd} ({:.1}%) · fcfs {fcfs} ({:.1}%) · public {public} ({:.1}%)",
+        share(gtd),
+        share(fcfs),
+        share(public)
+    );
+
+    let mut core_shares: Vec<(&str, f64)> = definitions
+        .iter()
+        .zip(positions)
+        .filter(|(_, position)| catalogue.role_at(**position) == Some("core"))
+        .map(|(definition, _)| (definition.id, tally[definition.id][0] as f64 / total as f64))
+        .collect();
+    core_shares.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let above: Vec<String> = core_shares
+        .iter()
+        .filter(|(_, share)| *share > 0.02)
+        .map(|(id, share)| format!("{id} {:.1}%", share * 100.0))
+        .collect();
+    println!(
+        "            core above 2% {}",
+        match above.is_empty() {
+            true => "none".to_string(),
+            false => above.join(" · "),
+        }
+    );
+    let rarest: Vec<String> = core_shares
+        .iter()
+        .rev()
+        .take(4)
+        .map(|(id, share)| format!("{id} {:.1}%", share * 100.0))
+        .collect();
+    println!("            core rarest   {}", rarest.join(" · "));
+}
+
 fn describe(outcome: &Outcome<'_>, store: &MemoryStore) -> Result<String, String> {
     let state = match outcome.progress {
         Progress::Earned { since } => match since {
@@ -710,6 +810,20 @@ fn describe(outcome: &Outcome<'_>, store: &MemoryStore) -> Result<String, String
             }
             Evidence::Traits { unit, values } => {
                 format!("unit {unit:?} {}", values.join(", "))
+            }
+            Evidence::Market {
+                order,
+                side,
+                filled,
+                at,
+                unix,
+            } => {
+                let what = if *filled { "filled" } else { "placed" };
+                let order = order.as_deref().unwrap_or("unkeyed");
+                format!("{what} {side:?} {order} at {at:?} ({unix})")
+            }
+            Evidence::Movements { movements, units } => {
+                format!("{movements} movements across {units} assets")
             }
         })
         .collect();

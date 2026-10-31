@@ -27,7 +27,9 @@ wallet-link-flow = { path = "../../services/wallet-link-flow" }
 # `ChainFamily`, as the modal and the flow both speak it.
 chains = { workspace = true }
 # The frame loop, tweens and eases, the starfield, particles, the wallet modal.
-macroquad-gamekit = { path = "../../gaming/macroquad-gamekit" }
+# `discord-auth` for the app's own sign-in: the session a login hands back in
+# `#session=`, read through the kit's `auth` (discord-auth's miniquad edge).
+macroquad-gamekit = { path = "../../gaming/macroquad-gamekit", features = ["discord-auth"] }
 # Painter, theme, sheet chrome, well, pills, scroll, segmented, message.
 macroquad-widgets = { workspace = true }
 # HTTP with a bearer and the reply's status, toasts, safe-area insets.
@@ -48,3 +50,5 @@ serde_json = { workspace = true }
 wallet-miniquad = { workspace = true }
 miniquad-platform = { path = "../miniquad-platform" }
 macroquad-app = { workspace = true }
+# The session plugin, the same file the kit stamps as `Plugin::DiscordAuth`.
+discord-auth = { path = "../../discord-auth", features = ["miniquad"] }

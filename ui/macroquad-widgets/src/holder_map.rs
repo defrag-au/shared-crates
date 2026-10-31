@@ -237,6 +237,7 @@ mod tests {
             label: key,
             kind,
             amount,
+            split: None,
         }
     }
 

@@ -1044,6 +1044,8 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::page("page · message with action", PageView::MessageAction),
         Story::page("page · surface", PageView::Surface),
         Story::page("page · wrap", PageView::Wrap),
+        Story::page("page · holder profile", PageView::HolderProfile),
+        Story::page("page · holder one core short", PageView::HolderNearMiss),
     ]);
     stories
 }

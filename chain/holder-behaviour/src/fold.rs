@@ -24,9 +24,15 @@
 //! neither is a number worth inventing: it becomes an [`Anomaly`] the report counts. A
 //! non-zero count is a failure the caller can see, which is the point.
 
-use chain_events::{ChainEvent, EventBody, Family, HolderEvent, HolderKind};
+use chain_events::{
+    ChainEvent, EventBody, Family, HolderEvent, HolderKind, MarketEvent, OfferScope, PartyRole,
+    Side,
+};
 
-use crate::state::{AcquiredBy, NewLot, Slot, Store, SubjectId, UnitId};
+use crate::state::{
+    AcquiredBy, Ask, BookChange, BookOutcome, MarketSide, NewFill, NewLot, Slot, Store, SubjectId,
+    UnitId,
+};
 
 /// Something the fold could not place.
 ///
@@ -92,9 +98,141 @@ pub fn apply<S: Store>(store: &mut S, event: &ChainEvent) -> Result<Applied, S::
     let mut applied = Applied::default();
     match &event.body {
         EventBody::Holder(holder) => apply_holder(store, event, holder, &mut applied)?,
-        EventBody::Market(_) | EventBody::Asset(_) | EventBody::Admin(_) => {}
+        EventBody::Market(market) => apply_market(store, event, market, &mut applied)?,
+        EventBody::Asset(_) | EventBody::Admin(_) => {}
     }
     Ok(applied)
+}
+
+/// Applies one marketplace fact.
+///
+/// Placements and fills are recorded for their parties, and **asks** also enter the book the
+/// collection's floor is read from. A fill can decline to name its order, so the book is
+/// matched on the asset and seller the fill names; that match is what gives an unkeyed fill
+/// an age. A re-price, a reopening, a withdrawal and an invalidation change the book but no
+/// subject's facts.
+fn apply_market<S: Store>(
+    store: &mut S,
+    event: &ChainEvent,
+    market: &MarketEvent,
+    applied: &mut Applied,
+) -> Result<(), S::Error> {
+    store.observe_market()?;
+    let at = event.coord.map(|coord| coord.height);
+    let unix = event.occurred_at;
+    match market {
+        MarketEvent::Placed {
+            order,
+            side,
+            price,
+            parties,
+        } => {
+            let side = market_side(side);
+            if side == MarketSide::Ask
+                && let Some(asset) = event.asset.as_ref()
+            {
+                let seller = parties
+                    .iter()
+                    .find(|party| party.role == PartyRole::Seller)
+                    .map(|party| party.account.clone());
+                store.apply_book(
+                    BookChange::Placed {
+                        order: &order.id,
+                        ask: Ask {
+                            asset: asset.clone(),
+                            price: price.clone(),
+                            seller,
+                        },
+                    },
+                    at,
+                    unix,
+                )?;
+            }
+            for party in parties {
+                let subject = store.subject(&party.account)?;
+                store.record_placement(subject, &order.id, side, at, unix)?;
+                applied.touch(subject);
+            }
+        }
+        MarketEvent::Updated { order, price } => {
+            store.apply_book(
+                BookChange::Repriced {
+                    order: &order.id,
+                    price: price.clone(),
+                },
+                at,
+                unix,
+            )?;
+        }
+        MarketEvent::Reopened { .. } => {
+            // A reopening restates neither the asset nor the price, so the book cannot
+            // re-enter the order. Nothing in the Perps archive does this.
+        }
+        MarketEvent::Cancelled { order, .. } => {
+            if let Some(order) = order.named() {
+                store.apply_book(BookChange::Closed { order: &order.id }, at, unix)?;
+            }
+        }
+        MarketEvent::Invalidated { order } => {
+            store.apply_book(BookChange::Closed { order: &order.id }, at, unix)?;
+        }
+        MarketEvent::Filled {
+            order,
+            side,
+            price,
+            parties,
+        } => {
+            let side = market_side(side);
+            let book = if side == MarketSide::Ask {
+                match parties.iter().find(|party| party.role == PartyRole::Seller) {
+                    Some(seller) => store.apply_book(
+                        BookChange::Filled {
+                            order: order.named().map(|order| order.id.as_str()),
+                            asset: event.asset.as_ref(),
+                            seller: &seller.account,
+                            settled: price.as_ref(),
+                        },
+                        at,
+                        unix,
+                    )?,
+                    // A fill with no seller named did not touch the book, so no part of it
+                    // can be judged against the pre-fill floor.
+                    None => BookOutcome::default(),
+                }
+            } else {
+                BookOutcome::default()
+            };
+            let order = order.named().map(|order| order.id.clone());
+            for party in parties {
+                let subject = store.subject(&party.account)?;
+                store.record_fill(
+                    subject,
+                    NewFill {
+                        order: order.clone(),
+                        side,
+                        role: party.role,
+                        price: price.clone(),
+                        at,
+                        unix,
+                        order_age: book.order_age,
+                        floor: book.floor.clone(),
+                        floor_rising: book.rising,
+                    },
+                )?;
+                applied.touch(subject);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn market_side(side: &Side) -> MarketSide {
+    match side {
+        Side::Ask => MarketSide::Ask,
+        Side::Bid(OfferScope::Item) => MarketSide::ItemBid,
+        Side::Bid(OfferScope::Trait) => MarketSide::TraitBid,
+        Side::Bid(OfferScope::Collection) => MarketSide::CollectionBid,
+    }
 }
 
 fn apply_holder<S: Store>(
@@ -138,6 +276,9 @@ fn apply_holder<S: Store>(
         }
         let subject = store.subject(&party.account)?;
         applied.touch(subject);
+        // One movement per party per event, which is the count `movement_ratio_at_least`
+        // reads. A zero delta is not a movement for that party and is skipped above.
+        store.record_movement(subject)?;
 
         if party.delta > 0 {
             // One lot per party, not one per unit: an NFT's delta is 1, so the shape is
@@ -210,7 +351,8 @@ fn close<S: Store>(
 pub struct Report {
     /// How many events were read.
     pub events: u64,
-    /// How many changed a lot. The rest were facts this fold does not store.
+    /// How many events changed a lot or a market fact. The rest were facts this fold does
+    /// not store.
     pub changed: u64,
     /// Events by family, so a report can say what it ignored rather than implying it
     /// saw only holder facts.
@@ -407,5 +549,44 @@ mod tests {
         // Still open: a partial trim does not end the interval, and does not restart it.
         assert_eq!(lot.disposed_at, None);
         assert_eq!(lot.tenure_at(1_700_001_000), 900);
+    }
+
+    #[test]
+    fn a_placement_is_recorded_for_its_party_and_the_order_table() {
+        use crate::memory::fixtures::placed;
+        use chain_events::{PartyRole, Side};
+        let mut store = MemoryStore::default();
+        let applied = apply(
+            &mut store,
+            &placed("o1", Side::Ask, &[("addr1alice", PartyRole::Seller)], 100),
+        )
+        .unwrap();
+        assert_eq!(applied.subjects.len(), 1);
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let history = store.market_history(alice).unwrap().expect("market seen");
+        assert_eq!(history.placements.len(), 1);
+        assert_eq!(history.placements[0].order, "o1");
+        assert_eq!(history.placements[0].side, crate::state::MarketSide::Ask);
+    }
+
+    #[test]
+    fn a_market_event_with_no_asset_is_not_an_anomaly() {
+        // A collection bid is collection-scoped by construction; the holder fold's
+        // "no asset" refusal does not apply to it.
+        use crate::memory::fixtures::placed;
+        use chain_events::{OfferScope, PartyRole, Side};
+        let mut store = MemoryStore::default();
+        let applied = apply(
+            &mut store,
+            &placed(
+                "bid",
+                Side::Bid(OfferScope::Collection),
+                &[("addr1alice", PartyRole::Buyer)],
+                100,
+            ),
+        )
+        .unwrap();
+        assert!(applied.anomalies.is_empty());
+        assert_eq!(applied.subjects.len(), 1);
     }
 }

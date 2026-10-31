@@ -21,27 +21,48 @@
 //! as a tap would), and `wait N` (hold the lines after it N frames). Each
 //! section starts the demo afresh.
 //!
-//! On the web `?demo` runs the demo. With no token the screen says how to
-//! open it.
+//! On the web `?demo` runs the demo.
+//!
+//! ## Who the reader is
+//!
+//! The page needs a bearer token auth-service accepts. It takes the first
+//! of: `?token=` (the `/link-wallet` handoff), or the Discord session the
+//! page's own worker hands back in `#session=` after
+//! [`LOGIN_ROUTE`](its login route), kept in local storage from then on.
+//! With neither, the screen offers "Sign in with Discord". A session that
+//! auth-service refuses (expired, revoked) offers it again; signing out
+//! forgets the session and reloads.
 
 use std::collections::VecDeque;
 
 use macroquad::prelude::*;
 use macroquad_app::Insets;
 use macroquad_gamekit::harness;
-use macroquad_gamekit::{Backdrop, Frame, Game, Stage};
+use macroquad_gamekit::{Backdrop, Frame, Game, Stage, auth};
 use macroquad_wallet_link::wallet_link_flow::Event;
-use macroquad_wallet_link::{DEFAULT_AUTH_BASE, View, WalletLinker, demo};
+use macroquad_wallet_link::{DEFAULT_AUTH_BASE, LinkerEvent, View, WalletLinker, demo};
 use macroquad_widgets::{Align, Message, Painter, TextSize, Theme, fill_rounded};
+
+/// The page's worker's login, asked to come back to this app.
+const LOGIN_ROUTE: &str = "/auth/discord/login?return=/orbit/";
+
+/// Where the token came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TokenSource {
+    /// `?token=`, from `/link-wallet`: ends with the page.
+    Handoff,
+    /// A Discord session the page's worker minted: kept, and can be ended.
+    Session,
+}
 
 /// Where the app was opened from, and with what.
 #[derive(Clone)]
 enum Launch {
-    Live(String),
+    Live(String, TokenSource),
     /// The demo, with this many wallets linked (`None`: its usual two).
     Demo(Option<usize>),
-    /// No token: nothing to show but how to get one.
-    NoToken,
+    /// No token and no session: offer to sign in.
+    SignedOut,
 }
 
 impl Launch {
@@ -49,21 +70,50 @@ impl Launch {
         if harness::switch("--demo") || miniquad_platform::launch_query("demo").is_some() {
             return Self::Demo(harness::flag_num("--demo-wallets"));
         }
-        let token = miniquad_platform::launch_query("token")
+        let handoff = miniquad_platform::launch_query("token")
             .or_else(|| harness::flag("--token"))
             .or_else(|| std::env::var("LINK_TOKEN").ok())
             .filter(|t| !t.trim().is_empty());
-        token.map_or(Self::NoToken, Self::Live)
+        if let Some(token) = handoff {
+            return Self::Live(token, TokenSource::Handoff);
+        }
+        // A login that just finished (`#session=`), or one kept from before.
+        // Natively, `DISCORD_SESSION` in the environment.
+        match auth::Session::load() {
+            Some(session) => Self::Live(session.token, TokenSource::Session),
+            None => Self::SignedOut,
+        }
     }
 
     fn linker(&self) -> Option<WalletLinker> {
         match self {
-            Self::Live(token) => Some(WalletLinker::live(DEFAULT_AUTH_BASE, token)),
+            Self::Live(token, source) => {
+                let mut linker = WalletLinker::live(DEFAULT_AUTH_BASE, token)
+                    .expired_hint("Sign in again to manage the wallets linked to your account.")
+                    .sign_in_action("Sign in with Discord");
+                if *source == TokenSource::Session {
+                    linker = linker.sign_out_action("Sign out");
+                }
+                Some(linker)
+            }
             Self::Demo(None) => Some(WalletLinker::demo()),
             Self::Demo(Some(n)) => Some(WalletLinker::demo_with(demo::demo_many(*n))),
-            Self::NoToken => None,
+            Self::SignedOut => None,
         }
     }
+}
+
+/// Forget any session and go to the login. From the expired screen, and
+/// from a page with no session at all.
+fn sign_in() {
+    auth::logout();
+    auth::login(LOGIN_ROUTE);
+}
+
+/// Forget the session and reload: the page comes back signed out.
+fn sign_out() {
+    auth::logout();
+    miniquad_platform::reload_page();
 }
 
 /// A plan's `set` line, checked when it is read and applied once the list
@@ -169,7 +219,11 @@ impl Game for App {
         let Some(linker) = &mut self.linker else {
             return;
         };
-        let _ = linker.update(frame);
+        match linker.update(frame) {
+            Some(LinkerEvent::SignIn) => sign_in(),
+            Some(LinkerEvent::SignOut) => sign_out(),
+            Some(LinkerEvent::Linked(_) | LinkerEvent::Unlinked(_)) | None => {}
+        }
         if self.waiting > 0 {
             self.waiting -= 1;
             return;
@@ -200,11 +254,24 @@ impl Game for App {
         let c = p.theme.color;
         clear_background(c.bg_primary);
         let Some(linker) = &mut self.linker else {
-            Message::new(
-                "Open this from Discord",
-                "Run /link-wallet in Discord, then follow its link here to manage the wallets linked to your account.",
-            )
-            .show_in(&p, insets.safe(area));
+            // Signed out. On the web the page's worker signs the reader in;
+            // natively there is no page to send to Discord, so only the
+            // handoff route is offered.
+            let signed_in_here = cfg!(target_arch = "wasm32");
+            let mut message = Message::new(
+                "Your linked wallets",
+                if signed_in_here {
+                    "Sign in with Discord to see and manage the wallets linked to your account, or open this page from /link-wallet in Discord."
+                } else {
+                    "Run /link-wallet in Discord, then follow its link here to manage the wallets linked to your account."
+                },
+            );
+            if signed_in_here {
+                message = message.action("Sign in with Discord");
+            }
+            if message.show_in(&p, insets.safe(area)) {
+                sign_in();
+            }
             return;
         };
         linker.set_insets(insets);

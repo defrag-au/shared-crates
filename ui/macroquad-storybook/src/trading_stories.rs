@@ -12,12 +12,13 @@ use macroquad::prelude::*;
 use macroquad_widgets::theme::with_alpha;
 use macroquad_widgets::{
     BoardRow, ChangeChipVm, ChartLabels, ChartPoint, FEED_ROW_STEP, FeedRow, FeedVm, Gesture,
-    HolderBoardVm, HolderMapLayout, HolderMapState, HolderMapVm, Holding, HoldingKind, KindInk,
-    LifeBucket, LifeStripVm, MapGroup, MapTile, MarketInk, Painter, PriceChartVm, RateChartLabels,
-    RateChartVm, RateStep, SplitBarVm, StatMark, StatTile, StatTilesVm, TokenHeaderVm, TokenLogo,
-    TradeMark, TradeSide, TradeSize, TreemapGroup, TreemapState, TreemapTile, TreemapVm,
-    change_chip, draw_rounded_rect, feed, format, holder_board, holder_map, life_strip,
-    price_chart, rate_chart, split_bar, stat_tiles, time_at_x, token_header, treemap,
+    HolderBoardVm, HolderMapLayout, HolderMapState, HolderMapVm, Holding, HoldingKind,
+    HoldingSplit, KindInk, LifeBucket, LifeStripVm, MapGroup, MapTile, MarketInk, Painter,
+    PriceChartVm, RateChartLabels, RateChartVm, RateStep, SplitBarVm, StatMark, StatTile,
+    StatTilesVm, TokenHeaderVm, TokenLogo, TradeMark, TradeSide, TradeSize, TreemapGroup,
+    TreemapState, TreemapTile, TreemapVm, change_chip, draw_rounded_rect, feed, format,
+    holder_board, holder_map, life_strip, price_chart, rate_chart, split_bar, stat_tiles,
+    time_at_x, token_header, treemap,
 };
 
 /// Where the fixture's history starts: 13 Oct 2026, 10:13 UTC.
@@ -98,6 +99,9 @@ struct OwnedHolding {
     label: String,
     kind: HoldingKind,
     amount: f64,
+    /// What of `amount` is locked and what a pool adds; `None` for the stories
+    /// that predate the split.
+    split: Option<HoldingSplit>,
 }
 
 /// A feed row as the story owns it.
@@ -573,6 +577,7 @@ fn borrowed(holdings: &[OwnedHolding]) -> Vec<Holding<'_>> {
             label: &h.label,
             kind: h.kind,
             amount: h.amount,
+            split: h.split,
         })
         .collect()
 }
@@ -694,9 +699,26 @@ fn holdings() -> Vec<OwnedHolding> {
             label: label.to_string(),
             kind,
             amount,
+            split: None,
         })
         .collect();
     out.sort_by(|a, b| b.amount.total_cmp(&a.amount).then(a.key.cmp(&b.key)));
+    // Two of the rows the board actually shows carry a tip split, so the
+    // locked band and the LP figure are both on screen: the largest holding is
+    // partly locked, and a smaller person holds LP beside their balance.
+    for h in &mut out {
+        h.split = match h.key.as_str() {
+            "$perpstaking" => Some(HoldingSplit {
+                vested: 60_000.0,
+                lp: 0.0,
+            }),
+            "q9el..erfa" => Some(HoldingSplit {
+                vested: 0.0,
+                lp: 40_000.0,
+            }),
+            _ => None,
+        };
+    }
     out
 }
 

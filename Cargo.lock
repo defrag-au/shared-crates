@@ -3367,6 +3367,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "image-miniquad"
+version = "0.1.0"
+dependencies = [
+ "image-core",
+ "macroquad",
+ "macroquad-gamekit",
+ "sapp-jsutils",
+ "serde",
+ "serde_json",
+ "ureq 2.12.1",
+]
+
+[[package]]
 name = "image-webp"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4024,14 +4037,11 @@ version = "0.1.0"
 dependencies = [
  "cnft-holdings",
  "image-core",
+ "image-miniquad",
  "macroquad",
  "macroquad-gamekit",
  "macroquad-widgets",
- "sapp-jsutils",
- "serde",
- "serde_json",
  "ui-theme",
- "ureq 2.12.1",
 ]
 
 [[package]]
@@ -4098,6 +4108,7 @@ name = "macroquad-wallet-link"
 version = "0.1.0"
 dependencies = [
  "chains",
+ "discord-auth",
  "macroquad",
  "macroquad-app",
  "macroquad-gamekit",

@@ -1,6 +1,7 @@
 //! Stamp the app's plugin JS into `web/`, so the page loads the plugins the
 //! wasm was linked against: `wallet.js` and `evm.js` (wallet-miniquad),
-//! `platform.js` (miniquad-platform) and `app.js` (macroquad-app's HTTP).
+//! `platform.js` (miniquad-platform), `app.js` (macroquad-app's HTTP) and
+//! `discord-auth.js` (the session a Discord login hands back).
 //! `mq-bundle --web ui/macroquad-wallet-link/web` stages every `*.js` there.
 //! Generated, so `web/` is gitignored.
 
@@ -14,5 +15,10 @@ fn main() {
     fs::write(web.join("evm.js"), wallet_miniquad::EVM_PLUGIN_JS).expect("write evm.js");
     fs::write(web.join("platform.js"), miniquad_platform::PLUGIN_JS).expect("write platform.js");
     fs::write(web.join("app.js"), macroquad_app::PLUGIN_JS).expect("write app.js");
+    fs::write(
+        web.join("discord-auth.js"),
+        discord_auth::miniquad::PLUGIN_JS,
+    )
+    .expect("write discord-auth.js");
     println!("cargo:rerun-if-changed=build.rs");
 }

@@ -153,8 +153,8 @@ pub use change_chip::{ChangeChipVm, change_chip};
 pub use feed::{FEED_ROW_H, FEED_ROW_STEP, FeedRow, FeedVm, feed, feed_row};
 #[cfg(feature = "trading")]
 pub use holder_board::{
-    BoardRow, HolderBoardVm, Holding, HoldingKind, KindInk, holder_board, holding_chip,
-    holding_colour, holding_colour_with,
+    BoardRow, HolderBoardVm, Holding, HoldingKind, HoldingSplit, KindInk, holder_board,
+    holding_chip, holding_colour, holding_colour_with,
 };
 #[cfg(feature = "trading")]
 pub use holder_map::{

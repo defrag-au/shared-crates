@@ -4,7 +4,7 @@ use std::task::Poll;
 
 use cnft_holdings::{Holdings, HoldingsLoad, LoadState, PolicyId, Source};
 
-use crate::fetch::{TextRequest, get_text};
+use image_miniquad::{TextRequest, get_text};
 
 /// Drives a [`HoldingsLoad`] with real requests. Call [`Self::update`] once
 /// per frame.

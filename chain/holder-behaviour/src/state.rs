@@ -28,8 +28,16 @@
 //! `collections = ["perps"]` in a catalogue definition mean something: a predicate reading
 //! `total_tenure_at_least` is asking about Perps specifically, and a store that had mixed
 //! the token and the NFTs could not answer it.
+//!
+//! # Market facts are placements and fills
+//!
+//! A marketplace fact is stored only where a predicate reads it: a [`Placement`] (who listed
+//! or bid, and when) and a [`Fill`] (which side was taken, which side the subject was on,
+//! and the order's age where both ends were seen). Everything else about an order's
+//! lifecycle — a re-price, a reopening, a withdrawal — changes state no predicate reads, so
+//! the fold ignores it.
 
-use chain_events::{AccountRef, TxRef};
+use chain_events::{AccountRef, PartyRole, Price, TxRef};
 use chains::TokenRef;
 use serde::{Deserialize, Serialize};
 
@@ -197,6 +205,265 @@ pub struct MintSummary {
     pub count: u32,
 }
 
+/// Which side of the market an order is on, reduced to what a predicate reads.
+///
+/// The wire model keeps a bid's [`OfferScope`](chain_events::OfferScope) inside its side;
+/// a predicate asks about one of the four shapes by name, so the store holds the flat form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MarketSide {
+    /// A listing: an intent to sell one asset.
+    Ask,
+    /// A bid scoped to one asset.
+    ItemBid,
+    /// A bid scoped to a trait.
+    TraitBid,
+    /// A bid scoped to the whole collection.
+    CollectionBid,
+}
+
+/// A listing or offer, as the fold first saw it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Placement {
+    /// The marketplace's order identity.
+    pub order: String,
+    /// What the order asks or offers.
+    pub side: MarketSide,
+    /// Chain height it was placed at, when the source names one.
+    pub at: Option<Slot>,
+    /// Unix seconds it was placed at.
+    pub unix: u64,
+}
+
+/// One settled trade, from one party's point of view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fill {
+    /// The order that was taken, when the source named it.
+    pub order: Option<String>,
+    /// Which side was taken.
+    pub side: MarketSide,
+    /// Which side of the trade this party was on.
+    pub role: PartyRole,
+    /// What it settled for, when the source priced it.
+    pub price: Option<Price>,
+    /// Chain height it settled at, when the source names one.
+    pub at: Option<Slot>,
+    /// Unix seconds it settled at.
+    pub unix: u64,
+    /// How long the order had stood when it was taken.
+    ///
+    /// `None` when the source did not name the order on the fill and the book could not
+    /// match one, or when the placement predates the walk. A predicate that needs an age
+    /// reports the gap rather than treating an unkeyed fill as a fast or a stale one.
+    pub order_age: Option<u64>,
+    /// The floor **just before** this trade, when the book knew one.
+    ///
+    /// Captured at the trade rather than looked up later, because an ask fill consumes the
+    /// ask it settled against: the post-fill floor can be higher than the one the sale was
+    /// actually made against.
+    pub floor: Option<Price>,
+    /// Whether the floor's last move before this trade was up.
+    pub floor_rising: Option<bool>,
+}
+
+/// A fill before the store has resolved the order it consumed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewFill {
+    /// The order, when the source named one.
+    pub order: Option<String>,
+    /// Which side was taken.
+    pub side: MarketSide,
+    /// Which side of the trade the subject was on.
+    pub role: PartyRole,
+    /// What it settled for, when the source priced it.
+    pub price: Option<Price>,
+    /// Chain height it settled at, when the source names one.
+    pub at: Option<Slot>,
+    /// Unix seconds it settled at.
+    pub unix: u64,
+    /// How long the consumed order had stood, when the store matched one.
+    pub order_age: Option<u64>,
+    /// The floor just before the trade, when the fold could capture one from a book change.
+    ///
+    /// `None` is "the book did not change for this trade" (or did not exist), and a store is
+    /// expected to fill in the standing floor in that case — see [`Store::record_fill`].
+    pub floor: Option<Price>,
+    /// Whether the floor's last move before the trade was up.
+    pub floor_rising: Option<bool>,
+}
+
+/// What a book change said about the trade that caused it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BookOutcome {
+    /// The age of the ask a fill consumed, when the book matched one.
+    pub order_age: Option<u64>,
+    /// The floor **just before** the change, in one price.
+    ///
+    /// A fill consumes the ask it settled against, so the floor after the change is not the
+    /// floor the sale was judged by. Carrying it on the fill makes the comparison exact.
+    pub floor: Option<Price>,
+    /// Whether the floor's last move before the change was up.
+    pub rising: Option<bool>,
+}
+
+/// A live listing, as the collection's floor reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ask {
+    /// Which asset is for sale.
+    pub asset: TokenRef,
+    /// What it asks.
+    pub price: Price,
+    /// Who listed it, when the source names them.
+    pub seller: Option<AccountRef>,
+}
+
+/// A change to the collection's live asks.
+///
+/// Only listings enter the book. A bid is a fact about a buyer, not about the floor, so the
+/// fold records it in the subject's history and leaves the book alone.
+#[derive(Debug, Clone)]
+pub enum BookChange<'a> {
+    /// An ask became live at the price it states.
+    Placed {
+        /// The marketplace's order identity.
+        order: &'a str,
+        /// The listing.
+        ask: Ask,
+    },
+    /// A live ask's price changed.
+    Repriced {
+        /// The order being repriced.
+        order: &'a str,
+        /// What it asks now.
+        price: Price,
+    },
+    /// An ask was withdrawn or invalidated.
+    Closed {
+        /// The order that ended.
+        order: &'a str,
+    },
+    /// An ask was taken.
+    ///
+    /// A fill can decline to name its order, so the book is also matched on the asset and
+    /// the seller the fill names, preferring the settled price when several asks fit.
+    Filled {
+        /// The order, when the source named one.
+        order: Option<&'a str>,
+        /// The asset that changed hands, when the event names it.
+        asset: Option<&'a TokenRef>,
+        /// The seller the fill names.
+        seller: &'a AccountRef,
+        /// What it settled for, when the source priced it.
+        settled: Option<&'a Price>,
+    },
+}
+
+/// One observation of the collection's floor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FloorPoint {
+    /// Chain height the floor changed at, when the source gives one.
+    pub at: Option<Slot>,
+    /// Unix seconds it changed at.
+    pub unix: u64,
+    /// The lowest live ask in the series' denomination, or `None` when the book was empty.
+    pub floor: Option<u128>,
+}
+
+/// One drawdown a holding span covered.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Drawdown {
+    /// How far the floor fell from its peak in the span, in `0.0..=1.0`.
+    pub fraction: f64,
+    /// The trough's chain height, when the source gives one.
+    pub at: Option<Slot>,
+    /// Unix seconds of the trough.
+    pub unix: u64,
+}
+
+/// The collection's native-coin floor over time.
+///
+/// A floor is the lowest **live ask**, so the series changes only when the book does. An
+/// observation with `floor: None` is a book that had no live native ask at that instant —
+/// distinct from no observation, which means the walk had not started.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FloorSeries {
+    /// The scale `floor` amounts are expressed at.
+    pub decimals: u8,
+    /// Ascending by `unix`, one entry per change of floor.
+    pub points: Vec<FloorPoint>,
+}
+
+impl FloorSeries {
+    /// The floor as at `unix`: the last observation at or before it.
+    pub fn at(&self, unix: u64) -> Option<FloorPoint> {
+        let index = self.points.partition_point(|point| point.unix <= unix);
+        index.checked_sub(1).map(|index| self.points[index])
+    }
+
+    /// The highest floor at or before `unix`.
+    pub fn peak_through(&self, unix: u64) -> Option<u128> {
+        self.points
+            .iter()
+            .take_while(|point| point.unix <= unix)
+            .filter_map(|point| point.floor)
+            .max()
+    }
+
+    /// Whether the floor's last move was up.
+    ///
+    /// `None` when there is no earlier floor to compare with, or when the book emptied in
+    /// between — a refill from nothing is not a rise.
+    pub fn rising_at(&self, unix: u64) -> Option<bool> {
+        let index = self.points.partition_point(|point| point.unix <= unix);
+        let current = self.points.get(index.checked_sub(1)?)?.floor?;
+        let previous = self.points.get(index.checked_sub(2)?)?.floor?;
+        Some(current > previous)
+    }
+
+    /// The deepest fall from a peak reached **inside** `[from, to]`.
+    ///
+    /// The floor at `from` seeds the peak, so a span that began at the top and fell counts;
+    /// a peak that predates the span does not. `None` when the floor at `from` is unknown.
+    pub fn max_drawdown(&self, from: u64, to: u64) -> Option<Drawdown> {
+        let mut peak = self.at(from)?.floor?;
+        let mut worst = Drawdown {
+            fraction: 0.0,
+            at: None,
+            unix: from,
+        };
+        for point in self
+            .points
+            .iter()
+            .filter(|point| point.unix > from && point.unix <= to)
+        {
+            let Some(floor) = point.floor else {
+                continue;
+            };
+            if floor > peak {
+                peak = floor;
+                continue;
+            }
+            let fraction = 1.0 - floor as f64 / peak as f64;
+            if fraction > worst.fraction {
+                worst = Drawdown {
+                    fraction,
+                    at: point.at,
+                    unix: point.unix,
+                };
+            }
+        }
+        Some(worst)
+    }
+}
+
+/// Everything a subject did on a marketplace, as far as the store saw.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MarketHistory {
+    /// Distinct orders the subject placed, oldest first.
+    pub placements: Vec<Placement>,
+    /// Trades the subject was a party to, oldest first.
+    pub fills: Vec<Fill>,
+}
+
 /// What a fold remembers, and the operations a backend has to provide.
 pub trait Store {
     /// The backend's own failure type. The fold never interprets it — it can only
@@ -255,10 +522,75 @@ pub trait Store {
     /// The collection's mint extent, or `None` when it minted into this store not at all.
     fn mint_summary(&self) -> Result<Option<MintSummary>, Self::Error>;
 
+    /// Notes that the source carried the market family at all.
+    ///
+    /// Market history and a collection nobody traded look identical from the outside, so a
+    /// store that was built from a holder-only stream must be able to say "I was not told",
+    /// not "there was nothing".
+    fn observe_market(&mut self) -> Result<(), Self::Error>;
+
+    /// Applies a change to the collection's live asks.
+    ///
+    /// Returns what the change said about the trade that caused it: the age of the ask a
+    /// fill consumed, which is what lets an unkeyed fill still answer
+    /// `bought_escrow_within`, and the floor and its direction **before** the change, which
+    /// is what a sale has to be judged against.
+    fn apply_book(
+        &mut self,
+        change: BookChange<'_>,
+        at: Option<Slot>,
+        unix: u64,
+    ) -> Result<BookOutcome, Self::Error>;
+
+    /// Records that `subject` placed `order`. Idempotent per `(subject, order)`.
+    fn record_placement(
+        &mut self,
+        subject: SubjectId,
+        order: &str,
+        side: MarketSide,
+        at: Option<Slot>,
+        unix: u64,
+    ) -> Result<(), Self::Error>;
+
+    /// Records that `subject` was a party to one holder movement.
+    ///
+    /// A counter, not a log: `movement_ratio_at_least` is the only reader, and the movement
+    /// itself is already cited by the lot it opened or closed. Applying the same event twice
+    /// counts it twice, the same contract every other `record_*` here has.
+    fn record_movement(&mut self, subject: SubjectId) -> Result<(), Self::Error>;
+
+    /// How many holder movements the subject has been a party to.
+    ///
+    /// `None` means this store does not carry movement counts — a bundle row does not — so a
+    /// ratio predicate reports a gap rather than a zero.
+    fn movements_of(&self, subject: SubjectId) -> Result<Option<u64>, Self::Error>;
+
+    /// Records a settled trade for one party.
+    ///
+    /// A fill that changed the ask book carries the floor captured **before** that change,
+    /// because the change may have consumed the very ask the sale was made against. A fill
+    /// that changed nothing — a bid taken, or an ask whose seller the event did not name —
+    /// arrives with no floor, and the store answers with the floor that stood, which it owns.
+    /// Only a book with no native ask may leave it `None`.
+    fn record_fill(&mut self, subject: SubjectId, fill: NewFill) -> Result<(), Self::Error>;
+
+    /// The subject's market history.
+    ///
+    /// `None` means **this store carries no market source**, which every market predicate
+    /// reports as `Unavailable` rather than as "no activity".
+    fn market_history(&self, subject: SubjectId) -> Result<Option<MarketHistory>, Self::Error>;
+
+    /// The collection's floor over time.
+    ///
+    /// `None` means this store was not built from a marketplace source. A `Some` series with
+    /// no points means the source was seen but no listing ever entered the book.
+    fn floor_series(&self) -> Result<Option<FloorSeries>, Self::Error>;
+
     /// Every subject the store has seen, in no particular order.
     ///
-    /// This is the eligible population — every stake that ever held the collection, not
-    /// the current holders — which is what a rarity denominator is measured over.
+    /// This is the eligible population: every stake that ever held the collection, plus any
+    /// that only ever traded it (a bidder who never acquired). Rarity is measured over it, so
+    /// it is never just the current holders.
     fn subjects(&self) -> Result<Vec<SubjectId>, Self::Error>;
 }
 
@@ -323,5 +655,64 @@ mod tests {
         // A source that stamps a future height is a source disagreeing with the caller,
         // not a reason to produce a tenure near u64::MAX.
         assert_eq!(lot(1, 1, 1_000, None).tenure_at(500), 0);
+    }
+
+    fn series(points: &[(u64, Option<u128>)]) -> FloorSeries {
+        FloorSeries {
+            decimals: 6,
+            points: points
+                .iter()
+                .map(|(unix, floor)| FloorPoint {
+                    at: None,
+                    unix: *unix,
+                    floor: *floor,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn a_floor_is_the_last_observation_at_or_before_the_reading() {
+        let floor = series(&[(100, Some(50)), (200, Some(40)), (300, None)]);
+        assert_eq!(floor.at(50), None);
+        assert_eq!(floor.at(150).unwrap().floor, Some(50));
+        assert_eq!(floor.at(200).unwrap().floor, Some(40));
+        assert_eq!(floor.at(400).unwrap().floor, None);
+        assert_eq!(floor.peak_through(250), Some(50));
+        assert_eq!(floor.peak_through(50), None);
+    }
+
+    #[test]
+    fn a_drawdown_is_measured_from_a_peak_inside_the_span() {
+        // 100 → 40 → 100. A span that begins at the top covers the fall; one that begins
+        // in the trough does not.
+        let floor = series(&[(0, Some(100)), (10, Some(40)), (20, Some(100))]);
+        let covered = floor.max_drawdown(0, 15).expect("the floor is known at 0");
+        assert!((covered.fraction - 0.6).abs() < 1e-9);
+        assert_eq!(covered.unix, 10);
+
+        let after = floor
+            .max_drawdown(10, 25)
+            .expect("the floor is known at 10");
+        assert_eq!(after.fraction, 0.0);
+
+        // The floor at 50 is the last observation, so the span is flat, not unknown.
+        assert_eq!(floor.max_drawdown(50, 60).unwrap().fraction, 0.0);
+        // Before the first observation there is no floor to measure from.
+        let empty = series(&[(100, Some(100))]);
+        assert!(empty.max_drawdown(50, 60).is_none());
+    }
+
+    #[test]
+    fn a_floor_that_empties_is_not_a_rise() {
+        let floor = series(&[(0, Some(100)), (10, None), (20, Some(90))]);
+        assert_eq!(floor.rising_at(5), None); // no earlier floor to compare with
+        assert_eq!(floor.rising_at(15), None); // the book emptied
+        assert_eq!(floor.rising_at(25), None); // a refill from nothing is not a rise
+
+        let rising = series(&[(0, Some(100)), (10, Some(120))]);
+        assert_eq!(rising.rising_at(15), Some(true));
+        let falling = series(&[(0, Some(120)), (10, Some(100))]);
+        assert_eq!(falling.rising_at(15), Some(false));
     }
 }

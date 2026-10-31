@@ -78,6 +78,12 @@ const TOGGLE_H: f32 = 32.0;
 pub enum LinkerEvent {
     Linked(LinkedWallet),
     Unlinked(LinkedWallet),
+    /// The reader asked to sign in: the action a host offered with
+    /// [`WalletLinker::sign_in_action`], taken from the expired screen.
+    SignIn,
+    /// The reader asked to sign out: the action a host offered with
+    /// [`WalletLinker::sign_out_action`], taken from the sun's sheet.
+    SignOut,
 }
 
 /// Orbit or list.
@@ -94,6 +100,12 @@ pub struct WalletLinker {
     connector: WalletConnector,
     claims: TokenClaims,
     expired_hint: String,
+    /// The expired screen's action, when the host can get a new token.
+    sign_in: Option<String>,
+    /// The sun's sheet's action, when the host can end the session.
+    sign_out: Option<String>,
+    /// The sun's sheet: who the reader is signed in as.
+    me_sheet: SheetState,
     insets: Insets,
     started: bool,
     clock: f32,
@@ -139,6 +151,9 @@ impl WalletLinker {
             connector: connector.proof_words(ProofWords::LINK),
             claims,
             expired_hint: wallet_link_flow::words::EXPIRED.to_string(),
+            sign_in: None,
+            sign_out: None,
+            me_sheet: SheetState::new(),
             insets: Insets::default(),
             started: false,
             clock: 0.0,
@@ -232,6 +247,20 @@ impl WalletLinker {
         self
     }
 
+    /// Offer `label` on the expired screen, reported as [`LinkerEvent::SignIn`]
+    /// when taken: for a host that can sign the reader in again.
+    pub fn sign_in_action(mut self, label: impl Into<String>) -> Self {
+        self.sign_in = Some(label.into());
+        self
+    }
+
+    /// Offer `label` on the sun's sheet, reported as [`LinkerEvent::SignOut`]
+    /// when taken: for a host whose session the reader can end.
+    pub fn sign_out_action(mut self, label: impl Into<String>) -> Self {
+        self.sign_out = Some(label.into());
+        self
+    }
+
     /// The phone's safe area, for a component drawn edge to edge.
     pub fn set_insets(&mut self, insets: Insets) {
         self.insets = insets;
@@ -301,6 +330,7 @@ impl WalletLinker {
         self.connector.poll();
         self.view_mix.update(dt);
         self.sheet.update(dt);
+        self.me_sheet.update(dt);
         self.toasts.update(dt);
         if let Some((_, age)) = &mut self.copied {
             *age += dt;
@@ -372,7 +402,8 @@ impl WalletLinker {
             (cta.y - 12.0 - header.bottom() - 8.0).max(0.0),
         );
 
-        let covered = self.connector.is_visible() || self.sheet.visible();
+        let covered =
+            self.connector.is_visible() || self.sheet.visible() || self.me_sheet.visible();
         let untapped = p.untapped();
         let body: &Painter = if covered { &untapped } else { p };
         let phase = self.flow.phase();
@@ -392,7 +423,13 @@ impl WalletLinker {
             Phase::Expired => {
                 self.orbit_only(body, field, 0.35);
                 let hint = self.expired_hint.clone();
-                Message::new("Session expired", &hint).show_in(body, field);
+                let mut message = Message::new("Session expired", &hint);
+                if let Some(label) = &self.sign_in {
+                    message = message.action(label);
+                }
+                if message.show_in(body, field) {
+                    self.events.push(LinkerEvent::SignIn);
+                }
             }
             Phase::Loading => {
                 let _ = self.orbit.show(body, field, None, 1.0, true);
@@ -430,6 +467,7 @@ impl WalletLinker {
             p
         };
         self.draw_sheet(sheet_p, area, &phase);
+        self.draw_me_sheet(sheet_p, area);
 
         self.toasts.show(p, cta.x, cta.w, cta.y - 10.0);
 
@@ -711,7 +749,13 @@ impl WalletLinker {
                     self.close_sheet();
                     self.send(Event::Link(Some(family)));
                 }
-                Some(OrbitTap::Planet { .. } | OrbitTap::Sun | OrbitTap::Sky) => self.close_sheet(),
+                // The sun is the reader: who they are signed in as.
+                Some(OrbitTap::Sun) => {
+                    self.close_sheet();
+                    self.me_sheet.open();
+                    self.orbit.pause(true);
+                }
+                Some(OrbitTap::Planet { .. } | OrbitTap::Sky) => self.close_sheet(),
                 None => {}
             }
         }
@@ -736,6 +780,75 @@ impl WalletLinker {
             if matches!(self.flow.phase(), Phase::Confirming(_)) {
                 self.send(Event::KeepWallet);
             }
+        }
+        if self.me_sheet.is_open() {
+            self.me_sheet.close();
+            self.orbit.pause(false);
+        }
+    }
+
+    /// The sun's sheet: the reader's Discord name and id, and the way out of
+    /// the session when the host offers one.
+    fn draw_me_sheet(&mut self, p: &Painter, area: Rect) {
+        if !self.me_sheet.visible() {
+            return;
+        }
+        let c = p.theme.color;
+        let identity = self.orbit.identity().clone();
+        let name = identity.name.clone().unwrap_or_else(|| "You".into());
+        let id = self
+            .flow
+            .identity()
+            .map(|i| i.discord_user_id.clone())
+            .or_else(|| self.claims.sub.clone());
+        let form = SheetForm::for_area(area);
+        let sheet = Sheet::new()
+            .title(&name)
+            .subtitle("Signed in with Discord")
+            .tint(c.accent)
+            .footer(self.sign_out.is_some());
+        let mut rows = Vec::new();
+        if let Some(id) = &id {
+            rows.push(
+                WellRow::stacked("Discord id", id)
+                    .mono()
+                    .trailing(Trailing::Copy {
+                        copied: self
+                            .copied
+                            .as_ref()
+                            .filter(|(v, _)| v == id)
+                            .map(|(_, age)| *age),
+                    }),
+            );
+        }
+        let count = self
+            .flow
+            .wallets()
+            .map_or("…".to_string(), |ws| ws.len().to_string());
+        rows.push(WellRow::inline("Wallets linked", &count));
+        let well_h = well_height(p, &rows);
+        let height = sheet_chrome(form, area, &sheet) + well_h;
+        let Some(card) = sheet_card(p, &self.me_sheet, area, height, &sheet) else {
+            return;
+        };
+        if card.dismissed {
+            self.close_sheet();
+        }
+        let panel = Rect::new(card.content.x, card.content.y, card.content.w, well_h);
+        let answer = well(p, panel, &rows, card.live, card.alpha);
+        if answer.copy == Some(0)
+            && let Some(id) = id
+        {
+            copy_text(&id);
+            self.copied = Some((id, 0.0));
+        }
+        if let Some(label) = &self.sign_out
+            && Pill::ghost(label)
+                .live(card.live)
+                .alpha(card.alpha)
+                .show(p, card.footer)
+        {
+            self.events.push(LinkerEvent::SignOut);
         }
     }
 

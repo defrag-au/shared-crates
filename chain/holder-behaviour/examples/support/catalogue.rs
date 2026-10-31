@@ -27,6 +27,14 @@ struct CatalogueFile {
 #[derive(serde::Deserialize)]
 struct CatalogueEntry {
     id: String,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    statement: String,
+    #[serde(default)]
+    axis: String,
+    #[serde(default)]
+    role: String,
     /// The source cannot answer; the catalogue says why. Never scores.
     #[serde(default)]
     unavailable: Option<String>,
@@ -96,6 +104,25 @@ impl LoadedCatalogue {
     /// Whether this build evaluated the achievement at `index`.
     pub fn evaluated(&self, index: usize) -> bool {
         self.predicates.get(index).is_some_and(Option::is_some)
+    }
+
+    /// The catalogue fields a surface shows, at a catalogue index.
+    pub fn title_at(&self, index: usize) -> Option<&str> {
+        self.entries.get(index).map(|entry| entry.title.as_str())
+    }
+
+    pub fn statement_at(&self, index: usize) -> Option<&str> {
+        self.entries
+            .get(index)
+            .map(|entry| entry.statement.as_str())
+    }
+
+    pub fn axis_at(&self, index: usize) -> Option<&str> {
+        self.entries.get(index).map(|entry| entry.axis.as_str())
+    }
+
+    pub fn role_at(&self, index: usize) -> Option<&str> {
+        self.entries.get(index).map(|entry| entry.role.as_str())
     }
 
     /// How many catalogue entries this build did not evaluate, grouped by predicate kind.

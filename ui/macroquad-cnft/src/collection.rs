@@ -4,7 +4,7 @@ use std::task::Poll;
 
 use cnft_holdings::{Browse, CollectionList, Order, PolicyId};
 
-use crate::fetch::{TextRequest, get_text};
+use image_miniquad::{TextRequest, get_text};
 
 /// Drives a [`Browse`] with real requests. Call [`Self::update`] once per
 /// frame; call [`Browse::want_more`] through [`Self::browse_mut`] when the

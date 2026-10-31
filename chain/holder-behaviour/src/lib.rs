@@ -8,7 +8,7 @@
 //! # The shape
 //!
 //! ```text
-//! chain-events  ──apply──▶  Store (lots)  ──evaluate──▶  Outcome per definition
+//! chain-events  ──apply──▶  Store (lots, mint order, market history)  ──evaluate──▶  Outcome
 //! ```
 //!
 //! Two functions and one trait. [`apply`] folds an event into a backend, [`evaluate`] reads
@@ -33,9 +33,11 @@
 //!
 //! # What this crate is not
 //!
-//! Not a ledger (it stores no market facts), not an allocation (that is a mapping over
-//! earned events), and not a catalogue loader (the TOML is read by the caller — the
-//! predicate type deserialises from the same `{ kind = … }` table the published rules use).
+//! Not a ledger (it stores only what an achievement reads — the subject's lots, the
+//! collection's mint order, and the marketplace placements and fills a subject was party
+//! to), not an allocation (that is a mapping over earned events), and not a catalogue loader
+//! (the TOML is read by the caller — the predicate type deserialises from the same
+//! `{ kind = … }` table the published rules use).
 //! The design is `cnft.dev-workers/docs/design/HOLDER_BEHAVIOUR.md`; the first client is
 //! the frozen Perps catalogue.
 
@@ -58,5 +60,7 @@ pub use fold::{Anomaly, Applied, Report, apply, rebuild};
 pub use memory::MemoryStore;
 pub use predicate::Predicate;
 pub use state::{
-    AcquiredBy, Holding, LotId, MintFact, MintSummary, NewLot, Slot, Store, SubjectId, UnitId,
+    AcquiredBy, Ask, BookChange, Drawdown, Fill, FloorPoint, FloorSeries, Holding, LotId,
+    MarketHistory, MarketSide, MintFact, MintSummary, NewFill, NewLot, Placement, Slot, Store,
+    SubjectId, UnitId,
 };

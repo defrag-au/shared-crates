@@ -29,6 +29,24 @@ pub enum HoldingKind {
     Contract,
 }
 
+/// What of a holding is locked, and what sits beside it in a pool.
+///
+/// Only a host with TIP facts and a replay at the tip passes one: the split
+/// describes now, and a rewound balance is a different moment. A holding with
+/// neither a lock nor an LP share has no split at all.
+///
+/// ⚠️ `vested` is INSIDE [`Holding::amount`] and `lp` is BESIDE it — the same
+/// distinction the archive draws, and getting them the wrong way round either
+/// double-counts the position or wraps `free` past zero.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HoldingSplit {
+    /// Locked units, in display units. `free = amount − vested`.
+    pub vested: f64,
+    /// Units of an ADA pool's reserve this holder's LP share accounts for, in
+    /// display units. Not part of `amount`: the reserve is the pool's row.
+    pub lp: f64,
+}
+
 /// One holding. `amount` is in display units; the host has applied decimals.
 #[derive(Clone, Copy, Debug)]
 pub struct Holding<'a> {
@@ -37,6 +55,23 @@ pub struct Holding<'a> {
     pub label: &'a str,
     pub kind: HoldingKind,
     pub amount: f64,
+    /// What of `amount` is locked and what a pool adds, where the host knows.
+    pub split: Option<HoldingSplit>,
+}
+
+impl Holding<'_> {
+    /// Units free to move: the amount less anything locked.
+    pub fn free(&self) -> f64 {
+        match self.split {
+            Some(s) => (self.amount - s.vested).max(0.0),
+            None => self.amount,
+        }
+    }
+
+    /// Units this holder's LP share is worth, beside its own balance.
+    pub fn lp(&self) -> f64 {
+        self.split.map_or(0.0, |s| s.lp)
+    }
 }
 
 /// A holding's colour: people by tier, brighter the bigger; each role its own.
@@ -178,7 +213,10 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
         }
         let rect = Rect::new(area.x, y, area.w, ROW_H - 2.0);
         let tone = holding_colour_with(vm.ink, &p.theme, row.holding.kind, vm.kinds);
-        // The share as a bar behind the row, against the largest.
+        // The share as a bar behind the row, against the largest. Where the
+        // host knows the split, the locked part is drawn INSIDE that length in
+        // the Lock ink: how much of a row cannot move is then a length rather
+        // than another number to read.
         let share = (row.holding.amount / largest) as f32;
         let w = (rect.w - 4.0) * share.clamp(0.0, 1.0);
         draw_rounded_rect(
@@ -189,14 +227,34 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
             4.0,
             with_alpha(p.theme.color.bg_secondary, 0.75),
         );
-        draw_rounded_rect(
-            rect.x,
-            rect.y,
-            w.max(2.0),
-            rect.h,
-            4.0,
-            with_alpha(tone, 0.12),
-        );
+        let locked = row
+            .holding
+            .split
+            .map_or(0.0, |s| {
+                s.vested / row.holding.amount.max(f64::MIN_POSITIVE)
+            })
+            .clamp(0.0, 1.0) as f32;
+        let free_w = w * (1.0 - locked);
+        if free_w > 0.5 {
+            draw_rounded_rect(
+                rect.x,
+                rect.y,
+                free_w.max(2.0),
+                rect.h,
+                4.0,
+                with_alpha(tone, 0.12),
+            );
+        }
+        if w - free_w > 0.5 {
+            draw_rounded_rect(
+                rect.x + free_w,
+                rect.y,
+                w - free_w,
+                rect.h,
+                4.0,
+                with_alpha(vm.ink.ada, 0.3),
+            );
+        }
         if let Some((c, a)) = row.flash {
             draw_rounded_rect(
                 rect.x,
@@ -240,13 +298,39 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
             ink,
             crate::Align::Start,
         );
-        p.text_in(
-            &format::compact(row.holding.amount),
-            mid(col_amt - 80.0, 80.0),
-            s,
-            p.theme.color.text_primary,
-            crate::Align::End,
-        );
+        // The amount, with the units a pool adds beside it: `+` and the figure
+        // in the pool's ink, so an LP position reads at a glance and is never
+        // mistaken for part of the balance.
+        let amount_box = Rect::new(col_amt - 80.0, rect.y, 80.0, rect.h);
+        let lp = row.holding.lp();
+        match lp > 0.0 {
+            true => {
+                let extra = format!("+{}", format::compact(lp));
+                let ew = p.measure(&extra, s).width;
+                p.text_in(
+                    &extra,
+                    Rect::new(amount_box.right() - ew, rect.y, ew, rect.h),
+                    s,
+                    vm.ink.pool,
+                    crate::Align::End,
+                );
+                let room = (amount_box.w - ew - 3.0).max(10.0);
+                p.text_in(
+                    &format::compact(row.holding.amount),
+                    Rect::new(amount_box.x, rect.y, room, rect.h),
+                    s,
+                    p.theme.color.text_primary,
+                    crate::Align::End,
+                );
+            }
+            false => p.text_in(
+                &format::compact(row.holding.amount),
+                amount_box,
+                s,
+                p.theme.color.text_primary,
+                crate::Align::End,
+            ),
+        }
         p.text_in(
             &format::share(row.holding.amount / total),
             mid(col_pct - 50.0, 50.0),

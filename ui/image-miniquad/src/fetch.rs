@@ -2,19 +2,21 @@
 //!
 //! Two platforms, one surface:
 //!
-//! - **wasm32**: `js/cnft.js` over the miniquad plugin protocol. The browser
-//!   fetches, and the browser decodes images, so any format the IIIF
-//!   service picks arrives as RGBA.
+//! - **wasm32**: `js/image.js` over the miniquad plugin protocol. The browser
+//!   fetches, and the browser decodes images, so any format a service picks
+//!   arrives as RGBA — JPEG, PNG, WebP, AVIF and GIF for nothing, where a
+//!   decoder compiled into wasm is hundreds of KB.
 //! - **native**: a thread per request with `ureq`, images decoded by
-//!   macroquad's `image` (PNG and TGA only, which is why [`crate::art_url`]
-//!   asks for PNG off the web). Native is real, not a stub: captures and
-//!   soaks run natively against live holdings.
+//!   macroquad's `image` (PNG and TGA only, which is why callers that build
+//!   their own URLs ask for PNG off the web). Native is real, not a stub:
+//!   captures and soaks run natively against live services.
 //!
 //! A request is a value the caller owns and polls, not an id into a global
 //! table. Dropping it abandons it.
 
 use std::task::Poll;
 
+use image_core::DecodedImage;
 use serde::Deserialize;
 
 /// Why a fetch failed, and so whether it is worth trying again.
@@ -72,9 +74,6 @@ impl std::fmt::Display for FetchError {
 
 impl std::error::Error for FetchError {}
 
-/// Decoded pixels: `width * height * 4` bytes of RGBA8.
-pub use image_core::DecodedImage;
-
 /// A GET whose body is text. Poll once per frame.
 pub struct TextRequest(imp::Text);
 
@@ -127,7 +126,8 @@ mod imp {
     use sapp_jsutils::JsObject;
     use serde::Deserialize;
 
-    use super::{DecodedImage, FetchError, Stage};
+    use crate::fetch::{FetchError, Stage};
+    use image_core::DecodedImage;
 
     // `wasm_import_module = "env"` is load-bearing since Rust 1.96: rustc no
     // longer passes `--allow-undefined` to wasm-ld, so an extern block whose
@@ -135,10 +135,10 @@ mod imp {
     // register under `env`.
     #[link(wasm_import_module = "env")]
     unsafe extern "C" {
-        fn cnft_fetch(url: JsObject, bearer: JsObject) -> i32;
-        fn cnft_decode_image(url: JsObject) -> i32;
-        fn cnft_image_bytes(id: i32) -> JsObject;
-        fn cnft_poll(id: i32) -> JsObject;
+        fn image_fetch(url: JsObject, bearer: JsObject) -> i32;
+        fn image_decode(url: JsObject) -> i32;
+        fn image_bytes(id: i32) -> JsObject;
+        fn image_poll(id: i32) -> JsObject;
     }
 
     #[derive(Deserialize)]
@@ -164,7 +164,7 @@ mod imp {
     /// The plugin's poll, with every malformed reply turned into an error
     /// rather than a panic.
     fn poll_id(id: i32) -> Poll<Result<String, FetchError>> {
-        let raw = js_to_string(unsafe { cnft_poll(id) });
+        let raw = js_to_string(unsafe { image_poll(id) });
         match serde_json::from_str::<Polled>(&raw) {
             Ok(Polled::Pending) => Poll::Pending,
             Ok(Polled::Ok { data }) => Poll::Ready(Ok(data)),
@@ -184,7 +184,7 @@ mod imp {
 
     impl Text {
         pub fn start(url: &str, bearer: &str) -> Self {
-            let id = unsafe { cnft_fetch(JsObject::string(url), JsObject::string(bearer)) };
+            let id = unsafe { image_fetch(JsObject::string(url), JsObject::string(bearer)) };
             Self { id: Some(id) }
         }
 
@@ -206,7 +206,7 @@ mod imp {
 
     impl Image {
         pub fn start(url: &str) -> Self {
-            let id = unsafe { cnft_decode_image(JsObject::string(url)) };
+            let id = unsafe { image_decode(JsObject::string(url)) };
             Self { id: Some(id) }
         }
 
@@ -225,7 +225,7 @@ mod imp {
                     )),
                     Ok(size) => {
                         let mut rgba = Vec::new();
-                        unsafe { cnft_image_bytes(id) }.to_byte_buffer(&mut rgba);
+                        unsafe { image_bytes(id) }.to_byte_buffer(&mut rgba);
                         Ok(DecodedImage::new(size.width, size.height, rgba))
                     }
                 },
@@ -242,7 +242,9 @@ mod imp {
     use std::sync::mpsc::{Receiver, TryRecvError, channel};
     use std::task::Poll;
 
-    use super::{DecodedImage, FetchError, Stage};
+    use image_core::DecodedImage;
+
+    use crate::fetch::{FetchError, Stage};
 
     /// Responses past this are refused rather than read: a misconfigured URL
     /// pointing at something huge should fail, not fill memory.
@@ -376,7 +378,7 @@ mod tests {
 
     #[test]
     fn the_plugin_failure_shape_parses() {
-        // What `fail()` in js/cnft.js writes.
+        // What `fail()` in js/image.js writes.
         let e: FetchError =
             serde_json::from_str(r#"{"stage":"http","status":404,"message":"Not Found"}"#).unwrap();
         assert_eq!(e, FetchError::new(Stage::Http, 404, "Not Found"));

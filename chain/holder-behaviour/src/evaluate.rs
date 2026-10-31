@@ -33,13 +33,14 @@
 //! wall clock the open intervals are measured at. A pending tenure reports its ETA on the
 //! unix axis, which is a date a reader can show; a rank still sorts by height.
 
-use chain_events::{Coverage, TxRef};
+use chain_events::{Coverage, Currency, PartyRole, TxRef};
 
 use std::collections::BTreeMap;
 
 use crate::predicate::Predicate;
 use crate::state::{
-    AcquiredBy, Holding, LotId, MintFact, MintSummary, Slot, Store, SubjectId, UnitId,
+    AcquiredBy, Fill, FloorSeries, Holding, LotId, MarketHistory, MarketSide, MintFact,
+    MintSummary, Placement, Slot, Store, SubjectId, UnitId,
 };
 
 /// One subject's trait rows, read once per evaluation.
@@ -105,6 +106,16 @@ pub enum Gap {
     Traits,
     /// The store never saw the collection mint, so its mint order is unknown.
     MintFacts,
+    /// The store carries no marketplace facts — it was built from a holder-only stream.
+    MarketFacts,
+    /// A fill the source did not key to its order, so the listing's age is unknown.
+    OrderAge,
+    /// A fill the source did not price, so a sale cannot be compared with anything.
+    FillPrice,
+    /// The store does not carry per-subject movement counts — a bundle row does not.
+    MovementFacts,
+    /// The collection's floor is not known at the moment the predicate reads.
+    FloorFacts,
 }
 
 /// What a predicate currently says about a subject.
@@ -171,6 +182,26 @@ pub enum Evidence {
         /// The values that were found, in the predicate's order.
         values: Vec<String>,
     },
+    /// One marketplace fact.
+    Market {
+        /// The order, when the source named one.
+        order: Option<String>,
+        /// What the order was, or what was taken.
+        side: MarketSide,
+        /// `true` for a settled trade, `false` for a placement.
+        filled: bool,
+        /// When it happened, where the chain coordinate is known.
+        at: Option<Slot>,
+        /// Unix seconds it happened.
+        unix: u64,
+    },
+    /// A movement count against the assets it was measured over.
+    Movements {
+        /// How many holder movements the subject was a party to.
+        movements: u64,
+        /// How many distinct units it ever held.
+        units: u64,
+    },
 }
 
 /// One achievement's answer for one subject.
@@ -214,6 +245,36 @@ pub fn evaluate<'a, S: Store>(
     } else {
         MintView::default()
     };
+    // Marketplace facts, read once. `None` is "this store has no market source", which
+    // every market predicate reports as a gap rather than as no activity.
+    let market = if definitions
+        .iter()
+        .any(|definition| definition.predicate.needs_market_facts())
+    {
+        store.market_history(subject)?
+    } else {
+        None
+    };
+    // The floor over time, read once. It is derived from the same marketplace feed, but it
+    // is a collection-level series rather than a per-subject history.
+    let floor = if definitions
+        .iter()
+        .any(|definition| definition.predicate.needs_floor_facts())
+    {
+        store.floor_series()?
+    } else {
+        None
+    };
+    // The subject's movement count, read once. `None` is "this store does not carry one",
+    // which a ratio predicate reports as a gap rather than as no activity.
+    let movements = if definitions
+        .iter()
+        .any(|definition| definition.predicate.needs_movements())
+    {
+        store.movements_of(subject)?
+    } else {
+        None
+    };
     let mut outcomes = Vec::with_capacity(definitions.len());
     for definition in definitions {
         let (progress, evidence) = match &definition.predicate {
@@ -222,7 +283,59 @@ pub fn evaluate<'a, S: Store>(
             Predicate::TotalTenureAtLeast { days } => {
                 total_tenure_at_least(&lots, at, u64::from(*days) * SECONDS_PER_DAY)
             }
+            Predicate::AnySpanAtLeast { days } => {
+                any_span_at_least(&lots, at, u64::from(*days) * SECONDS_PER_DAY)
+            }
+            Predicate::SpanAtLeast { days, assets } => span_at_least(
+                &lots,
+                at,
+                u64::from(*days) * SECONDS_PER_DAY,
+                u64::from(*assets),
+            ),
+            Predicate::HoldsNeverMoved => holds_never_moved(&lots, at),
+            Predicate::ReacquiredSameAsset { times } => {
+                reacquired_same_asset(&lots, at, u64::from(*times))
+            }
+            Predicate::ReturnedAfterIdle { days } => {
+                returned_after_idle(&lots, at, u64::from(*days) * SECONDS_PER_DAY)
+            }
             Predicate::RoundTripsAtLeast { n } => round_trips_at_least(&lots, at, u64::from(*n)),
+            Predicate::MarketPurchase => market_purchase(market.as_ref(), at),
+            Predicate::ListedCount { at_least } => {
+                listed_count(market.as_ref(), at, u64::from(*at_least))
+            }
+            Predicate::BoughtEscrowWithin { seconds } => {
+                bought_escrow_within(market.as_ref(), at, *seconds)
+            }
+            Predicate::BoughtListingOlderThan { days } => {
+                bought_listing_older_than(market.as_ref(), at, u64::from(*days) * SECONDS_PER_DAY)
+            }
+            Predicate::BoughtViaCollectionOffer => {
+                bought_offer(market.as_ref(), at, MarketSide::CollectionBid)
+            }
+            Predicate::OfferAcceptedAsBuyer => {
+                bought_offer(market.as_ref(), at, MarketSide::ItemBid)
+            }
+            Predicate::OfferCreated => offer_created(market.as_ref(), at),
+            Predicate::NoSaleBelowMint { amount, decimals } => {
+                no_sale_below_mint(market.as_ref(), at, *amount, *decimals)
+            }
+            Predicate::MovementRatioAtLeast { ratio } => {
+                movement_ratio_at_least(movements, &lots, at, *ratio)
+            }
+            Predicate::SoldAtOrBelowFloor => {
+                sold_against_floor(market.as_ref(), at, |price, floor| price <= floor)
+            }
+            Predicate::SoldAboveFloor => {
+                sold_against_floor(market.as_ref(), at, |price, floor| price > floor)
+            }
+            Predicate::SoldIntoStrength => sold_into_strength(market.as_ref(), at),
+            Predicate::AcquiredDuringDrawdown { fraction } => {
+                acquired_during_drawdown(&lots, floor.as_ref(), at, *fraction)
+            }
+            Predicate::DrawdownCovered { fraction } => {
+                drawdown_covered(&lots, floor.as_ref(), at, *fraction)
+            }
             Predicate::HasAllTraits { category, values } => {
                 has_all_traits(&traits, &lots, at, category, values)
             }
@@ -432,6 +545,269 @@ fn total_tenure_at_least(
     )
 }
 
+/// The lot with the longest interval as at `now_unix`, earliest acquisition breaking a tie.
+fn longest_span(lots: &[Holding], now_unix: u64) -> Option<(&Holding, u64)> {
+    let mut best: Option<(&Holding, u64)> = None;
+    for lot in lots {
+        let span = lot.tenure_at(now_unix);
+        let replace = match best {
+            None => true,
+            Some((held, longest)) => {
+                span > longest
+                    || (span == longest
+                        && (lot.acquired_at, lot.lot) < (held.acquired_at, held.lot))
+            }
+        };
+        if replace {
+            best = Some((lot, span));
+        }
+    }
+    best
+}
+
+/// One lot's continuous interval reached `need` seconds.
+fn any_span_at_least(lots: &[Holding], at: &Assessment, need: u64) -> (Progress, Vec<Evidence>) {
+    if at.holder_coverage != Coverage::Complete {
+        return (Progress::Unavailable(Gap::HolderCoverage), Vec::new());
+    }
+    let need = need.max(1);
+    let best = longest_span(lots, at.now_unix);
+    let have = best.map_or(0, |(_, span)| span);
+    if have >= need
+        && let Some((lot, _)) = best
+    {
+        return (
+            Progress::Earned {
+                since: EarnedSince::AsAt {
+                    slot: at.now,
+                    unix: at.now_unix,
+                },
+            },
+            vec![evidence_of(lot)],
+        );
+    }
+    // The earliest open lot to reach the threshold. One already at it would have earned.
+    let eta_unix = lots
+        .iter()
+        .filter(|lot| lot.is_open())
+        .map(|lot| lot.acquired_unix.saturating_add(need))
+        .min();
+    (
+        Progress::Pending {
+            have,
+            need,
+            eta_unix,
+        },
+        Vec::new(),
+    )
+}
+
+/// `assets` distinct units each had a continuous interval of at least `seconds`.
+fn span_at_least(
+    lots: &[Holding],
+    at: &Assessment,
+    seconds: u64,
+    assets: u64,
+) -> (Progress, Vec<Evidence>) {
+    if at.holder_coverage != Coverage::Complete {
+        return (Progress::Unavailable(Gap::HolderCoverage), Vec::new());
+    }
+    let need = assets.max(1);
+    let seconds = seconds.max(1);
+    let mut per_unit: BTreeMap<UnitId, (&Holding, u64)> = BTreeMap::new();
+    for lot in lots {
+        let span = lot.tenure_at(at.now_unix);
+        let replace = match per_unit.get(&lot.unit) {
+            None => true,
+            Some((held, best)) => {
+                span > *best
+                    || (span == *best && (lot.acquired_at, lot.lot) < (held.acquired_at, held.lot))
+            }
+        };
+        if replace {
+            per_unit.insert(lot.unit, (lot, span));
+        }
+    }
+    let mut reached: Vec<(&Holding, u64)> = per_unit
+        .values()
+        .filter(|(_, span)| *span >= seconds)
+        .copied()
+        .collect();
+    reached.sort_by_key(|(lot, _)| (lot.acquired_unix, lot.lot));
+    let have = reached.len() as u64;
+    if have >= need {
+        let evidence = reached
+            .iter()
+            .take(need as usize)
+            .map(|(lot, _)| evidence_of(lot))
+            .collect();
+        return (
+            Progress::Earned {
+                since: EarnedSince::AsAt {
+                    slot: at.now,
+                    unix: at.now_unix,
+                },
+            },
+            evidence,
+        );
+    }
+
+    // Units that will reach it while still open, and the earliest instant each one crosses.
+    let mut crossings: BTreeMap<UnitId, u64> = BTreeMap::new();
+    for lot in lots {
+        if !lot.is_open()
+            || per_unit
+                .get(&lot.unit)
+                .is_some_and(|(_, span)| *span >= seconds)
+        {
+            continue;
+        }
+        let crossing = lot.acquired_unix.saturating_add(seconds);
+        crossings
+            .entry(lot.unit)
+            .and_modify(|earliest| *earliest = (*earliest).min(crossing))
+            .or_insert(crossing);
+    }
+    let mut crossings: Vec<u64> = crossings.into_values().collect();
+    crossings.sort_unstable();
+    let remaining = (need - have) as usize;
+    let eta_unix = crossings.get(remaining - 1).copied();
+    (
+        Progress::Pending {
+            have,
+            need,
+            eta_unix,
+        },
+        Vec::new(),
+    )
+}
+
+/// Holds a unit whose only movement since the mint was the mint itself.
+fn holds_never_moved(lots: &[Holding], at: &Assessment) -> (Progress, Vec<Evidence>) {
+    if at.holder_coverage != Coverage::Complete {
+        return (Progress::Unavailable(Gap::HolderCoverage), Vec::new());
+    }
+    let untouched = lots
+        .iter()
+        .filter(|lot| lot.acquired_by == AcquiredBy::Mint && lot.is_open())
+        .min_by_key(|lot| (lot.acquired_at, lot.lot));
+    match untouched {
+        Some(lot) => (
+            Progress::Earned {
+                since: EarnedSince::Exact(lot.acquired_at),
+            },
+            vec![evidence_of(lot)],
+        ),
+        None => (
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None,
+            },
+            Vec::new(),
+        ),
+    }
+}
+
+/// Counts reacquisitions: a unit that fully left, then arrived again from another party.
+fn reacquired_same_asset(
+    lots: &[Holding],
+    at: &Assessment,
+    times: u64,
+) -> (Progress, Vec<Evidence>) {
+    if at.holder_coverage != Coverage::Complete {
+        return (Progress::Unavailable(Gap::HolderCoverage), Vec::new());
+    }
+    let need = times.max(1);
+    let mut by_unit: BTreeMap<UnitId, Vec<&Holding>> = BTreeMap::new();
+    for lot in lots {
+        by_unit.entry(lot.unit).or_default().push(lot);
+    }
+    let mut proved: Vec<&Holding> = Vec::new();
+    for held in by_unit.values_mut() {
+        held.sort_by_key(|lot| (lot.acquired_at, lot.lot));
+        let mut closed: Option<Slot> = None;
+        for lot in held.iter().copied() {
+            if lot.acquired_by == AcquiredBy::Transfer
+                && let Some(disposed) = closed
+                && lot.acquired_at >= disposed
+            {
+                proved.push(lot);
+            }
+            if let Some(disposed) = lot.disposed_at {
+                closed = Some(closed.map_or(disposed, |latest| latest.max(disposed)));
+            }
+        }
+    }
+    proved.sort_by_key(|lot| (lot.acquired_at, lot.lot));
+    let have = proved.len() as u64;
+    if have >= need {
+        let proving = proved[(need - 1) as usize];
+        return (
+            Progress::Earned {
+                since: EarnedSince::Exact(proving.acquired_at),
+            },
+            proved
+                .iter()
+                .take(need as usize)
+                .map(|lot| evidence_of(lot))
+                .collect(),
+        );
+    }
+    (
+        Progress::Pending {
+            have,
+            need,
+            eta_unix: None,
+        },
+        Vec::new(),
+    )
+}
+
+/// An idle gap of at least `gap` seconds between two holding periods.
+fn returned_after_idle(lots: &[Holding], at: &Assessment, gap: u64) -> (Progress, Vec<Evidence>) {
+    if at.holder_coverage != Coverage::Complete {
+        return (Progress::Unavailable(Gap::HolderCoverage), Vec::new());
+    }
+    let gap = gap.max(1);
+    // Half-open holding intervals, with a zero-length lot dropped: it covers no instant and
+    // would otherwise look like a holding period that ended where it started.
+    let mut spans: Vec<(u64, u64, &Holding)> = lots
+        .iter()
+        .filter_map(|lot| {
+            let end = lot.disposed_unix.unwrap_or(at.now_unix);
+            (end > lot.acquired_unix).then_some((lot.acquired_unix, end, lot))
+        })
+        .collect();
+    spans.sort_by_key(|(start, end, lot)| (*start, *end, lot.lot));
+
+    let mut merged_end: Option<(u64, &Holding)> = None;
+    for (start, end, lot) in spans {
+        if let Some((previous, _)) = merged_end
+            && start.saturating_sub(previous) >= gap
+        {
+            return (
+                Progress::Earned {
+                    since: EarnedSince::Exact(lot.acquired_at),
+                },
+                vec![evidence_of(lot)],
+            );
+        }
+        merged_end = Some(match merged_end {
+            Some((previous, held)) if previous >= end => (previous, held),
+            _ => (end, lot),
+        });
+    }
+    (
+        Progress::Pending {
+            have: 0,
+            need: 1,
+            eta_unix: None,
+        },
+        Vec::new(),
+    )
+}
+
 fn round_trips_at_least(lots: &[Holding], at: &Assessment, need: u64) -> (Progress, Vec<Evidence>) {
     if at.holder_coverage != Coverage::Complete {
         return (Progress::Unavailable(Gap::HolderCoverage), Vec::new());
@@ -468,6 +844,574 @@ fn round_trips_at_least(lots: &[Holding], at: &Assessment, need: u64) -> (Progre
         },
         Vec::new(),
     )
+}
+
+// ============================================================================
+// Market — what the subject did on a marketplace
+// ============================================================================
+
+/// When a marketplace fact became true: its own coordinate, or the reading's when the
+/// source did not give one (an OpenSea message names a wall clock and no block).
+fn market_since(at: Option<Slot>, reading: &Assessment) -> EarnedSince {
+    match at {
+        Some(slot) => EarnedSince::Exact(slot),
+        None => EarnedSince::AsAt {
+            slot: reading.now,
+            unix: reading.now_unix,
+        },
+    }
+}
+
+fn fill_evidence(fill: &Fill) -> Evidence {
+    Evidence::Market {
+        order: fill.order.clone(),
+        side: fill.side,
+        filled: true,
+        at: fill.at,
+        unix: fill.unix,
+    }
+}
+
+fn placement_evidence(placement: &Placement) -> Evidence {
+    Evidence::Market {
+        order: Some(placement.order.clone()),
+        side: placement.side,
+        filled: false,
+        at: placement.at,
+        unix: placement.unix,
+    }
+}
+
+/// Where the subject was recorded as the buyer in any settled trade.
+fn market_purchase(history: Option<&MarketHistory>, at: &Assessment) -> (Progress, Vec<Evidence>) {
+    let Some(history) = history else {
+        return (Progress::Unavailable(Gap::MarketFacts), Vec::new());
+    };
+    let bought = history
+        .fills
+        .iter()
+        .filter(|fill| fill.role == PartyRole::Buyer)
+        .min_by_key(|fill| fill.unix);
+    match bought {
+        Some(fill) => (
+            Progress::Earned {
+                since: market_since(fill.at, at),
+            },
+            vec![fill_evidence(fill)],
+        ),
+        None => (
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None,
+            },
+            Vec::new(),
+        ),
+    }
+}
+
+/// How many distinct orders the subject listed.
+fn listed_count(
+    history: Option<&MarketHistory>,
+    at: &Assessment,
+    need: u64,
+) -> (Progress, Vec<Evidence>) {
+    let Some(history) = history else {
+        return (Progress::Unavailable(Gap::MarketFacts), Vec::new());
+    };
+    let need = need.max(1);
+    let mut listed: Vec<&Placement> = history
+        .placements
+        .iter()
+        .filter(|placement| placement.side == MarketSide::Ask)
+        .collect();
+    listed.sort_by_key(|placement| (placement.unix, placement.order.as_str()));
+    let have = listed.len() as u64;
+    if have >= need {
+        let proving = listed[(need - 1) as usize];
+        return (
+            Progress::Earned {
+                since: market_since(proving.at, at),
+            },
+            listed
+                .iter()
+                .take(need as usize)
+                .map(|placement| placement_evidence(placement))
+                .collect(),
+        );
+    }
+    (
+        Progress::Pending {
+            have,
+            need,
+            eta_unix: None,
+        },
+        Vec::new(),
+    )
+}
+
+/// A purchase of an ask whose age satisfies `accept`.
+///
+/// An ask fill the source did not key has no age, so when none qualifies and at least one
+/// such fill exists the answer is the gap: an unkeyed fill is not a fast or a stale one.
+fn bought_with_age(
+    history: Option<&MarketHistory>,
+    at: &Assessment,
+    accept: impl Fn(u64) -> bool,
+) -> (Progress, Vec<Evidence>) {
+    let Some(history) = history else {
+        return (Progress::Unavailable(Gap::MarketFacts), Vec::new());
+    };
+    let mut proved: Option<&Fill> = None;
+    let mut unkeyed = false;
+    for fill in &history.fills {
+        if fill.role != PartyRole::Buyer || fill.side != MarketSide::Ask {
+            continue;
+        }
+        match fill.order_age {
+            Some(age) if accept(age) => {
+                if proved.is_none_or(|held| fill.unix < held.unix) {
+                    proved = Some(fill);
+                }
+            }
+            Some(_) => {}
+            None => unkeyed = true,
+        }
+    }
+    if let Some(fill) = proved {
+        return (
+            Progress::Earned {
+                since: market_since(fill.at, at),
+            },
+            vec![fill_evidence(fill)],
+        );
+    }
+    if unkeyed {
+        return (Progress::Unavailable(Gap::OrderAge), Vec::new());
+    }
+    (
+        Progress::Pending {
+            have: 0,
+            need: 1,
+            eta_unix: None,
+        },
+        Vec::new(),
+    )
+}
+
+fn bought_escrow_within(
+    history: Option<&MarketHistory>,
+    at: &Assessment,
+    seconds: u64,
+) -> (Progress, Vec<Evidence>) {
+    bought_with_age(history, at, |age| age <= seconds)
+}
+
+fn bought_listing_older_than(
+    history: Option<&MarketHistory>,
+    at: &Assessment,
+    seconds: u64,
+) -> (Progress, Vec<Evidence>) {
+    bought_with_age(history, at, |age| age >= seconds)
+}
+
+/// The subject bought through a bid of one particular scope.
+fn bought_offer(
+    history: Option<&MarketHistory>,
+    at: &Assessment,
+    side: MarketSide,
+) -> (Progress, Vec<Evidence>) {
+    let Some(history) = history else {
+        return (Progress::Unavailable(Gap::MarketFacts), Vec::new());
+    };
+    let bought = history
+        .fills
+        .iter()
+        .filter(|fill| fill.role == PartyRole::Buyer && fill.side == side)
+        .min_by_key(|fill| fill.unix);
+    match bought {
+        Some(fill) => (
+            Progress::Earned {
+                since: market_since(fill.at, at),
+            },
+            vec![fill_evidence(fill)],
+        ),
+        None => (
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None,
+            },
+            Vec::new(),
+        ),
+    }
+}
+
+/// The subject placed an offer on one asset.
+fn offer_created(history: Option<&MarketHistory>, at: &Assessment) -> (Progress, Vec<Evidence>) {
+    let Some(history) = history else {
+        return (Progress::Unavailable(Gap::MarketFacts), Vec::new());
+    };
+    let placed = history
+        .placements
+        .iter()
+        .filter(|placement| placement.side == MarketSide::ItemBid)
+        .min_by_key(|placement| placement.unix);
+    match placed {
+        Some(placement) => (
+            Progress::Earned {
+                since: market_since(placement.at, at),
+            },
+            vec![placement_evidence(placement)],
+        ),
+        None => (
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None,
+            },
+            Vec::new(),
+        ),
+    }
+}
+
+/// The subject never sold below the mint price.
+///
+/// Strict in the direction that matters: an unpriced sale leaves the answer unprovable
+/// rather than earned, because it could have been the below-mint one. A subject that never
+/// sold reports progress, not a gap — `never_disposed` is the achievement for holding.
+fn no_sale_below_mint(
+    history: Option<&MarketHistory>,
+    at: &Assessment,
+    amount: u64,
+    decimals: u8,
+) -> (Progress, Vec<Evidence>) {
+    let Some(history) = history else {
+        return (Progress::Unavailable(Gap::MarketFacts), Vec::new());
+    };
+    let mint = u128::from(amount);
+    let mut first_sale: Option<&Fill> = None;
+    let mut unjudged = false;
+    for fill in history
+        .fills
+        .iter()
+        .filter(|fill| fill.role == PartyRole::Seller)
+    {
+        let Some(price) = fill.price.as_ref() else {
+            unjudged = true;
+            continue;
+        };
+        if !matches!(price.currency, Currency::Native) || price.decimals != decimals {
+            unjudged = true;
+            continue;
+        }
+        if price.amount < mint {
+            return (Progress::Missed, Vec::new());
+        }
+        if first_sale.is_none_or(|held| fill.unix < held.unix) {
+            first_sale = Some(fill);
+        }
+    }
+    if unjudged {
+        return (Progress::Unavailable(Gap::FillPrice), Vec::new());
+    }
+    if let Some(fill) = first_sale {
+        return (
+            Progress::Earned {
+                since: market_since(fill.at, at),
+            },
+            vec![fill_evidence(fill)],
+        );
+    }
+    (
+        Progress::Pending {
+            have: 0,
+            need: 1,
+            eta_unix: None,
+        },
+        Vec::new(),
+    )
+}
+
+/// Holder movements per asset ever held.
+///
+/// The denominator is the distinct units the subject ever held, so acquiring more raises the
+/// bar as well as the count. A subject that never held one stays pending rather than
+/// dividing by zero. `EarnedSince::AsAt` is the honest coordinate: the count crossed the
+/// threshold somewhere between the last event and this reading, and no single slot can be
+/// named for a ratio whose denominator also moves.
+fn movement_ratio_at_least(
+    movements: Option<u64>,
+    lots: &[Holding],
+    at: &Assessment,
+    ratio: f64,
+) -> (Progress, Vec<Evidence>) {
+    if at.holder_coverage != Coverage::Complete {
+        return (Progress::Unavailable(Gap::HolderCoverage), Vec::new());
+    }
+    let Some(movements) = movements else {
+        return (Progress::Unavailable(Gap::MovementFacts), Vec::new());
+    };
+    let units = units_ever(lots).len() as u64;
+    let need = (units as f64 * ratio).ceil() as u64;
+    if units > 0 && movements >= need {
+        return (
+            Progress::Earned {
+                since: EarnedSince::AsAt {
+                    slot: at.now,
+                    unix: at.now_unix,
+                },
+            },
+            vec![Evidence::Movements { movements, units }],
+        );
+    }
+    (
+        Progress::Pending {
+            have: movements,
+            need: need.max(1),
+            eta_unix: None,
+        },
+        Vec::new(),
+    )
+}
+
+/// A sale judged against the floor that stood when it settled.
+///
+/// The fill carries that floor, captured by the fold **before** the ask it consumed left the
+/// book. Looking it up from the series afterwards would judge a sale against a floor its own
+/// removal had raised.
+fn sold_against_floor(
+    history: Option<&MarketHistory>,
+    at: &Assessment,
+    accept: impl Fn(u128, u128) -> bool,
+) -> (Progress, Vec<Evidence>) {
+    let Some(history) = history else {
+        return (Progress::Unavailable(Gap::MarketFacts), Vec::new());
+    };
+    let mut proved: Option<&Fill> = None;
+    let mut unjudged = false;
+    for fill in history
+        .fills
+        .iter()
+        .filter(|fill| fill.role == PartyRole::Seller)
+    {
+        let Some((price, settled)) = price_against_floor(fill) else {
+            unjudged = true;
+            continue;
+        };
+        if accept(price, settled) && proved.is_none_or(|held| fill.unix < held.unix) {
+            proved = Some(fill);
+        }
+    }
+    if let Some(fill) = proved {
+        return (
+            Progress::Earned {
+                since: market_since(fill.at, at),
+            },
+            vec![fill_evidence(fill)],
+        );
+    }
+    if unjudged {
+        return (Progress::Unavailable(Gap::FloorFacts), Vec::new());
+    }
+    (
+        Progress::Pending {
+            have: 0,
+            need: 1,
+            eta_unix: None,
+        },
+        Vec::new(),
+    )
+}
+
+/// The fill's price and the floor it settled against, when both are comparable.
+///
+/// `None` means the sale cannot be judged — no price, no floor captured at the trade, or a
+/// price in a denomination the floor is not stated in.
+fn price_against_floor(fill: &Fill) -> Option<(u128, u128)> {
+    let price = fill.price.as_ref()?;
+    if !matches!(price.currency, Currency::Native) {
+        return None;
+    }
+    let settled = fill.floor.as_ref()?;
+    if price.decimals != settled.decimals {
+        return None;
+    }
+    Some((price.amount, settled.amount))
+}
+
+/// A sale above the floor while the floor's last move was up.
+fn sold_into_strength(
+    history: Option<&MarketHistory>,
+    at: &Assessment,
+) -> (Progress, Vec<Evidence>) {
+    let Some(history) = history else {
+        return (Progress::Unavailable(Gap::MarketFacts), Vec::new());
+    };
+    let mut proved: Option<&Fill> = None;
+    let mut unjudged = false;
+    for fill in history
+        .fills
+        .iter()
+        .filter(|fill| fill.role == PartyRole::Seller)
+    {
+        let Some((price, settled)) = price_against_floor(fill) else {
+            unjudged = true;
+            continue;
+        };
+        let Some(rising) = fill.floor_rising else {
+            unjudged = true;
+            continue;
+        };
+        if price > settled && rising && proved.is_none_or(|held| fill.unix < held.unix) {
+            proved = Some(fill);
+        }
+    }
+    if let Some(fill) = proved {
+        return (
+            Progress::Earned {
+                since: market_since(fill.at, at),
+            },
+            vec![fill_evidence(fill)],
+        );
+    }
+    if unjudged {
+        return (Progress::Unavailable(Gap::FloorFacts), Vec::new());
+    }
+    (
+        Progress::Pending {
+            have: 0,
+            need: 1,
+            eta_unix: None,
+        },
+        Vec::new(),
+    )
+}
+
+/// An acquisition made while the floor was below its prior peak.
+fn acquired_during_drawdown(
+    lots: &[Holding],
+    floor: Option<&FloorSeries>,
+    at: &Assessment,
+    fraction: f64,
+) -> (Progress, Vec<Evidence>) {
+    let Some(floor) = floor else {
+        return (Progress::Unavailable(Gap::FloorFacts), Vec::new());
+    };
+    let need = basis_points(fraction);
+    let mut have = 0u64;
+    let mut proved: Option<(&Holding, Option<Slot>)> = None;
+    let mut unjudged = false;
+    for lot in lots {
+        let Some(point) = floor.at(lot.acquired_unix) else {
+            unjudged = true;
+            continue;
+        };
+        let (Some(current), Some(peak)) = (point.floor, floor.peak_through(lot.acquired_unix))
+        else {
+            unjudged = true;
+            continue;
+        };
+        if peak == 0 {
+            continue;
+        }
+        let drawdown = 1.0 - current as f64 / peak as f64;
+        let reached = basis_points(drawdown);
+        if reached > have {
+            have = reached;
+            proved = Some((lot, point.at));
+        }
+    }
+    if have >= need
+        && let Some((lot, slot)) = proved
+    {
+        return (
+            Progress::Earned {
+                since: since_or_reading(slot, at),
+            },
+            vec![evidence_of(lot)],
+        );
+    }
+    if unjudged {
+        return (Progress::Unavailable(Gap::FloorFacts), Vec::new());
+    }
+    (
+        Progress::Pending {
+            have,
+            need,
+            eta_unix: None,
+        },
+        Vec::new(),
+    )
+}
+
+/// A holding span that covered a floor drawdown, peak and trough both inside it.
+fn drawdown_covered(
+    lots: &[Holding],
+    floor: Option<&FloorSeries>,
+    at: &Assessment,
+    fraction: f64,
+) -> (Progress, Vec<Evidence>) {
+    let Some(floor) = floor else {
+        return (Progress::Unavailable(Gap::FloorFacts), Vec::new());
+    };
+    let need = basis_points(fraction);
+    let mut have = 0u64;
+    let mut proved: Option<(&Holding, Option<Slot>)> = None;
+    let mut unjudged = false;
+    for lot in lots {
+        let start = lot.acquired_unix;
+        let end = lot.disposed_unix.unwrap_or(at.now_unix);
+        if end <= start {
+            continue;
+        }
+        match floor.max_drawdown(start, end) {
+            None => unjudged = true,
+            Some(drawdown) => {
+                let reached = basis_points(drawdown.fraction);
+                if reached > have {
+                    have = reached;
+                    proved = Some((lot, drawdown.at));
+                }
+            }
+        }
+    }
+    if have >= need
+        && let Some((lot, slot)) = proved
+    {
+        return (
+            Progress::Earned {
+                since: since_or_reading(slot, at),
+            },
+            vec![evidence_of(lot)],
+        );
+    }
+    if unjudged {
+        return (Progress::Unavailable(Gap::FloorFacts), Vec::new());
+    }
+    (
+        Progress::Pending {
+            have,
+            need,
+            eta_unix: None,
+        },
+        Vec::new(),
+    )
+}
+
+/// A fraction as basis points, which is the unit `Progress` reports it in.
+fn basis_points(fraction: f64) -> u64 {
+    (fraction.clamp(0.0, 1.0) * 10_000.0).round() as u64
+}
+
+fn since_or_reading(at: Option<Slot>, reading: &Assessment) -> EarnedSince {
+    match at {
+        Some(slot) => EarnedSince::Exact(slot),
+        None => EarnedSince::AsAt {
+            slot: reading.now,
+            unix: reading.now_unix,
+        },
+    }
 }
 
 /// Every one of `values` was carried by a unit held **at the same instant**.
@@ -1346,6 +2290,450 @@ mod tests {
     }
 
     #[test]
+    fn a_span_is_continuous_and_a_tenure_is_cumulative() {
+        // Held 60 days, sold, reacquired at the same slot, held another 60: 120 asset-days
+        // of tenure but no 100-day span.
+        use crate::memory::fixtures::{account, mint, perp, transfer};
+        let mut store = MemoryStore::default();
+        let asset = perp("5065727031");
+        let sixty = 60 * SECONDS_PER_DAY;
+        apply(&mut store, &mint(&asset, "addr1alice", 100)).unwrap();
+        apply(
+            &mut store,
+            &transfer(&asset, "addr1alice", "addr1bob", 100 + sixty),
+        )
+        .unwrap();
+        apply(
+            &mut store,
+            &transfer(&asset, "addr1bob", "addr1alice", 100 + sixty),
+        )
+        .unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let now = 100 + 2 * sixty;
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(now),
+            &[
+                definition("span", Predicate::AnySpanAtLeast { days: 100 }),
+                definition("tenure", Predicate::TotalTenureAtLeast { days: 100 }),
+            ],
+        )
+        .unwrap();
+        assert!(matches!(
+            find(&outcomes, "tenure").progress,
+            Progress::Earned { .. }
+        ));
+        assert_eq!(
+            find(&outcomes, "span").progress,
+            Progress::Pending {
+                have: sixty,
+                need: 100 * SECONDS_PER_DAY,
+                eta_unix: Some(FIXTURE_ORIGIN + 100 + sixty + 100 * SECONDS_PER_DAY),
+            }
+        );
+    }
+
+    #[test]
+    fn a_span_pending_reports_the_date_it_will_be_earned() {
+        let (store, subject) = crate::memory::fixtures::alice_mints_one();
+        let ten = 10 * SECONDS_PER_DAY;
+        let now = 100 + ten;
+        let outcomes = evaluate(
+            &store,
+            subject,
+            &at(now),
+            &[definition("span", Predicate::AnySpanAtLeast { days: 100 })],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "span").progress,
+            Progress::Pending {
+                have: ten,
+                need: 100 * SECONDS_PER_DAY,
+                eta_unix: Some(FIXTURE_ORIGIN + 100 + 100 * SECONDS_PER_DAY),
+            }
+        );
+    }
+
+    #[test]
+    fn a_span_is_earned_from_a_closed_lot() {
+        // The interval ends at the sale, so the span is fixed and still counts.
+        use crate::memory::fixtures::{account, mint, perp, transfer};
+        let mut store = MemoryStore::default();
+        let asset = perp("5065727031");
+        let hundred = 100 * SECONDS_PER_DAY;
+        apply(&mut store, &mint(&asset, "addr1alice", 100)).unwrap();
+        apply(
+            &mut store,
+            &transfer(&asset, "addr1alice", "addr1bob", 100 + hundred),
+        )
+        .unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(100 + 2 * hundred),
+            &[definition("span", Predicate::AnySpanAtLeast { days: 100 })],
+        )
+        .unwrap();
+        assert!(matches!(
+            find(&outcomes, "span").progress,
+            Progress::Earned { .. }
+        ));
+    }
+
+    #[test]
+    fn span_at_least_counts_distinct_units_not_lots() {
+        let (store, subject) = crate::memory::fixtures::alice_mints_two();
+        let now = 100 + 100 * SECONDS_PER_DAY;
+        let outcomes = evaluate(
+            &store,
+            subject,
+            &at(now),
+            &[
+                definition(
+                    "two",
+                    Predicate::SpanAtLeast {
+                        days: 100,
+                        assets: 2,
+                    },
+                ),
+                definition(
+                    "three",
+                    Predicate::SpanAtLeast {
+                        days: 100,
+                        assets: 3,
+                    },
+                ),
+            ],
+        )
+        .unwrap();
+        assert!(matches!(
+            find(&outcomes, "two").progress,
+            Progress::Earned { .. }
+        ));
+        assert_eq!(
+            find(&outcomes, "three").progress,
+            Progress::Pending {
+                have: 2,
+                need: 3,
+                eta_unix: None,
+            }
+        );
+    }
+
+    #[test]
+    fn span_at_least_reports_when_the_next_asset_will_qualify() {
+        use crate::memory::fixtures::{account, mint, perp};
+        let mut store = MemoryStore::default();
+        for (index, height) in [100, 200, 300].into_iter().enumerate() {
+            let asset = perp(&format!("506572704{index}"));
+            apply(&mut store, &mint(&asset, "addr1alice", height)).unwrap();
+        }
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(100 + 10 * SECONDS_PER_DAY),
+            &[definition(
+                "three",
+                Predicate::SpanAtLeast {
+                    days: 100,
+                    assets: 3,
+                },
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "three").progress,
+            Progress::Pending {
+                have: 0,
+                need: 3,
+                eta_unix: Some(FIXTURE_ORIGIN + 300 + 100 * SECONDS_PER_DAY),
+            }
+        );
+    }
+
+    #[test]
+    fn holds_never_moved_is_an_open_mint_lot() {
+        let (store, subject) = crate::memory::fixtures::alice_mints_one();
+        let outcomes = evaluate(
+            &store,
+            subject,
+            &at(5_000),
+            &[definition("untouched", Predicate::HoldsNeverMoved)],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "untouched").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(100)
+            }
+        );
+    }
+
+    #[test]
+    fn holds_never_moved_is_not_a_bought_or_reacquired_asset() {
+        use crate::memory::fixtures::{account, mint, perp, transfer};
+        let mut store = MemoryStore::default();
+        let asset = perp("5065727031");
+        apply(&mut store, &mint(&asset, "addr1alice", 100)).unwrap();
+        apply(&mut store, &transfer(&asset, "addr1alice", "addr1bob", 200)).unwrap();
+        let bob = store.subject(&account("addr1bob")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            bob,
+            &at(5_000),
+            &[definition("untouched", Predicate::HoldsNeverMoved)],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "untouched").progress,
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None
+            }
+        );
+
+        apply(&mut store, &transfer(&asset, "addr1bob", "addr1alice", 300)).unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[definition("untouched", Predicate::HoldsNeverMoved)],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "untouched").progress,
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None
+            }
+        );
+    }
+
+    #[test]
+    fn a_reacquisition_is_an_asset_that_left_and_came_back() {
+        use crate::memory::fixtures::{account, mint, perp, transfer};
+        let mut store = MemoryStore::default();
+        let asset = perp("5065727031");
+        apply(&mut store, &mint(&asset, "addr1alice", 100)).unwrap();
+        apply(&mut store, &transfer(&asset, "addr1alice", "addr1bob", 200)).unwrap();
+        apply(&mut store, &transfer(&asset, "addr1bob", "addr1alice", 300)).unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[definition(
+                "came-back",
+                Predicate::ReacquiredSameAsset { times: 1 },
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "came-back").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(300)
+            }
+        );
+
+        // Bob bought and held; buying is not reacquiring.
+        let bob = store.subject(&account("addr1bob")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            bob,
+            &at(5_000),
+            &[definition(
+                "came-back",
+                Predicate::ReacquiredSameAsset { times: 1 },
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "came-back").progress,
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None
+            }
+        );
+    }
+
+    #[test]
+    fn reacquisitions_are_counted_per_event() {
+        use crate::memory::fixtures::{account, mint, perp, transfer};
+        let mut store = MemoryStore::default();
+        let asset = perp("5065727031");
+        apply(&mut store, &mint(&asset, "addr1alice", 100)).unwrap();
+        for height in [200, 300, 400, 500] {
+            let (from, to) = if height % 200 == 0 {
+                ("addr1alice", "addr1bob")
+            } else {
+                ("addr1bob", "addr1alice")
+            };
+            apply(&mut store, &transfer(&asset, from, to, height)).unwrap();
+        }
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[definition(
+                "came-back",
+                Predicate::ReacquiredSameAsset { times: 2 },
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "came-back").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(500)
+            }
+        );
+    }
+
+    #[test]
+    fn a_return_after_an_idle_spell_needs_the_gap() {
+        use crate::memory::fixtures::{account, mint, perp, transfer};
+        let mut store = MemoryStore::default();
+        let asset = perp("5065727031");
+        let ninety = 90 * SECONDS_PER_DAY;
+        apply(&mut store, &mint(&asset, "addr1alice", 100)).unwrap();
+        apply(&mut store, &transfer(&asset, "addr1alice", "addr1bob", 200)).unwrap();
+        apply(
+            &mut store,
+            &transfer(&asset, "addr1bob", "addr1alice", 200 + ninety),
+        )
+        .unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(300 + ninety),
+            &[definition(
+                "returned",
+                Predicate::ReturnedAfterIdle { days: 90 },
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "returned").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(200 + ninety)
+            }
+        );
+    }
+
+    #[test]
+    fn a_return_within_the_idle_threshold_is_pending() {
+        use crate::memory::fixtures::{account, mint, perp, transfer};
+        let mut store = MemoryStore::default();
+        let asset = perp("5065727031");
+        let ninety = 90 * SECONDS_PER_DAY;
+        apply(&mut store, &mint(&asset, "addr1alice", 100)).unwrap();
+        apply(&mut store, &transfer(&asset, "addr1alice", "addr1bob", 200)).unwrap();
+        apply(
+            &mut store,
+            &transfer(&asset, "addr1bob", "addr1alice", 200 + ninety - 1),
+        )
+        .unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(200 + ninety),
+            &[definition(
+                "returned",
+                Predicate::ReturnedAfterIdle { days: 90 },
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "returned").progress,
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None
+            }
+        );
+    }
+
+    #[test]
+    fn an_open_holding_does_not_create_an_idle_gap() {
+        // Alice still held her other Perp while the first was away, so she held something
+        // throughout and never returned from nothing.
+        use crate::memory::fixtures::{perp, transfer};
+        let (mut store, alice) = crate::memory::fixtures::alice_mints_two();
+        let asset = perp("5065727031");
+        apply(&mut store, &transfer(&asset, "addr1alice", "addr1bob", 200)).unwrap();
+        apply(
+            &mut store,
+            &transfer(&asset, "addr1bob", "addr1alice", 200 + 90 * SECONDS_PER_DAY),
+        )
+        .unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(300 + 90 * SECONDS_PER_DAY),
+            &[definition(
+                "returned",
+                Predicate::ReturnedAfterIdle { days: 90 },
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "returned").progress,
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None
+            }
+        );
+    }
+
+    #[test]
+    fn the_lot_only_predicates_report_a_coverage_gap() {
+        let (store, subject) = crate::memory::fixtures::alice_mints_one();
+        let at = Assessment {
+            now: 5_000,
+            now_unix: FIXTURE_ORIGIN + 5_000,
+            holder_coverage: Coverage::Partial,
+        };
+        let outcomes = evaluate(
+            &store,
+            subject,
+            &at,
+            &[
+                definition("span", Predicate::AnySpanAtLeast { days: 100 }),
+                definition(
+                    "portfolio",
+                    Predicate::SpanAtLeast {
+                        days: 100,
+                        assets: 5,
+                    },
+                ),
+                definition("untouched", Predicate::HoldsNeverMoved),
+                definition("came-back", Predicate::ReacquiredSameAsset { times: 1 }),
+                definition("returned", Predicate::ReturnedAfterIdle { days: 90 }),
+            ],
+        )
+        .unwrap();
+        for outcome in &outcomes {
+            assert_eq!(
+                outcome.progress,
+                Progress::Unavailable(Gap::HolderCoverage),
+                "{}",
+                outcome.id
+            );
+        }
+    }
+
+    #[test]
     fn a_partial_coverage_makes_a_span_unavailable_rather_than_short() {
         let (store, subject) = crate::memory::fixtures::alice_mints_one();
         let at = Assessment {
@@ -1443,6 +2831,1045 @@ mod tests {
             find(&outcomes, "round-trip").progress,
             Progress::Earned { .. }
         ));
+    }
+
+    #[test]
+    fn a_market_purchase_is_a_fill_where_the_subject_is_the_buyer() {
+        use crate::memory::fixtures::{account, filled};
+        use chain_events::{PartyRole, Side};
+        let mut store = MemoryStore::default();
+        apply(
+            &mut store,
+            &filled(
+                None,
+                Side::Ask,
+                &[
+                    ("addr1alice", PartyRole::Seller),
+                    ("addr1bob", PartyRole::Buyer),
+                ],
+                100,
+            ),
+        )
+        .unwrap();
+        let definitions = [definition("first-trade", Predicate::MarketPurchase)];
+
+        let bob = store.subject(&account("addr1bob")).unwrap();
+        let outcomes = evaluate(&store, bob, &at(5_000), &definitions).unwrap();
+        assert_eq!(
+            find(&outcomes, "first-trade").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(100)
+            }
+        );
+
+        // The seller was the other side of the same trade.
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(&store, alice, &at(5_000), &definitions).unwrap();
+        assert_eq!(
+            find(&outcomes, "first-trade").progress,
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None
+            }
+        );
+    }
+
+    #[test]
+    fn a_store_without_market_facts_reports_the_gap_rather_than_missed() {
+        let (store, subject) = crate::memory::fixtures::alice_mints_one();
+        let outcomes = evaluate(
+            &store,
+            subject,
+            &at(5_000),
+            &[definition("first-trade", Predicate::MarketPurchase)],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "first-trade").progress,
+            Progress::Unavailable(Gap::MarketFacts)
+        );
+    }
+
+    #[test]
+    fn listed_count_counts_distinct_orders_not_relistings() {
+        use crate::memory::fixtures::{account, placed};
+        use chain_events::{PartyRole, Side};
+        let mut store = MemoryStore::default();
+        for (order, height) in [("o1", 100), ("o2", 110), ("o1", 120)] {
+            apply(
+                &mut store,
+                &placed(
+                    order,
+                    Side::Ask,
+                    &[("addr1alice", PartyRole::Seller)],
+                    height,
+                ),
+            )
+            .unwrap();
+        }
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[
+                definition("two", Predicate::ListedCount { at_least: 2 }),
+                definition("three", Predicate::ListedCount { at_least: 3 }),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "two").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(110)
+            }
+        );
+        assert_eq!(
+            find(&outcomes, "three").progress,
+            Progress::Pending {
+                have: 2,
+                need: 3,
+                eta_unix: None
+            }
+        );
+    }
+
+    #[test]
+    fn an_offer_created_is_an_item_bid_not_a_collection_bid() {
+        use crate::memory::fixtures::{account, placed};
+        use chain_events::{OfferScope, PartyRole, Side};
+        let mut store = MemoryStore::default();
+        apply(
+            &mut store,
+            &placed(
+                "collection",
+                Side::Bid(OfferScope::Collection),
+                &[("addr1alice", PartyRole::Buyer)],
+                100,
+            ),
+        )
+        .unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[definition("haggler", Predicate::OfferCreated)],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "haggler").progress,
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None
+            }
+        );
+
+        apply(
+            &mut store,
+            &placed(
+                "item",
+                Side::Bid(OfferScope::Item),
+                &[("addr1alice", PartyRole::Buyer)],
+                200,
+            ),
+        )
+        .unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[definition("haggler", Predicate::OfferCreated)],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "haggler").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(200)
+            }
+        );
+    }
+
+    #[test]
+    fn a_collection_offer_fill_is_a_different_achievement_from_an_item_offer_fill() {
+        use crate::memory::fixtures::{account, filled};
+        use chain_events::{OfferScope, PartyRole, Side};
+        let mut store = MemoryStore::default();
+        apply(
+            &mut store,
+            &filled(
+                None,
+                Side::Bid(OfferScope::Collection),
+                &[
+                    ("addr1alice", PartyRole::Seller),
+                    ("addr1bob", PartyRole::Buyer),
+                ],
+                100,
+            ),
+        )
+        .unwrap();
+        let bob = store.subject(&account("addr1bob")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            bob,
+            &at(5_000),
+            &[
+                definition("dumpster-diver", Predicate::BoughtViaCollectionOffer),
+                definition("played-for-and-got", Predicate::OfferAcceptedAsBuyer),
+            ],
+        )
+        .unwrap();
+        assert!(matches!(
+            find(&outcomes, "dumpster-diver").progress,
+            Progress::Earned { .. }
+        ));
+        assert_eq!(
+            find(&outcomes, "played-for-and-got").progress,
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None
+            }
+        );
+
+        apply(
+            &mut store,
+            &filled(
+                None,
+                Side::Bid(OfferScope::Item),
+                &[
+                    ("addr1alice", PartyRole::Seller),
+                    ("addr1bob", PartyRole::Buyer),
+                ],
+                200,
+            ),
+        )
+        .unwrap();
+        let outcomes = evaluate(
+            &store,
+            bob,
+            &at(5_000),
+            &[definition(
+                "played-for-and-got",
+                Predicate::OfferAcceptedAsBuyer,
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "played-for-and-got").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(200)
+            }
+        );
+    }
+
+    #[test]
+    fn a_listing_age_is_measured_from_the_order_the_fill_names() {
+        use crate::memory::fixtures::{account, filled, placed};
+        use chain_events::{PartyRole, Side};
+        let mut store = MemoryStore::default();
+        apply(
+            &mut store,
+            &placed("o1", Side::Ask, &[("addr1alice", PartyRole::Seller)], 100),
+        )
+        .unwrap();
+        apply(
+            &mut store,
+            &filled(
+                Some("o1"),
+                Side::Ask,
+                &[
+                    ("addr1alice", PartyRole::Seller),
+                    ("addr1bob", PartyRole::Buyer),
+                ],
+                700,
+            ),
+        )
+        .unwrap();
+        let bob = store.subject(&account("addr1bob")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            bob,
+            &at(5_000),
+            &[
+                definition("sniper", Predicate::BoughtEscrowWithin { seconds: 600 }),
+                definition("stale", Predicate::BoughtListingOlderThan { days: 30 }),
+            ],
+        )
+        .unwrap();
+        // 700 − 100 = 600 seconds, exactly the window.
+        assert!(matches!(
+            find(&outcomes, "sniper").progress,
+            Progress::Earned { .. }
+        ));
+        assert_eq!(
+            find(&outcomes, "stale").progress,
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None
+            }
+        );
+    }
+
+    #[test]
+    fn an_unkeyed_fill_reports_the_age_gap_rather_than_a_miss() {
+        // The Perps archive names no order on any fill, so an age predicate must say the
+        // source cannot answer rather than call the purchase fast or stale.
+        use crate::memory::fixtures::{account, filled};
+        use chain_events::{PartyRole, Side};
+        let mut store = MemoryStore::default();
+        apply(
+            &mut store,
+            &filled(
+                None,
+                Side::Ask,
+                &[
+                    ("addr1alice", PartyRole::Seller),
+                    ("addr1bob", PartyRole::Buyer),
+                ],
+                100,
+            ),
+        )
+        .unwrap();
+        let bob = store.subject(&account("addr1bob")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            bob,
+            &at(5_000),
+            &[
+                definition("sniper", Predicate::BoughtEscrowWithin { seconds: 600 }),
+                definition("stale", Predicate::BoughtListingOlderThan { days: 30 }),
+            ],
+        )
+        .unwrap();
+        for id in ["sniper", "stale"] {
+            assert_eq!(
+                find(&outcomes, id).progress,
+                Progress::Unavailable(Gap::OrderAge),
+                "{id}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_sale_is_judged_against_the_floor_its_own_fill_consumed() {
+        // One ask at 1 ADA is both the floor and the order that settles. A floor looked up
+        // after the fill would find an empty book and report the gap, so this pins that the
+        // fold captured the floor before the ask left.
+        use crate::memory::fixtures::{account, filled_at, placed_at};
+        use chain_events::{PartyRole, Price, Side};
+
+        let mut store = MemoryStore::default();
+        let one = Price::native(1_000_000, 6);
+        apply(
+            &mut store,
+            &placed_at(
+                "o1",
+                Side::Ask,
+                one.clone(),
+                &[("addr1alice", PartyRole::Seller)],
+                100,
+            ),
+        )
+        .unwrap();
+        apply(
+            &mut store,
+            &filled_at(
+                Some("o1"),
+                Side::Ask,
+                Some(one.clone()),
+                &[
+                    ("addr1alice", PartyRole::Seller),
+                    ("addr1bob", PartyRole::Buyer),
+                ],
+                200,
+            ),
+        )
+        .unwrap();
+
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let history = store
+            .market_history(alice)
+            .unwrap()
+            .expect("the store saw market facts");
+        assert_eq!(history.fills[0].floor, Some(one));
+
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[
+                definition("dumper", Predicate::SoldAtOrBelowFloor),
+                definition("top-of-book", Predicate::SoldAboveFloor),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "dumper").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(200)
+            }
+        );
+        assert_eq!(
+            find(&outcomes, "top-of-book").progress,
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None
+            }
+        );
+    }
+
+    #[test]
+    fn a_sale_above_the_standing_floor_is_top_of_book() {
+        use crate::memory::fixtures::{account, filled_at, placed_at};
+        use chain_events::{PartyRole, Price, Side};
+
+        let mut store = MemoryStore::default();
+        let one = Price::native(1_000_000, 6);
+        let two = Price::native(2_000_000, 6);
+        apply(
+            &mut store,
+            &placed_at(
+                "o1",
+                Side::Ask,
+                one,
+                &[("addr1alice", PartyRole::Seller)],
+                100,
+            ),
+        )
+        .unwrap();
+        apply(
+            &mut store,
+            &placed_at(
+                "o2",
+                Side::Ask,
+                two.clone(),
+                &[("addr1bob", PartyRole::Seller)],
+                110,
+            ),
+        )
+        .unwrap();
+        apply(
+            &mut store,
+            &filled_at(
+                Some("o2"),
+                Side::Ask,
+                Some(two),
+                &[
+                    ("addr1bob", PartyRole::Seller),
+                    ("addr1carol", PartyRole::Buyer),
+                ],
+                200,
+            ),
+        )
+        .unwrap();
+
+        let bob = store.subject(&account("addr1bob")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            bob,
+            &at(5_000),
+            &[
+                definition("top-of-book", Predicate::SoldAboveFloor),
+                definition("dumper", Predicate::SoldAtOrBelowFloor),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "top-of-book").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(200)
+            }
+        );
+        assert_eq!(
+            find(&outcomes, "dumper").progress,
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None
+            }
+        );
+    }
+
+    #[test]
+    fn a_sale_above_a_rising_floor_is_into_strength() {
+        use crate::memory::fixtures::{account, filled_at, placed_at, updated};
+        use chain_events::{PartyRole, Price, Side};
+
+        let mut store = MemoryStore::default();
+        let one = Price::native(1_000_000, 6);
+        let two = Price::native(2_000_000, 6);
+        let three = Price::native(3_000_000, 6);
+        let four = Price::native(4_000_000, 6);
+
+        // Re-pricing the 1 ADA ask over the 2 ADA one lifts the floor, so the last move
+        // before the sale is up.
+        apply(
+            &mut store,
+            &placed_at(
+                "o1",
+                Side::Ask,
+                one,
+                &[("addr1alice", PartyRole::Seller)],
+                100,
+            ),
+        )
+        .unwrap();
+        apply(
+            &mut store,
+            &placed_at(
+                "o2",
+                Side::Ask,
+                two,
+                &[("addr1bob", PartyRole::Seller)],
+                110,
+            ),
+        )
+        .unwrap();
+        apply(&mut store, &updated("o1", three, 120)).unwrap();
+        apply(
+            &mut store,
+            &placed_at(
+                "o3",
+                Side::Ask,
+                four.clone(),
+                &[("addr1carol", PartyRole::Seller)],
+                130,
+            ),
+        )
+        .unwrap();
+        apply(
+            &mut store,
+            &filled_at(
+                Some("o3"),
+                Side::Ask,
+                Some(four),
+                &[
+                    ("addr1carol", PartyRole::Seller),
+                    ("addr1dave", PartyRole::Buyer),
+                ],
+                200,
+            ),
+        )
+        .unwrap();
+
+        let carol = store.subject(&account("addr1carol")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            carol,
+            &at(5_000),
+            &[
+                definition("into-strength", Predicate::SoldIntoStrength),
+                definition("top-of-book", Predicate::SoldAboveFloor),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "into-strength").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(200)
+            }
+        );
+        assert!(matches!(
+            find(&outcomes, "top-of-book").progress,
+            Progress::Earned { .. }
+        ));
+    }
+
+    #[test]
+    fn an_acquisition_while_the_floor_is_down_is_a_dip_buy() {
+        use crate::memory::fixtures::{account, mint, perp, placed_at};
+        use chain_events::{PartyRole, Price, Side};
+
+        let mut store = MemoryStore::default();
+        apply(
+            &mut store,
+            &placed_at(
+                "o1",
+                Side::Ask,
+                Price::native(4_000_000, 6),
+                &[("addr1alice", PartyRole::Seller)],
+                100,
+            ),
+        )
+        .unwrap();
+        apply(
+            &mut store,
+            &placed_at(
+                "o2",
+                Side::Ask,
+                Price::native(2_000_000, 6),
+                &[("addr1bob", PartyRole::Seller)],
+                200,
+            ),
+        )
+        .unwrap();
+        apply(&mut store, &mint(&perp("5065727031"), "addr1carol", 300)).unwrap();
+
+        let carol = store.subject(&account("addr1carol")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            carol,
+            &at(5_000),
+            &[
+                definition("dip", Predicate::AcquiredDuringDrawdown { fraction: 0.4 }),
+                definition(
+                    "deeper",
+                    Predicate::AcquiredDuringDrawdown { fraction: 0.6 },
+                ),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "dip").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(200)
+            }
+        );
+        assert_eq!(
+            find(&outcomes, "deeper").progress,
+            Progress::Pending {
+                have: 5_000,
+                need: 6_000,
+                eta_unix: None
+            }
+        );
+    }
+
+    #[test]
+    fn a_holding_span_that_covers_a_drawdown_is_held_through() {
+        use crate::memory::fixtures::{account, mint, perp, placed_at};
+        use chain_events::{PartyRole, Price, Side};
+
+        let mut store = MemoryStore::default();
+        apply(
+            &mut store,
+            &placed_at(
+                "o1",
+                Side::Ask,
+                Price::native(4_000_000, 6),
+                &[("addr1alice", PartyRole::Seller)],
+                100,
+            ),
+        )
+        .unwrap();
+        apply(&mut store, &mint(&perp("5065727031"), "addr1carol", 200)).unwrap();
+        apply(
+            &mut store,
+            &placed_at(
+                "o2",
+                Side::Ask,
+                Price::native(2_000_000, 6),
+                &[("addr1bob", PartyRole::Seller)],
+                300,
+            ),
+        )
+        .unwrap();
+
+        let carol = store.subject(&account("addr1carol")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            carol,
+            &at(5_000),
+            &[
+                definition("held-through", Predicate::DrawdownCovered { fraction: 0.5 }),
+                definition("deeper", Predicate::DrawdownCovered { fraction: 0.6 }),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "held-through").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(300)
+            }
+        );
+        assert_eq!(
+            find(&outcomes, "deeper").progress,
+            Progress::Pending {
+                have: 5_000,
+                need: 6_000,
+                eta_unix: None
+            }
+        );
+    }
+
+    #[test]
+    fn a_sale_with_no_floor_to_compare_against_reports_the_gap() {
+        use crate::memory::fixtures::{account, filled_at};
+        use chain_events::{PartyRole, Price, Side};
+
+        let mut store = MemoryStore::default();
+        // The store carries market facts, but no listing ever entered the book, so there is
+        // no floor to judge the sale by. That is a gap, not a miss.
+        apply(
+            &mut store,
+            &filled_at(
+                None,
+                Side::Ask,
+                Some(Price::native(1_000_000, 6)),
+                &[
+                    ("addr1alice", PartyRole::Seller),
+                    ("addr1bob", PartyRole::Buyer),
+                ],
+                100,
+            ),
+        )
+        .unwrap();
+
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        assert!(
+            store.market_history(alice).unwrap().is_some(),
+            "the store saw the market family"
+        );
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[
+                definition("dumper", Predicate::SoldAtOrBelowFloor),
+                definition("into-strength", Predicate::SoldIntoStrength),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "dumper").progress,
+            Progress::Unavailable(Gap::FloorFacts)
+        );
+        assert_eq!(
+            find(&outcomes, "into-strength").progress,
+            Progress::Unavailable(Gap::FloorFacts)
+        );
+    }
+
+    #[test]
+    fn a_sale_into_a_standing_bid_is_judged_against_the_floor() {
+        // A bid fill changes no ask, so the fold has no book outcome to capture. The sale is
+        // still judged by the floor that stood, which is the store's to answer.
+        use crate::memory::fixtures::{account, filled_at, placed_at};
+        use chain_events::{OfferScope, PartyRole, Price, Side};
+
+        let mut store = MemoryStore::default();
+        let two = Price::native(2_000_000, 6);
+        apply(
+            &mut store,
+            &placed_at(
+                "o1",
+                Side::Ask,
+                two.clone(),
+                &[("addr1bob", PartyRole::Seller)],
+                100,
+            ),
+        )
+        .unwrap();
+        apply(
+            &mut store,
+            &filled_at(
+                None,
+                Side::Bid(OfferScope::Collection),
+                Some(Price::native(1_000_000, 6)),
+                &[
+                    ("addr1alice", PartyRole::Seller),
+                    ("addr1bob", PartyRole::Buyer),
+                ],
+                200,
+            ),
+        )
+        .unwrap();
+
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let history = store
+            .market_history(alice)
+            .unwrap()
+            .expect("the store saw market facts");
+        assert_eq!(history.fills[0].floor, Some(two));
+
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[
+                definition("dumper", Predicate::SoldAtOrBelowFloor),
+                definition("top-of-book", Predicate::SoldAboveFloor),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "dumper").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(200)
+            }
+        );
+        assert_eq!(
+            find(&outcomes, "top-of-book").progress,
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None
+            }
+        );
+    }
+
+    #[test]
+    fn a_subject_that_moves_one_asset_ten_times_is_a_churner() {
+        use crate::memory::fixtures::{account, mint, perp, transfer};
+        let mut store = MemoryStore::default();
+        let asset = perp("5065727031");
+        apply(&mut store, &mint(&asset, "addr1alice", 100)).unwrap();
+        // One movement per holder event the subject is a party to, whichever direction it
+        // goes: the mint is the first, then nine transfers.
+        for step in 0..9u64 {
+            let height = 110 + step * 10;
+            if step % 2 == 0 {
+                apply(
+                    &mut store,
+                    &transfer(&asset, "addr1alice", "addr1bob", height),
+                )
+                .unwrap();
+            } else {
+                apply(
+                    &mut store,
+                    &transfer(&asset, "addr1bob", "addr1alice", height),
+                )
+                .unwrap();
+            }
+            if step == 7 {
+                let alice = store.subject(&account("addr1alice")).unwrap();
+                let outcomes = evaluate(
+                    &store,
+                    alice,
+                    &at(5_000),
+                    &[definition(
+                        "churner",
+                        Predicate::MovementRatioAtLeast { ratio: 10.0 },
+                    )],
+                )
+                .unwrap();
+                assert_eq!(
+                    find(&outcomes, "churner").progress,
+                    Progress::Pending {
+                        have: 9,
+                        need: 10,
+                        eta_unix: None
+                    }
+                );
+            }
+        }
+
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[definition(
+                "churner",
+                Predicate::MovementRatioAtLeast { ratio: 10.0 },
+            )],
+        )
+        .unwrap();
+        let outcome = find(&outcomes, "churner");
+        assert_eq!(
+            outcome.progress,
+            Progress::Earned {
+                since: EarnedSince::AsAt {
+                    slot: 5_000,
+                    unix: FIXTURE_ORIGIN + 5_000
+                }
+            }
+        );
+        assert_eq!(
+            outcome.evidence,
+            vec![Evidence::Movements {
+                movements: 10,
+                units: 1
+            }]
+        );
+    }
+
+    #[test]
+    fn a_movement_ratio_needs_a_complete_holder_history() {
+        let (store, subject) = crate::memory::fixtures::alice_mints_one();
+        let at = Assessment {
+            now: 5_000,
+            now_unix: FIXTURE_ORIGIN + 5_000,
+            holder_coverage: Coverage::Partial,
+        };
+        let outcomes = evaluate(
+            &store,
+            subject,
+            &at,
+            &[definition(
+                "churner",
+                Predicate::MovementRatioAtLeast { ratio: 10.0 },
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "churner").progress,
+            Progress::Unavailable(Gap::HolderCoverage)
+        );
+    }
+
+    #[test]
+    fn no_dump_is_earned_by_a_seller_who_stayed_above_the_mint() {
+        use crate::memory::fixtures::{account, filled_at};
+        use chain_events::{PartyRole, Price, Side};
+
+        let mut store = MemoryStore::default();
+        apply(
+            &mut store,
+            &filled_at(
+                None,
+                Side::Ask,
+                Some(Price::native(2_000_000, 6)),
+                &[
+                    ("addr1alice", PartyRole::Seller),
+                    ("addr1bob", PartyRole::Buyer),
+                ],
+                100,
+            ),
+        )
+        .unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[definition(
+                "no-dump",
+                Predicate::NoSaleBelowMint {
+                    amount: 1_000_000,
+                    decimals: 6,
+                },
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "no-dump").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(100)
+            }
+        );
+    }
+
+    #[test]
+    fn no_dump_is_missed_by_a_sale_below_the_mint() {
+        use crate::memory::fixtures::{account, filled_at};
+        use chain_events::{PartyRole, Price, Side};
+
+        let mut store = MemoryStore::default();
+        apply(
+            &mut store,
+            &filled_at(
+                None,
+                Side::Ask,
+                Some(Price::native(500_000, 6)),
+                &[
+                    ("addr1alice", PartyRole::Seller),
+                    ("addr1bob", PartyRole::Buyer),
+                ],
+                100,
+            ),
+        )
+        .unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[definition(
+                "no-dump",
+                Predicate::NoSaleBelowMint {
+                    amount: 1_000_000,
+                    decimals: 6,
+                },
+            )],
+        )
+        .unwrap();
+        assert_eq!(find(&outcomes, "no-dump").progress, Progress::Missed);
+    }
+
+    #[test]
+    fn no_dump_is_pending_for_a_holder_who_never_sold() {
+        use crate::memory::fixtures::{mint, perp, placed};
+        use chain_events::{PartyRole, Side};
+
+        let mut store = MemoryStore::default();
+        apply(&mut store, &mint(&perp("5065727031"), "addr1alice", 100)).unwrap();
+        // The store has to have seen the market family, or "never sold" is unprovable — a
+        // sale could be in the part of the history it was not told about.
+        apply(
+            &mut store,
+            &placed("o1", Side::Ask, &[("addr1bob", PartyRole::Seller)], 110),
+        )
+        .unwrap();
+        let alice = store
+            .subject(&crate::memory::fixtures::account("addr1alice"))
+            .unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[definition(
+                "no-dump",
+                Predicate::NoSaleBelowMint {
+                    amount: 1_000_000,
+                    decimals: 6,
+                },
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "no-dump").progress,
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None
+            }
+        );
+    }
+
+    #[test]
+    fn an_unpriced_sale_cannot_prove_no_dump() {
+        use crate::memory::fixtures::{account, filled_at};
+        use chain_events::{PartyRole, Side};
+
+        let mut store = MemoryStore::default();
+        apply(
+            &mut store,
+            &filled_at(
+                None,
+                Side::Ask,
+                None,
+                &[
+                    ("addr1alice", PartyRole::Seller),
+                    ("addr1bob", PartyRole::Buyer),
+                ],
+                100,
+            ),
+        )
+        .unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[definition(
+                "no-dump",
+                Predicate::NoSaleBelowMint {
+                    amount: 1_000_000,
+                    decimals: 6,
+                },
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            find(&outcomes, "no-dump").progress,
+            Progress::Unavailable(Gap::FillPrice)
+        );
     }
 
     #[test]

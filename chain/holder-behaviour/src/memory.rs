@@ -7,10 +7,22 @@
 use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap};
 
-use chain_events::AccountRef;
+use chain_events::{AccountRef, Currency, Price};
 use chains::TokenRef;
 
-use crate::state::{Holding, LotId, MintFact, MintSummary, NewLot, Slot, Store, SubjectId, UnitId};
+use crate::state::{
+    BookChange, BookOutcome, Fill, FloorPoint, FloorSeries, Holding, LotId, MarketHistory,
+    MarketSide, MintFact, MintSummary, NewFill, NewLot, Placement, Slot, Store, SubjectId, UnitId,
+};
+
+/// A live ask, kept in the shape the floor and a fill's age read it.
+#[derive(Debug, Clone)]
+struct BookAsk {
+    asset: TokenRef,
+    price: Price,
+    seller: Option<AccountRef>,
+    unix: u64,
+}
 
 /// A [`Store`] that keeps everything in hash maps.
 #[derive(Debug, Default)]
@@ -26,6 +38,18 @@ pub struct MemoryStore {
     /// The collection's mint records, keyed by unit.
     mints: HashMap<UnitId, MintFact>,
     mint_summary: Option<MintSummary>,
+    /// The live ask book, keyed the same way.
+    asks: HashMap<String, BookAsk>,
+    /// The scale the floor is expressed at, once a native ask has set it.
+    floor_decimals: Option<u8>,
+    /// The collection's floor, one entry per change.
+    floor: Vec<FloorPoint>,
+    /// What each subject did on a marketplace.
+    market: HashMap<SubjectId, MarketHistory>,
+    /// How many holder movements each subject was a party to, for the ratio predicates.
+    movements: HashMap<SubjectId, u64>,
+    /// Whether the stream carried the market family at all.
+    saw_market: bool,
     next_lot: u32,
     /// How many times `open_lots_of` has been asked. Used by the test that pins "one lot
     /// read per subject per evaluation" rather than trusting the comment.
@@ -190,10 +214,224 @@ impl Store for MemoryStore {
         Ok(self.mint_summary)
     }
 
+    fn observe_market(&mut self) -> Result<(), Self::Error> {
+        self.saw_market = true;
+        Ok(())
+    }
+
+    fn apply_book(
+        &mut self,
+        change: BookChange<'_>,
+        at: Option<Slot>,
+        unix: u64,
+    ) -> Result<BookOutcome, Self::Error> {
+        // Both are read before the change: a fill removes the ask it settled against, so the
+        // floor afterwards is not the floor the sale was made against.
+        let (floor, rising) = self.floor_now();
+        let order_age = match change {
+            BookChange::Placed { order, ask } => {
+                self.asks.entry(order.to_string()).or_insert(BookAsk {
+                    asset: ask.asset,
+                    price: ask.price,
+                    seller: ask.seller,
+                    unix,
+                });
+                None
+            }
+            BookChange::Repriced { order, price } => {
+                if let Some(ask) = self.asks.get_mut(order) {
+                    ask.price = price;
+                }
+                None
+            }
+            BookChange::Closed { order } => {
+                self.asks.remove(order);
+                None
+            }
+            BookChange::Filled {
+                order,
+                asset,
+                seller,
+                settled,
+            } => {
+                let key = order
+                    .filter(|order| self.asks.contains_key(*order))
+                    .map(str::to_string)
+                    .or_else(|| self.match_ask(asset, seller, settled));
+                key.and_then(|key| self.asks.remove(&key))
+                    .map(|ask| unix.saturating_sub(ask.unix))
+            }
+        };
+        self.refresh_floor(at, unix);
+        Ok(BookOutcome {
+            order_age,
+            floor,
+            rising,
+        })
+    }
+
+    fn record_movement(&mut self, subject: SubjectId) -> Result<(), Self::Error> {
+        *self.movements.entry(subject).or_default() += 1;
+        Ok(())
+    }
+
+    fn movements_of(&self, subject: SubjectId) -> Result<Option<u64>, Self::Error> {
+        Ok(Some(
+            self.movements.get(&subject).copied().unwrap_or_default(),
+        ))
+    }
+
+    fn record_placement(
+        &mut self,
+        subject: SubjectId,
+        order: &str,
+        side: MarketSide,
+        at: Option<Slot>,
+        unix: u64,
+    ) -> Result<(), Self::Error> {
+        let history = self.market.entry(subject).or_default();
+        // A relist reuses the order identity; it is the same listing, not a second one.
+        if !history
+            .placements
+            .iter()
+            .any(|placement| placement.order == order)
+        {
+            history.placements.push(Placement {
+                order: order.to_string(),
+                side,
+                at,
+                unix,
+            });
+        }
+        Ok(())
+    }
+
+    fn record_fill(&mut self, subject: SubjectId, fill: NewFill) -> Result<(), Self::Error> {
+        // A fill that did not change the ask book — a bid taken, or an ask whose seller the
+        // event did not name — arrives without a floor, because the fold captures it from the
+        // book change. The sale is still judged against the floor that stood, so the store
+        // fills it in; only a book with no native ask leaves it `None`.
+        let (floor, floor_rising) = match fill.floor {
+            Some(floor) => (Some(floor), fill.floor_rising),
+            None => self.floor_now(),
+        };
+        self.market.entry(subject).or_default().fills.push(Fill {
+            order: fill.order,
+            side: fill.side,
+            role: fill.role,
+            price: fill.price,
+            at: fill.at,
+            unix: fill.unix,
+            order_age: fill.order_age,
+            floor,
+            floor_rising,
+        });
+        Ok(())
+    }
+
+    fn market_history(&self, subject: SubjectId) -> Result<Option<MarketHistory>, Self::Error> {
+        if !self.saw_market {
+            return Ok(None);
+        }
+        Ok(Some(self.market.get(&subject).cloned().unwrap_or_default()))
+    }
+
+    fn floor_series(&self) -> Result<Option<FloorSeries>, Self::Error> {
+        if !self.saw_market {
+            return Ok(None);
+        }
+        Ok(Some(FloorSeries {
+            decimals: self.floor_decimals.unwrap_or(0),
+            points: self.floor.clone(),
+        }))
+    }
+
     fn subjects(&self) -> Result<Vec<SubjectId>, Self::Error> {
         Ok((0..self.subjects_by_id.len() as u32)
             .map(SubjectId)
             .collect())
+    }
+}
+
+impl MemoryStore {
+    /// The floor and its direction as the book stood before the next change.
+    ///
+    /// Read from the tail of the series rather than recomputed, so it agrees with what
+    /// [`Store::floor_series`] would answer for that instant. `None` for the floor means the
+    /// book held no native ask; `None` for the direction means there is no earlier floor to
+    /// compare with, or the book emptied in between — a refill from nothing is not a rise.
+    fn floor_now(&self) -> (Option<Price>, Option<bool>) {
+        let Some(decimals) = self.floor_decimals else {
+            return (None, None);
+        };
+        let current = self.floor.last().and_then(|point| point.floor);
+        let previous = self
+            .floor
+            .len()
+            .checked_sub(2)
+            .and_then(|index| self.floor[index].floor);
+        let floor = current.map(|amount| Price::native(amount, decimals));
+        let rising = match (current, previous) {
+            (Some(current), Some(previous)) => Some(current > previous),
+            _ => None,
+        };
+        (floor, rising)
+    }
+
+    /// The live ask a fill consumed, matched on the asset and seller it names.
+    ///
+    /// A settled price narrows it first; the oldest ask breaks a tie, so a seller with two
+    /// live listings on one asset is consumed in the order they were placed.
+    fn match_ask(
+        &self,
+        asset: Option<&TokenRef>,
+        seller: &AccountRef,
+        settled: Option<&Price>,
+    ) -> Option<String> {
+        let asset = asset?;
+        let candidates: Vec<(&String, &BookAsk)> = self
+            .asks
+            .iter()
+            .filter(|(_, ask)| &ask.asset == asset && ask.seller.as_ref() == Some(seller))
+            .collect();
+        if let Some(settled) = settled
+            && let Some((order, _)) = candidates.iter().find(|(_, ask)| {
+                ask.price.amount == settled.amount && ask.price.decimals == settled.decimals
+            })
+        {
+            return Some((*order).clone());
+        }
+        candidates
+            .into_iter()
+            .min_by_key(|(order, ask)| (ask.unix, order.as_str()))
+            .map(|(order, _)| order.clone())
+    }
+
+    /// Recomputes the floor and appends an observation when it changed.
+    ///
+    /// The series is denominated in the first native ask's scale. An ask in another
+    /// currency is not part of the native floor, and is kept in the book only so a fill can
+    /// still be matched to it.
+    fn refresh_floor(&mut self, at: Option<Slot>, unix: u64) {
+        if self.floor_decimals.is_none() {
+            self.floor_decimals = self
+                .asks
+                .values()
+                .find(|ask| matches!(ask.price.currency, Currency::Native))
+                .map(|ask| ask.price.decimals);
+        }
+        let floor = self.floor_decimals.and_then(|decimals| {
+            self.asks
+                .values()
+                .filter(|ask| {
+                    matches!(ask.price.currency, Currency::Native) && ask.price.decimals == decimals
+                })
+                .map(|ask| ask.price.amount)
+                .min()
+        });
+        if self.floor.last().is_none_or(|last| last.floor != floor) {
+            self.floor.push(FloorPoint { at, unix, floor });
+        }
     }
 }
 
@@ -205,7 +443,8 @@ impl Store for MemoryStore {
 pub(crate) mod fixtures {
     use chain_events::{
         AccountRef, ChainCoord, ChainEvent, Coverage, EventBody, EventSource, HolderEvent,
-        HolderKind, PartyDelta, TxRef,
+        HolderKind, MarketEvent, MarketParty, Order, OrderRef, PartyDelta, PartyRole, Price, Side,
+        TxRef,
     };
     use chains::{AssetType, ChainRef, TokenRef};
     use std::str::FromStr;
@@ -266,6 +505,119 @@ pub(crate) mod fixtures {
 
     pub(crate) fn transfer(asset: &TokenRef, from: &str, to: &str, height: u64) -> ChainEvent {
         event(asset, HolderKind::Transfer, &[(from, -1), (to, 1)], height)
+    }
+
+    /// A marketplace placement, with the price and parties a real listing carries.
+    pub(crate) fn placed(
+        order: &str,
+        side: Side,
+        parties: &[(&str, PartyRole)],
+        height: u64,
+    ) -> ChainEvent {
+        placed_at(order, side, Price::native(1_000_000, 6), parties, height)
+    }
+
+    /// A marketplace placement at `price`.
+    pub(crate) fn placed_at(
+        order: &str,
+        side: Side,
+        price: Price,
+        parties: &[(&str, PartyRole)],
+        height: u64,
+    ) -> ChainEvent {
+        let parties: Vec<MarketParty> = parties
+            .iter()
+            .map(|(address, role)| MarketParty {
+                role: *role,
+                account: account(address),
+            })
+            .collect();
+        ChainEvent::draft(
+            cardano(),
+            perps(),
+            EventBody::Market(MarketEvent::Placed {
+                order: OrderRef::new(order),
+                side,
+                price,
+                parties,
+            }),
+            1_700_000_000 + height,
+            EventSource::MarketplaceDecode,
+        )
+        .asset(perp("5065727031"))
+        .at(ChainCoord::new(height))
+        .coverage(Coverage::Complete)
+        .build("fixture", 1_700_000_000)
+    }
+
+    /// A re-price of a live order.
+    pub(crate) fn updated(order: &str, price: Price, height: u64) -> ChainEvent {
+        ChainEvent::draft(
+            cardano(),
+            perps(),
+            EventBody::Market(MarketEvent::Updated {
+                order: OrderRef::new(order),
+                price,
+            }),
+            1_700_000_000 + height,
+            EventSource::MarketplaceDecode,
+        )
+        .asset(perp("5065727031"))
+        .at(ChainCoord::new(height))
+        .coverage(Coverage::Complete)
+        .build("fixture", 1_700_000_000)
+    }
+
+    /// A settled trade. `order` names the order, or `None` for a source that did not.
+    pub(crate) fn filled(
+        order: Option<&str>,
+        side: Side,
+        parties: &[(&str, PartyRole)],
+        height: u64,
+    ) -> ChainEvent {
+        filled_at(
+            order,
+            side,
+            Some(Price::native(2_000_000, 6)),
+            parties,
+            height,
+        )
+    }
+
+    /// A settled trade at `price`, or unpriced when `price` is `None`.
+    pub(crate) fn filled_at(
+        order: Option<&str>,
+        side: Side,
+        price: Option<Price>,
+        parties: &[(&str, PartyRole)],
+        height: u64,
+    ) -> ChainEvent {
+        let parties: Vec<MarketParty> = parties
+            .iter()
+            .map(|(address, role)| MarketParty {
+                role: *role,
+                account: account(address),
+            })
+            .collect();
+        ChainEvent::draft(
+            cardano(),
+            perps(),
+            EventBody::Market(MarketEvent::Filled {
+                order: match order {
+                    Some(id) => Order::Named(OrderRef::new(id)),
+                    None => Order::Unknown,
+                },
+                side,
+                price,
+                parties,
+            }),
+            1_700_000_000 + height,
+            EventSource::MarketplaceDecode,
+        )
+        .asset(perp("5065727031"))
+        .at(ChainCoord::new(height))
+        .coverage(Coverage::Complete)
+        .build("fixture", 1_700_000_000)
     }
 
     /// Alice mints one asset at slot 100 and keeps it.

@@ -1,9 +1,9 @@
-// macroquad-cnft: HTTP GETs and browser image decoding over the miniquad
-// plugin bridge, for games built around Cardano NFTs.
+// image-miniquad: HTTP GETs and browser image decoding over the miniquad
+// plugin bridge, for any macroquad game.
 //
 // Same shape as wallet.js and discord.js: every call returns an integer id at
 // once, the result lands in a map, and Rust polls the id each frame until it
-// settles. `cnft_poll` consumes a settled entry.
+// settles. `image_poll` consumes a settled entry.
 //
 // String arguments arrive as INTEGER HANDLES to sapp_jsutils objects. Read
 // them with `consume_js_object(handle)`, which returns the string and frees
@@ -11,8 +11,8 @@
 // Rust as `unreachable`.
 //
 // Why not quad-net: its HTTP reply carries no status. A 404 and a 200 arrive
-// as the same "here is some text", so a game cannot tell "this player holds
-// nothing" from "the service is down". Every failure here says which it was.
+// as the same "here is some text", so a game cannot tell "there is nothing
+// here" from "the service is down". Every failure here says which it was.
 
 (function () {
     // id -> { status: 'pending' } | { status: 'ok', data } | { status: 'err', data }
@@ -47,7 +47,7 @@
     }
 
     // GET, response as text. `bearer` may be empty for a public route.
-    function cnft_fetch(url_js, bearer_js) {
+    function image_fetch(url_js, bearer_js) {
         const id = newId();
         const url = consume_js_object(url_js);
         const bearer = consume_js_object(bearer_js);
@@ -66,9 +66,9 @@
     //
     // macroquad decodes PNG and TGA only, and a JPEG decoder in wasm cost
     // ~235 KB in discord-miniquad. The browser decodes JPEG, PNG, WebP, AVIF
-    // and GIF natively for nothing, so the IIIF service can send whatever is
+    // and GIF natively for nothing, so a service can send whatever is
     // smallest (`default.auto`) and Rust receives raw RGBA either way.
-    function cnft_decode_image(url_js) {
+    function image_decode(url_js) {
         const id = newId();
         const url = consume_js_object(url_js);
         (async () => {
@@ -105,13 +105,13 @@
     // Hand over a completed decode's pixels, exactly once. An unknown or
     // already-collected id gives an empty buffer, which Rust reads as "no
     // image" rather than hanging.
-    function cnft_image_bytes(id) {
+    function image_bytes(id) {
         const bytes = decoded.get(id) || new Uint8Array(0);
         decoded.delete(id);
         return js_object(bytes);
     }
 
-    function cnft_poll(id) {
+    function image_poll(id) {
         const entry = pending.get(id);
         if (!entry) {
             return js_object(
@@ -127,11 +127,11 @@
     }
 
     function register_plugin(importObject) {
-        importObject.env.cnft_fetch = cnft_fetch;
-        importObject.env.cnft_decode_image = cnft_decode_image;
-        importObject.env.cnft_image_bytes = cnft_image_bytes;
-        importObject.env.cnft_poll = cnft_poll;
+        importObject.env.image_fetch = image_fetch;
+        importObject.env.image_decode = image_decode;
+        importObject.env.image_bytes = image_bytes;
+        importObject.env.image_poll = image_poll;
     }
 
-    miniquad_add_plugin({ register_plugin, version: 1, name: 'cnft' });
+    miniquad_add_plugin({ register_plugin, version: 1, name: 'image' });
 })();

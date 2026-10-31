@@ -1,15 +1,16 @@
 //! The typed predicate vocabulary this fold can answer today.
 //!
-//! The frozen Perps catalogue carries 42 kinds across five axes. This crate implements
-//! the five that exercise each distinct shape of the fold — a one-way fact, an open
-//! interval, a global rank read, a market count and a metadata join — so the tier
-//! boundaries are pinned before the remaining kinds become mechanical:
+//! The frozen Perps catalogue carries 42 kinds across five axes. This crate implements the
+//! kinds the fold's own facts can answer — the subject's lots, the collection's mint order
+//! and the metadata join — and refuses the rest, so a kind is never silently false:
 //!
 //! | kind | what it proves | reads |
 //! | --- | --- | --- |
 //! | [`Predicate::NeverDisposed`] | a one-way fact about the whole history | lots |
 //! | [`Predicate::HeldSinceMint`] | an open interval that started at the mint | lots |
 //! | [`Predicate::TotalTenureAtLeast`] | summed interval duration, open and closed | lots |
+//! | [`Predicate::AnySpanAtLeast`] / [`Predicate::SpanAtLeast`] | one or more continuous intervals | lots |
+//! | [`Predicate::HoldsNeverMoved`] / [`Predicate::ReacquiredSameAsset`] / [`Predicate::ReturnedAfterIdle`] | a shape over the subject's own lots | lots |
 //! | [`Predicate::RoundTripsAtLeast`] | a count of completed intervals | lots |
 //! | [`Predicate::HasAllTraits`] | a set carried by one held unit | lots + traits |
 //! | [`Predicate::HasTrait`] | one value ever held | lots + traits |
@@ -18,6 +19,8 @@
 //! | [`Predicate::SameValueAcrossAssets`] | assets sharing a value, ever held | lots + traits |
 //! | [`Predicate::MintWithin`] … [`Predicate::MintAfterGap`] | the collection's mint order | lots + mint facts |
 //! | [`Predicate::MintedCount`] … [`Predicate::NeverBought`] | what the subject did at the mint | lots |
+//! | [`Predicate::NoSaleBelowMint`] | a sale below a declared mint price | market |
+//! | [`Predicate::MovementRatioAtLeast`] | movements per asset ever held | lots + movement count |
 //!
 //! A kind that is not here is **not silently false**: the catalogue loader is expected to
 //! refuse a definition it cannot build, which is the same rule the design doc states for
@@ -58,6 +61,55 @@ pub enum Predicate {
         days: u32,
     },
 
+    /// One lot stayed open for at least `days`.
+    ///
+    /// A **continuous** span, not a sum: a unit held for 60 days, sold, and reacquired for
+    /// another 60 does not satisfy a 100-day `span_at_least`, while it does satisfy
+    /// `total_tenure_at_least`. The clock is the lot's own interval, so a partial disposal
+    /// does not restart it.
+    AnySpanAtLeast {
+        /// The threshold, in days of chain time.
+        days: u32,
+    },
+
+    /// At least `assets` distinct units were each held for `days` continuously.
+    ///
+    /// Per unit, the **longest** span of any one of its lots counts; a unit held twice for
+    /// 60 days is not a 100-day asset. This is `any_span_at_least` with a breadth
+    /// requirement, and the statement it proves is "five assets each held 100+ days".
+    SpanAtLeast {
+        /// The threshold, in days of chain time.
+        days: u32,
+        /// How many distinct units must each reach it.
+        assets: u32,
+    },
+
+    /// The subject holds a unit that arrived at the mint and has not left since.
+    ///
+    /// An **open** lot acquired at the primary mint. Existential, so it is never `Missed`:
+    /// a wallet that holds only traded assets can still acquire an untouched one.
+    HoldsNeverMoved,
+
+    /// The subject sold a unit and later acquired that same unit from another party.
+    ///
+    /// `times` counts the **reacquisitions**, not the units: buying the same asset back
+    /// twice is two. The fold cannot tell a purchase from a gift, so the later lot is
+    /// `Transfer` ("came from someone else"), the same reading `never_bought` uses.
+    ReacquiredSameAsset {
+        /// The threshold, in reacquisition events.
+        times: u32,
+    },
+
+    /// The subject held nothing for `days`, then acquired again.
+    ///
+    /// Holding intervals are merged before the gap is measured, so overlapping lots are
+    /// one holding period. A wallet that has never held anything is `Pending`, not `Missed`:
+    /// the idle-then-return shape needs a holding to return from.
+    ReturnedAfterIdle {
+        /// The quiet period, in days of chain time.
+        days: u32,
+    },
+
     /// At least `n` units arrived from another party and have since fully left.
     ///
     /// "Completed round trip", not "sold once": a lot that arrived at the mint is not a
@@ -67,6 +119,110 @@ pub enum Predicate {
     RoundTripsAtLeast {
         /// The threshold, in completed lots.
         n: u32,
+    },
+
+    /// The subject appeared as the buyer in a settled trade.
+    ///
+    /// Any side: buying a listing and accepting a bid both make the subject the buyer.
+    /// A trade the source could not attribute is not a purchase, so this reads the fill's
+    /// parties rather than a holder movement.
+    MarketPurchase,
+
+    /// The subject placed at least `at_least` listings.
+    ///
+    /// Distinct orders, not placement events: a relist reuses the order identity and does
+    /// not count twice. A withdrawal does not un-list it — the statement is "listed", so
+    /// the order having existed is the fact.
+    ListedCount {
+        /// The threshold, in listed assets.
+        at_least: u32,
+    },
+
+    /// The subject bought a listing within `seconds` of it being placed.
+    ///
+    /// Needs an order the source keyed on both ends: a fill that does not name its order, or
+    /// one whose placement predates the walk, reports the gap rather than counting as fast.
+    BoughtEscrowWithin {
+        /// The window, in unix seconds.
+        seconds: u64,
+    },
+
+    /// The subject bought a listing that had stood for at least `days`.
+    ///
+    /// The same order-age requirement as [`Predicate::BoughtEscrowWithin`], read the other
+    /// way round.
+    BoughtListingOlderThan {
+        /// The age, in unix days.
+        days: u32,
+    },
+
+    /// The subject bought through a bid scoped to the whole collection.
+    BoughtViaCollectionOffer,
+
+    /// The subject had a bid on one asset accepted.
+    OfferAcceptedAsBuyer,
+
+    /// The subject placed a bid on one asset.
+    OfferCreated,
+
+    /// The subject never sold below the primary mint price.
+    ///
+    /// One-way: a single sale below `amount` makes the answer `Missed` for good. A subject
+    /// who has not sold is `Pending`, not earned — `never_disposed` is the achievement for
+    /// holding, and this one is for selling without dumping.
+    ///
+    /// The price is stated here rather than derived, because a mint price is not in the
+    /// movement archive. A two-stage mint states the price it ended at; see the catalogue.
+    NoSaleBelowMint {
+        /// The primary mint price, in the chain's own coin's smallest unit.
+        amount: u64,
+        /// The scale `amount` is expressed at.
+        decimals: u8,
+    },
+
+    /// The subject's holder movements are at least `ratio` times the assets it held.
+    ///
+    /// A movement is one holder event the subject was a party to; the denominator is the
+    /// distinct units it ever held. A subject that never held a unit has nothing to have
+    /// moved per asset, so it stays `Pending` rather than dividing by zero.
+    MovementRatioAtLeast {
+        /// The multiple of the assets held that must be reached.
+        ratio: f64,
+    },
+
+    /// The subject sold at or below the collection's floor.
+    ///
+    /// A sale is any fill where the subject is the seller, whether it consumed a listing or
+    /// accepted a bid. The comparison needs a priced fill and a known floor at that instant;
+    /// a sale that cannot be judged reports the gap rather than becoming a miss.
+    SoldAtOrBelowFloor,
+
+    /// The subject sold above the collection's floor.
+    SoldAboveFloor,
+
+    /// The subject sold above the floor while the floor's last move was up.
+    ///
+    /// "Rising" is the last **change** the book recorded, not a window: the floor at the sale
+    /// is higher than the previous observation, and a book that emptied in between is not a
+    /// rise.
+    SoldIntoStrength,
+
+    /// One of the subject's acquisitions happened while the floor was in a drawdown.
+    ///
+    /// The drawdown is measured from the highest floor seen up to that instant, which may
+    /// predate the acquisition — the market was already down when they bought.
+    AcquiredDuringDrawdown {
+        /// The drawdown, as a fraction of the peak, in `(0, 1)`.
+        fraction: f64,
+    },
+
+    /// One of the subject's holding spans covered a floor drawdown of `fraction`.
+    ///
+    /// Both the peak and the trough must fall inside the span. A fall that began before the
+    /// subject acquired does not count, and the floor at the acquisition seeds the peak.
+    DrawdownCovered {
+        /// The drawdown, as a fraction of the peak, in `(0, 1)`.
+        fraction: f64,
     },
 
     /// One held unit carries every one of `values` in `category`.
@@ -208,7 +364,26 @@ impl Predicate {
             Self::NeverDisposed => "never_disposed",
             Self::HeldSinceMint => "held_since_mint",
             Self::TotalTenureAtLeast { .. } => "total_tenure_at_least",
+            Self::AnySpanAtLeast { .. } => "any_span_at_least",
+            Self::SpanAtLeast { .. } => "span_at_least",
+            Self::HoldsNeverMoved => "holds_never_moved",
+            Self::ReacquiredSameAsset { .. } => "reacquired_same_asset",
+            Self::ReturnedAfterIdle { .. } => "returned_after_idle",
             Self::RoundTripsAtLeast { .. } => "round_trips_at_least",
+            Self::MarketPurchase => "market_purchase",
+            Self::ListedCount { .. } => "listed_count",
+            Self::BoughtEscrowWithin { .. } => "bought_escrow_within",
+            Self::BoughtListingOlderThan { .. } => "bought_listing_older_than",
+            Self::BoughtViaCollectionOffer => "bought_via_collection_offer",
+            Self::OfferAcceptedAsBuyer => "offer_accepted_as_buyer",
+            Self::OfferCreated => "offer_created",
+            Self::NoSaleBelowMint { .. } => "no_sale_below_mint",
+            Self::MovementRatioAtLeast { .. } => "movement_ratio_at_least",
+            Self::SoldAtOrBelowFloor => "sold_at_or_below_floor",
+            Self::SoldAboveFloor => "sold_above_floor",
+            Self::SoldIntoStrength => "sold_into_strength",
+            Self::AcquiredDuringDrawdown { .. } => "acquired_during_drawdown",
+            Self::DrawdownCovered { .. } => "drawdown_covered",
             Self::HasAllTraits { .. } => "has_all_traits",
             Self::HasTrait { .. } => "has_trait",
             Self::HasTraitValues { .. } => "has_trait_values",
@@ -239,7 +414,64 @@ impl Predicate {
                 | Self::HasTraitValues { .. }
                 | Self::HeldWithTraitAtOnce { .. }
                 | Self::SameValueAcrossAssets { .. }
+                | Self::MarketPurchase
+                | Self::ListedCount { .. }
+                | Self::BoughtEscrowWithin { .. }
+                | Self::BoughtListingOlderThan { .. }
+                | Self::BoughtViaCollectionOffer
+                | Self::OfferAcceptedAsBuyer
+                | Self::OfferCreated
+                | Self::NoSaleBelowMint { .. }
+                | Self::SoldAtOrBelowFloor
+                | Self::SoldAboveFloor
+                | Self::SoldIntoStrength
         )
+    }
+
+    /// Whether the answer needs marketplace facts, not just the subject's lots.
+    ///
+    /// A store built from a holder-only stream answers every one of these as
+    /// `Unavailable(Gap::MarketFacts)` rather than as "did not trade".
+    pub fn needs_market_facts(&self) -> bool {
+        matches!(
+            self,
+            Self::MarketPurchase
+                | Self::ListedCount { .. }
+                | Self::BoughtEscrowWithin { .. }
+                | Self::BoughtListingOlderThan { .. }
+                | Self::BoughtViaCollectionOffer
+                | Self::OfferAcceptedAsBuyer
+                | Self::OfferCreated
+                | Self::NoSaleBelowMint { .. }
+                | Self::SoldAtOrBelowFloor
+                | Self::SoldAboveFloor
+                | Self::SoldIntoStrength
+                | Self::AcquiredDuringDrawdown { .. }
+                | Self::DrawdownCovered { .. }
+        )
+    }
+
+    /// Whether the answer needs the collection's floor over time.
+    ///
+    /// A store built from a holder-only stream — or a bundle row — answers these as
+    /// `Unavailable(Gap::FloorFacts)`; the earned snapshot may still have answered them.
+    pub fn needs_floor_facts(&self) -> bool {
+        matches!(
+            self,
+            Self::SoldAtOrBelowFloor
+                | Self::SoldAboveFloor
+                | Self::SoldIntoStrength
+                | Self::AcquiredDuringDrawdown { .. }
+                | Self::DrawdownCovered { .. }
+        )
+    }
+
+    /// Whether the answer needs the subject's movement count, not just its lots.
+    ///
+    /// A bundle row carries lots, so it answers these as
+    /// `Unavailable(Gap::MovementFacts)`; the earned snapshot may still have answered them.
+    pub fn needs_movements(&self) -> bool {
+        matches!(self, Self::MovementRatioAtLeast { .. })
     }
 
     /// Whether the answer depends on metadata being recorded.
@@ -304,6 +536,30 @@ mod tests {
     }
 
     #[test]
+    fn the_lot_only_kinds_parse_from_the_catalogue_table() {
+        let span: Predicate =
+            serde_json::from_str(r#"{"kind":"span_at_least","days":100,"assets":5}"#).unwrap();
+        assert_eq!(
+            span,
+            Predicate::SpanAtLeast {
+                days: 100,
+                assets: 5
+            }
+        );
+        let any: Predicate =
+            serde_json::from_str(r#"{"kind":"any_span_at_least","days":365}"#).unwrap();
+        assert_eq!(any, Predicate::AnySpanAtLeast { days: 365 });
+        let returned: Predicate =
+            serde_json::from_str(r#"{"kind":"returned_after_idle","days":90}"#).unwrap();
+        assert_eq!(returned, Predicate::ReturnedAfterIdle { days: 90 });
+        let untouched: Predicate = serde_json::from_str(r#"{"kind":"holds_never_moved"}"#).unwrap();
+        assert_eq!(untouched, Predicate::HoldsNeverMoved);
+        let came_back: Predicate =
+            serde_json::from_str(r#"{"kind":"reacquired_same_asset","times":1}"#).unwrap();
+        assert_eq!(came_back, Predicate::ReacquiredSameAsset { times: 1 });
+    }
+
+    #[test]
     fn an_unknown_kind_is_an_error_and_not_a_silent_skip() {
         // The catalogue-loader contract: a kind this crate cannot answer must fail to
         // parse, so it is caught when the catalogue is read rather than scoring zero.
@@ -315,6 +571,7 @@ mod tests {
     fn coverage_matters_to_spans_and_not_to_trait_reads() {
         assert!(Predicate::NeverDisposed.needs_holder_coverage());
         assert!(Predicate::TotalTenureAtLeast { days: 1 }.needs_holder_coverage());
+        assert!(Predicate::AnySpanAtLeast { days: 1 }.needs_holder_coverage());
         assert!(
             !Predicate::HasAllTraits {
                 category: "Faction".into(),
@@ -322,5 +579,9 @@ mod tests {
             }
             .needs_holder_coverage()
         );
+        // A marketplace fact does not depend on the holder walk being complete.
+        assert!(!Predicate::MarketPurchase.needs_holder_coverage());
+        assert!(Predicate::MarketPurchase.needs_market_facts());
+        assert!(!Predicate::NeverDisposed.needs_market_facts());
     }
 }

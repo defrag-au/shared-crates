@@ -4,8 +4,8 @@
 //!
 //! A per-stake object would make a profile page a single fetch, and make everything else
 //! worse: the grid needs per-achievement rarity, the allocation iterates every subject, and
-//! a "who earned this" list reads across all of them. At 700 subjects a per-stake layout is
-//! 700 objects per rebuild — an object explosion for one query shape. This layout is one
+//! a "who earned this" list reads across all of them. At 769 subjects a per-stake layout is
+//! 769 objects per rebuild — an object explosion for one query shape. This layout is one
 //! object, and a profile is a binary search plus one slice.
 //!
 //! The whole bundle is under a megabyte, so a client downloads it once and searches in
@@ -36,7 +36,8 @@ use chains::{ChainRef, TokenRef};
 
 use crate::evaluate::{Assessment, Definition, Outcome, evaluate};
 use crate::state::{
-    AcquiredBy, Holding, LotId, MintFact, MintSummary, NewLot, Slot, Store, SubjectId, UnitId,
+    AcquiredBy, Holding, LotId, MarketHistory, MarketSide, MintFact, MintSummary, NewFill, NewLot,
+    Slot, Store, SubjectId, UnitId,
 };
 
 /// Identifies the format. The trailing zeros are padding so a truncated read cannot
@@ -698,6 +699,55 @@ impl Store for BundleStore<'_> {
         Ok(None)
     }
 
+    fn observe_market(&mut self) -> Result<(), Self::Error> {
+        Err(BundleError::ReadOnly)
+    }
+
+    fn apply_book(
+        &mut self,
+        _change: crate::state::BookChange<'_>,
+        _at: Option<Slot>,
+        _unix: u64,
+    ) -> Result<crate::state::BookOutcome, Self::Error> {
+        Err(BundleError::ReadOnly)
+    }
+
+    fn record_movement(&mut self, _subject: SubjectId) -> Result<(), Self::Error> {
+        Err(BundleError::ReadOnly)
+    }
+
+    fn movements_of(&self, _subject: SubjectId) -> Result<Option<u64>, Self::Error> {
+        // A row carries lots, not a movement count, so a ratio predicate reads as a gap
+        // from a bundle; the earned set in the file already answered it.
+        Ok(None)
+    }
+
+    fn record_placement(
+        &mut self,
+        _subject: SubjectId,
+        _order: &str,
+        _side: MarketSide,
+        _at: Option<Slot>,
+        _unix: u64,
+    ) -> Result<(), Self::Error> {
+        Err(BundleError::ReadOnly)
+    }
+
+    fn record_fill(&mut self, _subject: SubjectId, _fill: NewFill) -> Result<(), Self::Error> {
+        Err(BundleError::ReadOnly)
+    }
+
+    fn market_history(&self, _subject: SubjectId) -> Result<Option<MarketHistory>, Self::Error> {
+        // A row carries lots, not marketplace facts. Market predicates therefore read as a
+        // gap from a bundle; the earned set in the file already answered them.
+        Ok(None)
+    }
+
+    fn floor_series(&self) -> Result<Option<crate::state::FloorSeries>, Self::Error> {
+        // The floor is derived from the marketplace feed, which a row does not carry.
+        Ok(None)
+    }
+
     fn subjects(&self) -> Result<Vec<SubjectId>, Self::Error> {
         Ok(vec![SubjectId(0)])
     }
@@ -1013,6 +1063,10 @@ mod tests {
                 id: "genesis",
                 predicate: Predicate::MintRankAtMost { n: 1 },
             },
+            Definition {
+                id: "churner",
+                predicate: Predicate::MovementRatioAtLeast { ratio: 10.0 },
+            },
         ];
         let outcomes = evaluate_row(
             &store,
@@ -1020,7 +1074,7 @@ mod tests {
             &definitions,
         )
         .expect("a published row evaluates");
-        assert_eq!(outcomes.len(), 3);
+        assert_eq!(outcomes.len(), 4);
         assert_eq!(outcomes[0].id, "never-sold");
         assert_eq!(
             outcomes[0].progress,
@@ -1033,6 +1087,12 @@ mod tests {
         assert_eq!(
             outcomes[2].progress,
             crate::Progress::Unavailable(crate::Gap::MintFacts)
+        );
+        // A row carries no movement count either, so a ratio is a gap for the same reason:
+        // the earned set in the file already answered it.
+        assert_eq!(
+            outcomes[3].progress,
+            crate::Progress::Unavailable(crate::Gap::MovementFacts)
         );
     }
 
