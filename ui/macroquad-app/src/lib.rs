@@ -82,6 +82,7 @@ extern "C" fn app_shell_crate_version() -> u32 {
 }
 
 /// A colour as CSS reads it, for the page's own input to match the canvas.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub(crate) fn css_rgba(c: macroquad::color::Color) -> String {
     let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
     format!(

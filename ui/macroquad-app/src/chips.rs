@@ -65,7 +65,9 @@ pub fn chip_layout(p: &Painter, origin: Vec2, width: f32, chips: &[Chip]) -> (Ve
     let mut rects = Vec::with_capacity(chips.len());
     let (mut x, mut y) = (origin.x, origin.y);
     for chip in chips {
-        let mut w = p.measure(chip.label, size).width + PAD * 2.0;
+        // A point of slack: the label is measured again when it is fitted,
+        // and a width equal to the text to the last bit of a float cuts it.
+        let mut w = p.measure(chip.label, size).width.ceil() + 1.0 + PAD * 2.0;
         if let Some(n) = chip.count {
             w += p.measure_mono(n, p.size(TextSize::Sm)).width + 6.0;
         }

@@ -167,10 +167,7 @@ impl Pending {
 /// Headers as the page's plugin reads them: `name\nvalue\n` pairs.
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 fn header_lines(headers: &[(String, String)]) -> String {
-    headers
-        .iter()
-        .map(|(k, v)| format!("{k}\n{v}\n"))
-        .collect()
+    headers.iter().map(|(k, v)| format!("{k}\n{v}\n")).collect()
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -337,7 +334,9 @@ mod tests {
 
     #[test]
     fn a_header_that_would_split_the_encoding_is_dropped() {
-        let req = Request::get("u").header("X-A", "one\ntwo").header("X-B", "ok");
+        let req = Request::get("u")
+            .header("X-A", "one\ntwo")
+            .header("X-B", "ok");
         assert_eq!(header_lines(&req.headers), "X-B\nok\n");
     }
 

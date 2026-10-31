@@ -193,8 +193,15 @@ impl Keyboard {
 
     /// Call once a frame, before drawing any field.
     pub fn begin(&mut self, frame: &Frame) {
-        self.u = frame.viewport.u;
-        self.origin = frame.origin;
+        self.begin_at(frame.viewport.u, frame.origin);
+    }
+
+    /// [`Keyboard::begin`] for a host with no gamekit frame (the storybook):
+    /// `u` window points per unit the fields are drawn in, and where that
+    /// space's origin sits in the window.
+    pub fn begin_at(&mut self, u: f32, origin: Vec2) {
+        self.u = u;
+        self.origin = origin;
         self.was_focused = self.focused;
         #[cfg(target_arch = "wasm32")]
         {
@@ -388,7 +395,12 @@ impl TextField {
             draw_glyph(Glyph::Search, g, c.text_muted);
         }
         if !self.value.is_empty() {
-            let g = Rect::new(clear_box.center().x - 8.0, clear_box.center().y - 8.0, 16.0, 16.0);
+            let g = Rect::new(
+                clear_box.center().x - 8.0,
+                clear_box.center().y - 8.0,
+                16.0,
+                16.0,
+            );
             draw_circle(g.center().x, g.center().y, 11.0, c.bg_highlight);
             draw_glyph(Glyph::Close, g, c.text_secondary);
         }

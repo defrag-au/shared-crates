@@ -177,7 +177,12 @@ pub fn icon_button(p: &Painter, rect: Rect, glyph: Glyph, marked: bool) -> bool 
     if hit.pressed || hit.hover {
         let a = if hit.pressed { 0.16 } else { 0.08 };
         let o = rect.center();
-        draw_circle(o.x, o.y, rect.w.min(rect.h) * 0.5, with_alpha(c.text_primary, a));
+        draw_circle(
+            o.x,
+            o.y,
+            rect.w.min(rect.h) * 0.5,
+            with_alpha(c.text_primary, a),
+        );
     }
     let g = Rect::new(
         rect.center().x - GLYPH * 0.5,
@@ -206,7 +211,11 @@ fn chip_button(p: &Painter, rect: Rect, glyph: Option<Glyph>, label: &str, size:
     stroke_rounded(chip, 16.0, 1.0, c.border);
     let mut x = chip.x + 12.0;
     if let Some(g) = glyph {
-        draw_glyph(g, Rect::new(x, chip.center().y - 9.0, 18.0, 18.0), c.text_primary);
+        draw_glyph(
+            g,
+            Rect::new(x, chip.center().y - 9.0, 18.0, 18.0),
+            c.text_primary,
+        );
         x += 22.0;
     }
     let text = Rect::new(x, chip.y, chip.right() - x - 12.0, chip.h);

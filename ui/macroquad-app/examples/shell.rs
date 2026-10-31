@@ -118,7 +118,12 @@ impl Demo {
     }
 
     fn refilter(&mut self) {
-        let query = self.search.value().trim().trim_start_matches('#').to_string();
+        let query = self
+            .search
+            .value()
+            .trim()
+            .trim_start_matches('#')
+            .to_string();
         let f = self.filters;
         self.shown = (0..COUNT)
             .filter(|n| query.is_empty() || n.to_string().contains(&query))
@@ -131,17 +136,20 @@ impl Demo {
     }
 
     fn painter(&self, frame: &Frame, tap: Option<Vec2>) -> Painter<'_> {
-        Painter::new(self.font.as_ref(), self.mono.as_ref(), self.theme, tap)
-            .pixel_scale(frame.px)
-            .at_time(frame.clock as f64)
+        painter(&self.font, &self.mono, self.theme, frame, tap)
     }
 
     /// The browse screen's body: the search field and the filters pinned at
     /// the top, the grid under them.
     fn browse(&mut self, frame: &Frame, body: Rect, gutter: f32, tap: Option<Vec2>) {
-        let p = self.painter(frame, tap);
+        let p = painter(&self.font, &self.mono, self.theme, frame, tap);
         let c = p.theme.color;
-        let field = Rect::new(body.x + gutter, body.y + 8.0, body.w - gutter * 2.0, FIELD_H);
+        let field = Rect::new(
+            body.x + gutter,
+            body.y + 8.0,
+            body.w - gutter * 2.0,
+            FIELD_H,
+        );
         let reply = self.search.show(
             &p,
             &mut self.keyboard,
@@ -158,7 +166,13 @@ impl Demo {
         let row = chip_row(&p, origin, field.w, &chips);
         let count = format!("{} of {COUNT}", self.shown.len());
         let count_box = Rect::new(field.x, origin.y + row.height + 4.0, field.w, 24.0);
-        p.text_in(&count, count_box, p.size(TextSize::Sm), c.text_muted, Align::Start);
+        p.text_in(
+            &count,
+            count_box,
+            p.size(TextSize::Sm),
+            c.text_muted,
+            Align::Start,
+        );
 
         let area = Rect::new(
             body.x,
@@ -175,12 +189,13 @@ impl Demo {
             .grid
             .update(area, &input, self.shown.len(), spec, frame.dt);
         let grid_tap = self.grid.filter_tap(tap);
-        let p = self.painter(frame, grid_tap);
+        let p = painter(&self.font, &self.mono, self.theme, frame, grid_tap);
         let shown = &self.shown;
         self.grid
-            .draw(area, &geo, shown.len(), c.text_muted, |i, r| card(&p, shown[i], r));
+            .draw(area, &geo, shown.len(), c.text_muted, |i, r| {
+                card(&p, shown[i], r)
+            });
         let opened = self.grid.hit(area, &geo, shown.len(), grid_tap);
-        drop(p);
 
         if reply.changed {
             self.refilter();
@@ -204,7 +219,11 @@ impl Demo {
         fill_rounded(art, 18.0, swatch(n));
         let facts = Rect::new(x, art.bottom() + 16.0, w, 64.0);
         let title = format!("Swatch #{n}");
-        let sub = format!("hue {:.3} · {}", hue(n), if warm(n) { "warm" } else { "cool" });
+        let sub = format!(
+            "hue {:.3} · {}",
+            hue(n),
+            if warm(n) { "warm" } else { "cool" }
+        );
         p.stack_in(
             &[
                 Line::new(&title, p.size(TextSize::Xl3), c.text_primary),
@@ -217,6 +236,20 @@ impl Demo {
     }
 }
 
+/// A painter over the fonts alone, so the rest of the app stays free to
+/// change while it draws.
+fn painter<'a>(
+    font: &'a Option<Font>,
+    mono: &'a Option<Font>,
+    theme: Theme,
+    frame: &Frame,
+    tap: Option<Vec2>,
+) -> Painter<'a> {
+    Painter::new(font.as_ref(), mono.as_ref(), theme, tap)
+        .pixel_scale(frame.px)
+        .at_time(frame.clock as f64)
+}
+
 /// One card: the swatch as its art, its number under it.
 fn card(p: &Painter, n: usize, r: Rect) {
     let c = p.theme.color;
@@ -226,7 +259,13 @@ fn card(p: &Painter, n: usize, r: Rect) {
     stroke_rounded(r, 14.0, 1.0, c.border);
     let caption = Rect::new(r.x + 10.0, art.bottom(), r.w - 20.0, r.h - r.w);
     let label = format!("Swatch #{n}");
-    p.text_in(&label, caption, p.size(TextSize::Md), c.text_primary, Align::Start);
+    p.text_in(
+        &label,
+        caption,
+        p.size(TextSize::Md),
+        c.text_primary,
+        Align::Start,
+    );
     if warm(n) {
         let dot = vec2(caption.right() - 4.0, caption.center().y);
         draw_circle(dot.x, dot.y, 4.0, with_alpha(c.accent_orange, 0.9));
@@ -284,7 +323,7 @@ impl Game for Demo {
         }
         self.keyboard.end();
 
-        let p = self.painter(frame, tap);
+        let p = painter(&self.font, &self.mono, self.theme, frame, tap);
         let filtering = self.filters.iter().any(|f| *f);
         let actions = [
             if filtering {
@@ -330,7 +369,6 @@ impl Game for Demo {
             _ => layout.safe.bottom(),
         };
         self.toasts.show(&p, layout.body.x, layout.body.w, foot);
-        drop(p);
 
         match bar {
             Some(BarHit::Leading) => self.router.up(Screen::Tab(0)),
@@ -366,7 +404,9 @@ impl Game for Demo {
                 self.toasts.push(text, Tone::Success);
                 Ok(())
             }
-            _ => Err(format!("unknown set line `{line}`: try `search 12` or `toast Copied`")),
+            _ => Err(format!(
+                "unknown set line `{line}`: try `search 12` or `toast Copied`"
+            )),
         }
     }
 }

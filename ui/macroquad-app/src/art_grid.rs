@@ -178,12 +178,7 @@ impl ArtGrid {
     /// Where card `i` is on the stage this frame.
     pub fn cell(&self, area: Rect, geo: &GridGeometry, i: usize) -> Rect {
         let r = geo.cell_in_content(i);
-        Rect::new(
-            area.x + r.x,
-            area.y + r.y - self.scroll.offset(),
-            r.w,
-            r.h,
-        )
+        Rect::new(area.x + r.x, area.y + r.y - self.scroll.offset(), r.w, r.h)
     }
 
     /// Where the header is on the stage this frame.
