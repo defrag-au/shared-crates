@@ -10,6 +10,7 @@
 //! The story list scrolls with the mouse wheel or trackpad over the sidebar,
 //! and a story chosen by key or `--story` is scrolled into view.
 
+mod app_stories;
 mod cart_stories;
 mod chain_fixture;
 mod gamekit_stories;
@@ -17,6 +18,7 @@ mod route_stories;
 mod trading_stories;
 mod wallet_modal_stories;
 
+use app_stories::{AppStory, AppView};
 use cart_stories::{CartStory, CartView};
 use chain_fixture::{ChainSim, Scenario};
 use gamekit_stories::{KitStory, KitView};
@@ -152,6 +154,8 @@ enum Body {
     WalletModal(Box<WalletModalStory>),
     /// The gamekit's cart, in a stage or driven by hand.
     Cart(Box<CartStory>),
+    /// A part of `macroquad-app`'s shell.
+    App(Box<AppStory>),
 }
 
 /// The operator panel with a game's numbers in it and its buttons wired to an
@@ -206,6 +210,7 @@ enum Kind {
     Admin,
     WalletModal,
     Cart,
+    App,
 }
 
 struct Story {
@@ -332,6 +337,15 @@ impl Story {
             Body::Admin(_) => Kind::Admin,
             Body::WalletModal(_) => Kind::WalletModal,
             Body::Cart(_) => Kind::Cart,
+            Body::App(_) => Kind::App,
+        }
+    }
+
+    fn app(name: &'static str, view: AppView) -> Self {
+        Self {
+            category: "app shell",
+            name,
+            body: Body::App(Box::new(AppStory::new(view))),
         }
     }
 
@@ -1003,6 +1017,13 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::cart("cart · phone · editing", CartView::Editing, true, icon),
         Story::cart("cart · phone · many", CartView::Many, true, icon),
         Story::cart("cart · phone · working", CartView::Working, true, icon),
+        // "app · …" so `--story` finds these rather than another category's.
+        Story::app("app · bar", AppView::Bar),
+        Story::app("app · navigation", AppView::Nav),
+        Story::app("app · text field", AppView::Field),
+        Story::app("app · chips", AppView::Chips),
+        Story::app("app · toasts", AppView::Toasts),
+        Story::app("app · grid", AppView::Grid),
     ]);
     stories
 }
@@ -1385,7 +1406,12 @@ impl Storybook {
         );
         y += 20.0;
         let help = match self.stories[sel].kind() {
-            Kind::Kit | Kind::Route | Kind::Trading | Kind::WalletModal | Kind::Cart => format!(
+            Kind::Kit
+            | Kind::Route
+            | Kind::Trading
+            | Kind::WalletModal
+            | Kind::Cart
+            | Kind::App => format!(
                 "arrows / click to switch  ·  t = theme: {}  ·  p pause · . step · s slow  ·  {}",
                 p.theme.name,
                 self.clock.label()
@@ -1510,6 +1536,18 @@ impl Storybook {
                         screen_height() - y - 20.0,
                     );
                     story.draw(p, area, &g, t);
+                }
+            }
+            Kind::App => {
+                let (dt, g) = (self.dt, self.gesture);
+                if let Body::App(story) = &mut self.stories[sel].body {
+                    let area = Rect::new(
+                        x0,
+                        y,
+                        screen_width() - x0 - 20.0,
+                        screen_height() - y - 20.0,
+                    );
+                    story.draw(p, area, &g, dt);
                 }
             }
             Kind::Cart => {
