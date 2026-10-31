@@ -966,6 +966,7 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::kit("preloader", KitView::Preload),
         Story::kit("card face", KitView::Face),
         Story::kit("wall", KitView::Wall),
+        Story::kit("phosphor icons", KitView::Phosphor),
         Story::admin("operator panel", 640.0, true),
         // Tall enough for the one-column form: a portrait phone's 16 facts,
         // its sparklines and the commands.

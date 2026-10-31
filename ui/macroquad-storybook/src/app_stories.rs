@@ -82,13 +82,20 @@ impl AppStory {
         match self.view {
             AppView::Bar => {
                 let mut y = area.y;
-                let filter = [BarAction::Icon(Glyph::Search), BarAction::Marked(Glyph::Filter)];
+                let filter = [
+                    BarAction::Icon(Glyph::Search),
+                    BarAction::Marked(Glyph::Filter),
+                ];
                 let wallet = [BarAction::Chip {
                     glyph: Some(Glyph::Wallet),
                     label: "2 wallets",
                 }];
                 let bars = [
-                    ("top level, a chip", AppBar::new("Collections").actions(&wallet), 0.0),
+                    (
+                        "top level, a chip",
+                        AppBar::new("Collections").actions(&wallet),
+                        0.0,
+                    ),
                     (
                         "inside a screen: back, a subtitle, a filter in force",
                         AppBar::new("Toolheads")
@@ -141,9 +148,13 @@ impl AppStory {
                 let w = PHONE_W - 24.0;
                 label("search, empty (click to type)", area.y);
                 let a = Rect::new(area.x, area.y + 22.0, w, FIELD_H);
-                let ra = self
-                    .empty
-                    .show(p, &mut self.keyboard, a, FieldKind::Search, "Search by name");
+                let ra = self.empty.show(
+                    p,
+                    &mut self.keyboard,
+                    a,
+                    FieldKind::Search,
+                    "Search by name",
+                );
                 label("an address, filled: the cross clears it", a.bottom() + 20.0);
                 let b = Rect::new(area.x, a.bottom() + 42.0, w, FIELD_H);
                 let rb = self.filled.show(
@@ -163,7 +174,14 @@ impl AppStory {
                 );
             }
             AppView::Chips => {
-                let names = ["Listed", "Best deals", "Owned", "Rare first", "Pixel", "1/1s"];
+                let names = [
+                    "Listed",
+                    "Best deals",
+                    "Owned",
+                    "Rare first",
+                    "Pixel",
+                    "1/1s",
+                ];
                 let counts = ["412", "38", "", "", "1,204", "12"];
                 let chips: Vec<Chip> = names
                     .iter()
@@ -174,7 +192,10 @@ impl AppStory {
                         if k.is_empty() { chip } else { chip.count(k) }
                     })
                     .collect();
-                label("wrapping at a phone's width, not scrolling sideways", area.y);
+                label(
+                    "wrapping at a phone's width, not scrolling sideways",
+                    area.y,
+                );
                 let row = chip_row(p, vec2(area.x, area.y + 26.0), PHONE_W - 24.0, &chips);
                 if let Some(i) = row.tapped {
                     self.chips[i] = !self.chips[i];
@@ -188,8 +209,7 @@ impl AppStory {
                 self.toasts.update(dt);
                 fill_rounded(phone, 18.0, c.bg_primary);
                 stroke_rounded(phone, 18.0, 1.0, c.border);
-                self.toasts
-                    .show(p, phone.x, phone.w, phone.bottom() - 16.0);
+                self.toasts.show(p, phone.x, phone.w, phone.bottom() - 16.0);
             }
             AppView::Grid => {
                 stroke_rounded(phone, 0.0, 1.0, c.border);
@@ -209,7 +229,13 @@ impl AppStory {
                     fill_rounded(art, 14.0, Color::new(ch(0.0), ch(0.667), ch(0.333), 1.0));
                     let cap = Rect::new(r.x + 10.0, art.bottom(), r.w - 20.0, r.h - r.w);
                     let name = format!("Swatch #{i}");
-                    p.text_in(&name, cap, p.size(TextSize::Md), c.text_primary, Align::Start);
+                    p.text_in(
+                        &name,
+                        cap,
+                        p.size(TextSize::Md),
+                        c.text_primary,
+                        Align::Start,
+                    );
                 });
                 let note = format!(
                     "{} of {count} cards drawn this frame",

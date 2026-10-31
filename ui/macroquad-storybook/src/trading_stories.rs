@@ -15,9 +15,9 @@ use macroquad_widgets::{
     HolderBoardVm, HolderMapLayout, HolderMapState, HolderMapVm, Holding, HoldingKind, KindInk,
     LifeBucket, LifeStripVm, MapGroup, MapTile, MarketInk, Painter, PriceChartVm, RateChartLabels,
     RateChartVm, RateStep, SplitBarVm, StatMark, StatTile, StatTilesVm, TokenHeaderVm, TokenLogo,
-    TradeMark, TradeSide, TradeSize, TreemapGroup, TreemapState, TreemapTile, TreemapVm, change_chip,
-    draw_rounded_rect, feed, format, holder_board, holder_map, life_strip, price_chart, rate_chart,
-    split_bar, stat_tiles, time_at_x, token_header, treemap,
+    TradeMark, TradeSide, TradeSize, TreemapGroup, TreemapState, TreemapTile, TreemapVm,
+    change_chip, draw_rounded_rect, feed, format, holder_board, holder_map, life_strip,
+    price_chart, rate_chart, split_bar, stat_tiles, time_at_x, token_header, treemap,
 };
 
 /// Where the fixture's history starts: 13 Oct 2026, 10:13 UTC.

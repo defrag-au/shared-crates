@@ -4029,6 +4029,7 @@ version = "0.1.0"
 dependencies = [
  "chains",
  "discord-auth",
+ "fontdue",
  "gamepads",
  "macroquad",
  "macroquad-text",

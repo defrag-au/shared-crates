@@ -60,6 +60,7 @@ pub mod motion;
 #[cfg(feature = "gamepads")]
 pub mod pads;
 pub mod paint;
+pub mod phosphor;
 pub mod pixel;
 pub mod plan;
 pub mod pointer;
@@ -106,11 +107,14 @@ pub use paint::{
     Gradient, bevel, fill_circle_gradient, fill_gradient, grain, inner_shadow, noise_pixels,
     noise_texture, scanlines,
 };
+pub use phosphor::{Phosphor, PhosphorIcon};
 pub use pixel::{Grid, Onion, Palette, PixelError, PixelSprite, parse_frames};
 pub use pointer::{HoverGrace, Pointer, PointerConfig, PointerEvent, Swipe, Swipes};
 pub use preload::Preloader;
 pub use sequence::{Sequencer, stagger};
-pub use shape::{RoundedArt, cover_source, fill_rounded, fill_texture_rounded, stroke_rounded};
+pub use shape::{
+    Finish, RoundedArt, cover_source, fill_rounded, fill_texture_rounded, stroke_rounded,
+};
 pub use sprite::{Pose, Sprite, draw_order, topmost};
 pub use sprite_file::{SpriteFile, SpriteFileError};
 pub use starfield::{Star, Starfield};

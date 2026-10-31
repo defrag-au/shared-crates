@@ -104,6 +104,13 @@ impl<'a> Painter<'a> {
         self.theme.role_size(role)
     }
 
+    /// The pixel scale this painter draws at: device pixels per point. Text
+    /// uses it to rasterise; a glyph drawn by a host's own face needs it for
+    /// the same reason.
+    pub fn scale(&self) -> f32 {
+        self.px
+    }
+
     pub fn text(&self, s: &str, x: f32, y: f32, size: f32, color: Color) {
         self.draw_in(self.font, s, x, y, size, color);
     }

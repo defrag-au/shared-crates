@@ -37,7 +37,9 @@ void main() {
 }"#;
 
 // The rounded box's signed distance, from the quad's own texture coordinates:
-// `Crop` maps the cropped source back to 0..1 across the frame.
+// `Crop` maps the cropped source back to 0..1 across the frame. `Grey` mixes
+// the picture's colour towards its luminance, and `Dim` scales it, so a host can
+// show a screenshot of an asset as inactive rather than only labelling it.
 const FRAGMENT: &str = r#"#version 100
 precision mediump float;
 
@@ -48,6 +50,8 @@ uniform sampler2D Texture;
 uniform vec2 Size;
 uniform float Radius;
 uniform vec4 Crop;
+uniform float Grey;
+uniform float Dim;
 
 void main() {
     vec2 local = (uv - Crop.xy) / Crop.zw;
@@ -55,9 +59,48 @@ void main() {
     vec2 q = abs(p) - (Size * 0.5 - vec2(Radius));
     float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - Radius;
     float a = clamp(0.5 - d, 0.0, 1.0);
-    vec4 c = texture2D(Texture, uv) * color;
+    vec4 tex = texture2D(Texture, uv);
+    float luma = dot(tex.rgb, vec3(0.299, 0.587, 0.114));
+    vec3 rgb = mix(tex.rgb, vec3(luma), Grey);
+    // The tint comes after the grey, so a tinted finish is a wash over the
+    // picture rather than a colour the desaturation would then remove.
+    vec4 c = vec4(rgb, tex.a) * color;
+    c.rgb *= Dim;
     gl_FragColor = vec4(c.rgb, c.a * a);
 }"#;
+
+/// How a picture is finished as it is drawn, beyond its tint.
+///
+/// The site draws a listed Perp with [`Finish::GREY`]: its art loses its
+/// colour while its caption and badge stay legible, so a wall of listed assets
+/// reads inactive rather than only saying so. [`Finish::NONE`] is the default
+/// and leaves the picture alone.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Finish {
+    /// 0 = the picture's own colour, 1 = its luminance alone.
+    pub grey: f32,
+    /// Brightness multiplier: 1 = unchanged, 0.85 = a shade darker.
+    pub dim: f32,
+}
+
+impl Finish {
+    /// The picture as it is: no desaturation, no dimming.
+    pub const NONE: Self = Self {
+        grey: 0.0,
+        dim: 1.0,
+    };
+    /// Luminance only, at its own brightness.
+    pub const GREY: Self = Self {
+        grey: 1.0,
+        dim: 1.0,
+    };
+}
+
+impl Default for Finish {
+    fn default() -> Self {
+        Self::NONE
+    }
+}
 
 /// Host-owned: create once the window exists, keep, draw through.
 pub struct RoundedArt {
@@ -76,6 +119,8 @@ impl RoundedArt {
                     UniformDesc::new("Size", UniformType::Float2),
                     UniformDesc::new("Radius", UniformType::Float1),
                     UniformDesc::new("Crop", UniformType::Float4),
+                    UniformDesc::new("Grey", UniformType::Float1),
+                    UniformDesc::new("Dim", UniformType::Float1),
                 ],
                 pipeline_params: PipelineParams {
                     color_blend: Some(BlendState::new(
@@ -108,6 +153,20 @@ impl RoundedArt {
     /// Draw `texture` filling `dest`, cropped to its shape and clipped to
     /// rounded corners of `radius`.
     pub fn draw(&self, texture: &Texture2D, dest: Rect, radius: f32, tint: Color) {
+        self.draw_with(texture, dest, radius, tint, Finish::NONE);
+    }
+
+    /// The same, finished: desaturated by `finish.grey`, dimmed by
+    /// `finish.dim`. On a backend where the shader cannot load, the picture is
+    /// dimmed but cannot be desaturated, and corners are square.
+    pub fn draw_with(
+        &self,
+        texture: &Texture2D,
+        dest: Rect,
+        radius: f32,
+        tint: Color,
+        finish: Finish,
+    ) {
         let tex = vec2(texture.width(), texture.height());
         let src = cover_source(tex, dest.size());
         let params = DrawTextureParams {
@@ -116,7 +175,13 @@ impl RoundedArt {
             ..Default::default()
         };
         let Some(m) = &self.material else {
-            draw_texture_ex(texture, dest.x, dest.y, tint, params);
+            let dimmed = Color::new(
+                tint.r * finish.dim,
+                tint.g * finish.dim,
+                tint.b * finish.dim,
+                tint.a,
+            );
+            draw_texture_ex(texture, dest.x, dest.y, dimmed, params);
             return;
         };
         m.set_uniform("Size", dest.size());
@@ -125,6 +190,8 @@ impl RoundedArt {
             "Crop",
             vec4(src.x / tex.x, src.y / tex.y, src.w / tex.x, src.h / tex.y),
         );
+        m.set_uniform("Grey", finish.grey.clamp(0.0, 1.0));
+        m.set_uniform("Dim", finish.dim.max(0.0));
         gl_use_material(m);
         draw_texture_ex(texture, dest.x, dest.y, tint, params);
         gl_use_default_material();
