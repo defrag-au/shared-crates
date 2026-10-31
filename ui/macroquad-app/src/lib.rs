@@ -19,8 +19,9 @@
 //!   hash and the back button ([`Router`]), the safe area and the keyboard
 //!   ([`Insets`]), a real text field with the phone's own keyboard
 //!   ([`TextField`]), HTTP with any method and the reply's status ([`http`]),
-//!   a virtualised grid ([`ArtGrid`]), toasts ([`Toasts`]), the app bar and
-//!   the navigation bar.
+//!   a request read into a screen's type and its loading state ([`Load`]), a
+//!   page that scrolls as a whole ([`Page`]), a virtualised grid
+//!   ([`ArtGrid`]), toasts ([`Toasts`]), the app bar and the navigation bar.
 //! - **Still no layout engine.** Rects are computed by the app, as they are
 //!   everywhere else on macroquad. [`shell_layout`] answers the one layout
 //!   every screen shares; a screen lays out its own body.
@@ -48,7 +49,9 @@ pub mod http;
 pub mod input;
 pub mod insets;
 pub mod layout;
+pub mod load;
 pub mod nav;
+pub mod page;
 pub mod toast;
 
 pub use app_bar::{AppBar, BarAction, BarHit, Leading, icon_button};
@@ -60,7 +63,9 @@ pub use http::{HttpError, Method, Pending, Request, Response};
 pub use input::{FIELD_H, FieldKind, FieldReply, Keyboard, TextField};
 pub use insets::Insets;
 pub use layout::{BAR_H, NAV_H, NavPlace, RAIL_W, ShellLayout, shell_layout};
+pub use load::{Fetch, Load};
 pub use nav::{NavItem, bottom_nav, nav_rail};
+pub use page::Page;
 pub use toast::{Toast, Toasts, Tone};
 
 /// JavaScript source for the miniquad plugin. Stamp it into the web

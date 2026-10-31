@@ -119,7 +119,11 @@ pub fn rate_chart(p: &Painter, vm: &RateChartVm, rect: Rect) {
     let s = p.size(TextSize::Xs);
     let axis_h = s + 6.0;
     // A band for the peak's reading, so it never sits on the line that set it.
-    let peak_h = if vm.labels.peak.is_some() { s + 4.0 } else { 0.0 };
+    let peak_h = if vm.labels.peak.is_some() {
+        s + 4.0
+    } else {
+        0.0
+    };
     let plot = Rect::new(
         rect.x,
         rect.y + peak_h,
@@ -143,9 +147,7 @@ pub fn rate_chart(p: &Painter, vm: &RateChartVm, rect: Rect) {
     if hi > lo {
         let span = vm.t1.saturating_sub(vm.t0).max(1) as f64;
         let x_of = |at: u64| {
-            plot.x
-                + plot.w
-                    * ((at.saturating_sub(vm.t0) as f64 / span).clamp(0.0, 1.0) as f32)
+            plot.x + plot.w * ((at.saturating_sub(vm.t0) as f64 / span).clamp(0.0, 1.0) as f32)
         };
         let y_of = |value: f64| {
             plot.bottom() - plot.h * (((value - lo) / (hi - lo)).clamp(0.0, 1.0) as f32)

@@ -1,0 +1,18 @@
+[package]
+name = "holder-behaviour"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "A fold over chain-events that earns holder-behaviour achievements and says what is still pending"
+
+[dependencies]
+# The vocabulary this folds. Not a ledger: the fold never reads a chain, it reads
+# facts a producer already translated, which is what lets the same evaluator score a
+# Cardano archive and an OpenSea feed.
+chain-events = { path = "../chain-events" }
+chains = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+# The replay test reads the same NDJSON the store does.
+serde_json = { workspace = true }

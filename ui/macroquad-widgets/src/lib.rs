@@ -23,6 +23,7 @@ mod detail_sheet;
 mod floating_stick;
 mod fonts;
 mod gesture;
+mod message;
 mod mint_checkout;
 mod momentum;
 mod order_fulfilment;
@@ -34,6 +35,7 @@ mod scroll;
 mod segmented;
 mod slider;
 mod squad_picker;
+mod surface;
 mod wallet_connect;
 mod wallet_list;
 mod well;
@@ -46,7 +48,8 @@ mod well;
 mod change_chip;
 #[cfg(feature = "trading")]
 mod feed;
-#[cfg(feature = "trading")]
+// Not gated: pure and renderer-free, and an app that is no market surface
+// still writes amounts and counts (`ada_amount`, `grouped`).
 pub mod format;
 #[cfg(feature = "trading")]
 mod holder_board;
@@ -98,6 +101,7 @@ pub use fonts::{FontFiles, Fonts, Slot};
 pub use gesture::{Gesture, Gestures, SwipeDir, touch_points};
 /// How [`Painter::text_in`] and [`Painter::stack_in`] align in their box.
 pub use macroquad_text::Align;
+pub use message::Message;
 pub use mint_checkout::{
     CheckoutAction, CheckoutResponse, CheckoutState, Eligibility, MintCheckoutVm, mint_checkout,
 };
@@ -126,6 +130,7 @@ pub use squad_picker::{
     SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerResponse, SquadPickerVm,
     squad_picker,
 };
+pub use surface::{SURFACE_R, edge, surface};
 pub use theme::Theme;
 /// The ramp step a VM names. Re-exported because a `CalloutVm` carries one:
 /// a host that depends on this crate alone can name its step without also

@@ -14,6 +14,7 @@ mod app_stories;
 mod cart_stories;
 mod chain_fixture;
 mod gamekit_stories;
+mod page_stories;
 mod route_stories;
 mod trading_stories;
 mod wallet_modal_stories;
@@ -35,6 +36,7 @@ use macroquad_widgets::{
     floating_stick, mint_checkout, order_fulfilment, quantity_stepper, segmented, segmented_pills,
     squad_picker, theme, wallet_connect, wallet_list,
 };
+use page_stories::{PageStory, PageView};
 use route_stories::RouteStory;
 use trading_stories::{TradingStory, TradingView};
 use ui_theme::{TextSize, Token};
@@ -156,6 +158,8 @@ enum Body {
     Cart(Box<CartStory>),
     /// A part of `macroquad-app`'s shell.
     App(Box<AppStory>),
+    /// A page piece: the message, the surface, wrapped prose.
+    Page(Box<PageStory>),
 }
 
 /// The operator panel with a game's numbers in it and its buttons wired to an
@@ -211,6 +215,7 @@ enum Kind {
     WalletModal,
     Cart,
     App,
+    Page,
 }
 
 struct Story {
@@ -338,6 +343,15 @@ impl Story {
             Body::WalletModal(_) => Kind::WalletModal,
             Body::Cart(_) => Kind::Cart,
             Body::App(_) => Kind::App,
+            Body::Page(_) => Kind::Page,
+        }
+    }
+
+    fn page(name: &'static str, view: PageView) -> Self {
+        Self {
+            category: "page",
+            name,
+            body: Body::Page(Box::new(PageStory::new(view))),
         }
     }
 
@@ -1025,6 +1039,11 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::app("app · chips", AppView::Chips),
         Story::app("app · toasts", AppView::Toasts),
         Story::app("app · grid", AppView::Grid),
+        // "page · …" so `--story` finds these rather than another category's.
+        Story::page("page · message", PageView::Message),
+        Story::page("page · message with action", PageView::MessageAction),
+        Story::page("page · surface", PageView::Surface),
+        Story::page("page · wrap", PageView::Wrap),
     ]);
     stories
 }
@@ -1537,6 +1556,17 @@ impl Storybook {
                         screen_height() - y - 20.0,
                     );
                     story.draw(p, area, &g, t);
+                }
+            }
+            Kind::Page => {
+                if let Body::Page(story) = &mut self.stories[sel].body {
+                    let area = Rect::new(
+                        x0,
+                        y,
+                        screen_width() - x0 - 20.0,
+                        screen_height() - y - 20.0,
+                    );
+                    story.draw(p, area);
                 }
             }
             Kind::App => {
