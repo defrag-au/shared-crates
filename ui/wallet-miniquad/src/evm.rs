@@ -51,6 +51,22 @@ struct SwitchRequest<'a> {
     add: Option<&'a AddChain>,
 }
 
+/// The JSON `evm_personal_sign` reads.
+#[derive(Serialize)]
+struct PersonalSign<'a> {
+    message: &'a str,
+    address: &'a str,
+}
+
+/// What `evm_personal_sign` is sent for `message_hex` (`0x…`) by `address`.
+fn personal_sign_json(message_hex: &str, address: &str) -> String {
+    serde_json::to_string(&PersonalSign {
+        message: message_hex,
+        address,
+    })
+    .unwrap_or_default()
+}
+
 impl ChainTarget {
     /// The request the plugin reads: the id as EIP-1193's `0x…` hex.
     fn request_json(&self) -> String {
@@ -105,6 +121,7 @@ fn icon_len_ok(rgba: &[u8], size: u16) -> bool {
 mod imp {
     use super::{
         ChainTarget, EvmChanges, EvmWallet, FailureKind, PollResultDetailed, ReqId, icon_len_ok,
+        personal_sign_json,
     };
     use sapp_jsutils::JsObject;
 
@@ -114,6 +131,7 @@ mod imp {
         fn evm_connect(id: JsObject, silent: i32) -> i32;
         fn evm_chain_id() -> i32;
         fn evm_switch_chain(request: JsObject) -> i32;
+        fn evm_personal_sign(request: JsObject) -> i32;
         fn evm_icon(id: JsObject, size: u32) -> i32;
         fn evm_icon_pixels(req: i32) -> JsObject;
         fn evm_disconnect();
@@ -151,6 +169,14 @@ mod imp {
     /// a wallet that "switched" elsewhere is not taken at its word.
     pub fn switch_chain(target: &ChainTarget) -> ReqId {
         ReqId(unsafe { evm_switch_chain(JsObject::string(&target.request_json())) })
+    }
+
+    /// EIP-191 `personal_sign` of `message_hex` (`0x…`) by `address`, through
+    /// the connected wallet. On ok, `data` is the signature (`0x…`); a reader
+    /// refusing is `Declined`.
+    pub fn personal_sign(message_hex: &str, address: &str) -> ReqId {
+        let json = personal_sign_json(message_hex, address);
+        ReqId(unsafe { evm_personal_sign(JsObject::string(&json)) })
     }
 
     pub fn icon(id: &str, size: u16) -> ReqId {
@@ -194,10 +220,18 @@ mod imp {
 
 #[cfg(not(target_arch = "wasm32"))]
 mod imp {
-    use super::{ChainTarget, EvmChanges, EvmWallet, FailureKind, PollResultDetailed, ReqId};
+    use super::{
+        ChainTarget, EvmChanges, EvmWallet, FailureKind, PollResultDetailed, ReqId,
+        personal_sign_json,
+    };
 
     pub fn list_wallets() -> Vec<EvmWallet> {
         Vec::new()
+    }
+    pub fn personal_sign(message_hex: &str, address: &str) -> ReqId {
+        // Built natively too, so the request's shape is checked off the web.
+        let _ = personal_sign_json(message_hex, address);
+        ReqId(0)
     }
     pub fn connect(_id: &str, _silent: bool) -> ReqId {
         ReqId(0)
@@ -232,12 +266,13 @@ mod imp {
 
 pub use imp::*;
 
-/// Plugin version handshake for `evm.js`, which declares `version: 3`.
-/// Bumped 1 → 2 with `switch_chain`, 2 → 3 with `recheck`.
+/// Plugin version handshake for `evm.js`, which declares `version: 4`.
+/// Bumped 1 → 2 with `switch_chain`, 2 → 3 with `recheck`, 3 → 4 with
+/// `personal_sign`.
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn evm_crate_version() -> u32 {
-    3
+    4
 }
 
 #[cfg(test)]
@@ -272,6 +307,14 @@ mod tests {
         assert_eq!(
             switch_only.request_json(),
             r#"{"chainId":"0x1","add":null}"#
+        );
+    }
+
+    #[test]
+    fn a_personal_sign_is_written_as_the_plugin_reads_it() {
+        assert_eq!(
+            personal_sign_json("0x4869", "0xab"),
+            r#"{"message":"0x4869","address":"0xab"}"#
         );
     }
 

@@ -1,0 +1,50 @@
+[package]
+name = "macroquad-wallet-link"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "The Discord wallet-link manager on macroquad: linked wallets as moons round their home planet, linking through the shared wallet modal and auth-service's signed challenge. A component any gamekit screen draws into a rect, and the `wallet-link` app that is that component full screen."
+publish = false
+
+# The edge crate of `wallet-link-flow`: it runs that machine's effects with
+# miniquad's HTTP and wallet plugins and draws it. No wasm-bindgen anywhere in
+# the tree: check with
+#   cargo tree --target wasm32-unknown-unknown -p macroquad-wallet-link
+
+build = "build.rs"
+
+[[bin]]
+name = "wallet-link"
+path = "src/bin/wallet-link.rs"
+
+[dependencies]
+macroquad = "0.4"
+# The flow: what to call, what to sign, what to say. Pure.
+wallet-link-flow = { path = "../../services/wallet-link-flow" }
+# `ChainFamily`, as the modal and the flow both speak it.
+chains = { workspace = true }
+# The frame loop, tweens and eases, the starfield, particles, the wallet modal.
+macroquad-gamekit = { path = "../../gaming/macroquad-gamekit" }
+# Painter, theme, sheet chrome, well, pills, scroll, segmented, message.
+macroquad-widgets = { workspace = true }
+# HTTP with a bearer and the reply's status, toasts, safe-area insets.
+macroquad-app = { workspace = true }
+# The one-button connector and its Cardano and EVM hosts.
+macroquad-wallet-flow = { workspace = true }
+# CIP-30 `signData` and EIP-191 `personal_sign`, and the fixture addresses'
+# bech32 in the demo.
+wallet-miniquad = { workspace = true }
+# `launch_query`: the app reads `?token=` from its page.
+miniquad-platform = { path = "../miniquad-platform" }
+ui-theme = { workspace = true, features = ["macroquad"] }
+# A CIP-30 signature's JSON, and the demo service's replies.
+serde_json = { workspace = true }
+
+[build-dependencies]
+# Their `PLUGIN_JS`, stamped into `web/` for the app's page.
+wallet-miniquad = { workspace = true }
+miniquad-platform = { path = "../miniquad-platform" }
+macroquad-app = { workspace = true }

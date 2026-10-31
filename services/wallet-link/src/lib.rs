@@ -64,6 +64,8 @@ pub fn wallets_path(discord_user_id: &str) -> String {
     format!("{INTERNAL_WALLETS_PATH}/{discord_user_id}")
 }
 
+pub mod link;
+
 impl LinkedWallet {
     /// The address when this is a Cardano link, else `None`.
     ///

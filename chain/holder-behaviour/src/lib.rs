@@ -1,0 +1,61 @@
+//! Holder behaviour: what a wallet *did* with a collection, folded from chain events.
+//!
+//! An achievement is a predicate over history, not a snapshot of holdings. "Still holds
+//! one it minted" and "held for a year" are facts a balance column cannot express, and a
+//! balance-weighted score cannot rank — which is why this crate stores **intervals** and
+//! answers questions over them.
+//!
+//! # The shape
+//!
+//! ```text
+//! chain-events  ──apply──▶  Store (lots)  ──evaluate──▶  Outcome per definition
+//! ```
+//!
+//! Two functions and one trait. [`apply`] folds an event into a backend, [`evaluate`] reads
+//! one subject's lots as achievements, and [`Store`] is the ten point operations a backend
+//! provides. The Cloudflare Durable Object and the in-memory test store implement the same
+//! trait, and the batch replay and the live fold run the same [`apply`] — there is no
+//! second algorithm for a rebuild to disagree with.
+//!
+//! # Chain-neutral, by construction
+//!
+//! The input is [`chain_events::ChainEvent`], not a Cardano ledger row. A Cardano archive
+//! and an OpenSea feed are both translated upstream into that envelope, so the predicate
+//! that says "held for a year" is written once and scores both. Nothing here names a
+//! policy, a slot or a marketplace.
+//!
+//! # Facts, not rollups
+//!
+//! The store holds acquisitions and the interval each one covers. It holds no totals, no
+//! leaderboard and no progress. Progress is derived at read time, which is what lets a
+//! `Pending` answer carry the slot it will complete at: the open interval is already the
+//! clock, so nothing needs refreshing and no nightly job can fall behind.
+//!
+//! # What this crate is not
+//!
+//! Not a ledger (it stores no market facts), not an allocation (that is a mapping over
+//! earned events), and not a catalogue loader (the TOML is read by the caller — the
+//! predicate type deserialises from the same `{ kind = … }` table the published rules use).
+//! The design is `cnft.dev-workers/docs/design/HOLDER_BEHAVIOUR.md`; the first client is
+//! the frozen Perps catalogue.
+
+mod bundle;
+mod evaluate;
+mod fold;
+mod memory;
+mod predicate;
+mod state;
+
+pub use bundle::{
+    BUNDLE_COVERAGE, Bundle, BundleError, BundleStore, Earned, Lot, Rarity, Snapshot,
+    SubjectRecord, SubjectView, VERSION as BUNDLE_VERSION, catalogue_digest, evaluate_row,
+    fnv1a, write as write_bundle,
+};
+pub use evaluate::{
+    Assessment, Definition, EarnedSince, Evidence, Gap, Outcome, Progress, SECONDS_PER_DAY,
+    evaluate,
+};
+pub use fold::{Anomaly, Applied, Report, apply, rebuild};
+pub use memory::MemoryStore;
+pub use predicate::Predicate;
+pub use state::{AcquiredBy, Holding, LotId, NewLot, Slot, Store, SubjectId, UnitId};

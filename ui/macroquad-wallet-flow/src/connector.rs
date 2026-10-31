@@ -57,8 +57,8 @@ use std::any::Any;
 use macroquad::prelude::Rect;
 use macroquad_gamekit::wallet_connection::Connection;
 use macroquad_gamekit::wallet_modal::{
-    Account, ChainFamily, ChainOption, SignInPhase, WalletModal, WalletModalAction, WalletModalVm,
-    wallet_button,
+    Account, ChainFamily, ChainOption, ProofWords, SignInPhase, WalletModal, WalletModalAction,
+    WalletModalVm, wallet_button,
 };
 use macroquad_widgets::Painter;
 use miniquad_platform::FocusWatch;
@@ -186,6 +186,13 @@ impl WalletConnector {
         self
     }
 
+    /// What the modal calls the site's proof step: signing in unless the site
+    /// says, linking for a site that links the account to something.
+    pub fn proof_words(mut self, words: ProofWords) -> Self {
+        self.vm.proof = words;
+        self
+    }
+
     /// Draw the wallet button, and open the modal when it is tapped. `true`
     /// on that tap.
     ///
@@ -209,6 +216,14 @@ impl WalletConnector {
     /// it has already been applied.
     pub fn show(&mut self, p: &Painter, area: Rect, dt: f32) -> Option<WalletModalAction> {
         self.poll();
+        self.draw(p, area, dt)
+    }
+
+    /// [`Self::show`] without the poll: draw the modal and act on what the
+    /// reader asked for. For a screen that polls in its update and draws in
+    /// its draw — the kit's capture loop runs updates without draws on its
+    /// way to a moment, and the chains must keep time through them.
+    pub fn draw(&mut self, p: &Painter, area: Rect, dt: f32) -> Option<WalletModalAction> {
         let action = self.modal.show(p, &self.vm, area, dt)?;
         self.apply(&action);
         Some(action)

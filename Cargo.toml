@@ -72,6 +72,7 @@ members = [
     "ui/wallet-miniquad",
     "ui/macroquad-tui",
     "ui/macroquad-wallet-flow",
+    "ui/macroquad-wallet-link",
     "ui/macroquad-cnft",
     "ui/macroquad-text",
     "ui/macroquad-widgets",

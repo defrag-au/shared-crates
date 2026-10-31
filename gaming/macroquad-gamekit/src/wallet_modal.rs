@@ -406,6 +406,78 @@ impl ChainOption {
     }
 }
 
+/// What the site's proof step is called, wherever the modal names it: the
+/// account view's button and the line under the name, and the answer step's
+/// titles and buttons. [`ProofWords::SIGN_IN`] by default; a site that proves
+/// the account for something other than a session — linking it to a Discord
+/// account — names the step for what it does ([`ProofWords::LINK`]).
+///
+/// The step itself is the same either way: a message the wallet signs and the
+/// site's server checks, carried by [`SignInPhase`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ProofWords {
+    /// The account view's button: "Sign in".
+    pub action: &'static str,
+    /// Before the wallet's name, while its dialog is up: "Sign in with".
+    pub in_wallet: &'static str,
+    /// The answer step's title while the site checks: "Signing in".
+    pub working: &'static str,
+    /// Before the wallet's name once proved: "Signed in with".
+    pub done: &'static str,
+    /// After the wallet's name, not yet proved: "not signed in".
+    pub not_done: &'static str,
+    /// The title after a refusal: "Sign-in cancelled".
+    pub cancelled: &'static str,
+    /// The title after a fault: "Couldn't sign in".
+    pub failed: &'static str,
+    /// The button that proves the new account after a switch: "Sign in again".
+    pub again: &'static str,
+    /// The button that lets the wallet go after a switch: "Sign out".
+    pub undo: &'static str,
+    /// Before the old account, after a switch: "You signed in as".
+    pub changed_lead: &'static str,
+    /// The sentence that ends the switch message.
+    pub changed_tail: &'static str,
+}
+
+impl ProofWords {
+    /// Signing in to the site: the modal's words from the start.
+    pub const SIGN_IN: Self = Self {
+        action: "Sign in",
+        in_wallet: "Sign in with",
+        working: "Signing in",
+        done: "Signed in with",
+        not_done: "not signed in",
+        cancelled: "Sign-in cancelled",
+        failed: "Couldn't sign in",
+        again: "Sign in again",
+        undo: "Sign out",
+        changed_lead: "You signed in as",
+        changed_tail: "Sign in again with this account, or sign out.",
+    };
+
+    /// Linking the account to the reader's Discord account.
+    pub const LINK: Self = Self {
+        action: "Link to Discord",
+        in_wallet: "Sign with",
+        working: "Linking",
+        done: "Linked with",
+        not_done: "not linked yet",
+        cancelled: "Link cancelled",
+        failed: "Couldn't link",
+        again: "Link this account",
+        undo: "Disconnect",
+        changed_lead: "You were linking",
+        changed_tail: "Link this account instead, or disconnect.",
+    };
+}
+
+impl Default for ProofWords {
+    fn default() -> Self {
+        Self::SIGN_IN
+    }
+}
+
 /// Everything the modal and its button draw.
 #[derive(Clone)]
 pub struct WalletModalVm {
@@ -415,6 +487,8 @@ pub struct WalletModalVm {
     pub intro: Option<String>,
     /// The chains offered, in the order to offer them.
     pub chains: Vec<ChainOption>,
+    /// What the proof step is called. Signing in, unless the site says.
+    pub proof: ProofWords,
 }
 
 impl WalletModalVm {
@@ -423,11 +497,17 @@ impl WalletModalVm {
             title: "Connect a wallet".to_string(),
             intro: None,
             chains,
+            proof: ProofWords::SIGN_IN,
         }
     }
 
     pub fn with_title(mut self, title: impl Into<String>) -> Self {
         self.title = title.into();
+        self
+    }
+
+    pub fn with_proof(mut self, proof: ProofWords) -> Self {
+        self.proof = proof;
         self
     }
 
@@ -1967,12 +2047,16 @@ impl WalletModal {
         // Under the name: how it came, and — on a site that signs in —
         // whether it has.
         let sub = p.size(TextSize::Md);
+        let words = vm.proof;
         let (line, ink) = match sign_in {
             SignInPhase::SignedIn { detail: Some(d) } => {
-                (format!("Signed in with {name} · {d}"), c.success)
+                (format!("{} {name} · {d}", words.done), c.success)
             }
-            SignInPhase::SignedIn { detail: None } => (format!("Signed in with {name}"), c.success),
-            SignInPhase::Offered => (format!("Connected with {name} · not signed in"), c.warning),
+            SignInPhase::SignedIn { detail: None } => (format!("{} {name}", words.done), c.success),
+            SignInPhase::Offered => (
+                format!("Connected with {name} · {}", words.not_done),
+                c.warning,
+            ),
             _ => (format!("Connected with {name}"), c.text_muted),
         };
         p.text_mid(
@@ -2003,7 +2087,7 @@ impl WalletModal {
             if pill_button(
                 p,
                 rect,
-                "Sign in",
+                words.action,
                 PillStyle::Filled,
                 tint,
                 layer.live && room > 0.9,
@@ -2362,6 +2446,7 @@ fn sign_in_copy(
     let name = family
         .and_then(|f| vm.chain(f))
         .map_or(wallet.to_string(), |c| c.wallet_name(wallet).to_string());
+    let words = vm.proof;
     let again = vec![
         ("Try again", PillStyle::Filled, Act::SignIn),
         ("Switch wallet", PillStyle::Ghost, Act::Another),
@@ -2369,33 +2454,35 @@ fn sign_in_copy(
     match sign_in {
         SignInPhase::Working { step, in_wallet } => AnswerCopy {
             title: if *in_wallet {
-                format!("Sign in with {name}")
+                format!("{} {name}", words.in_wallet)
             } else {
-                "Signing in".to_string()
+                words.working.to_string()
             },
             message: step.clone(),
             buttons: Vec::new(),
         },
         SignInPhase::Declined => AnswerCopy {
-            title: "Sign-in cancelled".to_string(),
+            title: words.cancelled.to_string(),
             message: format!("{name} didn't sign the message. Try again, or switch wallet."),
             buttons: again,
         },
         SignInPhase::Failed { message } => AnswerCopy {
-            title: "Couldn't sign in".to_string(),
+            title: words.failed.to_string(),
             message: message.clone(),
             buttons: again,
         },
         SignInPhase::Changed { was, now } => AnswerCopy {
             title: "Wallet account changed".to_string(),
             message: format!(
-                "You signed in as {}, but {name} is now on {}. Sign in again with this account, or sign out.",
+                "{} {}, but {name} is now on {}. {}",
+                words.changed_lead,
                 short_address(was),
-                short_address(now)
+                short_address(now),
+                words.changed_tail
             ),
             buttons: vec![
-                ("Sign in again", PillStyle::Filled, Act::SignIn),
-                ("Sign out", PillStyle::Ghost, Act::Disconnect),
+                (words.again, PillStyle::Filled, Act::SignIn),
+                (words.undo, PillStyle::Ghost, Act::Disconnect),
             ],
         },
         // Not an answer: the account view shows these.
@@ -3602,6 +3689,23 @@ mod tests {
                 wallet: "eternl".into()
             }
         );
+    }
+
+    /// A site that links rather than signs in names the step for what it does,
+    /// and the step's buttons and actions are the same ones.
+    #[test]
+    fn a_linking_site_names_the_step_by_its_own_words() {
+        let working = SignInPhase::Working {
+            step: "Approve the message in Eternl".into(),
+            in_wallet: true,
+        };
+        let vm = signing(working.clone()).with_proof(ProofWords::LINK);
+        let copy = sign_in_copy(&vm, Some(ChainFamily::Cardano), "eternl", &working);
+        assert_eq!(copy.title, "Sign with Eternl");
+        let copy = sign_in_copy(&vm, Some(ChainFamily::Cardano), "eternl", &SignInPhase::Declined);
+        assert_eq!(copy.title, "Link cancelled");
+        let acts: Vec<&Act> = copy.buttons.iter().map(|(_, _, a)| a).collect();
+        assert_eq!(acts, [&Act::SignIn, &Act::Another]);
     }
 
     /// The wallet moved to another account after the sign-in: the answer step
