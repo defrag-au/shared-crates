@@ -27,15 +27,21 @@ image-core = { path = "../image-core" }
 # trait on a foreign type needs a home here rather than at the call site.
 macroquad-gamekit = { path = "../../gaming/macroquad-gamekit" }
 serde = { workspace = true, features = ["derive"] }
-# The plugin's poll replies are JSON on both platforms. Unconditional on
-# purpose: `the_plugin_failure_shape_parses` reads the exact bytes `js/image.js`
-# writes, and that is the only place the wasm wire format can be checked
-# without a browser.
-serde_json = { workspace = true }
 
-# The plugin bridge: `JsObject` transport between Rust and js/image.js.
+# The plugin bridge: `JsObject` transport between Rust and js/image.js, and the
+# JSON its poll replies arrive as. Wasm only — natively there is no bridge and
+# no wire format at all: `ureq` returns a typed response and macroquad's decoder
+# a typed error.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 sapp-jsutils = "0.1"
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# `the_plugin_failure_shape_parses` reads the exact bytes `js/image.js` writes,
+# which is the only place the wasm wire format can be checked without a browser.
+# Declared here so the test reaches it on any host while a native build links
+# nothing of it.
+serde_json = { workspace = true }
 
 # Native HTTP. Already in the tree through quad-net (arcade-harness), at the
 # same major version and default features, so it adds no crates.

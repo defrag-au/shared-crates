@@ -3,10 +3,9 @@
 //
 // Currently exposes: the page's query string, host and path, a page reload,
 // a fullscreen button the page itself answers, a count of the page's returns
-// to focus, cryptographically-secure
-// random bytes (backed by
-// `crypto.getRandomValues()`), and small-value persistence over
-// `localStorage`. Rust's `getrandom` crate routes through this plugin via
+// to focus, the text and image clipboards, cryptographically-secure random
+// bytes (backed by `crypto.getRandomValues()`), and small-value persistence
+// over `localStorage`. Rust's `getrandom` crate routes through this plugin via
 // `register_custom_getrandom!` so pallas-crypto + bip39 + everything else that
 // wants a CSPRNG works on miniquad WASM without pulling in wasm-bindgen.
 //
@@ -232,6 +231,117 @@
         }
     }
 
+    // ── Image clipboard ─────────────────────────────────────────────────────
+    //
+    // miniquad's clipboard carries text; an image needs
+    // `navigator.clipboard.write` with a `ClipboardItem`. Two rules shape this:
+    //
+    //   * the write must START inside the tap's frame, because that is where
+    //     the browser's activation is. A fetch before the write would spend it.
+    //   * the image usually arrives after the tap. So the item is handed a
+    //     Promise<Blob> — the ClipboardItem constructor takes one for exactly
+    //     this — and `platform_clipboard_prepare_image` warms that promise when
+    //     a caller shows the image, so a tap normally resolves at once.
+    //
+    // Every image is converted to PNG: ClipboardItem takes only a handful of
+    // types, and a service may answer WebP or AVIF.
+
+    // url -> Promise<Blob>, oldest first so the cap drops the least recently
+    // asked for. A screen shows a dozen images; the cap is for a long scroll.
+    const images = new Map();
+    const IMAGE_CAP = 48;
+
+    // Copy requests: id -> 'pending' | 'ok' | 'failed'.
+    const imageCopies = new Map();
+    let nextImageCopy = 1;
+
+    function imageToPng(blob) {
+        if (blob.type === 'image/png') return Promise.resolve(blob);
+        return createImageBitmap(blob).then(function (bitmap) {
+            const canvas = document.createElement('canvas');
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+            canvas.getContext('2d').drawImage(bitmap, 0, 0);
+            // Free the decoded bitmap now rather than at GC time.
+            bitmap.close();
+            return new Promise(function (resolve, reject) {
+                canvas.toBlob(function (png) {
+                    if (png) resolve(png);
+                    else reject(new Error('PNG encode failed'));
+                }, 'image/png');
+            });
+        });
+    }
+
+    async function fetchImagePng(url) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return imageToPng(await res.blob());
+    }
+
+    // The PNG for `url`, fetched once. A rejection is not cached: the next tap
+    // tries again rather than failing for the life of the page.
+    function imagePng(url) {
+        let pending = images.get(url);
+        if (pending) {
+            images.delete(url);
+            images.set(url, pending);
+            return pending;
+        }
+        pending = fetchImagePng(url);
+        images.set(url, pending);
+        pending.catch(function () {
+            if (images.get(url) === pending) images.delete(url);
+        });
+        while (images.size > IMAGE_CAP) {
+            images.delete(images.keys().next().value);
+        }
+        return pending;
+    }
+
+    function platform_clipboard_prepare_image(url_js) {
+        // A failure is the copy's to report; warming the cache is only a head
+        // start, and the promise's own catch above keeps it from surfacing.
+        imagePng(consume_js_object(url_js));
+    }
+
+    function platform_clipboard_copy_image(url_js) {
+        const id = nextImageCopy++;
+        const url = consume_js_object(url_js);
+        imageCopies.set(id, 'pending');
+        if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
+            imageCopies.set(id, 'failed');
+            return id;
+        }
+        try {
+            // Called now, inside the tap's activation. The item carries the
+            // promise, so the write waits for the image rather than the image
+            // waiting for the write.
+            navigator.clipboard
+                .write([new ClipboardItem({ 'image/png': imagePng(url) })])
+                .then(function () {
+                    imageCopies.set(id, 'ok');
+                })
+                .catch(function (e) {
+                    imageCopies.set(id, 'failed');
+                    console.warn('platform: the browser refused the image copy', e);
+                });
+        } catch (e) {
+            imageCopies.set(id, 'failed');
+            console.warn('platform: the browser refused the image copy', e);
+        }
+        return id;
+    }
+
+    // 0 pending, 1 copied, 2 failed. An unknown id is a failed copy: it is
+    // never a reason to spin.
+    function platform_clipboard_image_poll(id) {
+        const state = imageCopies.get(id);
+        if (state === 'ok' || state === 'failed') imageCopies.delete(id);
+        if (state === 'ok') return 1;
+        return state === 'pending' ? 0 : 2;
+    }
+
     // Each time the page comes back to the visitor: the tab is shown again or
     // the window takes focus again (a tab switch usually fires both, and a
     // wallet extension's popup closing fires the second). The game compares
@@ -253,6 +363,9 @@
         importObject.env.platform_focus_returns = platform_focus_returns;
         importObject.env.platform_link_zone = platform_link_zone;
         importObject.env.platform_clipboard_write = platform_clipboard_write;
+        importObject.env.platform_clipboard_prepare_image = platform_clipboard_prepare_image;
+        importObject.env.platform_clipboard_copy_image = platform_clipboard_copy_image;
+        importObject.env.platform_clipboard_image_poll = platform_clipboard_image_poll;
         importObject.env.platform_fullscreen_zone = platform_fullscreen_zone;
         importObject.env.platform_fullscreen_state = platform_fullscreen_state;
         importObject.env.platform_random_bytes = platform_random_bytes;
@@ -266,9 +379,9 @@
     };
 
     // v2 added the storage calls, v3 the page's host and path, v4 fullscreen,
-    // v5 the clipboard, v6 the focus count, v7 link zones. A consumer whose
-    // committed `platform.js` predates it fails the handshake at instantiate
-    // rather than calling a stubbed function — which is why the Rust export
-    // and this number move together.
-    miniquad_add_plugin({ register_plugin, version: 7, name: 'platform' });
+    // v5 the text clipboard, v6 the focus count, v7 link zones, v8 the image
+    // clipboard. A consumer whose committed `platform.js` predates it fails
+    // the handshake at instantiate rather than calling a stubbed function —
+    // which is why the Rust export and this number move together.
+    miniquad_add_plugin({ register_plugin, version: 8, name: 'platform' });
 })();

@@ -41,6 +41,19 @@ pub mod app;
 /// Discord login for a game: see the crate docs.
 #[cfg(feature = "discord-auth")]
 pub use discord_auth::miniquad as auth;
+/// Inertial movement after a flick: the content follows the pointer while it is
+/// down, then keeps going and slows to a stop. See
+/// [`macroquad_widgets::Momentum`], which measures the release speed over the
+/// last tenth of a second so a finger that stops before it lifts does not fling.
+pub use macroquad_widgets::Momentum;
+/// A wheel report as screen points, on this platform.
+///
+/// The platform rule and its numbers live in `macroquad_widgets::scroll`, which
+/// the kit already depends on: the browser and macOS report a trackpad's
+/// precise points, Windows and Linux a mouse wheel's notches, so a caller that
+/// scales a raw `mouse_wheel()` by a constant is off by
+/// [`macroquad_widgets::NOTCH_POINTS`] on one half of the estate.
+pub use macroquad_widgets::wheel_points;
 #[cfg(feature = "audio")]
 pub mod audio;
 pub mod bake;

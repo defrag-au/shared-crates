@@ -16,7 +16,8 @@
 //!
 //! A capture plan's `set` lines (`--plan`) wait until the list has loaded,
 //! then apply one a frame: `view list`, `view orbit`, `select N` (open the
-//! Nth wallet's sheet), `unlink N` (and ask to confirm it), `confirm`, `link` (open the
+//! Nth wallet's sheet), `unlink N` (and ask to confirm it), `confirm`, `me`
+//! (open the sun's sheet), `link` (open the
 //! connector), `chain cardano|evm` and `wallet KEY` (pick in the connector,
 //! as a tap would), and `wait N` (hold the lines after it N frames). Each
 //! section starts the demo afresh.
@@ -44,7 +45,7 @@ use macroquad_wallet_link::{DEFAULT_AUTH_BASE, LinkerEvent, View, WalletLinker, 
 use macroquad_widgets::{Align, Message, Painter, TextSize, Theme, fill_rounded};
 
 /// The page's worker's login, asked to come back to this app.
-const LOGIN_ROUTE: &str = "/auth/discord/login?return=/orbit/";
+const LOGIN_ROUTE: &str = "/auth/discord/login?return=/";
 
 /// Where the token came from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -125,6 +126,8 @@ enum Command {
     Unlink(usize),
     /// Confirm the unlink asked.
     Confirm,
+    /// Open the sun's sheet.
+    Me,
     Link,
     Chain(chains::ChainFamily),
     Wallet(String),
@@ -145,6 +148,7 @@ impl Command {
             ["select", i] => Self::Select(n(i)?),
             ["unlink", i] => Self::Unlink(n(i)?),
             ["confirm"] => Self::Confirm,
+            ["me"] => Self::Me,
             ["link"] => Self::Link,
             ["chain", "cardano"] => Self::Chain(chains::ChainFamily::Cardano),
             ["chain", "evm"] => Self::Chain(chains::ChainFamily::Evm),
@@ -178,6 +182,7 @@ impl Command {
                 linker.send(Event::AskUnlink(address));
             }
             Self::Confirm => linker.send(Event::ConfirmUnlink),
+            Self::Me => linker.show_me(),
             Self::Link => linker.send(Event::Link(None)),
             Self::Chain(f) => linker.connector_mut().choose_chain(f),
             Self::Wallet(key) => linker.connector_mut().choose_wallet(key),

@@ -64,6 +64,55 @@ pub fn wallets_path(discord_user_id: &str) -> String {
     format!("{INTERNAL_WALLETS_PATH}/{discord_user_id}")
 }
 
+/// Path auth-service serves the BATCH reverse lookup on: given credentials, who
+/// owns them.
+///
+/// Deliberately not a suffix of [`INTERNAL_WALLETS_PATH`] — that route takes a
+/// user id, and a literal segment beside a `:id` parameter is a collision
+/// waiting for whichever router rule happens to come first.
+///
+/// Internal-key authenticated for the same reason as the forward lookup: it is
+/// the wallet↔identity mapping, and W14 keeps that out of any public read.
+pub const INTERNAL_WALLET_OWNERS_PATH: &str = "/_internal/wallet-owners";
+
+/// A set of credentials to resolve, in one call.
+///
+/// The caller sends the form its holder source gave it — the token ledger keys
+/// holders by the 28-byte hex stake credential — and auth-service decides which
+/// stored form that corresponds to. Doing the encoding on the identity side is
+/// deliberate: how a credential is written into `user_wallet` is that service's
+/// business, and a caller that mirrored it would break the day a legacy row
+/// reaches it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WalletOwnerQuery {
+    pub credentials: Vec<String>,
+}
+
+/// One credential that resolved to an owner.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WalletOwner {
+    /// Echoed exactly as asked, so a caller can key its own aggregation without
+    /// re-deriving an encoding it never owned.
+    pub credential: String,
+    pub discord_user_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handle: Option<String>,
+}
+
+/// The batch answer.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WalletOwners {
+    pub resolved: Vec<WalletOwner>,
+    /// Asked about and not linked.
+    ///
+    /// Echoed so "nobody has linked this wallet" is distinguishable from "the
+    /// request never carried it" — a truncated request and a cold holder set
+    /// look identical otherwise, and the first is a bug while the second is a
+    /// fact.
+    #[serde(default)]
+    pub unresolved: Vec<String>,
+}
+
 pub mod link;
 
 impl LinkedWallet {
@@ -179,6 +228,32 @@ mod tests {
         assert_eq!(
             wallets_path("179744071361757184"),
             "/_internal/wallets/179744071361757184"
+        );
+    }
+
+    #[test]
+    fn the_batch_owner_answer_round_trips() {
+        let answer = WalletOwners {
+            resolved: vec![WalletOwner {
+                credential: "aa11".into(),
+                discord_user_id: "42".into(),
+                handle: None,
+            }],
+            unresolved: vec!["bb22".into()],
+        };
+        let json = serde_json::to_string(&answer).unwrap();
+        assert!(!json.contains("handle"), "absent handle should be omitted");
+        assert_eq!(serde_json::from_str::<WalletOwners>(&json).unwrap(), answer);
+    }
+
+    /// A resolver that is only ever asked about linked wallets answers with an
+    /// empty list, not an error — an empty guild is not a failed request.
+    #[test]
+    fn an_empty_query_is_a_valid_request() {
+        let query = WalletOwnerQuery::default();
+        assert_eq!(
+            serde_json::from_str::<WalletOwnerQuery>(r#"{"credentials":[]}"#).unwrap(),
+            query
         );
     }
 

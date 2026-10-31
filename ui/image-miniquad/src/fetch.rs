@@ -14,6 +14,7 @@
 //! A request is a value the caller owns and polls, not an id into a global
 //! table. Dropping it abandons it.
 
+use std::ops::RangeInclusive;
 use std::task::Poll;
 
 use image_core::DecodedImage;
@@ -74,11 +75,41 @@ impl std::fmt::Display for FetchError {
 
 impl std::error::Error for FetchError {}
 
+/// The object's full length, from a `Content-Range: bytes 0-126/1234`.
+///
+/// `*` is what a server sends when it will not say how big the object is, and a
+/// header that is not a `Content-Range` at all gives `None` rather than a guess.
+#[cfg(not(target_arch = "wasm32"))]
+fn total_from_content_range(header: &str) -> Option<u64> {
+    header.rsplit_once('/')?.1.trim().parse().ok()
+}
+
 /// A GET whose body is text. Poll once per frame.
 pub struct TextRequest(imp::Text);
 
 /// A GET whose body is decoded to pixels. Poll once per frame.
 pub struct ImageRequest(imp::Image);
+
+/// A GET whose body is left alone. Poll once per frame.
+pub struct BytesRequest(imp::Bytes);
+
+/// A response body, with the two things a range request needs to be judged.
+///
+/// Named for the body rather than for "bytes" so the request handles in the
+/// two platform modules can keep their own `Bytes`.
+pub struct ByteBody {
+    /// 200 for the whole object, 206 for the slice asked for.
+    ///
+    /// Both are successes, and telling them apart matters: a server that
+    /// ignored the `Range` header answers 200 with the whole object, and a
+    /// caller that slices that as if it were a 206 reads the wrong bytes and
+    /// gets no error doing it.
+    pub status: u16,
+    pub body: Vec<u8>,
+    /// The object's full length, from `Content-Range` or from `Content-Length`.
+    /// `None` only when the response gave neither.
+    pub total: Option<u64>,
+}
 
 /// Start a GET. `bearer` is sent as `Authorization: Bearer …` when present.
 pub fn get_text(url: &str, bearer: Option<&str>) -> TextRequest {
@@ -88,6 +119,21 @@ pub fn get_text(url: &str, bearer: Option<&str>) -> TextRequest {
 /// Start fetching and decoding an image.
 pub fn get_image(url: &str) -> ImageRequest {
     ImageRequest(imp::Image::start(url))
+}
+
+/// Start fetching raw bytes — a vector tile, an archive, anything that is not
+/// an image.
+///
+/// `range` is inclusive, exactly as `Range: bytes=start-end` is. Asking for a
+/// range is what makes a single large archive (PMTiles, a tarball) readable a
+/// slice at a time instead of downloaded whole; a caller that passes `None`
+/// gets `Content-Length`'s worth of body.
+pub fn get_bytes(
+    url: &str,
+    range: Option<RangeInclusive<u64>>,
+    bearer: Option<&str>,
+) -> BytesRequest {
+    BytesRequest(imp::Bytes::start(url, range, bearer.unwrap_or("")))
 }
 
 impl TextRequest {
@@ -119,14 +165,22 @@ impl ImageRequest {
     }
 }
 
+impl BytesRequest {
+    /// `Ready` exactly once; after that, `Pending` forever.
+    pub fn poll(&mut self) -> Poll<Result<ByteBody, FetchError>> {
+        self.0.poll()
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 mod imp {
+    use std::ops::RangeInclusive;
     use std::task::Poll;
 
     use sapp_jsutils::JsObject;
     use serde::Deserialize;
 
-    use crate::fetch::{FetchError, Stage};
+    use crate::fetch::{ByteBody, FetchError, Stage};
     use image_core::DecodedImage;
 
     // `wasm_import_module = "env"` is load-bearing since Rust 1.96: rustc no
@@ -137,7 +191,9 @@ mod imp {
     unsafe extern "C" {
         fn image_fetch(url: JsObject, bearer: JsObject) -> i32;
         fn image_decode(url: JsObject) -> i32;
+        fn image_fetch_bytes(url: JsObject, range: JsObject, bearer: JsObject) -> i32;
         fn image_bytes(id: i32) -> JsObject;
+        fn image_body(id: i32) -> JsObject;
         fn image_poll(id: i32) -> JsObject;
     }
 
@@ -153,6 +209,14 @@ mod imp {
     struct Size {
         width: u32,
         height: u32,
+    }
+
+    /// What `image_fetch_bytes` settles with.
+    #[derive(Deserialize)]
+    struct Body {
+        status: u16,
+        length: usize,
+        total: Option<u64>,
     }
 
     fn js_to_string(js: JsObject) -> String {
@@ -234,17 +298,80 @@ mod imp {
             Poll::Ready(out)
         }
     }
+
+    pub struct Bytes {
+        id: Option<i32>,
+    }
+
+    impl Bytes {
+        pub fn start(url: &str, range: Option<RangeInclusive<u64>>, bearer: &str) -> Self {
+            let range = range
+                .map(|r| format!("bytes={}-{}", r.start(), r.end()))
+                .unwrap_or_default();
+            let id = unsafe {
+                image_fetch_bytes(
+                    JsObject::string(url),
+                    JsObject::string(&range),
+                    JsObject::string(bearer),
+                )
+            };
+            Self { id: Some(id) }
+        }
+
+        pub fn poll(&mut self) -> Poll<Result<ByteBody, FetchError>> {
+            let Some(id) = self.id else {
+                return Poll::Pending;
+            };
+            let out = match poll_id(id) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(Err(e)) => Err(e),
+                Poll::Ready(Ok(data)) => match serde_json::from_str::<Body>(&data) {
+                    Err(e) => Err(FetchError::new(
+                        Stage::Decode,
+                        0,
+                        format!("unexpected bytes reply: {e}"),
+                    )),
+                    Ok(meta) => {
+                        let mut body = Vec::new();
+                        unsafe { image_body(id) }.to_byte_buffer(&mut body);
+                        // A short body is a transfer that went wrong, not an
+                        // empty tile: say so where a retry can still help.
+                        if body.len() == meta.length {
+                            Ok(ByteBody {
+                                status: meta.status,
+                                body,
+                                total: meta.total,
+                            })
+                        } else {
+                            Err(FetchError::new(
+                                Stage::Network,
+                                meta.status,
+                                format!(
+                                    "expected {} bytes of body, got {}",
+                                    meta.length,
+                                    body.len()
+                                ),
+                            ))
+                        }
+                    }
+                },
+            };
+            self.id = None;
+            Poll::Ready(out)
+        }
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 mod imp {
     use std::io::Read;
+    use std::ops::RangeInclusive;
     use std::sync::mpsc::{Receiver, TryRecvError, channel};
     use std::task::Poll;
 
     use image_core::DecodedImage;
 
-    use crate::fetch::{FetchError, Stage};
+    use crate::fetch::{ByteBody, FetchError, Stage, total_from_content_range};
 
     /// Responses past this are refused rather than read: a misconfigured URL
     /// pointing at something huge should fail, not fill memory.
@@ -283,21 +410,28 @@ mod imp {
         }
     }
 
-    /// A GET's body as bytes, with ureq's errors sorted into stages.
-    fn get(url: &str, bearer: &str) -> Result<Vec<u8>, FetchError> {
+    /// One request, with ureq's errors sorted into stages.
+    fn call(url: &str, bearer: &str, range: Option<&str>) -> Result<ureq::Response, FetchError> {
         let mut req = ureq::get(url);
         if !bearer.is_empty() {
             req = req.set("Authorization", &format!("Bearer {bearer}"));
         }
-        let resp = match req.call() {
-            Ok(resp) => resp,
+        if let Some(range) = range {
+            req = req.set("Range", range);
+        }
+        match req.call() {
+            Ok(resp) => Ok(resp),
             Err(ureq::Error::Status(status, resp)) => {
                 let body = resp.into_string().unwrap_or_default();
                 let body: String = body.chars().take(500).collect();
-                return Err(FetchError::new(Stage::Http, status, body));
+                Err(FetchError::new(Stage::Http, status, body))
             }
-            Err(e) => return Err(FetchError::new(Stage::Network, 0, e.to_string())),
-        };
+            Err(e) => Err(FetchError::new(Stage::Network, 0, e.to_string())),
+        }
+    }
+
+    /// A response's body, refusing anything huge.
+    fn body_of(resp: ureq::Response) -> Result<Vec<u8>, FetchError> {
         let mut bytes = Vec::new();
         resp.into_reader()
             .take(MAX_BODY + 1)
@@ -311,6 +445,11 @@ mod imp {
             ));
         }
         Ok(bytes)
+    }
+
+    /// A GET's body as bytes.
+    fn get(url: &str, bearer: &str) -> Result<Vec<u8>, FetchError> {
+        body_of(call(url, bearer, None)?)
     }
 
     pub struct Text(Pending<String>);
@@ -354,6 +493,39 @@ mod imp {
             self.0.poll()
         }
     }
+
+    pub struct Bytes(Pending<ByteBody>);
+
+    impl Bytes {
+        pub fn start(url: &str, range: Option<RangeInclusive<u64>>, bearer: &str) -> Self {
+            let (url, bearer) = (url.to_string(), bearer.to_string());
+            let range = range.map(|r| format!("bytes={}-{}", r.start(), r.end()));
+            Self(Pending::spawn(move || {
+                let resp = call(&url, &bearer, range.as_deref())?;
+                let status = resp.status();
+                // `Content-Range` first: on a 206, `Content-Length` is the slice,
+                // not the object, and reporting it as the total would cap the
+                // next read at the wrong offset.
+                let total = resp
+                    .header("content-range")
+                    .and_then(total_from_content_range)
+                    .or_else(|| {
+                        resp.header("content-length")
+                            .and_then(|v| v.trim().parse().ok())
+                    });
+                let body = body_of(resp)?;
+                Ok(ByteBody {
+                    status,
+                    body,
+                    total,
+                })
+            }))
+        }
+
+        pub fn poll(&mut self) -> Poll<Result<ByteBody, FetchError>> {
+            self.0.poll()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -383,5 +555,25 @@ mod tests {
             serde_json::from_str(r#"{"stage":"http","status":404,"message":"Not Found"}"#).unwrap();
         assert_eq!(e, FetchError::new(Stage::Http, 404, "Not Found"));
         assert_eq!(e.to_string(), "HTTP 404: Not Found");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    mod native {
+        use super::total_from_content_range;
+
+        #[test]
+        fn the_total_is_the_object_not_the_slice() {
+            assert_eq!(total_from_content_range("bytes 0-126/123456"), Some(123456));
+            assert_eq!(
+                total_from_content_range("bytes 40000-40099/123456"),
+                Some(123456)
+            );
+        }
+
+        #[test]
+        fn a_server_that_will_not_say_has_no_total() {
+            assert_eq!(total_from_content_range("bytes 0-126/*"), None);
+            assert_eq!(total_from_content_range("nonsense"), None);
+        }
     }
 }

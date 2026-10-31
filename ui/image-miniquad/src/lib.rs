@@ -11,10 +11,16 @@
 //!
 //! Two layers, usable separately:
 //!
-//! - [`get_image`] / [`get_text`] — one request, which the caller polls each
-//!   frame. That is all a tile cache or a one-off banner needs.
+//! - [`get_image`] / [`get_text`] / [`get_bytes`] — one request, which the
+//!   caller polls each frame. That is all a tile cache or a one-off banner
+//!   needs.
 //! - [`ImageLoader`] — a priority queue, retries, a byte budget and LRU
 //!   eviction over those requests, for a screen showing many images.
+//!
+//! [`get_bytes`] is the one that is not about images: a vector tile, a PMTiles
+//! archive or any other binary body arrives untouched, with the HTTP status and
+//! the object's full length so a `Range` request can be checked rather than
+//! assumed.
 //!
 //! ```no_run
 //! use image_miniquad::ImageLoader;
@@ -61,7 +67,10 @@
 pub mod fetch;
 pub mod loader;
 
-pub use fetch::{FetchError, ImageRequest, Stage, TextRequest, get_image, get_text};
+pub use fetch::{
+    ByteBody, BytesRequest, FetchError, ImageRequest, Stage, TextRequest, get_bytes, get_image,
+    get_text,
+};
 pub use image_core::DecodedImage;
 pub use loader::{ImageLoader, ImageState, ImageStats};
 
@@ -73,9 +82,9 @@ pub const PLUGIN_JS: &str = include_str!("../js/image.js");
 
 /// Plugin version handshake. miniquad's `gl.js` compares the export
 /// `<plugin>_crate_version` with the plugin's JS `version`; `image.js` declares
-/// `version: 1`. Bump both together when the JS surface changes.
+/// `version: 2`. Bump both together when the JS surface changes.
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn image_crate_version() -> u32 {
-    1
+    2
 }

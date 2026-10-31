@@ -299,6 +299,13 @@ impl WalletLinker {
         }
     }
 
+    /// Open the sun's sheet, as a tap on the sun does: who the reader is.
+    pub fn show_me(&mut self) {
+        self.close_sheet();
+        self.me_sheet.open();
+        self.orbit.pause(true);
+    }
+
     /// Open a wallet's sheet, as a tap on its moon does.
     pub fn select(&mut self, address: &str) {
         self.selected = Some(address.to_string());
@@ -750,11 +757,7 @@ impl WalletLinker {
                     self.send(Event::Link(Some(family)));
                 }
                 // The sun is the reader: who they are signed in as.
-                Some(OrbitTap::Sun) => {
-                    self.close_sheet();
-                    self.me_sheet.open();
-                    self.orbit.pause(true);
-                }
+                Some(OrbitTap::Sun) => self.show_me(),
                 Some(OrbitTap::Planet { .. } | OrbitTap::Sky) => self.close_sheet(),
                 None => {}
             }

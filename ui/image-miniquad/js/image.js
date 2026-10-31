@@ -5,9 +5,14 @@
 // once, the result lands in a map, and Rust polls the id each frame until it
 // settles. `image_poll` consumes a settled entry.
 //
+// Three kinds of request share that machinery:
+//   image_fetch        → text
+//   image_decode       → RGBA, decoded by the browser
+//   image_fetch_bytes  → raw bytes and the response's status
+//
 // String arguments arrive as INTEGER HANDLES to sapp_jsutils objects. Read
-// them with `consume_js_object(handle)`, which returns the string and frees
-// the slot. Calling `.toString()` on a handle is a TypeError that surfaces in
+// them with `consume_js_object(handle)`, which returns the string and frees the
+// slot. Calling `.toString()` on a handle is a TypeError that surfaces in
 // Rust as `unreachable`.
 //
 // Why not quad-net: its HTTP reply carries no status. A 404 and a 200 arrive
@@ -23,6 +28,11 @@
     // Separate from `pending`, which carries strings; these are megabytes and
     // cross as a byte buffer.
     const decoded = new Map();
+
+    // Raw response bodies waiting to be collected: id -> Uint8Array.
+    // Deliberately not `decoded`: the two are different promises, and a caller
+    // that mixed them would get pixels where it expected a tile.
+    const bodies = new Map();
 
     function newId() {
         const id = nextId++;
@@ -126,12 +136,90 @@
         return js_object(JSON.stringify(entry));
     }
 
+    // The archive/object length behind a response: `Content-Range:
+    // bytes 0-126/123456` names 123456, and a plain 200 has no such header, so
+    // the body length is the whole thing.
+    //
+    // A 206 without `Content-Range` is a server that did not answer the
+    // question; the body length is the best available answer and Rust is told
+    // the status so it can refuse.
+    function totalOf(contentRange, length) {
+        if (!contentRange) return length;
+        const slash = contentRange.lastIndexOf('/');
+        if (slash < 0) return length;
+        const total = Number(contentRange.slice(slash + 1));
+        return Number.isFinite(total) ? total : length;
+    }
+
+    // GET, response as raw bytes. `range_js` is a `Range` header value
+    // (`"bytes=0-126"`) or the empty string; `bearer_js` may be empty for a
+    // public route.
+    //
+    // The status comes back with the bytes, because a range request has two
+    // honest answers: 206 with the slice asked for, or 200 with the whole object
+    // because the server ignored the header. Slicing a 200 as if it were a 206
+    // reads the wrong bytes silently.
+    //
+    // Reading `Content-Range` from a cross-origin response needs the server to
+    // send `Access-Control-Expose-Headers: Content-Range`.
+    function image_fetch_bytes(url_js, range_js, bearer_js) {
+        const id = newId();
+        const url = consume_js_object(url_js);
+        const range = consume_js_object(range_js);
+        const bearer = consume_js_object(bearer_js);
+        const headers = {};
+        if (range) headers.Range = range;
+        if (bearer) headers.Authorization = `Bearer ${bearer}`;
+        (async () => {
+            let r;
+            try {
+                r = await fetch(url, { method: 'GET', headers });
+            } catch (e) {
+                fail(id, 'network', 0, errMsg(e));
+                return;
+            }
+            if (!r.ok) {
+                fail(id, 'http', r.status, r.statusText);
+                return;
+            }
+            let bytes;
+            try {
+                bytes = new Uint8Array(await r.arrayBuffer());
+            } catch (e) {
+                fail(id, 'network', r.status, errMsg(e));
+                return;
+            }
+            bodies.set(id, bytes);
+            settle(
+                id,
+                'ok',
+                JSON.stringify({
+                    status: r.status,
+                    length: bytes.length,
+                    total: totalOf(r.headers.get('content-range'), bytes.length),
+                }),
+            );
+        })();
+        return id;
+    }
+
+    // Hand over a completed body, exactly once. An unknown or already-collected
+    // id gives an empty buffer, which Rust reads as a short body rather than
+    // hanging.
+    function image_body(id) {
+        const bytes = bodies.get(id) || new Uint8Array(0);
+        bodies.delete(id);
+        return js_object(bytes);
+    }
+
     function register_plugin(importObject) {
         importObject.env.image_fetch = image_fetch;
         importObject.env.image_decode = image_decode;
         importObject.env.image_bytes = image_bytes;
+        importObject.env.image_fetch_bytes = image_fetch_bytes;
+        importObject.env.image_body = image_body;
         importObject.env.image_poll = image_poll;
     }
 
-    miniquad_add_plugin({ register_plugin, version: 1, name: 'image' });
+    miniquad_add_plugin({ register_plugin, version: 2, name: 'image' });
 })();
