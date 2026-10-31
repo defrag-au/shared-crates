@@ -75,6 +75,7 @@ members = [
     "ui/macroquad-cnft",
     "ui/macroquad-text",
     "ui/macroquad-widgets",
+    "ui/macroquad-app",
     "ui/macroquad-bundle",
     # Its runner: cargo runs only this workspace's binaries.
     "tools/mq-bundle",
@@ -277,6 +278,7 @@ arcade-harness = { path = "gaming/arcade-harness" }
 macroquad-wallet-flow = { path = "ui/macroquad-wallet-flow" }
 macroquad-cnft = { path = "ui/macroquad-cnft" }
 macroquad-widgets = { path = "ui/macroquad-widgets" }
+macroquad-app = { path = "ui/macroquad-app" }
 wallet-miniquad = { path = "ui/wallet-miniquad" }
 tx_insights = { path = "tx-insights" }
 tx-verdict = { path = "tx-verdict" }

@@ -193,9 +193,15 @@ pub fn rate_chart(p: &Painter, vm: &RateChartVm, rect: Rect) {
                 x += 9.0;
             }
             if let Some(label) = vm.labels.mean {
+                let box_h = s + 4.0;
                 p.mono_in(
                     label,
-                    Rect::new((plot.right() - 140.0).max(plot.x), y - s - 4.0, 140.0, s + 4.0),
+                    Rect::new(
+                        (plot.right() - 140.0).max(plot.x),
+                        mean_label_top(y, plot.y, box_h),
+                        140.0,
+                        box_h,
+                    ),
                     s,
                     t.text_secondary,
                     crate::Align::End,
@@ -215,6 +221,18 @@ pub fn rate_chart(p: &Painter, vm: &RateChartVm, rect: Rect) {
     }
 }
 
+/// Where the mean's reading sits: just above its dashed line, or under it when
+/// above would reach into the peak's band — a mean close to the peak put the two
+/// readings on each other.
+fn mean_label_top(line_y: f32, plot_top: f32, box_h: f32) -> f32 {
+    let above = line_y - box_h;
+    if above < plot_top {
+        line_y + 2.0
+    } else {
+        above
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,6 +245,15 @@ mod tests {
                 value: *value,
             })
             .collect()
+    }
+
+    #[test]
+    fn the_means_reading_stays_out_of_the_peaks_band() {
+        // Room above: the reading sits over its line.
+        assert_eq!(mean_label_top(120.0, 40.0, 14.0), 106.0);
+        // A mean at the peak has no room above the plot: under the line instead.
+        assert_eq!(mean_label_top(42.0, 40.0, 14.0), 44.0);
+        assert_eq!(mean_label_top(40.0, 40.0, 14.0), 42.0);
     }
 
     #[test]

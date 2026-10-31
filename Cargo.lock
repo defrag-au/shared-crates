@@ -3985,6 +3985,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "macroquad-app"
+version = "0.1.0"
+dependencies = [
+ "macroquad",
+ "macroquad-gamekit",
+ "macroquad-widgets",
+ "sapp-jsutils",
+ "serde",
+ "serde_json",
+ "ui-theme",
+ "ureq 2.12.1",
+]
+
+[[package]]
 name = "macroquad-bundle"
 version = "0.1.0"
 dependencies = [
