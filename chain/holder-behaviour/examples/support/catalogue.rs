@@ -16,12 +16,79 @@ pub struct LoadedCatalogue {
     /// One entry per catalogue achievement, in the same order: what this build can answer,
     /// or `None`. Computed once, so a definition and a rarity row cannot disagree.
     predicates: Vec<Option<Predicate>>,
+    /// The `[allocation]` block, when the catalogue carries one. Definitions are frozen;
+    /// this policy is what a campaign tunes.
+    allocation: Option<Allocation>,
+}
+
+/// A gated allocation policy, as the catalogue writes it.
+#[derive(Debug, Clone, Copy)]
+pub struct Allocation {
+    /// Core achievements for the guaranteed phase.
+    pub gtd_core: u32,
+    /// Core achievements for the first-come phase.
+    pub fcfs_core: u32,
+    /// Flavour achievements that also reach the first-come phase.
+    pub fcfs_flavour: u32,
+    /// Mints per identity, at most.
+    pub per_identity: u32,
+    /// A flavour achievement held by more than this share does not count.
+    pub rarity_floor: f64,
+    /// How many of a holder's rarest flavour achievements count.
+    pub count_rarest: u32,
 }
 
 #[derive(serde::Deserialize)]
 struct CatalogueFile {
     #[serde(default, rename = "achievement")]
     achievements: Vec<CatalogueEntry>,
+    #[serde(default)]
+    allocation: Option<AllocationFile>,
+}
+
+#[derive(serde::Deserialize)]
+struct AllocationFile {
+    gtd: PhaseFile,
+    fcfs: PhaseFile,
+    #[serde(default = "default_per_identity")]
+    per_identity: u32,
+    #[serde(default = "default_floor")]
+    rarity_floor: f64,
+    #[serde(default = "default_rarest")]
+    count_rarest: u32,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct PhaseFile {
+    #[serde(default)]
+    core_at_least: u32,
+    #[serde(default)]
+    or_flavour_at_least: u32,
+}
+
+fn default_per_identity() -> u32 {
+    3
+}
+
+fn default_floor() -> f64 {
+    0.02
+}
+
+fn default_rarest() -> u32 {
+    3
+}
+
+impl From<AllocationFile> for Allocation {
+    fn from(file: AllocationFile) -> Self {
+        Self {
+            gtd_core: file.gtd.core_at_least,
+            fcfs_core: file.fcfs.core_at_least,
+            fcfs_flavour: file.fcfs.or_flavour_at_least,
+            per_identity: file.per_identity,
+            rarity_floor: file.rarity_floor,
+            count_rarest: file.count_rarest,
+        }
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -65,7 +132,13 @@ impl LoadedCatalogue {
         Ok(Self {
             entries: file.achievements,
             predicates,
+            allocation: file.allocation.map(Allocation::from),
         })
+    }
+
+    /// The policy the catalogue proposes, if it carries an `[allocation]` block.
+    pub fn allocation(&self) -> Option<Allocation> {
+        self.allocation
     }
 
     pub fn len(&self) -> usize {
@@ -75,6 +148,11 @@ impl LoadedCatalogue {
     /// The catalogue id at `index`, in catalogue order.
     pub fn id_at(&self, index: usize) -> Option<&str> {
         self.entries.get(index).map(|entry| entry.id.as_str())
+    }
+
+    /// Every id, in catalogue order — the input to the bundle's digest.
+    pub fn ids(&self) -> impl Iterator<Item = &str> {
+        self.entries.iter().map(|entry| entry.id.as_str())
     }
 
     /// The definitions this build can answer, in catalogue order.
@@ -109,6 +187,22 @@ impl LoadedCatalogue {
     /// The catalogue fields a surface shows, at a catalogue index.
     pub fn title_at(&self, index: usize) -> Option<&str> {
         self.entries.get(index).map(|entry| entry.title.as_str())
+    }
+
+    /// The minimum continuous holding a span predicate requires, in days.
+    ///
+    /// `any_span_at_least` is the one predicate whose true earn slot can be recomputed from
+    /// the lots, because its threshold is a duration. Other as-at predicates — a drawdown, a
+    /// round trip, a holding count — have no such clock and report the reading slot instead.
+    pub fn predicate_days(&self, index: usize) -> Option<u32> {
+        let predicate = self.entries.get(index)?.predicate.as_ref()?;
+        if predicate.get("kind")?.as_str()? != "any_span_at_least" {
+            return None;
+        }
+        predicate
+            .get("days")?
+            .as_integer()
+            .and_then(|days| u32::try_from(days).ok())
     }
 
     pub fn statement_at(&self, index: usize) -> Option<&str> {
