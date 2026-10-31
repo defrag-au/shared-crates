@@ -120,6 +120,11 @@ fn apply_holder<S: Store>(
     };
 
     let unit = store.unit(asset)?;
+    if matches!(holder.kind, HolderKind::Mint) {
+        // The collection's mint order is a fact about the unit, not the holder, and the
+        // store assigns the rank so an incremental fold and a rebuild agree.
+        store.record_mint(unit, slot, event.occurred_at)?;
+    }
     let acquired_by = match holder.kind {
         HolderKind::Mint => AcquiredBy::Mint,
         // A transfer with no source (`SourceBelowFloor`) is still an arrival from
@@ -142,11 +147,20 @@ fn apply_holder<S: Store>(
                 unit,
                 quantity: party.delta,
                 acquired_at: slot,
+                acquired_unix: event.occurred_at,
                 acquired_by,
                 acquired_tx: event.tx.clone(),
             })?;
         } else {
-            let short = close(store, subject, unit, -party.delta, slot, event.tx.clone())?;
+            let short = close(
+                store,
+                subject,
+                unit,
+                -party.delta,
+                slot,
+                event.occurred_at,
+                event.tx.clone(),
+            )?;
             if short > 0 {
                 applied.anomalies.push(Anomaly::DisposedWithoutAcquisition {
                     account: party.account.address.clone(),
@@ -170,6 +184,7 @@ fn close<S: Store>(
     unit: UnitId,
     wanted: i64,
     slot: Slot,
+    unix: u64,
     tx: Option<chain_events::TxRef>,
 ) -> Result<i64, S::Error> {
     let mut remaining = wanted;
@@ -181,6 +196,7 @@ fn close<S: Store>(
         lot.open -= taking;
         if lot.open == 0 {
             lot.disposed_at = Some(slot);
+            lot.disposed_unix = Some(unix);
             lot.disposed_tx = tx.clone();
         }
         store.save_lot(&lot)?;
@@ -275,7 +291,7 @@ mod tests {
         assert_eq!(alice_lots[0].open, 0);
         assert_eq!(alice_lots[0].disposed_at, Some(200));
         // 100 seconds held: the interval arithmetic, not a count.
-        assert_eq!(alice_lots[0].tenure_at(10_000), 100);
+        assert_eq!(alice_lots[0].tenure_at(1_700_010_000), 100);
 
         let bob_lots = store.lots(bob).unwrap();
         assert_eq!(bob_lots[0].acquired_by, AcquiredBy::Transfer);
@@ -390,6 +406,6 @@ mod tests {
         assert_eq!(lot.quantity, 10);
         // Still open: a partial trim does not end the interval, and does not restart it.
         assert_eq!(lot.disposed_at, None);
-        assert_eq!(lot.tenure_at(1_000), 900);
+        assert_eq!(lot.tenure_at(1_700_001_000), 900);
     }
 }

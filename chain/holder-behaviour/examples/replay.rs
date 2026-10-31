@@ -12,13 +12,19 @@
 //! cargo run -p holder-behaviour --example replay -- \
 //!     ~/code/defrag/mitos/.tmp/perps-with-market.ndjson \
 //!     --catalogue ../cnft.dev-workers/config/achievements/perps.toml \
-//!     --collection e6ba9c0f --bundle .tmp/perps.bundle
+//!     --collection e6ba9c0f --traits .tmp/perps-traits.ndjson \
+//!     --bundle .tmp/perps.bundle --built-at 1793427949
 //! ```
 //!
 //! `--catalogue` swaps the six built-in definitions for the frozen catalogue, and
 //! `--bundle` writes the snapshot this run produced in the published format. The catalogue
 //! names more predicate kinds than this build implements; those are reported by kind and
 //! marked **not evaluated** in the bundle (`population = 0`), never as a zero score.
+//!
+//! A reading has two axes: `--now` is the chain height, and `--now-unix` is the wall clock
+//! durations are measured on. They default to the latest `coord.height` and the latest
+//! `occurred_at` in the file, not to the machine's clock, so replaying one file twice writes
+//! byte-identical bundles. Give both to describe one instant explicitly.
 //!
 //! Trait rows are not in the event stream — they are a metadata projection — so
 //! `has_all_traits` reports `unavailable` here. That is the honest answer for this input,
@@ -36,7 +42,7 @@ use chain_events::{ChainEvent, Coverage, Family};
 use holder_behaviour::{
     AcquiredBy, Anomaly, Assessment, Bundle, Definition, Earned, EarnedSince, Evidence, Lot,
     MemoryStore, Outcome, Predicate, Progress, Rarity, SECONDS_PER_DAY, Slot, Snapshot, Store,
-    SubjectId, SubjectRecord, apply, catalogue_digest, evaluate, write_bundle,
+    SubjectId, SubjectRecord, UnitId, apply, catalogue_digest, evaluate, write_bundle,
 };
 use support::catalogue::LoadedCatalogue;
 
@@ -81,11 +87,13 @@ struct Args {
     path: String,
     collection: Option<String>,
     now: Option<Slot>,
+    now_unix: Option<u64>,
     subject: Option<String>,
     limit: usize,
     catalogue: Option<String>,
     bundle: Option<String>,
     built_at: Option<u64>,
+    traits: Option<String>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -93,11 +101,13 @@ fn parse_args() -> Result<Args, String> {
     let mut path = None;
     let mut collection = None;
     let mut now = None;
+    let mut now_unix = None;
     let mut subject = None;
     let mut limit = 8;
     let mut catalogue = None;
     let mut bundle = None;
     let mut built_at = None;
+    let mut traits = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--collection" => collection = Some(next(&mut args, "--collection")?),
@@ -108,6 +118,13 @@ fn parse_args() -> Result<Args, String> {
                         .map_err(|_| "--now takes a slot".to_string())?,
                 )
             }
+            "--now-unix" => {
+                now_unix = Some(
+                    next(&mut args, "--now-unix")?
+                        .parse()
+                        .map_err(|_| "--now-unix takes unix seconds".to_string())?,
+                )
+            }
             "--subject" => subject = Some(next(&mut args, "--subject")?),
             "--limit" => {
                 limit = next(&mut args, "--limit")?
@@ -116,6 +133,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "--catalogue" => catalogue = Some(next(&mut args, "--catalogue")?),
             "--bundle" => bundle = Some(next(&mut args, "--bundle")?),
+            "--traits" => traits = Some(next(&mut args, "--traits")?),
             "--built-at" => {
                 built_at = Some(
                     next(&mut args, "--built-at")?
@@ -131,11 +149,13 @@ fn parse_args() -> Result<Args, String> {
         path: path.ok_or("give the path to a chain-events NDJSON file")?,
         collection,
         now,
+        now_unix,
         subject,
         limit,
         catalogue,
         bundle,
         built_at,
+        traits,
     })
 }
 
@@ -179,9 +199,13 @@ fn run() -> Result<(), String> {
     let mut asset: u64 = 0;
     let mut admin: u64 = 0;
     let mut latest: Slot = 0;
+    let mut latest_unix: u64 = 0;
     let mut holder_cursor: Slot = 0;
     let mut market_cursor: Slot = 0;
     let mut chosen: Option<String> = args.collection.clone();
+    // The collection the matching events actually name, as CAIP-19 — what a bundle states.
+    // `chosen` above may be a substring the caller searched for, which is not an identity.
+    let mut identity: Option<String> = None;
 
     for line in BufReader::new(file).lines() {
         let line = line.map_err(|error| format!("read: {error}"))?;
@@ -206,7 +230,9 @@ fn run() -> Result<(), String> {
             skipped_collection += 1;
             continue;
         }
+        identity.get_or_insert_with(|| collection.clone());
         kept += 1;
+        latest_unix = latest_unix.max(event.occurred_at);
         let family = event.body.family();
         match family {
             Family::Holder => holder += 1,
@@ -229,15 +255,27 @@ fn run() -> Result<(), String> {
         anomalies.extend(applied.anomalies);
     }
 
+    // Seeding happens after the fold because the store interns a unit when an event first
+    // names it — the snapshot joins on that unit table rather than creating its own.
+    let seeded = match &args.traits {
+        Some(path) => Some(seed_traits(&mut store, path)?),
+        None => None,
+    };
+
     let now = args.now.unwrap_or(latest);
+    // The two axes of one reading. The unix clock defaults to the latest event the file
+    // carries, not to the machine's clock, so replaying the same file twice measures the
+    // same tenures and writes byte-identical bundles.
+    let now_unix = args.now_unix.unwrap_or(latest_unix);
     let subjects = store.subjects().map_err(|error| format!("{error:?}"))?;
 
     println!("file        {}", args.path);
     println!(
-        "collection  {}",
-        chosen.as_deref().unwrap_or("(none found)")
+        "collection  {} · searched {}",
+        identity.as_deref().unwrap_or("(none found)"),
+        chosen.as_deref().unwrap_or("(none given)")
     );
-    println!("now         slot {now}");
+    println!("now         slot {now} · unix {now_unix}");
     println!(
         "events      {events} read · {kept} folded · {skipped_collection} other collection · \
          {skipped_unparsed} unparsed"
@@ -247,6 +285,9 @@ fn run() -> Result<(), String> {
          {changed} changed a lot"
     );
     println!("subjects    {}", subjects.len());
+    if let Some((rows, matched, unmatched)) = seeded {
+        println!("traits      {matched}/{rows} seeded · {unmatched} not in this stream");
+    }
 
     if anomalies.is_empty() {
         println!("anomalies   none");
@@ -278,13 +319,15 @@ fn run() -> Result<(), String> {
             (fallback.clone(), positions)
         }
     };
+    let coverage = if skipped_unparsed == 0 && anomalies.is_empty() {
+        Coverage::Complete
+    } else {
+        Coverage::Partial
+    };
     let at = Assessment {
         now,
-        holder_coverage: if skipped_unparsed == 0 && anomalies.is_empty() {
-            Coverage::Complete
-        } else {
-            Coverage::Partial
-        },
+        now_unix,
+        holder_coverage: coverage,
     };
 
     if let Some(catalogue) = &catalogue {
@@ -356,6 +399,10 @@ fn run() -> Result<(), String> {
 
     if let Some(path) = &args.bundle {
         let catalogue = catalogue.as_ref().expect("checked at parse");
+        let collection = identity.as_deref().ok_or_else(|| {
+            "--bundle needs a matching event: a bundle must name the collection it scores"
+                .to_string()
+        })?;
         let built_at = args.built_at.unwrap_or_else(|| {
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -372,6 +419,8 @@ fn run() -> Result<(), String> {
             built_at,
             holder_cursor,
             market_cursor,
+            collection,
+            coverage,
         )?;
         let bytes = write_bundle(&snapshot);
         verify(&bytes, &snapshot)?;
@@ -379,9 +428,20 @@ fn run() -> Result<(), String> {
         println!();
         println!("bundle      {path} · {} bytes", bytes.len());
         println!(
-            "            verified {} rows · built-at {built_at} · holder cursor {holder_cursor} \
-             · market cursor {market_cursor}",
-            snapshot.subjects.len()
+            "            verified {} rows · {} of {} evaluated achievements answered · built-at \
+             {built_at}",
+            snapshot.subjects.len(),
+            snapshot
+                .rarity
+                .iter()
+                .filter(|rarity| rarity.population > 0)
+                .count(),
+            definitions.len(),
+        );
+        println!("            holder cursor {holder_cursor} · market cursor {market_cursor}");
+        println!(
+            "            collection {} · {coverage:?} coverage",
+            snapshot.collection
         );
     }
 
@@ -437,6 +497,67 @@ fn verify(bytes: &[u8], snapshot: &Snapshot) -> Result<(), String> {
     Ok(())
 }
 
+/// One row of a trait snapshot, as `ncli ownership bundle --traits decoded --out` writes it.
+#[derive(serde::Deserialize)]
+struct TraitRow {
+    asset_name_hex: String,
+    traits: BTreeMap<String, Vec<String>>,
+}
+
+/// Seeds the store's metadata from a trait snapshot, joined on the on-chain asset name.
+///
+/// The store's unit table is the contract: a row for an asset the stream never saw is
+/// counted, never interned, because a seeded unit no event moved would appear in `subjects`
+/// as an asset with no history. Returns `(rows, matched, unmatched)`.
+fn seed_traits(store: &mut MemoryStore, path: &str) -> Result<(usize, usize, usize), String> {
+    let mut units: BTreeMap<String, UnitId> = BTreeMap::new();
+    for subject in store.subjects().map_err(|error| format!("{error:?}"))? {
+        for lot in store.lots(subject).map_err(|error| format!("{error:?}"))? {
+            let name = store
+                .token_of(lot.unit)
+                .map_err(|error| format!("{error:?}"))?
+                .and_then(|token| token.token_id().map(str::to_string));
+            if let Some(name) = name {
+                units.insert(name, lot.unit);
+            }
+        }
+    }
+
+    let file = std::fs::File::open(path).map_err(|error| format!("open {path}: {error}"))?;
+    let mut rows = 0usize;
+    let mut matched = 0usize;
+    let mut unmatched = 0usize;
+    for line in BufReader::new(file).lines() {
+        let line = line.map_err(|error| format!("read {path}: {error}"))?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        rows += 1;
+        let row: TraitRow = serde_json::from_str(&line)
+            .map_err(|error| format!("parse {path} line {rows}: {error}"))?;
+        let Some(unit) = units.get(&row.asset_name_hex).copied() else {
+            unmatched += 1;
+            continue;
+        };
+        let pairs: Vec<(String, String)> = row
+            .traits
+            .into_iter()
+            .flat_map(|(category, values)| {
+                values
+                    .into_iter()
+                    .map(move |value| (category.clone(), value))
+            })
+            .collect();
+        let borrowed: Vec<(&str, &str)> = pairs
+            .iter()
+            .map(|(category, value)| (category.as_str(), value.as_str()))
+            .collect();
+        store.seed_traits(unit, &borrowed);
+        matched += 1;
+    }
+    Ok((rows, matched, unmatched))
+}
+
 /// Turns the folded store into a snapshot, evaluating every subject against what this build
 /// can answer.
 ///
@@ -454,9 +575,15 @@ fn build_snapshot(
     built_at: u64,
     holder_cursor: Slot,
     market_cursor: Slot,
+    collection: &str,
+    coverage: Coverage,
 ) -> Result<Snapshot, String> {
     let mut rows = Vec::with_capacity(subjects.len());
     let mut holders = vec![0u32; catalogue.len()];
+    // Whether any subject produced an answer other than `Unavailable`. An achievement the
+    // whole reading could not answer has no eligible population — writing 700 there would
+    // claim a collection-wide miss.
+    let mut answered = vec![false; catalogue.len()];
 
     for subject in subjects {
         let account = store
@@ -467,14 +594,17 @@ fn build_snapshot(
             evaluate(store, *subject, at, definitions).map_err(|error| format!("{error:?}"))?;
         let mut earned = Vec::new();
         for (index, outcome) in outcomes.iter().enumerate() {
-            let Progress::Earned { since } = outcome.progress else {
-                continue;
-            };
             let Some(&achievement) = positions.get(index) else {
                 return Err(format!("outcome {index} has no catalogue position"));
             };
+            if !matches!(outcome.progress, Progress::Unavailable(_)) {
+                answered[achievement] = true;
+            }
+            let Progress::Earned { since } = outcome.progress else {
+                continue;
+            };
             let valid_from = match since {
-                EarnedSince::Exact(slot) | EarnedSince::AsAt(slot) => slot,
+                EarnedSince::Exact(slot) | EarnedSince::AsAt { slot, .. } => slot,
             };
             holders[achievement] += 1;
             earned.push(Earned {
@@ -491,7 +621,9 @@ fn build_snapshot(
                 quantity: holding.quantity,
                 open: holding.open,
                 acquired_at: holding.acquired_at,
+                acquired_unix: holding.acquired_unix,
                 disposed_at: holding.disposed_at,
+                disposed_unix: holding.disposed_unix,
                 from_mint: holding.acquired_by == AcquiredBy::Mint,
             })
             .collect();
@@ -507,7 +639,7 @@ fn build_snapshot(
     let rarity = (0..catalogue.len())
         .map(|index| Rarity {
             holders_with: holders[index],
-            population: if catalogue.evaluated(index) {
+            population: if catalogue.evaluated(index) && answered[index] {
                 population
             } else {
                 0
@@ -517,6 +649,8 @@ fn build_snapshot(
 
     Ok(Snapshot {
         built_at,
+        collection: collection.to_string(),
+        coverage,
         holder_cursor,
         market_cursor,
         catalogue_digest: catalogue_digest(
@@ -532,12 +666,12 @@ fn describe(outcome: &Outcome<'_>, store: &MemoryStore) -> Result<String, String
     let state = match outcome.progress {
         Progress::Earned { since } => match since {
             EarnedSince::Exact(slot) => format!("earned at {slot}"),
-            EarnedSince::AsAt(slot) => format!("earned as at {slot}"),
+            EarnedSince::AsAt { slot, unix } => format!("earned as at {slot} ({unix})"),
         },
         Progress::Pending {
             have,
             need,
-            eta_slot,
+            eta_unix,
         } => {
             // Tenure is the only predicate measured in seconds, so report it that way.
             let scale = if outcome.id.starts_with("tenure") {
@@ -545,7 +679,7 @@ fn describe(outcome: &Outcome<'_>, store: &MemoryStore) -> Result<String, String
             } else {
                 String::new()
             };
-            match eta_slot {
+            match eta_unix {
                 Some(eta) => format!("pending {have}/{need}{scale}, eta {eta}"),
                 None => format!("pending {have}/{need}{scale}"),
             }

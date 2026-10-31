@@ -32,6 +32,10 @@ const DAVE: &str = "9d71cce0d29fb8716a6811c3ab53d8cb9804b13739151d20d783c1a4";
 
 /// The archive's tip when the fixture was taken.
 const NOW: Slot = 201_677_944;
+/// The same reading on the unix axis. The fixture's `occurred_at` is offset from its slot by
+/// 1,591,566,291 seconds, so `NOW_UNIX − NOW` is that offset and every hand-computed tenure
+/// below stays exactly what it was.
+const NOW_UNIX: u64 = 1_793_244_235;
 
 fn fixture() -> Vec<ChainEvent> {
     FIXTURE
@@ -93,6 +97,7 @@ fn answers(store: &MemoryStore, address: &str) -> Vec<(String, Progress)> {
         subject,
         &Assessment {
             now: NOW,
+            now_unix: NOW_UNIX,
             holder_coverage: Coverage::Complete,
         },
         &definitions,
@@ -137,7 +142,7 @@ fn every_party_is_a_subject_and_the_three_who_let_go_are_missed() {
         Progress::Pending {
             have: 0,
             need: 1,
-            eta_slot: None
+            eta_unix: None
         }
     );
     assert_eq!(
@@ -145,7 +150,7 @@ fn every_party_is_a_subject_and_the_three_who_let_go_are_missed() {
         Progress::Pending {
             have: 771_125,
             need: 2_592_000,
-            eta_slot: None
+            eta_unix: None
         }
     );
     // The mint lot is not a round trip.
@@ -154,7 +159,7 @@ fn every_party_is_a_subject_and_the_three_who_let_go_are_missed() {
         Progress::Pending {
             have: 0,
             need: 1,
-            eta_slot: None
+            eta_unix: None
         }
     );
 }
@@ -169,7 +174,10 @@ fn a_bought_and_sold_lot_is_one_completed_round_trip() {
     assert_eq!(
         progress(&bob, "round-trip"),
         Progress::Earned {
-            since: EarnedSince::AsAt(NOW)
+            since: EarnedSince::AsAt {
+                slot: NOW,
+                unix: NOW_UNIX
+            }
         }
     );
     assert_eq!(
@@ -177,7 +185,7 @@ fn a_bought_and_sold_lot_is_one_completed_round_trip() {
         Progress::Pending {
             have: 1_569_834,
             need: 2_592_000,
-            eta_slot: None
+            eta_unix: None
         }
     );
 
@@ -188,13 +196,16 @@ fn a_bought_and_sold_lot_is_one_completed_round_trip() {
         Progress::Pending {
             have: 29_037,
             need: 2_592_000,
-            eta_slot: None
+            eta_unix: None
         }
     );
     assert_eq!(
         progress(&carol, "round-trip"),
         Progress::Earned {
-            since: EarnedSince::AsAt(NOW)
+            since: EarnedSince::AsAt {
+                slot: NOW,
+                unix: NOW_UNIX
+            }
         }
     );
 }
@@ -218,23 +229,26 @@ fn the_holder_has_never_sold_and_a_pending_tenure_with_a_date() {
         Progress::Pending {
             have: 0,
             need: 1,
-            eta_slot: None
+            eta_unix: None
         }
     );
-    // 201,677,944 − 185,977,296 = 15,700,648 seconds ≈ 181.7 days.
+    // 1,793,244,235 − 1,777,543,587 = 15,700,648 seconds ≈ 181.7 days.
     assert_eq!(
         progress(&dave, "tenure-30d"),
         Progress::Earned {
-            since: EarnedSince::AsAt(NOW)
+            since: EarnedSince::AsAt {
+                slot: NOW,
+                unix: NOW_UNIX
+            }
         }
     );
-    // A year needs 31,536,000, so 15,835,352 more seconds of one unit → 217,513,296.
+    // A year needs 31,536,000, so 15,835,352 more seconds of one unit: 1,809,079,587 unix.
     assert_eq!(
         progress(&dave, "tenure-365d"),
         Progress::Pending {
             have: 15_700_648,
             need: 31_536_000,
-            eta_slot: Some(217_513_296)
+            eta_unix: Some(1_809_079_587)
         }
     );
     // Buying is not a round trip until it is sold.
@@ -243,7 +257,7 @@ fn the_holder_has_never_sold_and_a_pending_tenure_with_a_date() {
         Progress::Pending {
             have: 0,
             need: 1,
-            eta_slot: None
+            eta_unix: None
         }
     );
 }
@@ -267,6 +281,7 @@ fn a_partial_coverage_turns_every_span_unavailable_for_the_same_fixture() {
         dave,
         &Assessment {
             now: NOW,
+            now_unix: NOW_UNIX,
             holder_coverage: Coverage::Partial,
         },
         &definitions,

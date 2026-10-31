@@ -12,11 +12,12 @@
 
 mod support;
 
+use std::collections::BTreeSet;
 use std::process::ExitCode;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use chains::ChainRef;
 use holder_behaviour::{
-    Assessment, BUNDLE_COVERAGE, Bundle, BundleStore, EarnedSince, Progress, Slot, evaluate_row,
+    Assessment, Bundle, BundleStore, EarnedSince, Progress, Slot, evaluate_row,
 };
 use support::catalogue::LoadedCatalogue;
 
@@ -25,6 +26,7 @@ struct Args {
     key: String,
     catalogue: Option<String>,
     now: Option<Slot>,
+    now_unix: Option<u64>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -33,6 +35,7 @@ fn parse_args() -> Result<Args, String> {
     let mut key = None;
     let mut catalogue = None;
     let mut now = None;
+    let mut now_unix = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--catalogue" => {
@@ -46,6 +49,16 @@ fn parse_args() -> Result<Args, String> {
                         .map_err(|_| "--now takes a slot".to_string())?,
                 )
             }
+            "--now-unix" => {
+                let value = args
+                    .next()
+                    .ok_or("--now-unix needs unix seconds".to_string())?;
+                now_unix = Some(
+                    value
+                        .parse()
+                        .map_err(|_| "--now-unix takes unix seconds".to_string())?,
+                )
+            }
             other if other.starts_with("--") => return Err(format!("unknown flag {other}")),
             other if path.is_none() => path = Some(other.to_string()),
             other if key.is_none() => key = Some(other.to_string()),
@@ -57,6 +70,7 @@ fn parse_args() -> Result<Args, String> {
         key: key.ok_or("give the account key to look up")?,
         catalogue,
         now,
+        now_unix,
     })
 }
 
@@ -81,6 +95,11 @@ fn run() -> Result<(), String> {
         args.path,
         bytes.len(),
         holder_behaviour::BUNDLE_VERSION
+    );
+    println!(
+        "collection  {} · {coverage:?} coverage",
+        bundle.collection(),
+        coverage = bundle.coverage()
     );
     println!(
         "built-at    {} · holder cursor {} · market cursor {}",
@@ -124,26 +143,48 @@ fn run() -> Result<(), String> {
 
     let catalogue = LoadedCatalogue::load(path)?;
     let definitions = catalogue.definitions();
-    let store = BundleStore::new(view, ChainRef::cardano_mainnet());
+    let positions = catalogue.positions();
+    let store = BundleStore::new(view, bundle.chain());
+    // Progress is derived at read time, so the unix clock is the reader's — the lots are
+    // as at the bundle's holder cursor, and the time they have accrued since then counts.
+    let now_unix = args.now_unix.unwrap_or_else(|| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_secs())
+            .unwrap_or(bundle.built_at())
+    });
     let at = Assessment {
         now: args.now.unwrap_or(bundle.holder_cursor()),
-        holder_coverage: BUNDLE_COVERAGE,
+        now_unix,
+        holder_coverage: bundle.coverage(),
     };
     let outcomes =
         evaluate_row(&store, &at, &definitions).map_err(|error| format!("evaluate: {error}"))?;
 
+    // The bundle's earned set is the authority: a row carries no traits, so evaluation over
+    // it cannot answer a trait predicate. An achievement the snapshot says is earned is
+    // shown as earned, never as "unavailable" — the file already answered it.
+    let earned: BTreeSet<u16> = view.earned().map(|entry| entry.achievement).collect();
+
     println!();
-    for outcome in &outcomes {
+    for (index, outcome) in outcomes.iter().enumerate() {
+        if positions
+            .get(index)
+            .is_some_and(|achievement| earned.contains(&(*achievement as u16)))
+        {
+            println!("            {:<16} earned", outcome.id);
+            continue;
+        }
         let state = match outcome.progress {
             Progress::Earned { since } => match since {
                 EarnedSince::Exact(slot) => format!("earned at {slot}"),
-                EarnedSince::AsAt(slot) => format!("earned as at {slot}"),
+                EarnedSince::AsAt { slot, unix } => format!("earned as at {slot} ({unix})"),
             },
             Progress::Pending {
                 have,
                 need,
-                eta_slot,
-            } => match eta_slot {
+                eta_unix,
+            } => match eta_unix {
                 Some(eta) => format!("pending {have}/{need} · eta {eta}"),
                 None => format!("pending {have}/{need}"),
             },

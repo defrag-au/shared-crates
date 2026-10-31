@@ -1,4 +1,4 @@
-//! What a fold remembers, and the ten operations a backend has to provide.
+//! What a fold remembers, and the operations a backend has to provide.
 //!
 //! # Lots, not balances
 //!
@@ -35,11 +35,11 @@ use serde::{Deserialize, Serialize};
 
 /// Chain height: a Cardano slot, an EVM block.
 ///
-/// Seconds on Cardano (one slot is one second, verified against the archive), so a
-/// duration in ticks is a duration in seconds there. Never assumed for another chain —
-/// a predicate converts through [`crate::SECONDS_PER_DAY`] only where the chain is
-/// known to keep time, which is why durations are stated in days on the predicate and
-/// the runtime supplies the conversion.
+/// Used for **order and citation** — a rank, an interval's start, the evidence an earned
+/// event points at. It is not a clock: one Cardano slot happens to be one second, but an EVM
+/// block is not, so every duration is measured on unix seconds instead (see
+/// [`Holding::tenure_at`] and [`crate::Assessment::now_unix`]). That is why a lot carries
+/// both axes rather than converting one into the other.
 pub type Slot = u64;
 
 /// An interned subject within one collection's store.
@@ -75,8 +75,13 @@ pub struct NewLot {
     /// How many units this acquisition covers. One for an NFT, any positive number
     /// for a fungible.
     pub quantity: i64,
-    /// Chain height it arrived at.
+    /// Chain height it arrived at — ordering, ranks and evidence.
     pub acquired_at: Slot,
+    /// Unix seconds it arrived at — the clock durations are measured on.
+    ///
+    /// A chain that does not keep time in its height (EVM block numbers) is the reason this
+    /// is separate: a rank sorts by `acquired_at`, a tenure counts `acquired_unix`.
+    pub acquired_unix: u64,
     /// How it arrived.
     pub acquired_by: AcquiredBy,
     /// The transaction that delivered it, when the source named one.
@@ -98,6 +103,8 @@ pub struct Holding {
     pub open: i64,
     /// Chain height the lot arrived at — the start of its interval.
     pub acquired_at: Slot,
+    /// Unix seconds the lot arrived at — the clock tenure is measured on.
+    pub acquired_unix: u64,
     /// How it arrived.
     pub acquired_by: AcquiredBy,
     /// The transaction that delivered it.
@@ -108,6 +115,8 @@ pub struct Holding {
     /// interval keeps running: selling some of a position does not restart the clock on
     /// the rest.
     pub disposed_at: Option<Slot>,
+    /// Unix seconds the lot finished leaving, beside [`Holding::disposed_at`].
+    pub disposed_unix: Option<u64>,
     /// The transaction that took the last units out — what an earned event cites.
     pub disposed_tx: Option<TxRef>,
 }
@@ -129,7 +138,7 @@ impl Holding {
         self.disposed_at.is_some()
     }
 
-    /// Seconds this lot has contributed to its subject's tenure, as at `now`.
+    /// Seconds this lot has contributed to its subject's tenure, as at `now_unix`.
     ///
     /// The **length of the interval**, not quantity-weighted. One NFT held for a year and
     /// one position of 1,500,000 fungible units held for a year are both one lot-year —
@@ -137,21 +146,58 @@ impl Holding {
     /// is the wealth proxy the design doc rules out. Summing across lots then means what
     /// "total tenure" should: two assets held a year is two asset-years.
     ///
-    /// A disposal later than `now` — which only a source disagreeing with the caller's
-    /// clock can produce — contributes nothing rather than wrapping.
-    pub fn tenure_at(&self, now: Slot) -> u64 {
-        self.disposed_at
-            .unwrap_or(now)
-            .saturating_sub(self.acquired_at)
+    /// Measured on unix seconds, never on the height: a rank sorts by `acquired_at`, but a
+    /// duration cannot, because an EVM block number is not a second.
+    ///
+    /// A disposal later than `now_unix` — which only a source disagreeing with the caller's
+    /// clock can state — contributes nothing rather than wrapping.
+    pub fn tenure_at(&self, now_unix: u64) -> u64 {
+        let end = self.disposed_unix.unwrap_or(now_unix);
+        end.saturating_sub(self.acquired_unix)
     }
 }
 
-/// The ten operations a backend provides.
+/// The operations a backend provides.
 ///
 /// Small on purpose: each one is a shape SQLite answers with a point lookup, so the
 /// Cloudflare Durable Object and the in-memory test store differ only in storage. No
 /// method returns an iterator, because a backend that streams and a fold that scans
 /// would have to agree on an order, and this trait does not impose one.
+/// The primary-mint record for one unit.
+///
+/// A fact about the **asset**, not the holder: every subject who ever held it sees the same
+/// record. `rank` is the fold's order of mint events, which is chain order for an ordered
+/// stream — so a rebuild and an incremental fold agree by construction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MintFact {
+    /// Chain height the unit was minted at — what a rank orders on.
+    pub slot: Slot,
+    /// Unix seconds it was minted at — what a window or a gap measures.
+    pub unix: u64,
+    /// 1-based position in the collection's mint order.
+    pub rank: u32,
+    /// The previous mint's height, or `None` when this was the collection's first.
+    pub previous_slot: Option<Slot>,
+    /// The previous mint's unix seconds, beside [`MintFact::previous_slot`].
+    pub previous_unix: Option<u64>,
+}
+
+/// The collection's mint extent, as far as the fold has seen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MintSummary {
+    /// The first mint's height.
+    pub first_slot: Slot,
+    /// The first mint's unix seconds — the origin `mint_within` measures from.
+    pub first_unix: u64,
+    /// The latest mint's height.
+    pub last_slot: Slot,
+    /// The latest mint's unix seconds.
+    pub last_unix: u64,
+    /// How many units have been minted.
+    pub count: u32,
+}
+
+/// What a fold remembers, and the operations a backend has to provide.
 pub trait Store {
     /// The backend's own failure type. The fold never interprets it — it can only
     /// propagate — so it is the backend's to define.
@@ -194,6 +240,21 @@ pub trait Store {
     /// value. `has_all_traits` treats empty as a gap rather than as a miss.
     fn traits_of(&self, unit: UnitId) -> Result<Vec<(String, String)>, Self::Error>;
 
+    /// Records a primary mint of `unit` at `slot`/`unix`, assigning its rank.
+    ///
+    /// The store assigns the rank because it owns the collection's mint order: a caller
+    /// that computed it would need a second read and could disagree with a concurrent
+    /// fold. Recording the same unit twice keeps the first record — a mint is a fact about
+    /// an asset, not a counter to increment.
+    fn record_mint(&mut self, unit: UnitId, slot: Slot, unix: u64)
+    -> Result<MintFact, Self::Error>;
+
+    /// The mint record for a unit, when this store saw the collection mint.
+    fn mint_of(&self, unit: UnitId) -> Result<Option<MintFact>, Self::Error>;
+
+    /// The collection's mint extent, or `None` when it minted into this store not at all.
+    fn mint_summary(&self) -> Result<Option<MintSummary>, Self::Error>;
+
     /// Every subject the store has seen, in no particular order.
     ///
     /// This is the eligible population — every stake that ever held the collection, not
@@ -206,6 +267,8 @@ mod tests {
     use super::*;
 
     fn lot(quantity: i64, open: i64, acquired_at: Slot, disposed_at: Option<Slot>) -> Holding {
+        // The unit tests exercise interval arithmetic, so the synthetic clock is the same
+        // coordinate on both axes: one tick is one second.
         Holding {
             lot: LotId(1),
             subject: SubjectId(1),
@@ -213,9 +276,11 @@ mod tests {
             quantity,
             open,
             acquired_at,
+            acquired_unix: acquired_at,
             acquired_by: AcquiredBy::Mint,
             acquired_tx: None,
             disposed_at,
+            disposed_unix: disposed_at,
             disposed_tx: None,
         }
     }

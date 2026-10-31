@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 use chain_events::AccountRef;
 use chains::TokenRef;
 
-use crate::state::{Holding, LotId, NewLot, Store, SubjectId, UnitId};
+use crate::state::{Holding, LotId, MintFact, MintSummary, NewLot, Slot, Store, SubjectId, UnitId};
 
 /// A [`Store`] that keeps everything in hash maps.
 #[derive(Debug, Default)]
@@ -23,6 +23,9 @@ pub struct MemoryStore {
     by_subject: HashMap<SubjectId, Vec<LotId>>,
     by_subject_unit: HashMap<(SubjectId, UnitId), Vec<LotId>>,
     traits: HashMap<UnitId, Vec<(String, String)>>,
+    /// The collection's mint records, keyed by unit.
+    mints: HashMap<UnitId, MintFact>,
+    mint_summary: Option<MintSummary>,
     next_lot: u32,
     /// How many times `open_lots_of` has been asked. Used by the test that pins "one lot
     /// read per subject per evaluation" rather than trusting the comment.
@@ -88,9 +91,11 @@ impl Store for MemoryStore {
             quantity: lot.quantity,
             open: lot.quantity,
             acquired_at: lot.acquired_at,
+            acquired_unix: lot.acquired_unix,
             acquired_by: lot.acquired_by,
             acquired_tx: lot.acquired_tx,
             disposed_at: None,
+            disposed_unix: None,
             disposed_tx: None,
         };
         self.lots.insert(id, holding.clone());
@@ -140,6 +145,49 @@ impl Store for MemoryStore {
 
     fn traits_of(&self, unit: UnitId) -> Result<Vec<(String, String)>, Self::Error> {
         Ok(self.traits.get(&unit).cloned().unwrap_or_default())
+    }
+
+    fn record_mint(
+        &mut self,
+        unit: UnitId,
+        slot: Slot,
+        unix: u64,
+    ) -> Result<MintFact, Self::Error> {
+        if let Some(existing) = self.mints.get(&unit) {
+            return Ok(*existing);
+        }
+        let fact = MintFact {
+            slot,
+            unix,
+            rank: self.mint_summary.map_or(1, |summary| summary.count + 1),
+            previous_slot: self.mint_summary.map(|summary| summary.last_slot),
+            previous_unix: self.mint_summary.map(|summary| summary.last_unix),
+        };
+        self.mints.insert(unit, fact);
+        self.mint_summary = Some(match self.mint_summary {
+            Some(summary) => MintSummary {
+                last_slot: slot,
+                last_unix: unix,
+                count: summary.count + 1,
+                ..summary
+            },
+            None => MintSummary {
+                first_slot: slot,
+                first_unix: unix,
+                last_slot: slot,
+                last_unix: unix,
+                count: 1,
+            },
+        });
+        Ok(fact)
+    }
+
+    fn mint_of(&self, unit: UnitId) -> Result<Option<MintFact>, Self::Error> {
+        Ok(self.mints.get(&unit).copied())
+    }
+
+    fn mint_summary(&self) -> Result<Option<MintSummary>, Self::Error> {
+        Ok(self.mint_summary)
     }
 
     fn subjects(&self) -> Result<Vec<SubjectId>, Self::Error> {

@@ -12,7 +12,7 @@
 //! ```
 //!
 //! Two functions and one trait. [`apply`] folds an event into a backend, [`evaluate`] reads
-//! one subject's lots as achievements, and [`Store`] is the ten point operations a backend
+//! one subject's lots as achievements, and [`Store`] is the point operations a backend
 //! provides. The Cloudflare Durable Object and the in-memory test store implement the same
 //! trait, and the batch replay and the live fold run the same [`apply`] — there is no
 //! second algorithm for a rebuild to disagree with.
@@ -47,9 +47,8 @@ mod predicate;
 mod state;
 
 pub use bundle::{
-    BUNDLE_COVERAGE, Bundle, BundleError, BundleStore, Earned, Lot, Rarity, Snapshot,
-    SubjectRecord, SubjectView, VERSION as BUNDLE_VERSION, catalogue_digest, evaluate_row, fnv1a,
-    write as write_bundle,
+    Bundle, BundleError, BundleStore, Earned, Lot, Rarity, Snapshot, SubjectRecord, SubjectView,
+    VERSION as BUNDLE_VERSION, catalogue_digest, evaluate_row, fnv1a, write as write_bundle,
 };
 pub use evaluate::{
     Assessment, Definition, EarnedSince, Evidence, Gap, Outcome, Progress, SECONDS_PER_DAY,
@@ -58,4 +57,6 @@ pub use evaluate::{
 pub use fold::{Anomaly, Applied, Report, apply, rebuild};
 pub use memory::MemoryStore;
 pub use predicate::Predicate;
-pub use state::{AcquiredBy, Holding, LotId, NewLot, Slot, Store, SubjectId, UnitId};
+pub use state::{
+    AcquiredBy, Holding, LotId, MintFact, MintSummary, NewLot, Slot, Store, SubjectId, UnitId,
+};

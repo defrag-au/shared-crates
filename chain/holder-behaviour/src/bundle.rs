@@ -16,45 +16,47 @@
 //!
 //! ```text
 //! header      80 bytes, fixed
-//! keys        `credential_count` × 28 bytes, ascending — the binary-search index
-//! others      `other_count` × (u8 len + bytes), ascending — accounts with no credential
+//! collection  `collection_len` bytes — the CAIP-19 reference this file scores
 //! offsets     (`subject_count` + 1) × u32 into `records`
 //! rarity      `achievement_count` × (u32 holders_with, u32 population)
-//! records     variable: earned entries, then lots
+//! records     one per subject: u8 key_len, key bytes, earned entries, lots
 //! ```
 //!
-//! Keys come first and are fixed width, so [`Bundle::find`] is a binary search over a
-//! contiguous array and never parses anything. A record is reached by slicing between two
-//! consecutive offsets — no length prefixes to walk, no allocation.
+//! One offset table serves both the key index and the records: a record begins with its
+//! key, so [`Bundle::find`] binary-searches the offsets and compares key bytes, and
+//! [`Bundle::subject_at`] reaches a record the same way. There is no per-format index — a
+//! 28-byte Cardano credential and a 20-byte EVM address are both just a key string, and
+//! both are found in `log(subject_count)` comparisons rather than a scan.
 //!
-//! # Why the lots are in it
-//!
-//! The earned set is a **snapshot** and goes stale monotonically: an achievement that is
-//! missing is one that has not been observed yet, never one that was revoked. Progress is
-//! the opposite — `"213/365 days"` that is a day old looks broken — so it is not stored.
-//! The lots are, and [`crate::evaluate`] over [`BundleStore`] derives progress from them and
-//! the reader's own clock. Adding a predicate therefore needs no new bundle.
+//! Keys are stored as the text the fold interns (a hex stake credential, or the address
+//! itself), so a caller searches with the same string the catalogue and the store use.
 
 use chain_events::{AccountRef, Coverage};
 use chains::{ChainRef, TokenRef};
 
 use crate::evaluate::{Assessment, Definition, Outcome, evaluate};
-use crate::state::{AcquiredBy, Holding, LotId, NewLot, Slot, Store, SubjectId, UnitId};
+use crate::state::{
+    AcquiredBy, Holding, LotId, MintFact, MintSummary, NewLot, Slot, Store, SubjectId, UnitId,
+};
 
 /// Identifies the format. The trailing zeros are padding so a truncated read cannot
 /// accidentally match.
-pub const MAGIC: [u8; 8] = *b"HBABv1\0\0";
+pub const MAGIC: [u8; 8] = *b"HBABv2\0\0";
 
 /// The layout revision. A reader refuses a bundle it does not know rather than guessing.
-pub const VERSION: u16 = 1;
+pub const VERSION: u16 = 2;
 
 /// Bytes before the first section.
 const HEADER: usize = 80;
 
-/// Where an open interval ends, in the bundle and in [`Holding::disposed_at`] alike.
+/// Bytes of one encoding of [`Lot`]: unit u32, two i64, four u64, one bool.
+const LOT: usize = 53;
+
+/// Where an open interval ends, in the bundle and in [`Holding::disposed_at`]/
+/// [`Holding::disposed_unix`] alike.
 ///
-/// A chain height that large is not reachable, so it cannot collide with a real disposal —
-/// which `0` could, since `0` is a legal coordinate in a synthetic source.
+/// A coordinate that large is not reachable on either axis, so it cannot collide with a real
+/// disposal — which `0` could, since `0` is a legal coordinate in a synthetic source.
 const OPEN: u64 = u64::MAX;
 
 /// Something the bundle could not be read as.
@@ -66,6 +68,9 @@ pub enum BundleError {
     BadMagic,
     /// A revision this reader does not know.
     UnsupportedVersion(u16),
+    /// The header's CAIP-19 collection reference is not UTF-8, or its CAIP-2 chain prefix is
+    /// not a chain this build knows. Either way the file cannot say what it scores.
+    BadCollection,
     /// A section runs past the end of the buffer.
     Truncated,
     /// A count or offset inside the file disagrees with its neighbours.
@@ -80,6 +85,9 @@ impl core::fmt::Display for BundleError {
             Self::TooShort => formatter.write_str("shorter than a bundle header"),
             Self::BadMagic => formatter.write_str("not an achievements bundle"),
             Self::UnsupportedVersion(version) => write!(formatter, "bundle version {version}"),
+            Self::BadCollection => {
+                formatter.write_str("collection reference is not a valid CAIP-19 id")
+            }
             Self::Truncated => formatter.write_str("a section runs past the end of the buffer"),
             Self::Inconsistent => formatter.write_str("a count and an offset disagree"),
             Self::ReadOnly => formatter.write_str("a published bundle is read-only"),
@@ -122,8 +130,12 @@ pub struct Lot {
     pub open: i64,
     /// Chain height the lot arrived at.
     pub acquired_at: Slot,
+    /// Unix seconds the lot arrived at — the clock tenure is measured on.
+    pub acquired_unix: u64,
     /// Chain height it finished leaving, or `None` while any of it is held.
     pub disposed_at: Option<Slot>,
+    /// Unix seconds it finished leaving, beside [`Lot::disposed_at`].
+    pub disposed_unix: Option<u64>,
     /// `true` when the lot arrived at the primary mint rather than from another party.
     pub from_mint: bool,
 }
@@ -136,7 +148,7 @@ pub struct Lot {
 #[derive(Debug, Clone, Default)]
 pub struct SubjectRecord {
     /// The account key the fold uses: a hex stake credential, or the address itself when
-    /// it has none.
+    /// it has none. Must be shorter than 256 bytes, which every address form is.
     pub key: String,
     /// Earned achievements. Sorted by `achievement` before writing.
     pub earned: Vec<Earned>,
@@ -149,6 +161,16 @@ pub struct SubjectRecord {
 pub struct Snapshot {
     /// Unix seconds the reading was taken.
     pub built_at: u64,
+    /// The collection this file scores, as CAIP-19 without a token half.
+    ///
+    /// A bundle is one collection's projection. Without this a reader can only infer the
+    /// collection from the keys, and a file built for one collection can be opened as
+    /// though it were another.
+    pub collection: String,
+    /// Whether the walk that produced this snapshot proved it saw the whole holder family.
+    ///
+    /// Stated by the builder from its own report, never inferred by the reader.
+    pub coverage: Coverage,
     /// The last holder-family slot folded.
     pub holder_cursor: Slot,
     /// The last market-family slot folded.
@@ -194,35 +216,23 @@ pub fn catalogue_digest<'a>(ids: impl IntoIterator<Item = &'a str>) -> u64 {
 /// same bytes, which is what makes a sealed bundle reproducible.
 pub fn write(snapshot: &Snapshot) -> Vec<u8> {
     let mut subjects = snapshot.subjects.clone();
-    subjects.sort_by(|a, b| a.key.cmp(&b.key));
+    subjects.sort_by(|a, b| a.key.as_bytes().cmp(b.key.as_bytes()));
     subjects.dedup_by(|a, b| a.key == b.key);
 
-    let credentials: Vec<&SubjectRecord> = subjects
-        .iter()
-        .filter(|record| credential_of(&record.key).is_some())
-        .collect();
-    let others: Vec<&SubjectRecord> = subjects
-        .iter()
-        .filter(|record| credential_of(&record.key).is_none())
-        .collect();
-
-    // Every subject has a record slot; the key sections only index the ones they cover.
     let mut records = Vec::new();
     let mut offsets: Vec<u32> = Vec::with_capacity(subjects.len() + 1);
-    for record in credentials.iter().chain(others.iter()) {
+    for record in &subjects {
         offsets.push(records.len() as u32);
         encode_record(record, &mut records);
     }
     offsets.push(records.len() as u32);
 
-    let keys_len = credentials.len() * 28;
-    let others_len: usize = others.iter().map(|record| 1 + record.key.len()).sum();
+    let collection = snapshot.collection.as_bytes();
     let offsets_len = offsets.len() * 4;
     let rarity_len = snapshot.rarity.len() * 8;
 
-    let mut out = Vec::with_capacity(
-        HEADER + keys_len + others_len + offsets_len + rarity_len + records.len(),
-    );
+    let mut out =
+        Vec::with_capacity(HEADER + collection.len() + offsets_len + rarity_len + records.len());
     out.extend_from_slice(&MAGIC);
     out.extend_from_slice(&VERSION.to_le_bytes());
     out.extend_from_slice(&snapshot.achievement_count.to_le_bytes());
@@ -231,18 +241,12 @@ pub fn write(snapshot: &Snapshot) -> Vec<u8> {
     out.extend_from_slice(&snapshot.holder_cursor.to_le_bytes());
     out.extend_from_slice(&snapshot.market_cursor.to_le_bytes());
     out.extend_from_slice(&snapshot.catalogue_digest.to_le_bytes());
-    out.extend_from_slice(&(credentials.len() as u32).to_le_bytes());
-    out.extend_from_slice(&(others.len() as u32).to_le_bytes());
-    out.extend_from_slice(&[0u8; 24]);
+    out.extend_from_slice(&(collection.len() as u32).to_le_bytes());
+    out.push(coverage_byte(snapshot.coverage));
+    out.extend_from_slice(&[0u8; HEADER - 53]);
     debug_assert_eq!(out.len(), HEADER);
 
-    for record in &credentials {
-        out.extend_from_slice(&credential_of(&record.key).expect("filtered"));
-    }
-    for record in &others {
-        out.push(record.key.len() as u8);
-        out.extend_from_slice(record.key.as_bytes());
-    }
+    out.extend_from_slice(collection);
     for offset in &offsets {
         out.extend_from_slice(&offset.to_le_bytes());
     }
@@ -255,6 +259,10 @@ pub fn write(snapshot: &Snapshot) -> Vec<u8> {
 }
 
 fn encode_record(record: &SubjectRecord, out: &mut Vec<u8>) {
+    let key = record.key.as_bytes();
+    out.push(u8::try_from(key.len()).expect("an account key is shorter than 256 bytes"));
+    out.extend_from_slice(key);
+
     let mut earned = record.earned.clone();
     earned.sort_by_key(|entry| entry.achievement);
     out.extend_from_slice(&(earned.len() as u16).to_le_bytes());
@@ -268,21 +276,18 @@ fn encode_record(record: &SubjectRecord, out: &mut Vec<u8>) {
         out.extend_from_slice(&lot.quantity.to_le_bytes());
         out.extend_from_slice(&lot.open.to_le_bytes());
         out.extend_from_slice(&lot.acquired_at.to_le_bytes());
+        out.extend_from_slice(&lot.acquired_unix.to_le_bytes());
         out.extend_from_slice(&lot.disposed_at.unwrap_or(OPEN).to_le_bytes());
+        out.extend_from_slice(&lot.disposed_unix.unwrap_or(OPEN).to_le_bytes());
         out.push(u8::from(lot.from_mint));
     }
 }
 
-/// The 28 bytes of a stake credential, or `None` for an account that has none.
-fn credential_of(key: &str) -> Option<[u8; 28]> {
-    if key.len() != 56 {
-        return None;
+fn coverage_byte(coverage: Coverage) -> u8 {
+    match coverage {
+        Coverage::Complete => 0,
+        Coverage::Partial => 1,
     }
-    let mut out = [0u8; 28];
-    for (index, byte) in out.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(key.get(index * 2..index * 2 + 2)?, 16).ok()?;
-    }
-    Some(out)
 }
 
 // ============================================================================
@@ -296,13 +301,12 @@ pub struct Bundle<'a> {
     achievement_count: u16,
     subject_count: u32,
     built_at: u64,
+    collection: &'a str,
+    chain: ChainRef,
+    coverage: Coverage,
     holder_cursor: Slot,
     market_cursor: Slot,
     catalogue_digest: u64,
-    credentials: usize,
-    others: usize,
-    keys_at: usize,
-    others_at: usize,
     offsets_at: usize,
     rarity_at: usize,
     records_at: usize,
@@ -327,26 +331,27 @@ impl<'a> Bundle<'a> {
         let holder_cursor = u64::from_le_bytes(octet(bytes, 24));
         let market_cursor = u64::from_le_bytes(octet(bytes, 32));
         let catalogue_digest = u64::from_le_bytes(octet(bytes, 40));
-        let credentials = u32::from_le_bytes(quad(bytes, 48)) as usize;
-        let others = u32::from_le_bytes(quad(bytes, 52)) as usize;
-        if credentials + others != subject_count as usize {
-            return Err(BundleError::Inconsistent);
-        }
+        let collection_len = u32::from_le_bytes(quad(bytes, 48)) as usize;
+        let coverage = match bytes[52] {
+            0 => Coverage::Complete,
+            1 => Coverage::Partial,
+            _ => return Err(BundleError::Inconsistent),
+        };
 
-        let keys_at = HEADER;
-        let others_at = keys_at
-            .checked_add(credentials * 28)
+        let collection_end = HEADER
+            .checked_add(collection_len)
             .ok_or(BundleError::Truncated)?;
-        let others_end = (0..others)
-            .try_fold(others_at, |at, index| {
-                let length = *bytes.get(at)? as usize;
-                let end = at.checked_add(1 + length)?;
-                // The remainder is checked below, once; this only walks the lengths.
-                let _ = index;
-                Some(end)
-            })
+        let collection = bytes
+            .get(HEADER..collection_end)
             .ok_or(BundleError::Truncated)?;
-        let offsets_at = others_end;
+        let collection =
+            core::str::from_utf8(collection).map_err(|_| BundleError::BadCollection)?;
+        // The CAIP-19 reference is `chain/asset-type`, so the chain half is the CAIP-2 id a
+        // reader needs to build an `AccountRef` from a key.
+        let caip2 = collection.split('/').next().unwrap_or(collection);
+        let chain = caip2.parse().map_err(|_| BundleError::BadCollection)?;
+
+        let offsets_at = collection_end;
         let rarity_at = offsets_at
             .checked_add((subject_count as usize + 1) * 4)
             .ok_or(BundleError::Truncated)?;
@@ -362,13 +367,12 @@ impl<'a> Bundle<'a> {
             achievement_count,
             subject_count,
             built_at,
+            collection,
+            chain,
+            coverage,
             holder_cursor,
             market_cursor,
             catalogue_digest,
-            credentials,
-            others,
-            keys_at,
-            others_at,
             offsets_at,
             rarity_at,
             records_at,
@@ -385,6 +389,27 @@ impl<'a> Bundle<'a> {
     /// Unix seconds the reading was taken. A reader should show this, not hide it.
     pub fn built_at(&self) -> u64 {
         self.built_at
+    }
+
+    /// The collection this file scores, as CAIP-19 without a token half.
+    pub fn collection(&self) -> &'a str {
+        self.collection
+    }
+
+    /// The chain the collection is on, parsed from the CAIP-19 reference.
+    ///
+    /// A reader needs it to turn a row's key into an account, and taking it from the file is
+    /// what lets one reader serve a Cardano bundle and an EVM one.
+    pub fn chain(&self) -> ChainRef {
+        self.chain
+    }
+
+    /// Whether the walk behind this file proved it saw the whole holder family.
+    ///
+    /// A reader that evaluates progress from the lots must pass this to [`Assessment`]: a
+    /// span read over a partial walk is unavailable, not short.
+    pub fn coverage(&self) -> Coverage {
+        self.coverage
     }
 
     /// The last holder-family slot folded into this bundle.
@@ -434,52 +459,31 @@ impl<'a> Bundle<'a> {
         if end < start {
             return Err(BundleError::Inconsistent);
         }
-        let key = self.key_at(index as usize)?;
         let record = self
             .bytes
             .get(self.records_at + start..self.records_at + end)
             .ok_or(BundleError::Truncated)?;
-        Ok(SubjectView {
-            key,
-            record,
-            is_credential: (index as usize) < self.credentials,
-        })
+        let key = key_of(record)?;
+        let body = record.get(1 + key.len()..).ok_or(BundleError::Truncated)?;
+        Ok(SubjectView { key, record: body })
     }
 
     /// The subject whose account key is `key`, or `None`.
     ///
-    /// A hex stake credential is a binary search over a 28-byte array. Anything else — an
-    /// enterprise address, which genuinely has no credential — is a linear scan of the
-    /// handful of those and never touches the main index.
+    /// One binary search over the offset table, for every key format: the record begins
+    /// with its key, so a comparison needs no separate index and no knowledge of whether
+    /// the key is a Cardano credential or an EVM address.
     pub fn find(&self, key: &str) -> Result<Option<SubjectView<'a>>, BundleError> {
-        if let Some(credential) = credential_of(key) {
-            let mut low = 0usize;
-            let mut high = self.credentials;
-            while low < high {
-                let mid = (low + high) / 2;
-                let at = self.keys_at + mid * 28;
-                match self.bytes.get(at..at + 28) {
-                    None => return Err(BundleError::Truncated),
-                    Some(found) => match found.cmp(&credential[..]) {
-                        core::cmp::Ordering::Less => low = mid + 1,
-                        core::cmp::Ordering::Greater => high = mid,
-                        core::cmp::Ordering::Equal => return self.subject_at(mid as u32).map(Some),
-                    },
-                }
+        let wanted = key.as_bytes();
+        let mut low = 0usize;
+        let mut high = self.subject_count as usize;
+        while low < high {
+            let mid = (low + high) / 2;
+            match self.key_at(mid)?.cmp(wanted) {
+                core::cmp::Ordering::Less => low = mid + 1,
+                core::cmp::Ordering::Greater => high = mid,
+                core::cmp::Ordering::Equal => return self.subject_at(mid as u32).map(Some),
             }
-            return Ok(None);
-        }
-
-        let mut at = self.others_at;
-        for index in 0..self.others {
-            let length = *self.bytes.get(at).ok_or(BundleError::Truncated)? as usize;
-            let start = at + 1;
-            let end = start + length;
-            let found = self.bytes.get(start..end).ok_or(BundleError::Truncated)?;
-            if found == key.as_bytes() {
-                return self.subject_at((self.credentials + index) as u32).map(Some);
-            }
-            at = end;
         }
         Ok(None)
     }
@@ -498,20 +502,25 @@ impl<'a> Bundle<'a> {
     }
 
     fn key_at(&self, index: usize) -> Result<&'a [u8], BundleError> {
-        if index < self.credentials {
-            let at = self.keys_at + index * 28;
-            return self.bytes.get(at..at + 28).ok_or(BundleError::Truncated);
+        let start = self.offset(index)? as usize;
+        let end = self.offset(index + 1)? as usize;
+        if end < start {
+            return Err(BundleError::Inconsistent);
         }
-        let mut at = self.others_at;
-        for _ in 0..(index - self.credentials) {
-            let length = *self.bytes.get(at).ok_or(BundleError::Truncated)? as usize;
-            at += 1 + length;
-        }
-        let length = *self.bytes.get(at).ok_or(BundleError::Truncated)? as usize;
-        self.bytes
-            .get(at + 1..at + 1 + length)
-            .ok_or(BundleError::Truncated)
+        // Bounded by the record, not by the rest of the buffer: a corrupt key length then
+        // fails rather than comparing bytes that belong to the next subject.
+        let record = self
+            .bytes
+            .get(self.records_at + start..self.records_at + end)
+            .ok_or(BundleError::Truncated)?;
+        key_of(record)
     }
+}
+
+/// The key at the front of one encoded record.
+fn key_of(record: &[u8]) -> Result<&[u8], BundleError> {
+    let length = *record.first().ok_or(BundleError::Truncated)? as usize;
+    record.get(1..1 + length).ok_or(BundleError::Truncated)
 }
 
 /// One subject's row, as slices into the bundle.
@@ -519,26 +528,20 @@ impl<'a> Bundle<'a> {
 pub struct SubjectView<'a> {
     key: &'a [u8],
     record: &'a [u8],
-    is_credential: bool,
 }
 
 impl<'a> SubjectView<'a> {
-    /// The account key as stored: 28 raw bytes for a credential, the address bytes otherwise.
+    /// The account key as stored: the text the fold interns.
     pub fn key(&self) -> &'a [u8] {
         self.key
     }
 
-    /// The account key as text — lower-case hex for a credential, the address otherwise.
+    /// The account key as text — a hex stake credential, or the address itself.
     ///
     /// This is the form the fold interns and the catalogue names, so it is what a caller
-    /// hashes, displays or compares. It allocates: a credential is stored as bytes and
-    /// hexing it is the only way to produce the text.
+    /// hashes, displays or compares.
     pub fn key_str(&self) -> String {
-        if self.is_credential {
-            self.key.iter().map(|byte| format!("{byte:02x}")).collect()
-        } else {
-            String::from_utf8_lossy(self.key).into_owned()
-        }
+        String::from_utf8_lossy(self.key).into_owned()
     }
 
     /// The earned achievements, ascending by index.
@@ -574,16 +577,19 @@ impl<'a> SubjectView<'a> {
             .unwrap_or(0) as usize;
         let record = self.record;
         (0..count).filter_map(move |index| {
-            let start = at + 2 + index * 37;
-            let slice = record.get(start..start + 37)?;
-            let disposed = u64::from_le_bytes(octet(slice, 28));
+            let start = at + 2 + index * LOT;
+            let slice = record.get(start..start + LOT)?;
+            let disposed_at = u64::from_le_bytes(octet(slice, 36));
+            let disposed_unix = u64::from_le_bytes(octet(slice, 44));
             Some(Lot {
                 unit: u32::from_le_bytes(quad(slice, 0)),
                 quantity: i64::from_le_bytes(octet(slice, 4)),
                 open: i64::from_le_bytes(octet(slice, 12)),
                 acquired_at: u64::from_le_bytes(octet(slice, 20)),
-                disposed_at: (disposed != OPEN).then_some(disposed),
-                from_mint: slice[36] != 0,
+                acquired_unix: u64::from_le_bytes(octet(slice, 28)),
+                disposed_at: (disposed_at != OPEN).then_some(disposed_at),
+                disposed_unix: (disposed_unix != OPEN).then_some(disposed_unix),
+                from_mint: slice[52] != 0,
             })
         })
     }
@@ -672,6 +678,26 @@ impl Store for BundleStore<'_> {
         Ok(Vec::new())
     }
 
+    fn record_mint(
+        &mut self,
+        _unit: UnitId,
+        _slot: Slot,
+        _unix: u64,
+    ) -> Result<MintFact, Self::Error> {
+        Err(BundleError::ReadOnly)
+    }
+
+    fn mint_of(&self, _unit: UnitId) -> Result<Option<MintFact>, Self::Error> {
+        // A row carries the lot's own `from_mint` and acquisition slot, not the collection's
+        // mint order. Provenance predicates therefore read as a gap from a bundle; the
+        // earned set in the file already answered them.
+        Ok(None)
+    }
+
+    fn mint_summary(&self) -> Result<Option<MintSummary>, Self::Error> {
+        Ok(None)
+    }
+
     fn subjects(&self) -> Result<Vec<SubjectId>, Self::Error> {
         Ok(vec![SubjectId(0)])
     }
@@ -686,6 +712,7 @@ impl BundleStore<'_> {
             quantity: lot.quantity,
             open: lot.open,
             acquired_at: lot.acquired_at,
+            acquired_unix: lot.acquired_unix,
             acquired_by: if lot.from_mint {
                 AcquiredBy::Mint
             } else {
@@ -693,6 +720,7 @@ impl BundleStore<'_> {
             },
             acquired_tx: None,
             disposed_at: lot.disposed_at,
+            disposed_unix: lot.disposed_unix,
             disposed_tx: None,
         })
     }
@@ -711,13 +739,6 @@ pub fn evaluate_row<'a>(
     evaluate(store, SubjectId(0), at, definitions)
 }
 
-/// The coverage a bundle can claim.
-///
-/// A bundle is built from a walk that reported its own completeness; anything a reader
-/// wants to say about spans has to be true of that walk. Until the bundle carries the
-/// coverage explicitly, a reader states it — see [`Assessment`].
-pub const BUNDLE_COVERAGE: Coverage = Coverage::Complete;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -729,6 +750,8 @@ mod tests {
     fn snapshot() -> Snapshot {
         Snapshot {
             built_at: 1_793_427_000,
+            collection: crate::memory::fixtures::perps().to_string(),
+            coverage: Coverage::Complete,
             holder_cursor: 201_753_328,
             market_cursor: 179_054_285,
             catalogue_digest: 0xdead_beef,
@@ -755,7 +778,9 @@ mod tests {
                         quantity: 1,
                         open: 1,
                         acquired_at: 170_960_000,
+                        acquired_unix: 170_960_000,
                         disposed_at: None,
+                        disposed_unix: None,
                         from_mint: true,
                     }],
                 },
@@ -767,7 +792,9 @@ mod tests {
                         quantity: 1,
                         open: 0,
                         acquired_at: 170_000_000,
+                        acquired_unix: 170_000_010,
                         disposed_at: Some(170_500_000),
+                        disposed_unix: Some(170_500_100),
                         from_mint: false,
                     }],
                 },
@@ -788,6 +815,11 @@ mod tests {
         assert_eq!(bundle.holder_cursor(), 201_753_328);
         assert_eq!(bundle.market_cursor(), 179_054_285);
         assert_eq!(bundle.catalogue_digest(), 0xdead_beef);
+        assert_eq!(
+            bundle.collection(),
+            crate::memory::fixtures::perps().to_string()
+        );
+        assert_eq!(bundle.coverage(), Coverage::Complete);
         assert_eq!(bundle.subject_count(), 3);
         assert_eq!(bundle.achievement_count(), 2);
     }
@@ -802,6 +834,7 @@ mod tests {
         assert_eq!(found.earned().next().unwrap().valid_from, 170_960_000);
         let lot = found.lots().next().unwrap();
         assert_eq!(lot.unit, 7);
+        assert_eq!(lot.acquired_unix, 170_960_000);
         assert!(lot.from_mint);
         assert_eq!(lot.disposed_at, None);
 
@@ -810,20 +843,54 @@ mod tests {
     }
 
     #[test]
-    fn an_account_with_no_credential_is_found_by_its_address() {
-        // The three enterprise addresses in the real Perps data take this path.
+    fn an_address_key_is_found_by_the_same_index() {
+        // The three enterprise addresses in the real Perps data have no credential; they
+        // are not a second index any more, just a key of a different length.
         let bytes = write(&snapshot());
         let bundle = Bundle::open(&bytes).unwrap();
         let key = "addr1v825u96vkgrr5lke2c36sgvxa72szq4d50wq3jdk4crylncgd0x55";
         let found = bundle.find(key).unwrap().expect("present");
         assert_eq!(found.key_str(), key);
-        assert_eq!(found.lots().next().unwrap().disposed_at, Some(170_500_000));
+        let lot = found.lots().next().unwrap();
+        assert_eq!(lot.disposed_at, Some(170_500_000));
+        assert_eq!(lot.disposed_unix, Some(170_500_100));
         assert!(found.earned().next().is_none());
     }
 
     #[test]
+    fn an_evm_address_is_found_without_a_second_index() {
+        // A 20-byte EVM address is not a 28-byte Cardano credential, and v1 would have
+        // fallen back to a linear scan for it. The key section no longer has a format.
+        let mut snapshot = snapshot();
+        snapshot.collection =
+            "eip155:4663/erc721:0x00000000000000000000000000000000000000aa".into();
+        let evm = |byte: u8| format!("0x{}", format!("{byte:02x}").repeat(20));
+        snapshot.subjects.push(SubjectRecord {
+            key: evm(0x11),
+            earned: Vec::new(),
+            lots: Vec::new(),
+        });
+        snapshot.subjects.push(SubjectRecord {
+            key: evm(0x22),
+            earned: Vec::new(),
+            lots: Vec::new(),
+        });
+        let bytes = write(&snapshot);
+        let bundle = Bundle::open(&bytes).unwrap();
+        assert_eq!(bundle.chain().as_caip2(), "eip155:4663");
+
+        for key in [evm(0x11), evm(0x22)] {
+            let found = bundle.find(&key).unwrap().expect("present");
+            assert_eq!(found.key_str(), key);
+        }
+        assert!(bundle.find(&evm(0x33)).unwrap().is_none());
+        assert_eq!(bundle.subject_count(), 5);
+    }
+
+    #[test]
     fn order_is_the_bundle_and_not_the_caller() {
-        // Written bb, enterprise, aa; read back aa, bb, enterprise.
+        // Written bb, enterprise, aa; read back in ascending key order. One index covers
+        // every key format, so the enterprise address sorts between the two credentials.
         let bytes = write(&snapshot());
         let bundle = Bundle::open(&bytes).unwrap();
         let keys: Vec<String> = bundle
@@ -831,8 +898,11 @@ mod tests {
             .map(|row| row.unwrap().key_str())
             .collect();
         assert_eq!(keys[0], credential(0xaa));
-        assert_eq!(keys[1], credential(0xbb));
-        assert!(keys[2].starts_with("addr1v"));
+        assert_eq!(
+            keys[1],
+            "addr1v825u96vkgrr5lke2c36sgvxa72szq4d50wq3jdk4crylncgd0x55"
+        );
+        assert_eq!(keys[2], credential(0xbb));
     }
 
     #[test]
@@ -880,13 +950,56 @@ mod tests {
     }
 
     #[test]
+    fn the_header_states_the_collection_and_the_walks_coverage() {
+        // Both are what a reader needs to say which collection it is looking at and whether
+        // a span over it is answerable at all.
+        let mut snapshot = snapshot();
+        snapshot.coverage = Coverage::Partial;
+        let bytes = write(&snapshot);
+        let bundle = Bundle::open(&bytes).unwrap();
+        assert_eq!(bundle.collection(), snapshot.collection);
+        assert_eq!(bundle.coverage(), Coverage::Partial);
+    }
+
+    #[test]
+    fn a_collection_that_is_not_utf8_is_refused() {
+        let mut bytes = write(&snapshot());
+        bytes[48..52].copy_from_slice(&1u32.to_le_bytes());
+        bytes[HEADER] = 0xff;
+        assert_eq!(
+            Bundle::open(&bytes).unwrap_err(),
+            BundleError::BadCollection
+        );
+    }
+
+    #[test]
+    fn an_unknown_coverage_byte_is_refused() {
+        let mut bytes = write(&snapshot());
+        bytes[52] = 9;
+        assert_eq!(Bundle::open(&bytes).unwrap_err(), BundleError::Inconsistent);
+    }
+
+    #[test]
+    fn a_collection_whose_chain_is_unknown_is_refused() {
+        // The header names the collection, and the chain half of it has to be one this
+        // build can build an `AccountRef` for; otherwise a reader would have to guess.
+        let mut snapshot = snapshot();
+        snapshot.collection = "not-a-chain/cnt:aa".into();
+        assert_eq!(
+            Bundle::open(&write(&snapshot)).unwrap_err(),
+            BundleError::BadCollection
+        );
+    }
+
+    #[test]
     fn a_row_is_a_store_the_evaluator_can_read() {
         use crate::predicate::Predicate;
 
         let bytes = write(&snapshot());
         let bundle = Bundle::open(&bytes).unwrap();
+        assert_eq!(bundle.chain(), ChainRef::cardano_mainnet());
         let view = bundle.find(&credential(0xbb)).unwrap().unwrap();
-        let store = BundleStore::new(view, ChainRef::cardano_mainnet());
+        let store = BundleStore::new(view, bundle.chain());
         let definitions = vec![
             Definition {
                 id: "never-sold",
@@ -896,16 +1009,30 @@ mod tests {
                 id: "from-mint",
                 predicate: Predicate::HeldSinceMint,
             },
+            Definition {
+                id: "genesis",
+                predicate: Predicate::MintRankAtMost { n: 1 },
+            },
         ];
-        let outcomes = evaluate_row(&store, &Assessment::complete(201_753_328), &definitions)
-            .expect("a published row evaluates");
-        assert_eq!(outcomes.len(), 2);
+        let outcomes = evaluate_row(
+            &store,
+            &Assessment::complete(201_753_328, 1_793_244_235),
+            &definitions,
+        )
+        .expect("a published row evaluates");
+        assert_eq!(outcomes.len(), 3);
         assert_eq!(outcomes[0].id, "never-sold");
         assert_eq!(
             outcomes[0].progress,
             crate::Progress::Earned {
                 since: crate::EarnedSince::Exact(170_960_000)
             }
+        );
+        // A row carries the lot's own `from_mint`, not the collection's mint order, so a
+        // rank is a gap from a bundle — the earned set in the file is what answered it.
+        assert_eq!(
+            outcomes[2].progress,
+            crate::Progress::Unavailable(crate::Gap::MintFacts)
         );
     }
 

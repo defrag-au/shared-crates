@@ -16,6 +16,8 @@
 //! | [`Predicate::HasTraitValues`] | a set of values ever held across assets | lots + traits |
 //! | [`Predicate::HeldWithTraitAtOnce`] | a count held simultaneously, as a peak | lots + traits |
 //! | [`Predicate::SameValueAcrossAssets`] | assets sharing a value, ever held | lots + traits |
+//! | [`Predicate::MintWithin`] … [`Predicate::MintAfterGap`] | the collection's mint order | lots + mint facts |
+//! | [`Predicate::MintedCount`] … [`Predicate::NeverBought`] | what the subject did at the mint | lots |
 //!
 //! A kind that is not here is **not silently false**: the catalogue loader is expected to
 //! refuse a definition it cannot build, which is the same rule the design doc states for
@@ -48,8 +50,9 @@ pub enum Predicate {
     ///
     /// Summed over lots, so two units held for a year each is two years of tenure. The
     /// open part grows with the clock, which is what makes the near-miss reportable
-    /// with a date: `eta_slot` is the slot at which the currently open lots reach the
-    /// threshold, if they ever do.
+    /// with a date: `eta_unix` is the unix second at which the currently open lots reach
+    /// the threshold, if they ever do. Days are unix days, not heights — see
+    /// [`crate::SECONDS_PER_DAY`].
     TotalTenureAtLeast {
         /// The threshold, in days of chain time.
         days: u32,
@@ -72,10 +75,21 @@ pub enum Predicate {
     /// categories needs. An asset with no trait rows at all makes the predicate
     /// `Unavailable` rather than `Missed` — the evaluator cannot distinguish "does not
     /// have it" from "was never told".
+    /// Every one of `values` was carried by some unit the subject held.
+    ///
+    /// A set across assets, not one asset carrying all of them: `tri-faction` is "a Perp
+    /// from each faction", and no Perp carries three factions. Each value needs one unit
+    /// that carried it at any point, and the answer is earned at the slot the last value
+    /// arrived. Selling one afterwards does not un-earn it.
+    ///
+    /// `category = "*"` matches across categories, which is what a set like the three
+    /// crowns needs. An asset with no trait rows at all makes the answer `Unavailable`
+    /// rather than `Missed` — the evaluator cannot tell "does not have it" from "was never
+    /// told".
     HasAllTraits {
         /// The trait category, or `*` for any.
         category: String,
-        /// The values, all of which must be present on the one asset.
+        /// The values, each carried by some asset the subject held.
         values: Vec<String>,
     },
 
@@ -131,6 +145,60 @@ pub enum Predicate {
         /// How many distinct units must share the value.
         assets: u32,
     },
+
+    /// One of the subject's own mints happened within `seconds` of the collection's first.
+    MintWithin {
+        /// The window, in chain seconds.
+        seconds: u64,
+    },
+
+    /// One of the subject's own mints was among the first `n` of the collection.
+    MintRankAtMost {
+        /// The 1-based rank ceiling.
+        n: u32,
+    },
+
+    /// One of the subject's own mints was at rank `n` or later.
+    MintRankAtLeast {
+        /// The 1-based rank floor.
+        n: u32,
+    },
+
+    /// One of the subject's own mints fell in the last `1 - fraction` of the mint.
+    ///
+    /// `rank / minted-so-far > fraction`, which is only a fact about the *window* on a
+    /// complete fold — an incremental reader mid-mint divides by a partial count.
+    MintRankAfterFraction {
+        /// The fraction of the mint that must precede it, in `(0, 1)`.
+        fraction: f64,
+    },
+
+    /// One of the subject's own mints came after the mint had stalled for `days`.
+    MintAfterGap {
+        /// The quiet period, in days of chain time.
+        days: u32,
+    },
+
+    /// The subject minted at least `at_least` assets at primary.
+    MintedCount {
+        /// The threshold, in minted lots.
+        at_least: u32,
+    },
+
+    /// The subject minted at least `at_least` assets at primary and still holds them.
+    MintedAndStillHeld {
+        /// The threshold, in open mint lots.
+        at_least: u32,
+    },
+
+    /// Every asset the subject minted is still held by them.
+    AllMintsRetained,
+
+    /// Every asset the subject ever held arrived at the primary mint.
+    ///
+    /// A gift and a purchase are both an arrival from another party, and the fold cannot
+    /// tell them apart — so "bought" here means "did not mint it".
+    NeverBought,
 }
 
 impl Predicate {
@@ -146,6 +214,15 @@ impl Predicate {
             Self::HasTraitValues { .. } => "has_trait_values",
             Self::HeldWithTraitAtOnce { .. } => "held_with_trait_at_once",
             Self::SameValueAcrossAssets { .. } => "same_value_across_assets",
+            Self::MintWithin { .. } => "mint_within",
+            Self::MintRankAtMost { .. } => "mint_rank_at_most",
+            Self::MintRankAtLeast { .. } => "mint_rank_at_least",
+            Self::MintRankAfterFraction { .. } => "mint_rank_after_fraction",
+            Self::MintAfterGap { .. } => "mint_after_gap",
+            Self::MintedCount { .. } => "minted_count",
+            Self::MintedAndStillHeld { .. } => "minted_and_still_held",
+            Self::AllMintsRetained => "all_mints_retained",
+            Self::NeverBought => "never_bought",
         }
     }
 
@@ -174,6 +251,18 @@ impl Predicate {
                 | Self::HasTraitValues { .. }
                 | Self::HeldWithTraitAtOnce { .. }
                 | Self::SameValueAcrossAssets { .. }
+        )
+    }
+
+    /// Whether the answer needs the collection's mint order, not just the subject's lots.
+    pub fn needs_mint_facts(&self) -> bool {
+        matches!(
+            self,
+            Self::MintWithin { .. }
+                | Self::MintRankAtMost { .. }
+                | Self::MintRankAtLeast { .. }
+                | Self::MintRankAfterFraction { .. }
+                | Self::MintAfterGap { .. }
         )
     }
 }
