@@ -16,3 +16,6 @@ serde = { workspace = true, features = ["derive"] }
 [dev-dependencies]
 # The replay test reads the same NDJSON the store does.
 serde_json = { workspace = true }
+# The replay example reads the frozen catalogue, which is TOML. A dev-dependency only:
+# the library itself still depends on nothing but `chain-events`, so it stays wasm-pure.
+toml = "0.8"

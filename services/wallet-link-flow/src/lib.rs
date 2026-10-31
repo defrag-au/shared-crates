@@ -211,9 +211,13 @@ pub enum LinkStep {
     /// Checking the signature.
     Check,
     /// Linked.
-    Linked { address: String },
+    Linked {
+        address: String,
+    },
     /// The connected wallet was already linked.
-    Already { address: String },
+    Already {
+        address: String,
+    },
     Declined,
     Failed(String),
 }

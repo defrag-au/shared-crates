@@ -76,17 +76,18 @@ impl LinkIo for LiveIo {
 
     fn poll(&mut self) -> Vec<Event> {
         let mut out = Vec::new();
-        self.calls.retain_mut(|(kind, pending)| match pending.poll() {
-            Poll::Pending => true,
-            Poll::Ready(reply) => {
-                let reply = match reply {
-                    Ok(r) => Reply::from_status(r.status, r.text()),
-                    Err(e) => Reply::Offline(e.0),
-                };
-                out.push(Event::Answer(Answer { call: *kind, reply }));
-                false
-            }
-        });
+        self.calls
+            .retain_mut(|(kind, pending)| match pending.poll() {
+                Poll::Pending => true,
+                Poll::Ready(reply) => {
+                    let reply = match reply {
+                        Ok(r) => Reply::from_status(r.status, r.text()),
+                        Err(e) => Reply::Offline(e.0),
+                    };
+                    out.push(Event::Answer(Answer { call: *kind, reply }));
+                    false
+                }
+            });
         if let Some((family, req)) = self.signing {
             let polled = match family {
                 ChainFamily::Evm => wallet_miniquad::evm::poll(req),

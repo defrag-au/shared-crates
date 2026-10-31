@@ -36,12 +36,13 @@ impl TokenClaims {
         serde_json::from_slice(&base64url(payload)?).ok()
     }
 
-    /// The CDN URL of the holder's avatar, when the token names one.
+    /// The CDN URL of the holder's avatar as a PNG, when the token names one.
+    /// Always PNG, an animated (`a_…`) avatar included: the CDN serves its
+    /// first frame, and every client can decode it.
     pub fn avatar_url(&self) -> Option<String> {
         let (id, hash) = (self.sub.as_ref()?, self.avatar_hash.as_ref()?);
-        let ext = if hash.starts_with("a_") { "gif" } else { "png" };
         Some(format!(
-            "https://cdn.discordapp.com/avatars/{id}/{hash}.{ext}?size=128"
+            "https://cdn.discordapp.com/avatars/{id}/{hash}.png?size=128"
         ))
     }
 }
@@ -95,13 +96,15 @@ mod tests {
 
     #[test]
     fn a_widget_token_names_its_holder() {
-        let t = token(r#"{"sub":"179744071361757184","display_name":"boef","avatar_hash":"a_12","exp":1761900000,"action":{"type":"link_wallet"}}"#);
+        let t = token(
+            r#"{"sub":"179744071361757184","display_name":"boef","avatar_hash":"a_12","exp":1761900000,"action":{"type":"link_wallet"}}"#,
+        );
         let c = TokenClaims::peek(&t).expect("readable");
         assert_eq!(c.display_name.as_deref(), Some("boef"));
         assert_eq!(c.exp, Some(1_761_900_000));
         assert_eq!(
             c.avatar_url().as_deref(),
-            Some("https://cdn.discordapp.com/avatars/179744071361757184/a_12.gif?size=128")
+            Some("https://cdn.discordapp.com/avatars/179744071361757184/a_12.png?size=128")
         );
     }
 

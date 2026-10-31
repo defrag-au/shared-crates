@@ -53,8 +53,8 @@ use wallet_link_flow::wallet_link::LinkedWallet;
 use wallet_link_flow::{Claim, Effect, Event, LINKABLE, LinkStep, Linker, Phase, TokenClaims};
 
 pub use io::{LinkIo, LiveIo, signature_event};
-pub use list::ListView;
-pub use orbit::{OrbitTap, OrbitView, wallet_label};
+pub use list::{ListLook, ListView};
+pub use orbit::{Identity, OrbitTap, OrbitView, short_tail, wallet_label};
 pub use wallet_link_flow;
 pub use wallet_link_flow::wallet_link::link::DEFAULT_AUTH_BASE;
 
@@ -115,12 +115,18 @@ pub struct WalletLinker {
     /// Seconds the finished link has shown.
     celebrated: f32,
     /// A link just made, held back from the orbit until the modal has gone.
-    held: Option<String>,
+    held: Option<LinkedWallet>,
+    /// The primary button's fade: out while the modal is up.
+    cta_alpha: Animated<f32>,
+    /// Let go of the connected wallets once the modal has finished closing.
+    release_after_close: bool,
     /// Launch this address's moon on the next sync.
     launch: Option<String>,
     modal_was_open: bool,
     toasts: Toasts,
     events: Vec<LinkerEvent>,
+    /// The reader's Discord avatar on its way, for the sun's face.
+    avatar: Option<macroquad_app::Pending>,
 }
 
 impl WalletLinker {
@@ -147,10 +153,51 @@ impl WalletLinker {
             claimed: None,
             celebrated: 0.0,
             held: None,
+            cta_alpha: Animated::new(1.0),
+            release_after_close: false,
             launch: None,
             modal_was_open: false,
             toasts: Toasts::new(),
             events: Vec::new(),
+            avatar: None,
+        }
+    }
+
+    /// The reader's Discord identity on the sun: their name from the token
+    /// (or their id, once `/auth/me` has answered), and their avatar once it
+    /// has loaded.
+    fn refresh_identity(&mut self) {
+        if !self.started {
+            // The first frame: ask for the avatar the token names.
+            if let Some(url) = self.claims.avatar_url() {
+                self.avatar = Some(macroquad_app::Request::get(&url).send());
+            }
+        }
+        let name = self.claims.display_name.clone().or_else(|| {
+            self.flow
+                .identity()
+                .map(|i| format!("Discord {}", short_tail(&i.discord_user_id)))
+        });
+        let mut identity = self.orbit.identity().clone();
+        let mut changed = identity.name != name;
+        identity.name = name;
+        if let Some(pending) = &mut self.avatar
+            && let std::task::Poll::Ready(reply) = pending.poll()
+        {
+            self.avatar = None;
+            // A missing or unreadable avatar leaves the sun its initial.
+            if let Ok(r) = reply
+                && r.ok()
+                && let Ok(image) = Image::from_file_with_format(&r.body, None)
+            {
+                let texture = Texture2D::from_image(&image);
+                texture.set_filter(FilterMode::Linear);
+                identity.avatar = Some(texture);
+                changed = true;
+            }
+        }
+        if changed {
+            self.orbit.set_identity(identity);
         }
     }
 
@@ -243,6 +290,7 @@ impl WalletLinker {
     pub fn update(&mut self, frame: &Frame) -> Option<LinkerEvent> {
         let dt = frame.dt;
         self.clock += dt;
+        self.refresh_identity();
         if !self.started {
             self.started = true;
             self.send(Event::Start);
@@ -264,16 +312,21 @@ impl WalletLinker {
 
         // The orbit shows the list as it is, less a link the modal is still
         // celebrating: that moon launches once the modal has gone.
-        if let Some(wallets) = self.flow.wallets() {
-            let shown: Vec<LinkedWallet> = wallets
-                .iter()
-                .filter(|w| self.held.as_deref() != Some(w.address.as_str()))
-                .cloned()
-                .collect();
+        if self.flow.wallets().is_some() {
+            let shown = self.shown_wallets();
             let launch = self.launch.take();
             self.orbit.sync(&shown, launch.as_deref());
         }
         self.orbit.update(dt);
+        let cta_to = if self.connector.is_visible() {
+            0.0
+        } else {
+            1.0
+        };
+        if self.cta_alpha.target() != cta_to {
+            self.cta_alpha.to(cta_to, 0.25, Ease::CubicOut);
+        }
+        self.cta_alpha.update(dt);
         if self.events.is_empty() {
             None
         } else {
@@ -352,15 +405,18 @@ impl WalletLinker {
                     Align::Center,
                 );
             }
-            _ => self.draw_body(frame, body, field),
+            _ => self.draw_body(frame, body, field, covered),
         }
 
         // The one primary action.
         let idle = matches!(phase, Phase::Idle);
-        if Pill::filled("Link a wallet")
-            .ink(c.accent)
-            .enabled(idle)
-            .show(body, cta)
+        let cta_a = self.cta_alpha.get();
+        if cta_a > 0.01
+            && Pill::filled("Link a wallet")
+                .ink(c.accent)
+                .enabled(idle)
+                .alpha(cta_a)
+                .show(body, cta)
             && idle
         {
             self.close_sheet();
@@ -392,6 +448,7 @@ impl WalletLinker {
             Effect::Call(call) => self.io.call(&call),
             Effect::Sign(request) => self.io.sign(&request),
             Effect::OpenConnector(family) => {
+                self.release_after_close = false;
                 self.release_wallets();
                 self.claimed = None;
                 match family {
@@ -401,9 +458,9 @@ impl WalletLinker {
                 self.modal_was_open = true;
             }
             Effect::Linked(wallet) => {
-                self.held = Some(wallet.address.clone());
-                self.toasts
-                    .push(format!("Linked {}", wallet_label(&wallet)), Tone::Success);
+                // Said once the modal has gone and the moon is on its way:
+                // under the modal it would be read by no one.
+                self.held = Some(wallet.clone());
                 self.events.push(LinkerEvent::Linked(wallet));
             }
             Effect::Unlinked(wallet) => {
@@ -413,6 +470,16 @@ impl WalletLinker {
                 self.events.push(LinkerEvent::Unlinked(wallet));
             }
             Effect::Notice(text) => self.toasts.push(text, Tone::Warning),
+        }
+    }
+
+    /// Let a link the modal was celebrating into the orbit: its moon
+    /// launches, and the toast says so.
+    fn release_held(&mut self) {
+        if let Some(wallet) = self.held.take() {
+            self.toasts
+                .push(format!("Linked {}", wallet_label(&wallet)), Tone::Success);
+            self.launch = Some(wallet.address);
         }
     }
 
@@ -454,8 +521,17 @@ impl WalletLinker {
             if self.celebrated >= CELEBRATE_SECS {
                 self.celebrated = 0.0;
                 self.connector.close();
-                self.release_wallets();
-                self.launch = self.held.take();
+                self.release_after_close = true;
+                if let Phase::Link {
+                    step: LinkStep::Already { address },
+                    ..
+                } = self.flow.phase()
+                {
+                    // Nothing new: the moon that already was this wallet
+                    // flares, so the reader sees which it is.
+                    self.orbit.flare(&address);
+                }
+                self.release_held();
                 self.send(Event::Done);
             }
         } else {
@@ -465,11 +541,17 @@ impl WalletLinker {
         // The reader closed the modal mid-link.
         let open = self.connector.modal_mut().is_open();
         if self.modal_was_open && !open && matches!(self.flow.phase(), Phase::Link { .. }) {
-            self.release_wallets();
-            self.launch = self.held.take();
+            self.release_after_close = true;
+            self.release_held();
             self.send(Event::ConnectorClosed);
         }
         self.modal_was_open = open;
+        // The wallet is let go once the card has left: a closing card still
+        // draws its last step, and that step needs its account.
+        if self.release_after_close && !self.connector.is_visible() {
+            self.release_after_close = false;
+            self.release_wallets();
+        }
 
         // The modal's proof step follows the flow.
         let phase = self.flow.phase();
@@ -528,7 +610,10 @@ impl WalletLinker {
 
     fn draw_header(&mut self, p: &Painter, header: Rect, phase: &Phase) {
         let c = p.theme.color;
-        let loaded = !matches!(phase, Phase::Loading | Phase::Unreachable(_) | Phase::Expired);
+        let loaded = !matches!(
+            phase,
+            Phase::Loading | Phase::Unreachable(_) | Phase::Expired
+        );
         let toggle = Rect::new(
             header.right() - TOGGLE_W,
             header.y + 4.0,
@@ -561,7 +646,11 @@ impl WalletLinker {
         let sub_size = p.size(TextSize::Md);
         p.stack_in(
             &[
-                Line::new(&p.fit(title, title_size, text_w), title_size, c.text_primary),
+                Line::new(
+                    &p.fit(title, title_size, text_w),
+                    title_size,
+                    c.text_primary,
+                ),
                 Line::new(&p.fit(&sub, sub_size, text_w), sub_size, c.text_muted),
             ],
             Rect::new(header.x, header.y, text_w, header.h),
@@ -584,15 +673,22 @@ impl WalletLinker {
         let _ = self.orbit.show(&p.untapped(), field, None, fade, false);
     }
 
-    fn draw_body(&mut self, frame: &Frame, p: &Painter, field: Rect) {
-        let shown: Vec<LinkedWallet> = self
-            .flow
+    /// The list as the screen shows it, less a link the modal is still
+    /// celebrating: that moon launches once the modal has gone.
+    fn shown_wallets(&self) -> Vec<LinkedWallet> {
+        self.flow
             .wallets()
             .unwrap_or_default()
             .iter()
-            .filter(|w| self.held.as_deref() != Some(w.address.as_str()))
+            .filter(|w| self.held.as_ref().is_none_or(|h| h.address != w.address))
             .cloned()
-            .collect();
+            .collect()
+    }
+
+    /// The orbit and the list, cross-fading. `covered` is a sheet or the modal
+    /// over them: they draw, and take no input.
+    fn draw_body(&mut self, frame: &Frame, p: &Painter, field: Rect, covered: bool) {
+        let shown = self.shown_wallets();
         let mix = self.view_mix.get();
         let selected = if self.sheet.is_open() {
             self.selected.clone()
@@ -607,16 +703,27 @@ impl WalletLinker {
                 .show(orbit_p, field, selected.as_deref(), 1.0 - mix, false)
             {
                 Some(OrbitTap::Moon(address)) => self.select(&address),
-                Some(OrbitTap::Sky) => self.close_sheet(),
+                // A ghost planet asks for its first wallet.
+                Some(OrbitTap::Planet {
+                    family,
+                    empty: true,
+                }) if matches!(self.flow.phase(), Phase::Idle) => {
+                    self.close_sheet();
+                    self.send(Event::Link(Some(family)));
+                }
+                Some(OrbitTap::Planet { .. } | OrbitTap::Sun | OrbitTap::Sky) => self.close_sheet(),
                 None => {}
             }
         }
         if mix > 0.001 {
-            let live = mix >= 0.5 && p.tap.is_some();
-            if let Some(address) =
-                self.list
-                    .show(frame, p, field, &shown, selected.as_deref(), mix, live)
-            {
+            let live = mix >= 0.5 && !covered;
+            let list_p: &Painter = if live { p } else { &untapped };
+            let look = ListLook {
+                selected: selected.as_deref(),
+                fade: mix,
+                live,
+            };
+            if let Some(address) = self.list.show(frame, list_p, field, &shown, look) {
                 self.select(&address);
             }
         }
@@ -657,7 +764,8 @@ impl WalletLinker {
         let tint = orbit::moon_tint(p, family);
         let label = wallet_label(&wallet);
         let chain = family.map_or("Unknown chain", |f| f.display_name());
-        let confirming = matches!(phase, Phase::Confirming(w) | Phase::Unlinking(w) if w.address == address);
+        let confirming =
+            matches!(phase, Phase::Confirming(w) | Phase::Unlinking(w) if w.address == address);
         let unlinking = matches!(phase, Phase::Unlinking(w) if w.address == address);
 
         let form = SheetForm::for_area(area);
@@ -677,11 +785,12 @@ impl WalletLinker {
             well_value_width(content_w, Trailing::Copy { copied: None }),
         );
         let handle = wallet.handle.as_ref().map(|_| wallet_label(&wallet));
-        let mut rows = vec![WellRow::inline("Chain", chain)];
+        // The chain is the sheet's subtitle; the well holds what is copied.
+        let mut rows = Vec::new();
         if let Some(h) = &handle {
-            rows.push(WellRow::stacked("ADA Handle", h).trailing(Trailing::Copy {
-                copied: copied(h),
-            }));
+            rows.push(
+                WellRow::stacked("ADA Handle", h).trailing(Trailing::Copy { copied: copied(h) }),
+            );
         }
         rows.push(
             WellRow::stacked("Address", &addr_shown)
@@ -716,15 +825,13 @@ impl WalletLinker {
         let panel = Rect::new(card.content.x, card.content.y, card.content.w, well_h);
         let answer = well(p, panel, &rows, card.live, card.alpha);
         if let Some(i) = answer.copy {
-            let value = if handle.is_some() && i == 1 {
-                handle.clone().unwrap_or_default()
-            } else {
-                wallet.address.clone()
+            // The rows are the handle (when there is one), then the address.
+            let value = match (&handle, i) {
+                (Some(h), 0) => h.clone(),
+                _ => wallet.address.clone(),
             };
-            if i > 0 {
-                copy_text(&value);
-                self.copied = Some((value, 0.0));
-            }
+            copy_text(&value);
+            self.copied = Some((value, 0.0));
         }
         if confirming {
             let mut y = panel.bottom() + 14.0;
@@ -808,7 +915,12 @@ pub fn claim_of(family: ChainFamily, account: &Account) -> Option<Claim> {
 
 /// The modal's proof step for `family`, from where the flow is. `wallet` is
 /// the connected wallet's name, for "Approve the message in Eternl".
-pub fn proof_phase(phase: &Phase, family: ChainFamily, connected: bool, wallet: &str) -> SignInPhase {
+pub fn proof_phase(
+    phase: &Phase,
+    family: ChainFamily,
+    connected: bool,
+    wallet: &str,
+) -> SignInPhase {
     match phase {
         Phase::Link {
             step: LinkStep::Connect,
@@ -884,7 +996,12 @@ mod tests {
             step,
         };
         assert_eq!(
-            proof_phase(&at(LinkStep::Declined), ChainFamily::Cardano, true, "Eternl"),
+            proof_phase(
+                &at(LinkStep::Declined),
+                ChainFamily::Cardano,
+                true,
+                "Eternl"
+            ),
             SignInPhase::Declined
         );
         let SignInPhase::Working { step, in_wallet } =

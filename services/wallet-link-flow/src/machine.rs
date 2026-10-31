@@ -79,7 +79,10 @@ fn is(answer: &Answer, kind: CallKind) -> bool {
     answer.call == kind
 }
 
-#[state_machine(initial = "State::starting()", state(derive(Debug, Clone, PartialEq, Eq)))]
+#[state_machine(
+    initial = "State::starting()",
+    state(derive(Debug, Clone, PartialEq, Eq))
+)]
 impl Desk {
     /// Built, not yet asked anything.
     #[state]
@@ -320,7 +323,11 @@ impl Desk {
 
     /// Asking whether to unlink `wallet`.
     #[state(superstate = "ready")]
-    fn confirming(wallet: &mut LinkedWallet, context: &mut Outbox, event: &Event) -> Outcome<State> {
+    fn confirming(
+        wallet: &mut LinkedWallet,
+        context: &mut Outbox,
+        event: &Event,
+    ) -> Outcome<State> {
         match event {
             Event::ConfirmUnlink => {
                 context.push(Effect::Call(ApiCall::Unlink(UnlinkRequest {

@@ -48,8 +48,8 @@ mod state;
 
 pub use bundle::{
     BUNDLE_COVERAGE, Bundle, BundleError, BundleStore, Earned, Lot, Rarity, Snapshot,
-    SubjectRecord, SubjectView, VERSION as BUNDLE_VERSION, catalogue_digest, evaluate_row,
-    fnv1a, write as write_bundle,
+    SubjectRecord, SubjectView, VERSION as BUNDLE_VERSION, catalogue_digest, evaluate_row, fnv1a,
+    write as write_bundle,
 };
 pub use evaluate::{
     Assessment, Definition, EarnedSince, Evidence, Gap, Outcome, Progress, SECONDS_PER_DAY,

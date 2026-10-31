@@ -128,7 +128,10 @@ mod tests {
         let json = r#"{"chain":"eip155","address":"0x7980aa64093853cb78c927e05b88fed96e945f81","handle":null,"discord_user_id":"179744071361757184"}"#;
         let v: LinkVerified = serde_json::from_str(json).unwrap();
         let w = v.wallet();
-        assert_eq!(w.evm_address(), Some("0x7980aa64093853cb78c927e05b88fed96e945f81"));
+        assert_eq!(
+            w.evm_address(),
+            Some("0x7980aa64093853cb78c927e05b88fed96e945f81")
+        );
         assert_eq!(w.handle, None);
     }
 

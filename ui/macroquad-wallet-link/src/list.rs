@@ -21,6 +21,19 @@ const ROW_R: f32 = 16.0;
 const ICON_R: f32 = 15.0;
 /// The widest the rows grow on a desk.
 const MAX_W: f32 = 520.0;
+/// Room between a row and the field's edge: the screen's gutter.
+const GUTTER: f32 = 20.0;
+
+/// How the list is drawn this frame.
+#[derive(Clone, Copy, Debug)]
+pub struct ListLook<'a> {
+    /// The row whose sheet is open, drawn lit.
+    pub selected: Option<&'a str>,
+    /// The whole list's opacity: a cross-fade from the orbit.
+    pub fade: f32,
+    /// Whether it takes input: not behind a sheet or the modal, not fading out.
+    pub live: bool,
+}
 
 /// See the [module docs](self).
 #[derive(Default)]
@@ -34,19 +47,23 @@ impl ListView {
     }
 
     /// Draw `wallets` into `field` and report the address of a row tapped.
-    /// `live` is whether it takes input (not behind a sheet, not fading out).
     pub fn show(
         &mut self,
         frame: &Frame,
         p: &Painter,
         field: Rect,
         wallets: &[LinkedWallet],
-        selected: Option<&str>,
-        fade: f32,
-        live: bool,
+        look: ListLook,
     ) -> Option<String> {
+        let ListLook {
+            selected,
+            fade,
+            live,
+        } = look;
         let c = p.theme.color;
-        let w = field.w.min(MAX_W);
+        // In from the field's edges by the screen's gutter, as the header and
+        // the button are; the scroll and the clip still take the whole field.
+        let w = (field.w - 2.0 * GUTTER).min(MAX_W);
         let x = field.center().x - w * 0.5;
         let content = wallets.len() as f32 * (ROW_H + ROW_GAP);
         let input = if live {
@@ -65,12 +82,7 @@ impl ListView {
         let mut hit = None;
         with_clip(field, || {
             for (i, wallet) in wallets.iter().enumerate() {
-                let row = Rect::new(
-                    x,
-                    field.y + i as f32 * (ROW_H + ROW_GAP) - offset,
-                    w,
-                    ROW_H,
-                );
+                let row = Rect::new(x, field.y + i as f32 * (ROW_H + ROW_GAP) - offset, w, ROW_H);
                 if row.bottom() < field.y || row.y > field.bottom() {
                     continue;
                 }
@@ -81,7 +93,11 @@ impl ListView {
                 if pressed {
                     hit = Some(wallet.address.clone());
                 }
-                let ground = if is_sel { c.bg_highlight } else { c.bg_secondary };
+                let ground = if is_sel {
+                    c.bg_highlight
+                } else {
+                    c.bg_secondary
+                };
                 fill_rounded(row, ROW_R, alpha(ground, 0.92 * fade));
                 stroke_rounded(
                     row,

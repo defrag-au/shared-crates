@@ -3702,7 +3702,12 @@ mod tests {
         let vm = signing(working.clone()).with_proof(ProofWords::LINK);
         let copy = sign_in_copy(&vm, Some(ChainFamily::Cardano), "eternl", &working);
         assert_eq!(copy.title, "Sign with Eternl");
-        let copy = sign_in_copy(&vm, Some(ChainFamily::Cardano), "eternl", &SignInPhase::Declined);
+        let copy = sign_in_copy(
+            &vm,
+            Some(ChainFamily::Cardano),
+            "eternl",
+            &SignInPhase::Declined,
+        );
         assert_eq!(copy.title, "Link cancelled");
         let acts: Vec<&Act> = copy.buttons.iter().map(|(_, _, a)| a).collect();
         assert_eq!(acts, [&Act::SignIn, &Act::Another]);

@@ -138,7 +138,11 @@ impl DemoIo {
     fn after(&mut self, frames: u32, event: Event) {
         let at = self.frame + frames;
         // Kept in order of when each is due.
-        let i = self.due.iter().position(|(t, _)| *t > at).unwrap_or(self.due.len());
+        let i = self
+            .due
+            .iter()
+            .position(|(t, _)| *t > at)
+            .unwrap_or(self.due.len());
         self.due.insert(i, (at, event));
     }
 
@@ -176,7 +180,11 @@ impl DemoIo {
 
 impl LinkIo for DemoIo {
     fn call(&mut self, call: &ApiCall) {
-        let load = if self.loaded { CALL_FRAMES } else { LOAD_FRAMES };
+        let load = if self.loaded {
+            CALL_FRAMES
+        } else {
+            LOAD_FRAMES
+        };
         match call {
             ApiCall::Me => {
                 let body = serde_json::to_string(&Identity {
@@ -370,7 +378,11 @@ mod tests {
 
     #[test]
     fn the_fixtures_are_readable_addresses() {
-        assert!(demo_stake("33").starts_with("stake1"), "{}", demo_stake("33"));
+        assert!(
+            demo_stake("33").starts_with("stake1"),
+            "{}",
+            demo_stake("33")
+        );
         assert_ne!(demo_stake("22"), demo_stake("33"));
         assert!(wallet_link_flow::bech32_to_hex(&demo_stake("44")).is_some());
     }

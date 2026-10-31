@@ -9,22 +9,36 @@
 //!     ~/code/defrag/mitos/.tmp/streams/perps.ndjson
 //! cargo run -p holder-behaviour --example replay -- \
 //!     ~/code/defrag/mitos/.tmp/merged.ndjson --collection perps --now 201677944
+//! cargo run -p holder-behaviour --example replay -- \
+//!     ~/code/defrag/mitos/.tmp/perps-with-market.ndjson \
+//!     --catalogue ../cnft.dev-workers/config/achievements/perps.toml \
+//!     --collection e6ba9c0f --bundle .tmp/perps.bundle
 //! ```
+//!
+//! `--catalogue` swaps the six built-in definitions for the frozen catalogue, and
+//! `--bundle` writes the snapshot this run produced in the published format. The catalogue
+//! names more predicate kinds than this build implements; those are reported by kind and
+//! marked **not evaluated** in the bundle (`population = 0`), never as a zero score.
 //!
 //! Trait rows are not in the event stream — they are a metadata projection — so
 //! `has_all_traits` reports `unavailable` here. That is the honest answer for this input,
 //! not a zero, and it is the same answer the evaluator gives a collection whose metadata
 //! pass has not run.
 
+mod support;
+
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 use std::process::ExitCode;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use chain_events::{ChainEvent, Coverage, Family};
 use holder_behaviour::{
-    Anomaly, Assessment, Definition, EarnedSince, Evidence, MemoryStore, Outcome, Predicate,
-    Progress, SECONDS_PER_DAY, Slot, Store, apply, evaluate,
+    AcquiredBy, Anomaly, Assessment, Bundle, Definition, Earned, EarnedSince, Evidence, Lot,
+    MemoryStore, Outcome, Predicate, Progress, Rarity, SECONDS_PER_DAY, Slot, Snapshot, Store,
+    SubjectId, SubjectRecord, apply, catalogue_digest, evaluate, write_bundle,
 };
+use support::catalogue::LoadedCatalogue;
 
 /// The definitions this build can answer, mirroring the catalogue's ids and thresholds.
 fn definitions() -> Vec<Definition<'static>> {
@@ -69,6 +83,9 @@ struct Args {
     now: Option<Slot>,
     subject: Option<String>,
     limit: usize,
+    catalogue: Option<String>,
+    bundle: Option<String>,
+    built_at: Option<u64>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -78,6 +95,9 @@ fn parse_args() -> Result<Args, String> {
     let mut now = None;
     let mut subject = None;
     let mut limit = 8;
+    let mut catalogue = None;
+    let mut bundle = None;
+    let mut built_at = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--collection" => collection = Some(next(&mut args, "--collection")?),
@@ -94,6 +114,15 @@ fn parse_args() -> Result<Args, String> {
                     .parse()
                     .map_err(|_| "--limit takes a number".to_string())?
             }
+            "--catalogue" => catalogue = Some(next(&mut args, "--catalogue")?),
+            "--bundle" => bundle = Some(next(&mut args, "--bundle")?),
+            "--built-at" => {
+                built_at = Some(
+                    next(&mut args, "--built-at")?
+                        .parse()
+                        .map_err(|_| "--built-at takes unix seconds".to_string())?,
+                )
+            }
             other if other.starts_with("--") => return Err(format!("unknown flag {other}")),
             other => path = Some(other.to_string()),
         }
@@ -104,6 +133,9 @@ fn parse_args() -> Result<Args, String> {
         now,
         subject,
         limit,
+        catalogue,
+        bundle,
+        built_at,
     })
 }
 
@@ -123,6 +155,15 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let args = parse_args()?;
+    if args.bundle.is_some() && args.catalogue.is_none() {
+        return Err(
+            "--bundle needs --catalogue: a row index is only meaningful against one".to_string(),
+        );
+    }
+    let catalogue = match &args.catalogue {
+        Some(path) => Some(LoadedCatalogue::load(path)?),
+        None => None,
+    };
     let file =
         std::fs::File::open(&args.path).map_err(|error| format!("open {}: {error}", args.path))?;
 
@@ -138,6 +179,8 @@ fn run() -> Result<(), String> {
     let mut asset: u64 = 0;
     let mut admin: u64 = 0;
     let mut latest: Slot = 0;
+    let mut holder_cursor: Slot = 0;
+    let mut market_cursor: Slot = 0;
     let mut chosen: Option<String> = args.collection.clone();
 
     for line in BufReader::new(file).lines() {
@@ -164,7 +207,8 @@ fn run() -> Result<(), String> {
             continue;
         }
         kept += 1;
-        match event.body.family() {
+        let family = event.body.family();
+        match family {
             Family::Holder => holder += 1,
             Family::Market => market += 1,
             Family::Asset => asset += 1,
@@ -172,6 +216,11 @@ fn run() -> Result<(), String> {
         }
         if let Some(coord) = event.coord {
             latest = latest.max(coord.height);
+            match family {
+                Family::Holder => holder_cursor = holder_cursor.max(coord.height),
+                Family::Market => market_cursor = market_cursor.max(coord.height),
+                Family::Asset | Family::Admin => {}
+            }
         }
         let applied = apply(&mut store, &event).map_err(|error| format!("{error:?}"))?;
         if !applied.subjects.is_empty() {
@@ -221,7 +270,14 @@ fn run() -> Result<(), String> {
         }
     }
 
-    let definitions = definitions();
+    let fallback = definitions();
+    let (definitions, positions): (Vec<Definition<'_>>, Vec<usize>) = match &catalogue {
+        Some(catalogue) => (catalogue.definitions(), catalogue.positions()),
+        None => {
+            let positions = (0..fallback.len()).collect();
+            (fallback.clone(), positions)
+        }
+    };
     let at = Assessment {
         now,
         holder_coverage: if skipped_unparsed == 0 && anomalies.is_empty() {
@@ -230,6 +286,18 @@ fn run() -> Result<(), String> {
             Coverage::Partial
         },
     };
+
+    if let Some(catalogue) = &catalogue {
+        println!(
+            "catalogue   {} achievements · {} evaluable · {} not in this build",
+            catalogue.len(),
+            definitions.len(),
+            catalogue.len() - definitions.len()
+        );
+        for (kind, count) in catalogue.gaps() {
+            println!("            gap {kind} × {count}");
+        }
+    }
 
     let mut tally: BTreeMap<&str, [u64; 4]> = definitions
         .iter()
@@ -286,7 +354,178 @@ fn run() -> Result<(), String> {
         println!("standing    not found in this stream");
     }
 
+    if let Some(path) = &args.bundle {
+        let catalogue = catalogue.as_ref().expect("checked at parse");
+        let built_at = args.built_at.unwrap_or_else(|| {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_secs())
+                .unwrap_or(0)
+        });
+        let snapshot = build_snapshot(
+            &store,
+            &subjects,
+            catalogue,
+            &definitions,
+            &positions,
+            &at,
+            built_at,
+            holder_cursor,
+            market_cursor,
+        )?;
+        let bytes = write_bundle(&snapshot);
+        verify(&bytes, &snapshot)?;
+        std::fs::write(path, &bytes).map_err(|error| format!("write {path}: {error}"))?;
+        println!();
+        println!("bundle      {path} · {} bytes", bytes.len());
+        println!(
+            "            verified {} rows · built-at {built_at} · holder cursor {holder_cursor} \
+             · market cursor {market_cursor}",
+            snapshot.subjects.len()
+        );
+    }
+
     Ok(())
+}
+
+/// Reopens the bytes just written and finds every row in them.
+///
+/// A writer that produced a file it cannot read back is the failure this catches, and it
+/// catches it before the file is published rather than in a client. Every subject is looked
+/// up by its own key, so both the binary-search path and the linear enterprise-address path
+/// are exercised.
+fn verify(bytes: &[u8], snapshot: &Snapshot) -> Result<(), String> {
+    let bundle = Bundle::open(bytes).map_err(|error| format!("reopen: {error}"))?;
+    if bundle.subject_count() as usize != snapshot.subjects.len() {
+        return Err(format!(
+            "reopen: {} subjects, wrote {}",
+            bundle.subject_count(),
+            snapshot.subjects.len()
+        ));
+    }
+    for row in &snapshot.subjects {
+        let found = bundle
+            .find(&row.key)
+            .map_err(|error| format!("find {}: {error}", row.key))?
+            .ok_or_else(|| format!("find {}: written but not found", row.key))?;
+        let mut expected: Vec<u16> = row.earned.iter().map(|entry| entry.achievement).collect();
+        expected.sort_unstable();
+        let actual: Vec<u16> = found.earned().map(|entry| entry.achievement).collect();
+        if expected != actual {
+            return Err(format!(
+                "{}: wrote earned {expected:?}, read {actual:?}",
+                row.key
+            ));
+        }
+        if found.lots().count() != row.lots.len() {
+            return Err(format!(
+                "{}: wrote {} lots, read {}",
+                row.key,
+                row.lots.len(),
+                found.lots().count()
+            ));
+        }
+    }
+    for (index, rarity) in snapshot.rarity.iter().enumerate() {
+        let found = bundle
+            .rarity(index as u16)
+            .ok_or_else(|| format!("rarity {index} missing"))?;
+        if found != *rarity {
+            return Err(format!("rarity {index}: wrote {rarity:?}, read {found:?}"));
+        }
+    }
+    Ok(())
+}
+
+/// Turns the folded store into a snapshot, evaluating every subject against what this build
+/// can answer.
+///
+/// The population is `0` for an achievement this build could not evaluate. That is the
+/// difference between "nobody earned it" and "nobody was asked", and a bundle that wrote
+/// `0 / 700` there would be claiming the first.
+#[allow(clippy::too_many_arguments)]
+fn build_snapshot(
+    store: &MemoryStore,
+    subjects: &[SubjectId],
+    catalogue: &LoadedCatalogue,
+    definitions: &[Definition<'_>],
+    positions: &[usize],
+    at: &Assessment,
+    built_at: u64,
+    holder_cursor: Slot,
+    market_cursor: Slot,
+) -> Result<Snapshot, String> {
+    let mut rows = Vec::with_capacity(subjects.len());
+    let mut holders = vec![0u32; catalogue.len()];
+
+    for subject in subjects {
+        let account = store
+            .account_of(*subject)
+            .map_err(|error| format!("{error:?}"))?
+            .ok_or_else(|| format!("{subject:?} has no account"))?;
+        let outcomes =
+            evaluate(store, *subject, at, definitions).map_err(|error| format!("{error:?}"))?;
+        let mut earned = Vec::new();
+        for (index, outcome) in outcomes.iter().enumerate() {
+            let Progress::Earned { since } = outcome.progress else {
+                continue;
+            };
+            let Some(&achievement) = positions.get(index) else {
+                return Err(format!("outcome {index} has no catalogue position"));
+            };
+            let valid_from = match since {
+                EarnedSince::Exact(slot) | EarnedSince::AsAt(slot) => slot,
+            };
+            holders[achievement] += 1;
+            earned.push(Earned {
+                achievement: achievement as u16,
+                valid_from,
+            });
+        }
+
+        let held = store.lots(*subject).map_err(|error| format!("{error:?}"))?;
+        let lots = held
+            .into_iter()
+            .map(|holding| Lot {
+                unit: holding.unit.0,
+                quantity: holding.quantity,
+                open: holding.open,
+                acquired_at: holding.acquired_at,
+                disposed_at: holding.disposed_at,
+                from_mint: holding.acquired_by == AcquiredBy::Mint,
+            })
+            .collect();
+
+        rows.push(SubjectRecord {
+            key: account.address,
+            earned,
+            lots,
+        });
+    }
+
+    let population = subjects.len() as u32;
+    let rarity = (0..catalogue.len())
+        .map(|index| Rarity {
+            holders_with: holders[index],
+            population: if catalogue.evaluated(index) {
+                population
+            } else {
+                0
+            },
+        })
+        .collect();
+
+    Ok(Snapshot {
+        built_at,
+        holder_cursor,
+        market_cursor,
+        catalogue_digest: catalogue_digest(
+            (0..catalogue.len()).filter_map(|index| catalogue.id_at(index)),
+        ),
+        achievement_count: catalogue.len() as u16,
+        rarity,
+        subjects: rows,
+    })
 }
 
 fn describe(outcome: &Outcome<'_>, store: &MemoryStore) -> Result<String, String> {

@@ -73,7 +73,10 @@ pub enum SignRequest {
     },
     /// EIP-191 `personal_sign([message_hex, address])`, the message as
     /// `0x`-prefixed hex.
-    Evm { address: String, message_hex: String },
+    Evm {
+        address: String,
+        message_hex: String,
+    },
 }
 
 /// What the wallet signed with.
@@ -124,7 +127,13 @@ pub fn hex(bytes: &[u8]) -> String {
 const CHARSET: &[u8; 32] = b"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 
 fn polymod(values: impl Iterator<Item = u8>) -> u32 {
-    const GEN: [u32; 5] = [0x3b6a_57b2, 0x2650_8e6d, 0x1ea1_19fa, 0x3d42_33dd, 0x2a14_62b3];
+    const GEN: [u32; 5] = [
+        0x3b6a_57b2,
+        0x2650_8e6d,
+        0x1ea1_19fa,
+        0x3d42_33dd,
+        0x2a14_62b3,
+    ];
     let mut chk = 1u32;
     for v in values {
         let top = chk >> 25;

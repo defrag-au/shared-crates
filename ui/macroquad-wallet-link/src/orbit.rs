@@ -1,83 +1,61 @@
-//! The orbit view: the reader's Discord account as a planet, every wallet
-//! linked to it a moon on a tilted ring, tethered to it.
+//! The system view: the reader's Discord identity as the sun, each chain a
+//! planet orbiting it, and every wallet linked on that chain a moon orbiting
+//! its planet. The tethers trace the link itself: moon to planet, planet to
+//! sun, so a selected wallet lights its whole path home.
 //!
-//! The view holds only motion: where each moon is on its way to its slot, how
-//! far round each ring has turned, how far the planet has risen. The wallets
-//! themselves are the flow's; [`OrbitView::sync`] is told the list each frame
-//! and moves moons in, round and out to match it. Time is the `dt` handed in,
-//! so a capture at `--at` is the same picture every run.
+//! A chain the reader can link but has not is a ghost planet, dashed and
+//! dim, that a tap asks to link a wallet on.
+//!
+//! The view holds only motion: where each body is on its way, how far round
+//! each orbit has turned, how far the sun has risen. The wallets are the
+//! flow's; [`OrbitView::sync`] is told the list each frame and moves planets
+//! and moons in, round and out to match it. Time is the `dt` handed to
+//! [`OrbitView::update`], so a capture at `--at` is the same picture every run.
 
+use std::collections::HashMap;
 use std::f32::consts::{PI, TAU};
 
 use chains::ChainFamily;
 use macroquad::prelude::*;
 use macroquad_gamekit::wallet_modal::{chain_mark, chain_tint};
 use macroquad_gamekit::{Animated, Ease, Particles};
-use macroquad_widgets::{Align, Gradient, Painter, TextSize, fill_gradient, fill_rounded};
-use wallet_link_flow::family_of;
+use macroquad_widgets::{
+    Align, Gradient, Painter, TextSize, fill_gradient, fill_rounded, fill_texture_rounded,
+};
 use wallet_link_flow::wallet_link::LinkedWallet;
+use wallet_link_flow::{LINKABLE, family_of};
 
 use crate::planet::{ATMOSPHERE, PlanetLook, bake_moon, bake_planet, mix};
 
-/// The flattest the rings look: their height over their width, on a wide
-/// field. A tall one tilts them further towards the reader (see [`Geo`]).
+/// The flattest the orbits look, their height over their width, on a wide
+/// field. A tall field tilts them towards the reader (see [`Geo`]).
 pub const TILT: f32 = 0.36;
-/// The most rings drawn; a longer list crowds the outer one.
-const MAX_RINGS: usize = 4;
-/// A moon's radius, and the radius of the one selected.
-const MOON_R: f32 = 18.0;
-const MOON_R_SELECTED: f32 = 22.0;
-/// A finger's worth round a moon.
+/// The roundest they get, on a tall phone.
+const MAX_TILT: f32 = 0.74;
+/// Moons a ring round a planet holds before a second ring is used.
+const MOONS_PER_RING: usize = 5;
+/// A finger's worth round anything tappable.
 const HIT_R: f32 = 22.0;
-/// Seconds ring 0 takes to turn once; each ring further out takes this much
-/// longer.
-const TURN_SECS: f32 = 70.0;
-const TURN_STEP: f32 = 25.0;
+/// Seconds the planets take to go round the sun once.
+const PLANET_TURN: f32 = 150.0;
+/// Seconds a moon takes to go round its planet once, inner ring.
+const MOON_TURN: f32 = 48.0;
+/// Up to this many wallets, the near moons are named; past it only the one
+/// looked at is, and the list view is the place to read them all.
+const NAMED_UP_TO: usize = 4;
 
-const PLANET_RISE: f32 = 0.7;
-const RING_DRAW: f32 = 0.9;
-const RING_STAGGER: f32 = 0.12;
-const EMERGE_SECS: f32 = 0.8;
-const EMERGE_STAGGER: f32 = 0.09;
-const LAUNCH_SECS: f32 = 0.9;
+const SUN_RISE: f32 = 0.6;
+const ORBIT_DRAW: f32 = 0.8;
+const PLANET_EMERGE: f32 = 0.9;
+const PLANET_STAGGER: f32 = 0.15;
+const MOON_EMERGE: f32 = 0.8;
+const MOON_STAGGER: f32 = 0.08;
+const LAUNCH_SECS: f32 = 1.1;
 const LEAVE_SECS: f32 = 0.6;
 const RESPACE_SECS: f32 = 0.8;
+const GHOST_SECS: f32 = 0.5;
 const PAUSE_SECS: f32 = 0.6;
 const RESUME_SECS: f32 = 0.9;
-
-/// Moons a ring holds before the next ring out is used.
-fn capacity(ring: usize) -> usize {
-    3 + 2 * ring
-}
-
-/// Where each of `n` moons goes: its ring, and its angle on it. Inner rings
-/// fill first; the last ring takes whatever is left over.
-pub fn slots(n: usize) -> Vec<(usize, f32)> {
-    let mut out = Vec::with_capacity(n);
-    let mut left = n;
-    let mut ring = 0;
-    while left > 0 {
-        let here = if ring + 1 == MAX_RINGS {
-            left
-        } else {
-            left.min(capacity(ring))
-        };
-        // Each ring starts a little further round, so moons on neighbouring
-        // rings do not line up in spokes.
-        let phase = -PI * 0.5 + ring as f32 * 0.9;
-        for i in 0..here {
-            out.push((ring, phase + i as f32 * TAU / here as f32));
-        }
-        left -= here;
-        ring += 1;
-    }
-    out
-}
-
-/// The rings `n` moons use, at least one.
-pub fn rings_for(n: usize) -> usize {
-    slots(n).last().map_or(1, |(r, _)| r + 1)
-}
 
 /// How a linked wallet is named on screen: its ADA handle when it has one,
 /// else its address, shortened.
@@ -106,89 +84,169 @@ pub fn short_tail(address: &str) -> String {
     format!("{head}…{tail}")
 }
 
-/// The colour a wallet's moon is: its chain's.
+/// The colour a chain's planet and moons are.
 pub fn moon_tint(p: &Painter, family: Option<ChainFamily>) -> Color {
     family.map_or(p.theme.color.text_secondary, |f| chain_tint(&p.theme, f))
 }
 
-struct Moon {
-    address: String,
-    family: Option<ChainFamily>,
-    label: String,
-    ring: usize,
-    /// The angle of its slot on its ring, before the ring's turn.
-    slot: Animated<f32>,
-    /// 0 at the planet's centre, 1 on its ring, past 1 leaving.
-    reach: Animated<f32>,
-    alpha: Animated<f32>,
-    leaving: bool,
-    /// Launched by a link just made: bursts on arrival.
-    launched: bool,
+/// The chains drawn as planets for `wallets`, in the order a reader meets
+/// them: every linkable chain (a ghost when it has no wallet), then any other
+/// chain a link names.
+pub fn planet_order(wallets: &[LinkedWallet]) -> Vec<ChainFamily> {
+    let mut out: Vec<ChainFamily> = LINKABLE.to_vec();
+    for w in wallets {
+        if let Some(f) = family_of(w)
+            && !out.contains(&f)
+        {
+            out.push(f);
+        }
+    }
+    out.sort();
+    out
 }
 
-/// The planet's geometry in a field.
+/// Where moon `i` of `n` sits round its planet: its ring, and its angle.
+pub fn moon_slot(i: usize, n: usize) -> (usize, f32) {
+    let ring = i / MOONS_PER_RING;
+    let on_ring = n
+        .saturating_sub(ring * MOONS_PER_RING)
+        .clamp(1, MOONS_PER_RING);
+    let k = i % MOONS_PER_RING;
+    let phase = -PI * 0.5 + ring as f32 * 0.6;
+    (ring, phase + k as f32 * TAU / on_ring as f32)
+}
+
+/// The angle `d` brought into −π..π: the short way round.
+fn shortest(d: f32) -> f32 {
+    (d + PI).rem_euclid(TAU) - PI
+}
+
+/// The system's geometry in a field.
 #[derive(Clone, Copy, Debug)]
 pub struct Geo {
     pub centre: Vec2,
+    pub sun_r: f32,
     pub planet_r: f32,
-    /// The widest a ring may be.
-    pub max_rx: f32,
-    /// How flat the rings look, their height over their width: flatter on a
-    /// wide field, rounder on a tall one, so a phone's height is used.
+    pub moon_r: f32,
+    /// The radius of a planet's first ring of moons, face on.
+    pub moon_orbit: f32,
+    /// The planets' orbit round the sun, face on.
+    pub orbit_rx: f32,
     pub tilt: f32,
 }
 
 impl Geo {
     pub fn of(field: Rect) -> Self {
-        let planet_r = (field.w.min(field.h) * 0.17).clamp(46.0, 96.0);
-        let centre = vec2(field.center().x, field.y + field.h * 0.47);
-        let tilt = (field.h / field.w.max(1.0) * 0.38).clamp(TILT, 0.58);
-        let max_rx = (field.w * 0.5 - 34.0)
-            .min((field.h * 0.5 - 44.0) / tilt)
-            .min(planet_r * 4.2)
-            .max(planet_r * 2.1);
+        let short = field.w.min(field.h);
+        let sun_r = (short * 0.1).clamp(28.0, 56.0);
+        let planet_r = (short * 0.08).clamp(22.0, 44.0);
+        let moon_r = (planet_r * 0.36).clamp(8.0, 15.0);
+        let moon_orbit = planet_r * 1.6 + 6.0;
+        let tilt = (field.h / field.w.max(1.0) * 0.48).clamp(TILT, MAX_TILT);
+        let reach = moon_orbit + moon_r + 14.0;
+        let orbit_rx = (field.w * 0.5 - reach)
+            .min((field.h * 0.5 - reach * tilt - 30.0) / tilt)
+            .min(sun_r * 7.0)
+            .max(sun_r + reach);
         Self {
-            centre,
+            centre: vec2(field.center().x, field.y + field.h * 0.48),
+            sun_r,
             planet_r,
-            max_rx,
+            moon_r,
+            moon_orbit,
+            orbit_rx,
             tilt,
         }
     }
 
-    /// Ring `k`'s width when `rings` are in use.
-    pub fn ring_rx(&self, k: usize, rings: usize) -> f32 {
-        let inner = self.planet_r * 1.9;
-        if rings <= 1 {
-            return (self.max_rx * 0.9).max(inner);
-        }
-        inner + (self.max_rx - inner) * k as f32 / (rings - 1) as f32
+    /// A point on an orbit of radius `r` round `at`, at angle `theta`.
+    fn on(&self, at: Vec2, r: f32, theta: f32) -> Vec2 {
+        at + vec2(theta.cos() * r, theta.sin() * r * self.tilt)
     }
 }
 
-/// What a tap on the orbit hit.
+/// What a tap on the system hit.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OrbitTap {
     Moon(String),
+    /// A chain's planet; `empty` when it is a ghost with no wallet yet.
+    Planet {
+        family: ChainFamily,
+        empty: bool,
+    },
+    /// The sun: the reader's own Discord identity.
+    Sun,
     /// Open sky: a tap that should let go of a selection.
     Sky,
 }
 
+struct Moon {
+    address: String,
+    label: String,
+    /// Its angle round its planet, before the planet's moons have turned.
+    slot: Animated<f32>,
+    ring: usize,
+    /// 0 at the planet's centre, 1 on its ring, past 1 leaving.
+    reach: Animated<f32>,
+    alpha: Animated<f32>,
+    leaving: bool,
+    /// Bursts once it is where it is going: a link just made, or the wallet
+    /// connected was this one already.
+    burst: bool,
+}
+
+struct Body {
+    family: ChainFamily,
+    /// Its angle round the sun, before the orbit has turned.
+    slot: Animated<f32>,
+    /// 0 at the sun's centre, 1 on its orbit.
+    reach: Animated<f32>,
+    /// 1 a ghost (no wallet on it), 0 a world.
+    ghost: Animated<f32>,
+    /// How far its moons have turned.
+    spin: f32,
+    moons: Vec<Moon>,
+}
+
+impl Body {
+    fn live_moons(&self) -> impl Iterator<Item = &Moon> {
+        self.moons.iter().filter(|m| !m.leaving)
+    }
+}
+
+/// Who the sun is.
+#[derive(Clone, Default)]
+pub struct Identity {
+    /// The reader's Discord name, when known.
+    pub name: Option<String>,
+    /// Their avatar, once loaded.
+    pub avatar: Option<Texture2D>,
+}
+
+/// One thing drawn, in depth order.
+#[derive(Clone, Copy)]
+enum Item {
+    Sun,
+    Planet(usize),
+    Moon(usize, usize),
+}
+
 /// See the [module docs](self).
 pub struct OrbitView {
-    moons: Vec<Moon>,
-    spins: [f32; MAX_RINGS],
+    bodies: Vec<Body>,
+    /// How far the planets have turned round the sun.
+    spin: f32,
     speed: Animated<f32>,
-    ring_rx: [Animated<f32>; MAX_RINGS],
-    rings_sized: bool,
-    planet_in: Animated<f32>,
-    /// Seconds since the view first drew: the rings' and moons' entrance.
+    sun_in: Animated<f32>,
+    /// Seconds since the view was made: the entrance.
     age: f32,
-    /// Seconds since the list first arrived.
-    loaded_age: Option<f32>,
-    planet: Option<(Texture2D, Color)>,
+    loaded: bool,
+    paused: bool,
+    planets: HashMap<ChainFamily, Texture2D>,
+    planet_accent: Option<Color>,
     moon: Option<Texture2D>,
     particles: Particles,
-    paused: bool,
+    identity: Identity,
 }
 
 impl Default for OrbitView {
@@ -199,25 +257,34 @@ impl Default for OrbitView {
 
 impl OrbitView {
     pub fn new() -> Self {
-        let mut planet_in = Animated::new(0.0);
-        planet_in.to(1.0, PLANET_RISE, Ease::ExpoOut);
+        let mut sun_in = Animated::new(0.0);
+        sun_in.to(1.0, SUN_RISE, Ease::ExpoOut);
         Self {
-            moons: Vec::new(),
-            spins: [0.0; MAX_RINGS],
+            bodies: Vec::new(),
+            spin: 0.0,
             speed: Animated::new(1.0),
-            ring_rx: [Animated::new(0.0); MAX_RINGS],
-            rings_sized: false,
-            planet_in,
+            sun_in,
             age: 0.0,
-            loaded_age: None,
-            planet: None,
+            loaded: false,
+            paused: false,
+            planets: HashMap::new(),
+            planet_accent: None,
             moon: None,
             particles: Particles::new(11, 0.0),
-            paused: false,
+            identity: Identity::default(),
         }
     }
 
-    /// Hold the rings still (a moon is being looked at), or let them turn.
+    /// Who the sun is: the reader's name and avatar.
+    pub fn set_identity(&mut self, identity: Identity) {
+        self.identity = identity;
+    }
+
+    pub fn identity(&self) -> &Identity {
+        &self.identity
+    }
+
+    /// Hold the system still (a wallet is being looked at), or let it turn.
     pub fn pause(&mut self, paused: bool) {
         if paused == self.paused {
             return;
@@ -230,104 +297,174 @@ impl OrbitView {
         }
     }
 
-    /// Match the moons to `wallets`: new ones rise from the planet (launched
-    /// when `launched` names them, emerging in turn on the first list), gone
-    /// ones fly off, and the rest re-space round their rings.
+    /// Match the system to `wallets`: a chain's planet emerges from the sun,
+    /// a new wallet's moon from its planet (launched when `launched` names
+    /// it), a gone one flies off, and the rest re-space round their orbits.
     pub fn sync(&mut self, wallets: &[LinkedWallet], launched: Option<&str>) {
-        let first = self.loaded_age.is_none();
-        if first {
-            self.loaded_age = Some(0.0);
-        }
-        for m in &mut self.moons {
-            if !m.leaving && !wallets.iter().any(|w| w.address == m.address) {
-                m.leaving = true;
-                m.reach.to(1.8, LEAVE_SECS, Ease::CubicIn);
-                m.alpha.to(0.0, LEAVE_SECS, Ease::CubicIn);
+        let first = !self.loaded;
+        self.loaded = true;
+        let order = planet_order(wallets);
+
+        // Planets: one per chain in the order, each to its slot.
+        for (i, family) in order.iter().enumerate() {
+            let angle = -PI * 0.5 + 0.35 + i as f32 * TAU / order.len() as f32;
+            let has = wallets.iter().any(|w| family_of(w) == Some(*family));
+            let ghost = if has { 0.0 } else { 1.0 };
+            match self.bodies.iter_mut().find(|b| b.family == *family) {
+                Some(b) => {
+                    let to = b.slot.target() + shortest(angle - b.slot.target());
+                    if (to - b.slot.target()).abs() > 1e-4 {
+                        b.slot.to(to, RESPACE_SECS, Ease::CubicInOut);
+                    }
+                    if b.ghost.target() != ghost {
+                        b.ghost.to(ghost, GHOST_SECS, Ease::CubicOut);
+                    }
+                }
+                None => {
+                    let mut reach = Animated::new(0.0);
+                    let delay = if first {
+                        0.35 + i as f32 * PLANET_STAGGER
+                    } else {
+                        0.0
+                    };
+                    reach.to_after(1.0, delay, PLANET_EMERGE, Ease::BackOut);
+                    self.bodies.push(Body {
+                        family: *family,
+                        slot: Animated::new(angle),
+                        reach,
+                        ghost: Animated::new(ghost),
+                        spin: i as f32 * 1.3,
+                        moons: Vec::new(),
+                    });
+                }
             }
         }
-        for (i, w) in wallets.iter().enumerate() {
-            if let Some(m) = self.moons.iter_mut().find(|m| m.address == w.address && !m.leaving) {
-                // A handle resolved since: the label follows.
-                m.label = wallet_label(w);
-                continue;
+        self.bodies.sort_by_key(|b| b.family);
+
+        // Moons: on their chain's planet, in the list's own order.
+        for body in &mut self.bodies {
+            let mine: Vec<&LinkedWallet> = wallets
+                .iter()
+                .filter(|w| family_of(w) == Some(body.family))
+                .collect();
+            for m in &mut body.moons {
+                if !m.leaving && !mine.iter().any(|w| w.address == m.address) {
+                    m.leaving = true;
+                    m.reach.to(2.0, LEAVE_SECS, Ease::CubicIn);
+                    m.alpha.to(0.0, LEAVE_SECS, Ease::CubicIn);
+                }
             }
-            let mut reach = Animated::new(0.0);
-            let mut alpha = Animated::new(0.0);
-            let is_launch = launched == Some(w.address.as_str());
-            let delay = if first {
-                // After the planet has risen and the rings have drawn.
-                0.45 + i as f32 * EMERGE_STAGGER
-            } else {
-                0.0
-            };
-            let (secs, ease) = if is_launch {
-                (LAUNCH_SECS, Ease::BackOut)
-            } else {
-                (EMERGE_SECS, Ease::BackOut)
-            };
-            reach.to_after(1.0, delay, secs, ease);
-            alpha.to_after(1.0, delay, secs * 0.4, Ease::CubicOut);
-            self.moons.push(Moon {
-                address: w.address.clone(),
-                family: family_of(w),
-                label: wallet_label(w),
-                ring: 0,
-                slot: Animated::new(f32::NAN),
-                reach,
-                alpha,
-                leaving: false,
-                launched: is_launch,
-            });
+            let n = mine.len();
+            for (i, w) in mine.iter().enumerate() {
+                let (ring, angle) = moon_slot(i, n);
+                if let Some(m) = body
+                    .moons
+                    .iter_mut()
+                    .find(|m| m.address == w.address && !m.leaving)
+                {
+                    m.label = wallet_label(w);
+                    m.ring = ring;
+                    let to = m.slot.target() + shortest(angle - m.slot.target());
+                    if (to - m.slot.target()).abs() > 1e-4 {
+                        m.slot.to(to, RESPACE_SECS, Ease::CubicInOut);
+                    }
+                    continue;
+                }
+                let launch = launched == Some(w.address.as_str());
+                let delay = if first {
+                    0.8 + i as f32 * MOON_STAGGER
+                } else {
+                    0.0
+                };
+                let secs = if launch { LAUNCH_SECS } else { MOON_EMERGE };
+                let mut reach = Animated::new(0.0);
+                let mut alpha = Animated::new(0.0);
+                reach.to_after(1.0, delay, secs, Ease::BackOut);
+                alpha.to_after(1.0, delay, secs * 0.4, Ease::CubicOut);
+                body.moons.push(Moon {
+                    address: w.address.clone(),
+                    label: wallet_label(w),
+                    slot: Animated::new(angle),
+                    ring,
+                    reach,
+                    alpha,
+                    leaving: false,
+                    burst: launch,
+                });
+            }
         }
-        // Slots in the list's own order: the server's, which is the reader's.
-        let order: Vec<usize> = wallets
-            .iter()
-            .filter_map(|w| {
-                self.moons
-                    .iter()
-                    .position(|m| m.address == w.address && !m.leaving)
-            })
-            .collect();
-        let slots = slots(order.len());
-        let spins = self.spins;
-        for (k, &i) in order.iter().enumerate() {
-            let (ring, angle) = slots[k];
-            let ring_spin = spins[ring];
-            let m = &mut self.moons[i];
-            let fresh = m.slot.get().is_nan();
-            if fresh {
-                // A new moon starts at its own slot.
-                m.ring = ring;
-                m.slot.set(angle);
-                continue;
-            }
-            if m.ring != ring {
-                // Moving rings: keep where it is on screen, in the new ring's
-                // turn, then ease to the new slot.
-                let at = m.slot.get() + spins[m.ring];
-                m.slot.set(at - ring_spin);
-                m.ring = ring;
-            }
-            let now = m.slot.target();
-            let target = now + shortest(angle - now);
-            if (target - now).abs() > 1e-4 {
-                m.slot.to(target, RESPACE_SECS, Ease::CubicInOut);
+    }
+
+    /// Burst at `address`'s moon, as a launch landing does: the wallet the
+    /// reader just connected was this one already.
+    pub fn flare(&mut self, address: &str) {
+        for b in &mut self.bodies {
+            if let Some(m) = b
+                .moons
+                .iter_mut()
+                .find(|m| m.address == address && !m.leaving)
+            {
+                m.burst = true;
             }
         }
     }
 
     /// Whether anything is still moving that a capture should wait out.
     pub fn settled(&self) -> bool {
-        self.planet_in.settled()
-            && self
-                .moons
-                .iter()
-                .all(|m| m.reach.settled() && m.slot.settled())
+        self.sun_in.settled()
+            && self.bodies.iter().all(|b| {
+                b.reach.settled()
+                    && b.slot.settled()
+                    && b.moons
+                        .iter()
+                        .all(|m| m.reach.settled() && m.slot.settled())
+            })
     }
 
-    /// Advance, draw into `field`, and report a tap. `selected` is drawn
-    /// lit; `fade` is the whole view's opacity (a cross-fade to the list).
-    /// `breathing` draws the rings pulsing, for a load still under way.
+    /// Advance the motion by `dt`: the orbits turning, bodies on their way.
+    /// Call every frame, drawn or not.
+    pub fn update(&mut self, dt: f32) {
+        self.age += dt;
+        self.speed.update(dt);
+        self.sun_in.update(dt);
+        let speed = self.speed.get();
+        self.spin = (self.spin + dt * speed * TAU / PLANET_TURN) % TAU;
+        for b in &mut self.bodies {
+            b.slot.update(dt);
+            b.reach.update(dt);
+            b.ghost.update(dt);
+            b.spin = (b.spin + dt * speed * TAU / MOON_TURN) % TAU;
+            for m in &mut b.moons {
+                m.slot.update(dt);
+                m.reach.update(dt);
+                m.alpha.update(dt);
+            }
+            b.moons.retain(|m| !(m.leaving && m.reach.settled()));
+        }
+        self.particles.update(dt);
+    }
+
+    /// Where body `i`'s planet is, and how near (0 far, 1 near).
+    fn planet_at(&self, geo: &Geo, i: usize) -> (Vec2, f32) {
+        let b = &self.bodies[i];
+        let theta = b.slot.get() + self.spin;
+        let at = geo.on(geo.centre, geo.orbit_rx * b.reach.get(), theta);
+        (at, (theta.sin() + 1.0) * 0.5)
+    }
+
+    /// Where moon `j` of body `i` is, and how near.
+    fn moon_at(&self, geo: &Geo, i: usize, j: usize, planet: Vec2, near: f32) -> (Vec2, f32) {
+        let b = &self.bodies[i];
+        let m = &b.moons[j];
+        let phi = m.slot.get() + b.spin * (1.0 - 0.25 * m.ring as f32);
+        let r = geo.moon_orbit * (1.0 + 0.45 * m.ring as f32) * depth_scale(near);
+        let at = geo.on(planet, r * m.reach.get(), phi);
+        (at, near + phi.sin() * 0.08)
+    }
+
+    /// Draw into `field` and report a tap. `selected` is the wallet drawn lit,
+    /// with its path home; `fade` is the whole view's opacity (a cross-fade to
+    /// the list); `breathing` pulses the orbit, for a load still under way.
     pub fn show(
         &mut self,
         p: &Painter,
@@ -338,40 +475,12 @@ impl OrbitView {
     ) -> Option<OrbitTap> {
         self.bake(p);
         let geo = Geo::of(field);
-        let live: Vec<usize> = (0..self.moons.len())
-            .filter(|i| !self.moons[*i].leaving)
-            .collect();
-        let rings = rings_for(live.len());
-        for k in 0..MAX_RINGS {
-            let target = if k < rings { geo.ring_rx(k, rings) } else { 0.0 };
-            if !self.rings_sized {
-                self.ring_rx[k].set(target);
-            } else if (self.ring_rx[k].target() - target).abs() > 0.5 {
-                self.ring_rx[k].to(target, RESPACE_SECS, Ease::CubicInOut);
-            }
-        }
-        self.rings_sized = true;
-
         let c = p.theme.color;
-        let accent = c.accent;
-        let ring_ink = |k: usize, front: bool| {
-            let base = if breathing {
-                0.14 + 0.08 * (self.age * 2.4 - k as f32 * 0.6).sin()
-            } else {
-                0.16
-            };
-            let a = if front { base * 1.6 } else { base };
-            Color::new(accent.r, accent.g, accent.b, a * fade)
-        };
-        let sweep = |k: usize| {
-            let t = (self.age - 0.25 - k as f32 * RING_STAGGER) / RING_DRAW;
-            Ease::CubicOut.apply(t)
-        };
-        let empty = live.is_empty() && self.loaded_age.is_some();
-        let rise = self.planet_in.get();
+        let rise = self.sun_in.get();
+        let total: usize = self.bodies.iter().map(|b| b.live_moons().count()).sum();
 
-        // A haze of the accent round the planet: the system's light.
-        let haze = geo.planet_r * 3.4;
+        // The haze of the sun's light.
+        let haze = geo.sun_r * 5.0;
         fill_gradient(
             Rect::new(
                 geo.centre.x - haze,
@@ -381,249 +490,408 @@ impl OrbitView {
             ),
             haze,
             Gradient::Radial {
-                centre: with_alpha(accent, 0.09 * fade * rise),
-                edge: with_alpha(accent, 0.0),
+                centre: with_alpha(c.accent, 0.10 * fade * rise),
+                edge: with_alpha(c.accent, 0.0),
             },
         );
 
-        // The far halves of the rings, behind everything.
-        for k in 0..MAX_RINGS {
-            let rx = self.ring_rx[k].get();
-            if rx < 1.0 {
+        // The planets' orbit: the far half behind everything, the near half
+        // over the sun.
+        let sweep = Ease::CubicOut.apply((self.age - 0.2) / ORBIT_DRAW);
+        let orbit_a = if breathing {
+            0.14 + 0.08 * (self.age * 2.4).sin()
+        } else {
+            0.16
+        } * fade;
+        let ry = geo.orbit_rx * geo.tilt;
+        ellipse(
+            geo.centre,
+            geo.orbit_rx,
+            ry,
+            PI,
+            PI + PI * sweep,
+            1.0,
+            with_alpha(c.accent, orbit_a),
+            false,
+        );
+
+        // Every body, with where it is this frame and how near.
+        let mut items: Vec<(Item, Vec2, f32)> = vec![(Item::Sun, geo.centre, 0.5)];
+        let mut planet_pos = Vec::with_capacity(self.bodies.len());
+        for i in 0..self.bodies.len() {
+            let (at, near) = self.planet_at(&geo, i);
+            planet_pos.push((at, near));
+            items.push((Item::Planet(i), at, near));
+            for j in 0..self.bodies[i].moons.len() {
+                let (m_at, m_near) = self.moon_at(&geo, i, j, at, near);
+                items.push((Item::Moon(i, j), m_at, m_near));
+            }
+        }
+        items.sort_by(|a, b| a.2.total_cmp(&b.2));
+
+        // The path home of the wallet looked at: its planet, then the sun.
+        let path: Option<(usize, usize)> = selected.and_then(|s| {
+            self.bodies.iter().enumerate().find_map(|(i, b)| {
+                b.moons
+                    .iter()
+                    .position(|m| m.address == s && !m.leaving)
+                    .map(|j| (i, j))
+            })
+        });
+
+        let mut front_orbit_drawn = false;
+        for &(item, at, near) in &items {
+            if !front_orbit_drawn && near >= 0.5 {
+                front_orbit_drawn = true;
+                ellipse(
+                    geo.centre,
+                    geo.orbit_rx,
+                    ry,
+                    0.0,
+                    PI * sweep,
+                    1.4,
+                    with_alpha(c.accent, orbit_a * 1.6),
+                    false,
+                );
+            }
+            match item {
+                Item::Sun => self.draw_sun(p, &geo, fade, rise),
+                Item::Planet(i) => {
+                    let lit = path.is_some_and(|(pi, _)| pi == i);
+                    self.draw_planet(p, &geo, i, at, near, fade, lit);
+                }
+                Item::Moon(i, j) => {
+                    let (pl, _) = planet_pos[i];
+                    let lit = path == Some((i, j));
+                    self.draw_moon(p, &geo, i, j, at, pl, near, fade, lit);
+                }
+            }
+        }
+        if !front_orbit_drawn {
+            ellipse(
+                geo.centre,
+                geo.orbit_rx,
+                ry,
+                0.0,
+                PI * sweep,
+                1.4,
+                with_alpha(c.accent, orbit_a * 1.6),
+                false,
+            );
+        }
+
+        // Names last, over every body, in order of importance: one that would
+        // land on a name already placed is left out this frame.
+        let mut labels = Labels::new(p, field);
+        let me = self.identity.name.clone().unwrap_or_else(|| "You".into());
+        labels.place(
+            &me,
+            geo.centre + vec2(0.0, geo.sun_r + 14.0),
+            fade * rise,
+            true,
+        );
+        if let Some((i, j)) = path {
+            let (pl, near) = planet_pos[i];
+            let (at, m_near) = self.moon_at(&geo, i, j, pl, near);
+            let m = &self.bodies[i].moons[j];
+            let r = geo.moon_r * depth_scale(m_near) * 1.25;
+            labels.place(
+                &m.label,
+                at + vec2(0.0, r + 11.0),
+                m.alpha.get() * fade,
+                true,
+            );
+        }
+        for (i, &(at, near)) in planet_pos.iter().enumerate() {
+            let b = &self.bodies[i];
+            let count = b.live_moons().count();
+            let ghost = b.ghost.get();
+            let name = b.family.display_name();
+            let text = if count == 0 {
+                format!("Link {name}")
+            } else {
+                name.to_string()
+            };
+            let r = geo.planet_r * depth_scale(near);
+            let a = fade * b.reach.get().clamp(0.0, 1.0) * (1.0 - 0.35 * ghost);
+            labels.place(&text, at + vec2(0.0, r + 13.0), a, false);
+        }
+        if total <= NAMED_UP_TO {
+            for (i, b) in self.bodies.iter().enumerate() {
+                for (j, m) in b.moons.iter().enumerate() {
+                    if m.leaving || path == Some((i, j)) {
+                        continue;
+                    }
+                    let (pl, near) = planet_pos[i];
+                    let (at, m_near) = self.moon_at(&geo, i, j, pl, near);
+                    if m_near < near {
+                        continue;
+                    }
+                    let r = geo.moon_r * depth_scale(m_near);
+                    labels.place(
+                        &m.label,
+                        at + vec2(0.0, r + 11.0),
+                        m.alpha.get() * fade,
+                        false,
+                    );
+                }
+            }
+        }
+
+        // A launch landing bursts in its chain's colour.
+        let mut bursts = Vec::new();
+        for (i, b) in self.bodies.iter_mut().enumerate() {
+            for (j, m) in b.moons.iter_mut().enumerate() {
+                if m.burst && m.reach.settled() {
+                    m.burst = false;
+                    bursts.push((i, j, b.family));
+                }
+            }
+        }
+        for (i, j, family) in bursts {
+            let (pl, near) = planet_pos[i];
+            let (at, _) = self.moon_at(&geo, i, j, pl, near);
+            let tint = chain_tint(&p.theme, family);
+            self.particles.burst(at, 24, 120.0, 2.6, 0.9, tint);
+        }
+        self.particles.draw();
+
+        // Taps: the nearest body under the finger, else the sky.
+        let tap = p.tap.filter(|t| field.contains(*t))?;
+        for &(item, at, near) in items.iter().rev() {
+            let r = match item {
+                Item::Sun => geo.sun_r,
+                Item::Planet(_) => geo.planet_r * depth_scale(near),
+                Item::Moon(..) => geo.moon_r * depth_scale(near),
+            };
+            if at.distance(tap) > HIT_R.max(r * 1.3) {
                 continue;
             }
-            let s = sweep(k);
-            ellipse(geo.centre, rx, rx * geo.tilt, PI, PI + PI * s, 1.0, ring_ink(k, false), empty);
+            return Some(match item {
+                Item::Sun => OrbitTap::Sun,
+                Item::Planet(i) => {
+                    let b = &self.bodies[i];
+                    OrbitTap::Planet {
+                        family: b.family,
+                        empty: b.live_moons().next().is_none(),
+                    }
+                }
+                Item::Moon(i, j) => {
+                    let m = &self.bodies[i].moons[j];
+                    if m.leaving {
+                        continue;
+                    }
+                    OrbitTap::Moon(m.address.clone())
+                }
+            });
+        }
+        Some(OrbitTap::Sky)
+    }
+
+    /// Bake the moon once, and a planet per chain, again if the theme's accent
+    /// moved.
+    fn bake(&mut self, p: &Painter) {
+        let c = p.theme.color;
+        if self.planet_accent != Some(c.accent) {
+            self.planets.clear();
+            self.planet_accent = Some(c.accent);
+        }
+        for b in &self.bodies {
+            self.planets.entry(b.family).or_insert_with(|| {
+                let tint = chain_tint(&p.theme, b.family);
+                let look = PlanetLook {
+                    ground: mix(c.bg_primary, tint, 0.28),
+                    band: tint,
+                    band2: mix(tint, c.text_primary, 0.4),
+                    seed: 7 + b.family as u32 * 13,
+                };
+                bake_planet(&look, 256)
+            });
+        }
+        if self.moon.is_none() {
+            self.moon = Some(bake_moon(3, 96));
+        }
+    }
+
+    fn draw_sun(&self, p: &Painter, geo: &Geo, fade: f32, rise: f32) {
+        let c = p.theme.color;
+        let r = geo.sun_r * (0.6 + 0.4 * rise);
+        let a = fade * rise;
+        let at = geo.centre;
+        // The corona: the identity's light, breathing slowly.
+        let pulse = 0.5 + 0.5 * (self.age * 1.3).sin();
+        let corona = r * (1.9 + 0.1 * pulse);
+        fill_gradient(
+            Rect::new(at.x - corona, at.y - corona, corona * 2.0, corona * 2.0),
+            corona,
+            Gradient::Radial {
+                centre: with_alpha(c.accent, 0.42 * a),
+                edge: with_alpha(c.accent, 0.0),
+            },
+        );
+        let face = Rect::new(at.x - r, at.y - r, r * 2.0, r * 2.0);
+        match &self.identity.avatar {
+            Some(tex) => fill_texture_rounded(tex, face, r, Color::new(1.0, 1.0, 1.0, a)),
+            None => {
+                fill_gradient(
+                    face,
+                    r,
+                    Gradient::Radial {
+                        centre: with_alpha(mix(c.accent, c.text_primary, 0.35), a),
+                        edge: with_alpha(mix(c.accent, c.bg_primary, 0.35), a),
+                    },
+                );
+                let initial: String = self
+                    .identity
+                    .name
+                    .as_deref()
+                    .and_then(|n| n.chars().find(|ch| ch.is_alphanumeric()))
+                    .map_or("?".to_string(), |ch| ch.to_uppercase().collect());
+                p.text_centred(
+                    &initial,
+                    face,
+                    p.size(TextSize::Xl2),
+                    with_alpha(c.bg_primary, 0.85 * a),
+                );
+            }
+        }
+        draw_circle_lines(at.x, at.y, r + 1.5, 2.0, with_alpha(c.accent, 0.9 * a));
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn draw_planet(
+        &self,
+        p: &Painter,
+        geo: &Geo,
+        i: usize,
+        at: Vec2,
+        near: f32,
+        fade: f32,
+        lit: bool,
+    ) {
+        let c = p.theme.color;
+        let b = &self.bodies[i];
+        let reach = b.reach.get();
+        if reach <= 0.01 {
+            return;
+        }
+        let tint = chain_tint(&p.theme, b.family);
+        let r = geo.planet_r * depth_scale(near) * reach.clamp(0.0, 1.0).sqrt();
+        let ghost = b.ghost.get();
+        let far = 0.75 + 0.25 * near;
+        let a = fade * far * reach.clamp(0.0, 1.0);
+
+        // Its tether to the sun: the chain's link to the reader.
+        let to = at - geo.centre;
+        if to.length() > geo.sun_r + r {
+            let dir = to.normalize();
+            let from = geo.centre + dir * geo.sun_r;
+            let end = at - dir * r;
+            let k = if lit { 0.5 } else { 0.12 } * (1.0 - 0.6 * ghost);
+            draw_line(from.x, from.y, end.x, end.y, 1.0, with_alpha(tint, k * a));
         }
 
-        // The moons, nearest last, each with where it is this frame.
-        let placed: Vec<(usize, Vec2, f32, f32)> = (0..self.moons.len())
-            .map(|i| {
-                let m = &self.moons[i];
-                let theta = m.slot.get() + self.spins[m.ring];
-                let rx = self.ring_rx[m.ring].get().max(geo.planet_r * 1.9) * m.reach.get();
-                let at = geo.centre + vec2(theta.cos() * rx, theta.sin() * rx * geo.tilt);
-                let depth = (theta.sin() + 1.0) * 0.5;
-                (i, at, depth, theta.sin())
-            })
-            .collect();
-        let mut back: Vec<_> = placed.iter().filter(|q| q.3 < 0.0).copied().collect();
-        let mut front: Vec<_> = placed.iter().filter(|q| q.3 >= 0.0).copied().collect();
-        back.sort_by(|a, b| a.2.total_cmp(&b.2));
-        front.sort_by(|a, b| a.2.total_cmp(&b.2));
-
-        for &(i, at, depth, _) in &back {
-            self.draw_tether(p, &geo, i, at, selected, fade, true);
-            self.draw_moon(p, i, at, depth, selected, fade);
+        // Its moons' rings, faint.
+        let rings = b.live_moons().map(|m| m.ring + 1).max().unwrap_or(0);
+        for k in 0..rings {
+            let mr = geo.moon_orbit * (1.0 + 0.45 * k as f32) * depth_scale(near);
+            ellipse(
+                at,
+                mr,
+                mr * geo.tilt,
+                0.0,
+                TAU,
+                1.0,
+                with_alpha(tint, 0.14 * a),
+                false,
+            );
         }
 
-        // The planet, risen.
-        if let Some((tex, _)) = &self.planet {
-            let size = geo.planet_r * 2.0 * ATMOSPHERE * (0.6 + 0.4 * rise);
-            let dim = if breathing { 0.9 } else { 1.0 };
+        // The world, fading in from its ghost.
+        if let Some(tex) = self.planets.get(&b.family)
+            && ghost < 0.999
+        {
+            let size = r * 2.0 * ATMOSPHERE;
             draw_texture_ex(
                 tex,
-                geo.centre.x - size * 0.5,
-                geo.centre.y - size * 0.5,
-                Color::new(dim, dim, dim, rise * fade),
+                at.x - size * 0.5,
+                at.y - size * 0.5,
+                Color::new(1.0, 1.0, 1.0, a * (1.0 - ghost)),
                 DrawTextureParams {
                     dest_size: Some(vec2(size, size)),
                     ..Default::default()
                 },
             );
         }
-
-        for k in 0..MAX_RINGS {
-            let rx = self.ring_rx[k].get();
-            if rx < 1.0 {
-                continue;
-            }
-            let s = sweep(k);
-            ellipse(geo.centre, rx, rx * geo.tilt, 0.0, PI * s, 1.4, ring_ink(k, true), empty);
-        }
-
-        for &(i, at, depth, _) in &front {
-            self.draw_tether(p, &geo, i, at, selected, fade, false);
-            self.draw_moon(p, i, at, depth, selected, fade);
-        }
-        // Labels last, over every body: the near half's, and the selected one.
-        for &(i, at, depth, sin) in back.iter().chain(front.iter()) {
-            let m = &self.moons[i];
-            let is_sel = selected == Some(m.address.as_str());
-            if sin < -0.15 && !is_sel {
-                continue;
-            }
-            let r = moon_r(depth, is_sel);
-            let a = m.alpha.get() * fade * if sin < 0.0 { 0.7 } else { 1.0 };
-            draw_label(p, &m.label, at + vec2(0.0, r + 13.0), a, is_sel);
-        }
-
-        // A launch landing bursts in its chain's colour.
-        for &(i, at, _, _) in &placed {
-            let m = &mut self.moons[i];
-            if m.launched && m.reach.settled() {
-                m.launched = false;
-                let tint = moon_tint(p, m.family);
-                self.particles.burst(at, 26, 150.0, 3.0, 0.9, tint);
-            }
-        }
-        self.particles.draw();
-
-        if empty {
-            let size = p.size(TextSize::Md);
-            let at = Rect::new(
-                field.x,
-                geo.centre.y + geo.ring_rx(0, 1) * geo.tilt + 18.0,
-                field.w,
-                24.0,
-            );
-            p.text_in(
-                "No wallets linked yet",
-                at,
-                size,
-                with_alpha(c.text_muted, fade * rise),
-                Align::Center,
-            );
-        }
-
-        // Taps: the nearest moon under the finger, else the sky.
-        let tap = p.tap.filter(|t| field.contains(*t))?;
-        let hit = front
-            .iter()
-            .rev()
-            .chain(back.iter().rev())
-            .find(|(i, at, depth, _)| {
-                let m = &self.moons[*i];
-                !m.leaving
-                    && at.distance(tap)
-                        <= HIT_R.max(moon_r(*depth, selected == Some(m.address.as_str())) * 1.4)
-            })
-            .map(|(i, ..)| self.moons[*i].address.clone());
-        Some(hit.map_or(OrbitTap::Sky, OrbitTap::Moon))
-    }
-
-    /// Advance the motion by `dt`: the rings turning, moons on their way.
-    /// Call every frame, drawn or not.
-    pub fn update(&mut self, dt: f32) {
-        self.age += dt;
-        if let Some(a) = &mut self.loaded_age {
-            *a += dt;
-        }
-        self.speed.update(dt);
-        self.planet_in.update(dt);
-        for r in &mut self.ring_rx {
-            r.update(dt);
-        }
-        let speed = self.speed.get();
-        for (k, spin) in self.spins.iter_mut().enumerate() {
-            *spin = (*spin + dt * speed * TAU / (TURN_SECS + TURN_STEP * k as f32)) % TAU;
-        }
-        for m in &mut self.moons {
-            m.slot.update(dt);
-            m.reach.update(dt);
-            m.alpha.update(dt);
-        }
-        self.moons.retain(|m| !(m.leaving && m.reach.settled()));
-        self.particles.update(dt);
-    }
-
-    /// Bake the planet and the moon on the first frame, and the planet again
-    /// if the theme's accent moved.
-    fn bake(&mut self, p: &Painter) {
-        let c = p.theme.color;
-        if self.planet.as_ref().is_none_or(|(_, a)| *a != c.accent) {
-            let look = PlanetLook {
-                ground: mix(c.bg_primary, c.accent_green, 0.22),
-                band: c.accent,
-                band2: c.accent_cyan,
-                seed: 7,
-            };
-            self.planet = Some((bake_planet(&look, 512), c.accent));
-        }
-        if self.moon.is_none() {
-            self.moon = Some(bake_moon(3, 128));
+        if ghost > 0.001 {
+            // A ghost: a dashed outline round the chain's mark, asking to be
+            // linked.
+            let ga = a * ghost;
+            draw_circle(at.x, at.y, r, with_alpha(c.bg_primary, 0.6 * ga));
+            ellipse(at, r, r, 0.0, TAU, 1.4, with_alpha(tint, 0.7 * ga), true);
+            chain_mark(b.family, at, r * 0.9, with_alpha(tint, 0.8 * ga));
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_moon(
         &self,
         p: &Painter,
+        geo: &Geo,
         i: usize,
+        j: usize,
         at: Vec2,
-        depth: f32,
-        selected: Option<&str>,
+        planet: Vec2,
+        near: f32,
         fade: f32,
+        lit: bool,
     ) {
-        let m = &self.moons[i];
-        let is_sel = selected == Some(m.address.as_str());
-        let r = moon_r(depth, is_sel);
-        let far = 0.7 + 0.3 * depth;
-        let a = m.alpha.get() * fade * far;
-        let tint = moon_tint(p, m.family);
-        if is_sel {
+        let b = &self.bodies[i];
+        let m = &b.moons[j];
+        let tint = chain_tint(&p.theme, b.family);
+        let r = geo.moon_r * depth_scale(near) * if lit { 1.25 } else { 1.0 };
+        let a = m.alpha.get() * fade * (0.75 + 0.25 * near.clamp(0.0, 1.0));
+
+        // Its tether to its planet.
+        let to = at - planet;
+        let pr = geo.planet_r * depth_scale(near);
+        if to.length() > pr + r {
+            let dir = to.normalize();
+            let from = planet + dir * pr;
+            let end = at - dir * r;
+            let k = if lit { 0.6 } else { 0.14 };
+            draw_line(from.x, from.y, end.x, end.y, 1.0, with_alpha(tint, k * a));
+        }
+        if lit {
             let pulse = 0.5 + 0.5 * (self.age * 3.0).sin();
-            draw_circle_lines(at.x, at.y, r + 6.0 + pulse * 2.0, 1.5, with_alpha(tint, 0.7 * a));
-            draw_circle(at.x, at.y, r + 10.0, with_alpha(tint, 0.10 * a));
+            draw_circle_lines(
+                at.x,
+                at.y,
+                r + 5.0 + pulse * 2.0,
+                1.5,
+                with_alpha(tint, 0.75 * a),
+            );
+            draw_circle(at.x, at.y, r + 9.0, with_alpha(tint, 0.10 * a));
         }
         if let Some(tex) = &self.moon {
-            let lit = mix(tint, WHITE, 0.18);
+            let shade = mix(tint, WHITE, 0.35);
             draw_texture_ex(
                 tex,
                 at.x - r,
                 at.y - r,
-                Color::new(lit.r, lit.g, lit.b, a),
+                Color::new(shade.r, shade.g, shade.b, a),
                 DrawTextureParams {
                     dest_size: Some(vec2(r * 2.0, r * 2.0)),
                     ..Default::default()
                 },
             );
         }
-        if let Some(f) = m.family {
-            chain_mark(f, at, r * 1.0, with_alpha(p.theme.color.bg_primary, 0.78 * a));
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn draw_tether(
-        &self,
-        p: &Painter,
-        geo: &Geo,
-        i: usize,
-        at: Vec2,
-        selected: Option<&str>,
-        fade: f32,
-        behind: bool,
-    ) {
-        let m = &self.moons[i];
-        let is_sel = selected == Some(m.address.as_str());
-        let to = at - geo.centre;
-        let len = to.length();
-        if len < geo.planet_r * 1.02 {
-            return;
-        }
-        let dir = to / len;
-        // From the planet's limb, not its centre: the tether is drawn over
-        // the sky, never across the face.
-        let from = if behind {
-            geo.centre + dir * geo.planet_r * 0.2
-        } else {
-            geo.centre + dir * geo.planet_r * 1.02
-        };
-        let a = m.alpha.get() * fade * if is_sel { 0.45 } else { 0.10 };
-        let tint = moon_tint(p, m.family);
-        draw_line(from.x, from.y, at.x, at.y, 1.0, with_alpha(tint, a));
     }
 }
 
-/// A moon's radius at `depth` (0 far, 1 near).
-fn moon_r(depth: f32, selected: bool) -> f32 {
-    let base = if selected { MOON_R_SELECTED } else { MOON_R };
-    base * (0.82 + 0.18 * depth)
-}
-
-/// The angle `d` brought into −π..π: the short way round.
-fn shortest(d: f32) -> f32 {
-    (d + PI).rem_euclid(TAU) - PI
+/// How large a body looks at `near` (0 far, 1 near).
+fn depth_scale(near: f32) -> f32 {
+    0.8 + 0.2 * near.clamp(0.0, 1.0)
 }
 
 fn with_alpha(c: Color, a: f32) -> Color {
@@ -633,10 +901,12 @@ fn with_alpha(c: Color, a: f32) -> Color {
 /// An arc of an ellipse from angle `a0` to `a1`, dashed when `dashed`.
 #[allow(clippy::too_many_arguments)]
 fn ellipse(c: Vec2, rx: f32, ry: f32, a0: f32, a1: f32, w: f32, color: Color, dashed: bool) {
-    if a1 <= a0 {
+    if a1 <= a0 || rx < 0.5 {
         return;
     }
-    let n = ((a1 - a0) / TAU * 160.0).ceil().max(2.0) as usize;
+    let n = ((a1 - a0) / TAU * (rx * 0.9).clamp(24.0, 160.0))
+        .ceil()
+        .max(2.0) as usize;
     let at = |t: f32| c + vec2(t.cos() * rx, t.sin() * ry);
     for i in 0..n {
         if dashed && i % 2 == 1 {
@@ -649,39 +919,97 @@ fn ellipse(c: Vec2, rx: f32, ry: f32, a0: f32, a1: f32, w: f32, color: Color, da
     }
 }
 
-/// A moon's name under it, on a dark plate so it reads over the rings.
-fn draw_label(p: &Painter, label: &str, top_mid: Vec2, a: f32, selected: bool) {
-    let c = p.theme.color;
-    let size = p.size(TextSize::Sm);
-    let w = p.measure(label, size).width + 14.0;
-    let plate = Rect::new(top_mid.x - w * 0.5, top_mid.y - 9.0, w, 18.0);
-    fill_rounded(plate, 9.0, with_alpha(c.bg_primary, 0.62 * a));
-    let ink = if selected { c.text_primary } else { c.text_secondary };
-    p.text_in(label, plate, size, with_alpha(ink, a), Align::Center);
+/// Names under bodies, each on a dark plate so it reads over the orbits, kept
+/// inside the field near its edge, placed in the order asked: a name whose
+/// plate would land on one already placed is left out.
+struct Labels<'a, 'p> {
+    p: &'a Painter<'p>,
+    field: Rect,
+    placed: Vec<Rect>,
+}
+
+impl<'a, 'p> Labels<'a, 'p> {
+    fn new(p: &'a Painter<'p>, field: Rect) -> Self {
+        Self {
+            p,
+            field,
+            placed: Vec::new(),
+        }
+    }
+
+    /// The plate `label` takes, centred under `top_mid`.
+    fn plate(&self, label: &str, top_mid: Vec2) -> Rect {
+        let size = self.p.size(TextSize::Sm);
+        let w = self.p.measure(label, size).width + 14.0;
+        let f = self.field;
+        let x = (top_mid.x - w * 0.5).clamp(f.x + 6.0, (f.right() - w - 6.0).max(f.x));
+        Rect::new(x, top_mid.y - 9.0, w, 18.0)
+    }
+
+    /// Place `label` under `top_mid`, unless it would land on one placed.
+    fn place(&mut self, label: &str, top_mid: Vec2, a: f32, strong: bool) {
+        if a <= 0.01 {
+            return;
+        }
+        let plate = self.plate(label, top_mid);
+        let grown = Rect::new(plate.x - 2.0, plate.y - 2.0, plate.w + 4.0, plate.h + 4.0);
+        if self.placed.iter().any(|r| r.overlaps(&grown)) {
+            return;
+        }
+        self.placed.push(plate);
+        let p = self.p;
+        let c = p.theme.color;
+        fill_rounded(plate, 9.0, with_alpha(c.bg_primary, 0.62 * a));
+        let ink = if strong {
+            c.text_primary
+        } else {
+            c.text_secondary
+        };
+        p.text_in(
+            label,
+            plate,
+            p.size(TextSize::Sm),
+            with_alpha(ink, a),
+            Align::Center,
+        );
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn wallet(chain: &str, address: &str) -> LinkedWallet {
+        LinkedWallet {
+            chain: chain.into(),
+            address: address.into(),
+            handle: None,
+        }
+    }
+
+    /// Every linkable chain is a planet, linked on or not; a chain only a
+    /// link names joins them, in the reader's order.
     #[test]
-    fn inner_rings_fill_first_and_the_last_takes_the_rest() {
-        let rings = |n| slots(n).iter().map(|s| s.0).collect::<Vec<_>>();
-        assert_eq!(rings(3), [0, 0, 0]);
-        assert_eq!(rings(4), [0, 0, 0, 1]);
-        assert_eq!(rings_for(0), 1);
-        assert_eq!(rings_for(8), 2);
-        assert_eq!(rings_for(9), 3);
-        // 3 + 5 + 7 fill three rings; the fourth takes every one after.
-        assert_eq!(rings_for(40), MAX_RINGS);
-        assert_eq!(slots(40).len(), 40);
+    fn every_linkable_chain_is_a_planet_and_others_join_them() {
+        assert_eq!(planet_order(&[]), [ChainFamily::Cardano, ChainFamily::Evm]);
+        let ws = [wallet("solana", "So1")];
+        assert_eq!(
+            planet_order(&ws),
+            [ChainFamily::Cardano, ChainFamily::Evm, ChainFamily::Solana]
+        );
     }
 
     #[test]
-    fn moons_on_a_ring_are_spaced_evenly() {
-        let s = slots(3);
-        let gap = shortest(s[1].1 - s[0].1);
+    fn moons_fill_a_ring_then_the_next() {
+        assert_eq!(moon_slot(0, 3).0, 0);
+        assert_eq!(moon_slot(4, 7).0, 0);
+        assert_eq!(moon_slot(5, 7).0, 1);
+        let gap = shortest(moon_slot(1, 3).1 - moon_slot(0, 3).1);
         assert!((gap - TAU / 3.0).abs() < 1e-5);
+        // The second ring spaces only the moons on it: two, half a turn
+        // apart (either way round).
+        let gap2 = shortest(moon_slot(6, 7).1 - moon_slot(5, 7).1);
+        assert!((gap2.abs() - PI).abs() < 1e-5, "{gap2}");
     }
 
     #[test]
@@ -689,26 +1017,27 @@ mod tests {
         for d in [-7.0, -3.2, 0.0, 3.2, 7.0] {
             assert!(shortest(d).abs() <= PI + 1e-5, "{d}");
         }
-        assert!((shortest(TAU - 0.1) + 0.1).abs() < 1e-5);
     }
 
     #[test]
     fn a_handle_is_the_label_and_an_address_the_fallback() {
-        let w = |handle: Option<&str>| LinkedWallet {
-            chain: "cardano:mainnet".into(),
-            address: "stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9".into(),
-            handle: handle.map(Into::into),
-        };
-        assert_eq!(wallet_label(&w(Some("boef"))), "$boef");
-        assert_eq!(wallet_label(&w(Some("$boef"))), "$boef");
-        assert_ne!(wallet_label(&w(None)), w(None).address, "shortened");
+        let mut w = wallet(
+            "cardano:mainnet",
+            "stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9",
+        );
+        assert_eq!(wallet_label(&w), "stake1…rhq9");
+        w.handle = Some("boef".into());
+        assert_eq!(wallet_label(&w), "$boef");
     }
 
+    /// On a phone, a planet at the side of its orbit keeps its moons on the
+    /// screen.
     #[test]
-    fn rings_fit_the_field_on_a_phone() {
-        let geo = Geo::of(Rect::new(0.0, 0.0, 390.0, 560.0));
-        let outer = geo.ring_rx(2, 3);
-        assert!(outer <= 390.0 * 0.5 - 34.0, "{outer}");
-        assert!(geo.ring_rx(0, 3) > geo.planet_r * 1.5);
+    fn the_system_fits_a_phone() {
+        let field = Rect::new(0.0, 0.0, 390.0, 600.0);
+        let geo = Geo::of(field);
+        let outer = geo.centre.x + geo.orbit_rx + geo.moon_orbit + geo.moon_r;
+        assert!(outer <= field.right(), "{outer}");
+        assert!(geo.orbit_rx > geo.sun_r + geo.moon_orbit);
     }
 }

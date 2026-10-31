@@ -18,7 +18,8 @@
 //! then apply one a frame: `view list`, `view orbit`, `select N` (open the
 //! Nth wallet's sheet), `unlink N` (and ask to confirm it), `confirm`, `link` (open the
 //! connector), `chain cardano|evm` and `wallet KEY` (pick in the connector,
-//! as a tap would). Each section starts the demo afresh.
+//! as a tap would), and `wait N` (hold the lines after it N frames). Each
+//! section starts the demo afresh.
 //!
 //! On the web `?demo` runs the demo. With no token the screen says how to
 //! open it.
@@ -77,6 +78,8 @@ enum Command {
     Link,
     Chain(chains::ChainFamily),
     Wallet(String),
+    /// Hold the lines after this one for this many frames.
+    Wait(u32),
 }
 
 impl Command {
@@ -96,6 +99,7 @@ impl Command {
             ["chain", "cardano"] => Self::Chain(chains::ChainFamily::Cardano),
             ["chain", "evm"] => Self::Chain(chains::ChainFamily::Evm),
             ["wallet", key] => Self::Wallet(key.to_string()),
+            ["wait", frames] => Self::Wait(n(frames)? as u32),
             _ => {
                 return Err(format!(
                     "unknown set line `{line}`: try `view list`, `select 0`, `unlink 0`, `link`, `chain cardano`, `wallet eternl`"
@@ -127,6 +131,8 @@ impl Command {
             Self::Link => linker.send(Event::Link(None)),
             Self::Chain(f) => linker.connector_mut().choose_chain(f),
             Self::Wallet(key) => linker.connector_mut().choose_wallet(key),
+            // Counted down by the app, which holds the queue meanwhile.
+            Self::Wait(_) => {}
         }
         Ok(())
     }
@@ -139,6 +145,8 @@ struct App {
     launch: Launch,
     linker: Option<WalletLinker>,
     queued: VecDeque<Command>,
+    /// Frames a `wait` line still holds the queue.
+    waiting: u32,
 }
 
 impl App {
@@ -151,6 +159,7 @@ impl App {
             linker: launch.linker(),
             launch,
             queued: VecDeque::new(),
+            waiting: 0,
         }
     }
 }
@@ -161,12 +170,19 @@ impl Game for App {
             return;
         };
         let _ = linker.update(frame);
+        if self.waiting > 0 {
+            self.waiting -= 1;
+            return;
+        }
         if linker.wallets().is_some()
             && let Some(command) = self.queued.pop_front()
-            && let Err(e) = command.apply(linker)
         {
-            eprintln!("plan: {e}");
-            std::process::exit(2);
+            if let Command::Wait(frames) = command {
+                self.waiting = frames;
+            } else if let Err(e) = command.apply(linker) {
+                eprintln!("plan: {e}");
+                std::process::exit(2);
+            }
         }
     }
 
@@ -228,6 +244,7 @@ impl Game for App {
     fn reset(&mut self) {
         self.linker = self.launch.linker();
         self.queued.clear();
+        self.waiting = 0;
     }
 
     fn setup(&mut self, line: &str) -> Result<(), String> {

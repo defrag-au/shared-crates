@@ -36,7 +36,7 @@
 //! the reader's own clock. Adding a predicate therefore needs no new bundle.
 
 use chain_events::{AccountRef, Coverage};
-use chains::{TokenRef, ChainRef};
+use chains::{ChainRef, TokenRef};
 
 use crate::evaluate::{Assessment, Definition, Outcome, evaluate};
 use crate::state::{AcquiredBy, Holding, LotId, NewLot, Slot, Store, SubjectId, UnitId};
@@ -95,6 +95,10 @@ pub struct Rarity {
     /// Subjects whose snapshot carries this achievement.
     pub holders_with: u32,
     /// Every subject in the bundle — the eligible population, not the current holders.
+    ///
+    /// **Zero means the reading did not evaluate this achievement.** It is not "nobody
+    /// earned it": a builder that could not answer a predicate must leave the population
+    /// empty rather than claim a population-wide miss. A client renders that as unmeasured.
     pub population: u32,
 }
 
@@ -156,7 +160,8 @@ pub struct Snapshot {
     pub catalogue_digest: u64,
     /// How many achievements the catalogue has. Every `Earned::achievement` is below it.
     pub achievement_count: u16,
-    /// One entry per achievement, in index order.
+    /// One entry per achievement, in index order. A zero `population` marks one this
+    /// reading did not evaluate — see [`Rarity::population`].
     pub rarity: Vec<Rarity>,
     /// Every subject, in any order — the writer sorts them.
     pub subjects: Vec<SubjectRecord>,
@@ -470,14 +475,9 @@ impl<'a> Bundle<'a> {
             let length = *self.bytes.get(at).ok_or(BundleError::Truncated)? as usize;
             let start = at + 1;
             let end = start + length;
-            let found = self
-                .bytes
-                .get(start..end)
-                .ok_or(BundleError::Truncated)?;
+            let found = self.bytes.get(start..end).ok_or(BundleError::Truncated)?;
             if found == key.as_bytes() {
-                return self
-                    .subject_at((self.credentials + index) as u32)
-                    .map(Some);
+                return self.subject_at((self.credentials + index) as u32).map(Some);
             }
             at = end;
         }
@@ -500,10 +500,7 @@ impl<'a> Bundle<'a> {
     fn key_at(&self, index: usize) -> Result<&'a [u8], BundleError> {
         if index < self.credentials {
             let at = self.keys_at + index * 28;
-            return self
-                .bytes
-                .get(at..at + 28)
-                .ok_or(BundleError::Truncated);
+            return self.bytes.get(at..at + 28).ok_or(BundleError::Truncated);
         }
         let mut at = self.others_at;
         for _ in 0..(index - self.credentials) {
@@ -658,11 +655,7 @@ impl Store for BundleStore<'_> {
         Err(BundleError::ReadOnly)
     }
 
-    fn open_lots_of(
-        &self,
-        _subject: SubjectId,
-        unit: UnitId,
-    ) -> Result<Vec<Holding>, Self::Error> {
+    fn open_lots_of(&self, _subject: SubjectId, unit: UnitId) -> Result<Vec<Holding>, Self::Error> {
         Ok(self
             .lots()
             .filter(|lot| lot.unit == unit && lot.open > 0)
@@ -908,9 +901,12 @@ mod tests {
             .expect("a published row evaluates");
         assert_eq!(outcomes.len(), 2);
         assert_eq!(outcomes[0].id, "never-sold");
-        assert_eq!(outcomes[0].progress, crate::Progress::Earned {
-            since: crate::EarnedSince::Exact(170_960_000)
-        });
+        assert_eq!(
+            outcomes[0].progress,
+            crate::Progress::Earned {
+                since: crate::EarnedSince::Exact(170_960_000)
+            }
+        );
     }
 
     #[test]

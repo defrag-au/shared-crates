@@ -26,8 +26,17 @@
 
 use chain_events::{Coverage, TxRef};
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use crate::predicate::Predicate;
 use crate::state::{Holding, LotId, Slot, Store, SubjectId, UnitId};
+
+/// One subject's trait rows, read once per evaluation.
+///
+/// Keyed by unit so a predicate reads the map instead of the store. A unit present with an
+/// empty `Vec` is a unit whose metadata was never recorded — "no rows", which every trait
+/// predicate reports as `Unavailable` rather than as a miss.
+type TraitMap = BTreeMap<UnitId, Vec<(String, String)>>;
 
 /// Chain seconds in a day.
 ///
@@ -160,6 +169,16 @@ pub fn evaluate<'a, S: Store>(
     definitions: &[Definition<'a>],
 ) -> Result<Vec<Outcome<'a>>, S::Error> {
     let lots = store.lots(subject)?;
+    // One read per held unit, not one per definition — the metadata join is the expensive
+    // part, and nineteen curation predicates must not pay for it nineteen times.
+    let traits = if definitions
+        .iter()
+        .any(|definition| definition.predicate.needs_traits())
+    {
+        read_traits(store, &lots)?
+    } else {
+        TraitMap::new()
+    };
     let mut outcomes = Vec::with_capacity(definitions.len());
     for definition in definitions {
         let (progress, evidence) = match &definition.predicate {
@@ -170,7 +189,30 @@ pub fn evaluate<'a, S: Store>(
             }
             Predicate::RoundTripsAtLeast { n } => round_trips_at_least(&lots, at, u64::from(*n)),
             Predicate::HasAllTraits { category, values } => {
-                has_all_traits(store, &lots, at, category, values)?
+                has_all_traits(&traits, &lots, at, category, values)
+            }
+            Predicate::HasTrait { category, value } => {
+                has_trait(&traits, &lots, at, category, value)
+            }
+            Predicate::HasTraitValues {
+                category,
+                values,
+                at_least,
+            } => has_trait_values(&traits, &lots, at, category, values, *at_least),
+            Predicate::HeldWithTraitAtOnce {
+                category,
+                value,
+                at_least,
+            } => held_with_trait_at_once(
+                &traits,
+                &lots,
+                at,
+                category,
+                value.as_deref(),
+                *at_least,
+            ),
+            Predicate::SameValueAcrossAssets { category, assets } => {
+                same_value_across_assets(&traits, &lots, at, category, *assets)
             }
         };
         outcomes.push(Outcome {
@@ -180,6 +222,34 @@ pub fn evaluate<'a, S: Store>(
         });
     }
     Ok(outcomes)
+}
+
+/// Reads every unit's trait rows once.
+fn read_traits<S: Store>(store: &S, lots: &[Holding]) -> Result<TraitMap, S::Error> {
+    let mut traits = TraitMap::new();
+    for unit in units_ever(lots) {
+        traits.insert(unit, store.traits_of(unit)?);
+    }
+    Ok(traits)
+}
+
+/// The distinct units a subject has ever held, ascending.
+fn units_ever(lots: &[Holding]) -> Vec<UnitId> {
+    let mut units: Vec<UnitId> = lots.iter().map(|lot| lot.unit).collect();
+    units.sort_unstable();
+    units.dedup();
+    units
+}
+
+/// Whether any unit the subject held has no trait rows at all.
+///
+/// Metadata coverage, not trait membership: an asset that carries no `Faction` is still
+/// *known*, and the answer for it is a real no. An asset whose rows were never recorded is
+/// unknown, and a predicate that did not match must say so.
+fn any_unknown(traits: &TraitMap, units: &[UnitId]) -> bool {
+    units
+        .iter()
+        .any(|unit| traits.get(unit).is_none_or(Vec::is_empty))
 }
 
 fn evidence_of(lot: &Holding) -> Evidence {

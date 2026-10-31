@@ -148,10 +148,7 @@ fn bake(size: u16, f: impl Fn(Vec2, f32) -> Color) -> Texture2D {
     let px = 2.0 / f32::from(size);
     for y in 0..u32::from(size) {
         for x in 0..u32::from(size) {
-            let p = vec2(
-                (x as f32 + 0.5) * px - 1.0,
-                (y as f32 + 0.5) * px - 1.0,
-            );
+            let p = vec2((x as f32 + 0.5) * px - 1.0, (y as f32 + 0.5) * px - 1.0);
             image.set_pixel(x, y, f(p, px));
         }
     }
@@ -199,8 +196,12 @@ mod tests {
         let l = look();
         let lum = |c: Color| c.r + c.g + c.b;
         let s = 0.4 / ATMOSPHERE;
-        assert!(lum(planet_pixel(vec2(-s, -s), &l, 0.01)) > lum(planet_pixel(vec2(s, s), &l, 0.01)));
-        assert!(lum(moon_pixel(vec2(-0.4, -0.4), 3, 0.01)) > lum(moon_pixel(vec2(0.4, 0.4), 3, 0.01)));
+        assert!(
+            lum(planet_pixel(vec2(-s, -s), &l, 0.01)) > lum(planet_pixel(vec2(s, s), &l, 0.01))
+        );
+        assert!(
+            lum(moon_pixel(vec2(-0.4, -0.4), 3, 0.01)) > lum(moon_pixel(vec2(0.4, 0.4), 3, 0.01))
+        );
     }
 
     #[test]

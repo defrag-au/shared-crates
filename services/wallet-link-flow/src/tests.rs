@@ -8,7 +8,8 @@ use super::*;
 const STAKE: &str = "stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9";
 const EVM: &str = "0x7980aa64093853cb78c927e05b88fed96e945f81";
 const USER: &str = "179744071361757184";
-const MESSAGE: &str = "Link this wallet to your Discord account.\n\nDiscord ID: 179744071361757184\nNonce: ab12";
+const MESSAGE: &str =
+    "Link this wallet to your Discord account.\n\nDiscord ID: 179744071361757184\nNonce: ab12";
 
 fn ok(call: CallKind, body: &str) -> Event {
     Event::Answer(Answer {
@@ -80,10 +81,12 @@ fn signing() -> Linker {
         [Effect::Call(ApiCall::Challenge(ChainFamily::Cardano))]
     );
     let effects = link.handle(ok(CallKind::Challenge, &challenge()));
-    let [Effect::Sign(SignRequest::Cardano {
-        address_hex,
-        payload_hex,
-    })] = effects.as_slice()
+    let [
+        Effect::Sign(SignRequest::Cardano {
+            address_hex,
+            payload_hex,
+        }),
+    ] = effects.as_slice()
     else {
         panic!("a Cardano signature asked for: {effects:?}");
     };
@@ -244,7 +247,10 @@ fn an_unreachable_service_can_be_retried() {
 #[test]
 fn an_unlink_is_confirmed_then_the_servers_list_is_taken() {
     let mut link = loaded();
-    assert!(link.handle(Event::AskUnlink("not linked".into())).is_empty());
+    assert!(
+        link.handle(Event::AskUnlink("not linked".into()))
+            .is_empty()
+    );
     assert_eq!(link.phase(), Phase::Idle, "only a linked address asks");
     link.handle(Event::AskUnlink(EVM.into()));
     let wallet = link.wallets().unwrap()[0].clone();
@@ -269,7 +275,10 @@ fn a_failed_unlink_keeps_the_wallet_and_says_why() {
     link.handle(Event::AskUnlink(EVM.into()));
     link.handle(Event::ConfirmUnlink);
     let effects = link.handle(status(CallKind::Unlink, 500, ""));
-    assert!(matches!(effects.as_slice(), [Effect::Notice(_)]), "{effects:?}");
+    assert!(
+        matches!(effects.as_slice(), [Effect::Notice(_)]),
+        "{effects:?}"
+    );
     assert_eq!(link.wallets().unwrap().len(), 1);
     assert_eq!(link.phase(), Phase::Idle);
 }

@@ -11,7 +11,11 @@
 //! | [`Predicate::HeldSinceMint`] | an open interval that started at the mint | lots |
 //! | [`Predicate::TotalTenureAtLeast`] | summed interval duration, open and closed | lots |
 //! | [`Predicate::RoundTripsAtLeast`] | a count of completed intervals | lots |
-//! | [`Predicate::HasAllTraits`] | a join from held units to metadata | lots + traits |
+//! | [`Predicate::HasAllTraits`] | a set carried by one held unit | lots + traits |
+//! | [`Predicate::HasTrait`] | one value ever held | lots + traits |
+//! | [`Predicate::HasTraitValues`] | a set of values ever held across assets | lots + traits |
+//! | [`Predicate::HeldWithTraitAtOnce`] | a count held simultaneously, as a peak | lots + traits |
+//! | [`Predicate::SameValueAcrossAssets`] | assets sharing a value, ever held | lots + traits |
 //!
 //! A kind that is not here is **not silently false**: the catalogue loader is expected to
 //! refuse a definition it cannot build, which is the same rule the design doc states for
@@ -74,6 +78,59 @@ pub enum Predicate {
         /// The values, all of which must be present on the one asset.
         values: Vec<String>,
     },
+
+    /// A unit carrying `value` in `category` was ever held.
+    ///
+    /// `value = "*"` matches any value in the category. Every lot counts, open or closed:
+    /// the statement is "held", so selling the asset afterwards does not un-earn it, and
+    /// the answer is earned at the slot the first qualifying lot arrived.
+    HasTrait {
+        /// The trait category. `*` matches across categories.
+        category: String,
+        /// The value, or `*` for any value in the category.
+        value: String,
+    },
+
+    /// `at_least` of `values` in `category` were ever held, across assets.
+    ///
+    /// Each value needs one asset that carried it; unlike [`Predicate::HasAllTraits`] they
+    /// need not be held on the same asset, and unlike
+    /// [`Predicate::HeldWithTraitAtOnce`] they need not be held at the same instant.
+    HasTraitValues {
+        /// The trait category. `*` matches across categories.
+        category: String,
+        /// The values to look for. A repeated value counts once.
+        values: Vec<String>,
+        /// How many distinct values must have been seen.
+        at_least: u32,
+    },
+
+    /// `at_least` distinct units carrying `category` were held at one instant.
+    ///
+    /// A **historical peak**, not the current count: the achievement is earned at the first
+    /// slot the running count reaches the threshold and is never un-earned. `value` omitted
+    /// means any value in the category; intervals are half-open `[from, to)`, so an
+    /// acquisition and a disposal at the same slot are not simultaneous.
+    HeldWithTraitAtOnce {
+        /// The trait category.
+        category: String,
+        /// The value, or `None` for any value in the category.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        value: Option<String>,
+        /// How many distinct units must be held together.
+        at_least: u32,
+    },
+
+    /// `assets` distinct units sharing one value in `category` were ever held.
+    ///
+    /// "Ever", not "at once": the pair need not have overlapped. The answer is earned at
+    /// the slot the `assets`-th such unit arrived, for the first value to reach it.
+    SameValueAcrossAssets {
+        /// The trait category. `*` matches across categories.
+        category: String,
+        /// How many distinct units must share the value.
+        assets: u32,
+    },
 }
 
 impl Predicate {
@@ -85,6 +142,10 @@ impl Predicate {
             Self::TotalTenureAtLeast { .. } => "total_tenure_at_least",
             Self::RoundTripsAtLeast { .. } => "round_trips_at_least",
             Self::HasAllTraits { .. } => "has_all_traits",
+            Self::HasTrait { .. } => "has_trait",
+            Self::HasTraitValues { .. } => "has_trait_values",
+            Self::HeldWithTraitAtOnce { .. } => "held_with_trait_at_once",
+            Self::SameValueAcrossAssets { .. } => "same_value_across_assets",
         }
     }
 
@@ -94,12 +155,26 @@ impl Predicate {
     /// a span or hides a disposal, and a span that is short because a source was
     /// incomplete must be reported as a gap rather than as a near miss.
     pub fn needs_holder_coverage(&self) -> bool {
-        !matches!(self, Self::HasAllTraits { .. })
+        !matches!(
+            self,
+            Self::HasAllTraits { .. }
+                | Self::HasTrait { .. }
+                | Self::HasTraitValues { .. }
+                | Self::HeldWithTraitAtOnce { .. }
+                | Self::SameValueAcrossAssets { .. }
+        )
     }
 
     /// Whether the answer depends on metadata being recorded.
     pub fn needs_traits(&self) -> bool {
-        matches!(self, Self::HasAllTraits { .. })
+        matches!(
+            self,
+            Self::HasAllTraits { .. }
+                | Self::HasTrait { .. }
+                | Self::HasTraitValues { .. }
+                | Self::HeldWithTraitAtOnce { .. }
+                | Self::SameValueAcrossAssets { .. }
+        )
     }
 }
 
