@@ -13,7 +13,7 @@
 //!     ~/code/defrag/mitos/.tmp/perps-with-market.ndjson \
 //!     --catalogue ../cnft.dev-workers/config/achievements/perps.toml \
 //!     --collection e6ba9c0f --traits .tmp/perps-traits.ndjson \
-//!     --bundle .tmp/perps.bundle --built-at 1793427949
+//!     --bundle .tmp/perps-status.bundle --built-at 1793427949
 //! ```
 //!
 //! `--catalogue` swaps the six built-in definitions for the frozen catalogue, and

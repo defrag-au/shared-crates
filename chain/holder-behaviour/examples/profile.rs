@@ -6,7 +6,7 @@
 //!
 //! ```sh
 //! cargo run -p holder-behaviour --example profile -- \
-//!     .tmp/perps.bundle <credential-hex> \
+//!     .tmp/perps-status.bundle <credential-hex> \
 //!     --catalogue ~/code/defrag/cnft.dev-workers/config/achievements/perps.toml
 //! ```
 

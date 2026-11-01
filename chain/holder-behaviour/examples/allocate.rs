@@ -7,7 +7,7 @@
 //!
 //! ```sh
 //! cargo run --release -p holder-behaviour --example allocate -- \
-//!     .tmp/perps.bundle \
+//!     .tmp/perps-status.bundle \
 //!     --catalogue ~/code/defrag/cnft.dev-workers/config/achievements/perps.toml \
 //!     --gtd-core 4 --fcfs-core 2 --fcfs-flavour 3 \
 //!     --gtd-reserve 3000 --fcfs-reserve 1500 --public-reserve 1500
@@ -190,6 +190,7 @@ fn run() -> Result<(), String> {
         policy.count_rarest,
         policy.per_identity
     );
+    println!("framing     status anchors · achievements boost · every number here is an estimate");
     println!("gate        {}", describe_statuses(&gate));
     if !evaluable_promotions.is_empty() || !live_promotions.is_empty() {
         let mut parts = Vec::new();
@@ -823,6 +824,11 @@ fn print_tally(
             promote_bonus
         );
     }
+    println!(
+        "anchor      gtd {} anchored on status · {} boosted by score",
+        tally.promoted,
+        tally.gtd - tally.promoted
+    );
     if policy.gtd_core > 0 {
         println!(
             "near-miss   {} subjects are one core short of GTD (core {})",

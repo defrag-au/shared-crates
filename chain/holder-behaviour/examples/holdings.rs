@@ -6,7 +6,7 @@
 //! open at the snapshot.
 //!
 //! ```sh
-//! cargo run --release -p holder-behaviour --example holdings -- .tmp/perps-v2.bundle
+//! cargo run --release -p holder-behaviour --example holdings -- .tmp/perps-status.bundle
 //! ```
 //!
 //! The peak is the number the achievement would key on: `post-it-overload` is already a

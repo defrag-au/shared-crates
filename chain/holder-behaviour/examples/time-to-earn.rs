@@ -8,7 +8,7 @@
 //!
 //! ```sh
 //! cargo run --release -p holder-behaviour --example time-to-earn -- \
-//!     .tmp/perps-v2.bundle \
+//!     .tmp/perps-status.bundle \
 //!     --catalogue ~/code/defrag/cnft.dev-workers/config/achievements/perps.toml
 //! ```
 //!

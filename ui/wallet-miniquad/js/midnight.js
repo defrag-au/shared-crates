@@ -95,6 +95,67 @@
         pending.set(id, { status: 'err', data: message, kind: kind || 'failed' });
     }
 
+    // Whether asking again could plausibly work. A reader's own answer could
+    // not — a retry would put a second dialog in front of someone who said no —
+    // and neither could a request the wallet says is already open.
+    function worth_retrying(err) {
+        const code = (err && typeof err === 'object') ? err.code : undefined;
+        if (code === 'Rejected' || code === 'PermissionRejected') return false;
+        if (/already (has a request|pending)|already open/i.test(errMsg(err))) return false;
+        return true;
+    }
+
+    // Run `step`, and if it fails in a way that could be transient, run it once
+    // more after a beat.
+    //
+    // WHY: an MV3 wallet's service worker sleeps, and the first message that
+    // reaches its content script after the page settles has nothing to forward
+    // to — the extension logs "Error forwarding message" in its own console and
+    // the DApp sees a rejection, with no approval dialog ever shown. The next
+    // message wakes it. Without this, the reader has to tap "Try again" to get
+    // the link moving, for a fault that is entirely the extension's.
+    //
+    // The retry is safe because a request that failed to forward never reached
+    // the wallet's UI: there is no dialog to duplicate. The guard is the clock —
+    // nobody reads and approves a wallet dialog in under 300 ms, so a failure
+    // that arrives faster than that is plumbing, not a decision, whatever the
+    // wallet calls it.
+    const RETRY_DELAY_MS = 400;
+    const FAST_FAILURE_MS = 300;
+
+    function with_retry(id, what, step, ok, failed) {
+        let attempt = 0;
+        function go() {
+            // Abandoned by the host while we waited: nothing to answer.
+            if (!pending.has(id)) return;
+            attempt += 1;
+            const at = Date.now();
+            let started;
+            try {
+                started = step();
+            } catch (err) {
+                handle(err, true, at);
+                return;
+            }
+            Promise.resolve(started).then(ok).catch(function (err) { handle(err, false, at); });
+        }
+        function handle(err, sync, at) {
+            const quick = Date.now() - at < FAST_FAILURE_MS;
+            if (attempt < 2 && quick && worth_retrying(err)) {
+                log(what + ': failed in ' + (Date.now() - at) + ' ms, retrying once', {
+                    attempt: attempt,
+                    sync: sync,
+                    detail: describe(err),
+                });
+                setTimeout(go, RETRY_DELAY_MS);
+                return;
+            }
+            log(what + ': failed', describe(err));
+            failed(err);
+        }
+        go();
+    }
+
     // Whether `apiVersion` is a version this bridge can use. `undefined` is
     // refused: the field is required by the `InitialAPI` type.
     function compatible(apiVersion) {
@@ -154,22 +215,14 @@
         }
 
         log('connect', { wallet: entry.wallet.name || uuid, rdns: entry.wallet.rdns, apiVersion: entry.wallet.apiVersion, network: NETWORK });
-        // A wallet's `connect` can throw *synchronously* rather than returning a
-        // rejected promise — the extension's injection layer does exactly that
-        // when its own messaging fails. Unwrapped, that throw would leave the
-        // request pending forever and be visible only in the wallet's console.
-        let started;
-        try {
-            started = entry.wallet.connect(NETWORK);
-        } catch (err) {
-            log('connect threw synchronously', describe(err));
-            const f = failure_of(err);
-            fail(id, f.message, f.kind);
-            return id;
-        }
 
-        Promise.resolve(started)
-            .then(function (api) {
+        // One `step` so a retry re-runs the whole exchange — connect, then the
+        // status read-back, then the address. A throw, sync or async, lands in
+        // `with_retry` either way: a wallet's injection layer throws
+        // synchronously when its own messaging fails, and unwrapped that used
+        // to leave the request pending forever.
+        with_retry(id, 'connect', function () {
+            return Promise.resolve(entry.wallet.connect(NETWORK)).then(function (api) {
                 if (!api || typeof api.getUnshieldedAddress !== 'function') {
                     throw new Error('the wallet did not return a connected API');
                 }
@@ -188,19 +241,17 @@
                         return { api: api, address: String(address) };
                     });
                 });
-            })
-            .then(function (result) {
-                if (!pending.has(id)) return;
-                connected = result.api;
-                log('account', result.address);
-                pending.set(id, { status: 'ok', data: result.address });
-            })
-            .catch(function (err) {
-                if (!pending.has(id)) return;
-                log('connect failed', describe(err));
-                const f = failure_of(err);
-                fail(id, f.message, f.kind);
             });
+        }, function (result) {
+            if (!pending.has(id)) return;
+            connected = result.api;
+            log('account', result.address);
+            pending.set(id, { status: 'ok', data: result.address });
+        }, function (err) {
+            if (!pending.has(id)) return;
+            const f = failure_of(err);
+            fail(id, f.message, f.kind);
+        });
         return id;
     }
 
@@ -223,52 +274,43 @@
         const bytes = new TextEncoder().encode(message).length;
         log('signData', { address: request.address, bytes: bytes, encoding: 'text', keyType: 'unshielded' });
 
-        // See `midnight_connect`: a synchronous throw here is the difference
-        // between a 400 and a spinner that never stops.
-        let started;
-        try {
-            started = connected.signData(message, {
+        // Same retry as `connect`, and for the same reason: a message the
+        // extension failed to forward never reached the wallet's approval UI, so
+        // asking again cannot duplicate a dialog.
+        with_retry(id, 'signData', function () {
+            return Promise.resolve(connected.signData(message, {
                 encoding: 'text',
                 keyType: 'unshielded',
+            }));
+        }, function (signature) {
+            if (!pending.has(id)) return;
+            log('signed', {
+                scheme: signature && signature.scheme,
+                signatureBytes: signature && signature.signature
+                    ? String(signature.signature).length / 2
+                    : 0,
+                verifyingKeyChars: signature && signature.verifyingKey
+                    ? String(signature.verifyingKey).length
+                    : 0,
+                dataMatches: !signature || signature.data == null || signature.data === message,
             });
-        } catch (err) {
-            log('signData threw synchronously', describe(err));
+            if (!signature || !signature.signature || !signature.verifyingKey) {
+                fail(id, 'The wallet returned an incomplete signature.');
+                return;
+            }
+            pending.set(id, {
+                status: 'ok',
+                data: JSON.stringify({
+                    signature: String(signature.signature),
+                    verifyingKey: String(signature.verifyingKey),
+                    scheme: signature.scheme == null ? null : String(signature.scheme),
+                }),
+            });
+        }, function (err) {
+            if (!pending.has(id)) return;
             const f = failure_of(err);
             fail(id, f.message, f.kind);
-            return id;
-        }
-
-        Promise.resolve(started)
-            .then(function (signature) {
-                if (!pending.has(id)) return;
-                log('signed', {
-                    scheme: signature && signature.scheme,
-                    signatureBytes: signature && signature.signature
-                        ? String(signature.signature).length / 2
-                        : 0,
-                    verifyingKeyChars: signature && signature.verifyingKey
-                        ? String(signature.verifyingKey).length
-                        : 0,
-                    dataMatches: !signature || signature.data == null || signature.data === message,
-                });
-                if (!signature || !signature.signature || !signature.verifyingKey) {
-                    throw new Error('The wallet returned an incomplete signature.');
-                }
-                pending.set(id, {
-                    status: 'ok',
-                    data: JSON.stringify({
-                        signature: String(signature.signature),
-                        verifyingKey: String(signature.verifyingKey),
-                        scheme: signature.scheme == null ? null : String(signature.scheme),
-                    }),
-                });
-            })
-            .catch(function (err) {
-                if (!pending.has(id)) return;
-                log('signData failed', describe(err));
-                const f = failure_of(err);
-                fail(id, f.message, f.kind);
-            });
+        });
         return id;
     }
 
