@@ -320,15 +320,26 @@ impl EvmChain {
 
 /// The Midnight networks this workspace names.
 ///
-/// ⚠️ **Unverified vocabulary, preserved on request (2026-09-27).** Nothing in this
-/// workspace constructs one, and no Midnight chain has been checked against anything
-/// the way `EvmChain::Robinhood`'s id was — `testnet` is here only because it is the
-/// spelling this repository's own docs already used (`midnight:testnet`). It exists so
-/// the name is not lost when `shared_types::Chain` goes away, and it is marked so a
-/// later session does not read it as a constant somebody verified.
+/// The vocabulary is the Midnight wallet SDK's own, verified 2026-11-01 against
+/// `packages/abstractions/src/NetworkId.ts` (`mainnet`, `testnet`, `devnet`, `qanet`,
+/// `undeployed`, `preview`, `preprod`, `stagenet`). `testnet` is one of them — the
+/// earlier note here called it an unverified guess, which was wrong about the facts
+/// even though it was right to distrust the source.
+///
+/// **This enum is deliberately a subset, and refuses the rest.** The SDK types a
+/// network id as `WellKnownNetworkId | string`, so a wallet may connect to anything;
+/// `ChainRef` is `Copy` and closed for every family, so a network we do not name has
+/// nowhere to go. Refusing is the safe direction: an unrecognised reference is an
+/// `UnknownReference` error, never a default, because defaulting to `midnight:mainnet`
+/// is how a preview wallet's link is filed against the wrong network. Naming another
+/// one later is purely additive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MidnightNetwork {
+    /// `midnight:mainnet` — the only network this workspace writes links for.
     Mainnet,
+    /// `midnight:preview` — the public test network the address-format docs use.
+    Preview,
+    /// `midnight:testnet`.
     Testnet,
 }
 
@@ -337,6 +348,7 @@ impl MidnightNetwork {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Mainnet => "mainnet",
+            Self::Preview => "preview",
             Self::Testnet => "testnet",
         }
     }
@@ -345,6 +357,7 @@ impl MidnightNetwork {
     pub const fn as_chain_str(self) -> &'static str {
         match self {
             Self::Mainnet => "midnight:mainnet",
+            Self::Preview => "midnight:preview",
             Self::Testnet => "midnight:testnet",
         }
     }
@@ -355,6 +368,7 @@ impl MidnightNetwork {
         let bare = lower.strip_prefix("midnight:").unwrap_or(&lower);
         match bare {
             "mainnet" => Some(Self::Mainnet),
+            "preview" => Some(Self::Preview),
             "testnet" => Some(Self::Testnet),
             _ => None,
         }
@@ -1125,6 +1139,7 @@ mod tests {
             ChainRef::Xrpl(XrplNetwork::Testnet),
             ChainRef::Xrpl(XrplNetwork::Devnet),
             ChainRef::Midnight(MidnightNetwork::Mainnet),
+            ChainRef::Midnight(MidnightNetwork::Preview),
             ChainRef::Midnight(MidnightNetwork::Testnet),
         ] {
             let s = chain.as_caip2();
@@ -1341,11 +1356,14 @@ mod tests {
 
     #[test]
     fn midnight_is_a_known_namespace_and_round_trips() {
-        // Added 2026-09-27 with `MidnightNetwork`: this workspace keeps a `Midnight`
-        // chain even though nothing constructs one, so the name is not lost when
-        // `shared_types::Chain` goes away. The vocabulary is unverified — see
-        // `MidnightNetwork`.
-        for network in [MidnightNetwork::Mainnet, MidnightNetwork::Testnet] {
+        // The vocabulary is the wallet SDK's `NetworkId` object, checked 2026-11-01 —
+        // see `MidnightNetwork`. `testnet` is a real well-known id, and `preview` was
+        // missing from the enum until the Discord link work needed a network to name.
+        for network in [
+            MidnightNetwork::Mainnet,
+            MidnightNetwork::Preview,
+            MidnightNetwork::Testnet,
+        ] {
             let chain = ChainRef::Midnight(network);
             assert_eq!(chain.family(), ChainFamily::Midnight);
             assert_eq!(chain.namespace(), "midnight");

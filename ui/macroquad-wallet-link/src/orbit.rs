@@ -988,14 +988,27 @@ mod tests {
     }
 
     /// Every linkable chain is a planet, linked on or not; a chain only a
-    /// link names joins them, in the reader's order.
+    /// link names joins them. `planet_order` sorts, so the order is
+    /// `ChainFamily`'s own — not the order the links arrived in.
     #[test]
     fn every_linkable_chain_is_a_planet_and_others_join_them() {
-        assert_eq!(planet_order(&[]), [ChainFamily::Cardano, ChainFamily::Evm]);
+        assert_eq!(
+            planet_order(&[]),
+            [
+                ChainFamily::Cardano,
+                ChainFamily::Evm,
+                ChainFamily::Midnight
+            ]
+        );
         let ws = [wallet("solana", "So1")];
         assert_eq!(
             planet_order(&ws),
-            [ChainFamily::Cardano, ChainFamily::Evm, ChainFamily::Solana]
+            [
+                ChainFamily::Cardano,
+                ChainFamily::Evm,
+                ChainFamily::Solana,
+                ChainFamily::Midnight
+            ]
         );
     }
 

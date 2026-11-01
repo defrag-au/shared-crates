@@ -78,5 +78,5 @@ if let Some(event) = linker.update(frame) { /* Linked / Unlinked */ }
 linker.show(frame, &painter, rect);
 ```
 
-The page needs `wallet.js` and `evm.js` (wallet-miniquad), `platform.js` (miniquad-platform)
-and `app.js` (macroquad-app).
+The page needs `wallet.js`, `evm.js` and `midnight.js` (wallet-miniquad), `platform.js`
+(miniquad-platform) and `app.js` (macroquad-app).

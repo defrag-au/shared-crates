@@ -82,6 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut oldest: Option<u64> = None;
     let mut newest: Option<u64> = None;
     let mut with_parties = 0u32;
+    let mut with_transaction = 0u32;
     let mut seen = 0u32;
     let mut cursor: Option<String> = None;
     let mut fetched = 0usize;
@@ -139,6 +140,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if addresses(event).len() == 2 {
                 with_parties += 1;
             }
+            // A shared transaction hash is what lets an event be joined to a block: the
+            // node resolves it to a receipt, and the receipt carries the height.
+            if event
+                .get("transaction")
+                .and_then(Value::as_str)
+                .is_some_and(|hash| hash.len() == 66 && hash.starts_with("0x"))
+            {
+                with_transaction += 1;
+            }
         }
 
         match body.get("next").and_then(Value::as_str) {
@@ -181,6 +191,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => println!("span     no event_timestamp on any event"),
     }
     println!("parties  {with_parties} of {seen} events name two accounts");
+    println!("txn      {with_transaction} of {seen} events carry a transaction hash");
     for (kind, keys) in shapes.iter().take(3) {
         println!(
             "{:<8} {}",
@@ -207,10 +218,12 @@ fn addresses(event: &Value) -> Vec<&str> {
         }
     }
     for key in ["from_account", "to_account"] {
-        if let Some(address) = event.get(key).and_then(|a| a.get("address")) {
-            if let Some(address) = address.as_str() {
-                found.push(address);
-            }
+        if let Some(address) = event
+            .get(key)
+            .and_then(|account| account.get("address"))
+            .and_then(Value::as_str)
+        {
+            found.push(address);
         }
     }
     found

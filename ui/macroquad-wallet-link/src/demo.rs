@@ -17,6 +17,7 @@
 //! | Vespr | refuses to connect |
 //! | Rabby | connects a new EVM account; signs |
 //! | MetaMask | connects the EVM account already linked |
+//! | 1AM | connects a new Midnight account; signs |
 //!
 //! Time is counted in polls, one a frame, so a capture at `--at` sees the same
 //! moment every run.
@@ -26,7 +27,7 @@ use std::collections::VecDeque;
 use chains::ChainFamily;
 use macroquad_gamekit::wallet_connection::{Connection, ConnectionEvent};
 use macroquad_gamekit::wallet_modal::{Account, ChainOption, WalletModalAction, WalletOption};
-use macroquad_wallet_flow::{ChainHost, cardano_account};
+use macroquad_wallet_flow::{ChainHost, cardano_account, midnight_account};
 use wallet_link_flow::wallet_link::LinkedWallet;
 use wallet_link_flow::wallet_link::link::{Identity, LinkChallenge, LinkVerified};
 use wallet_link_flow::{Answer, ApiCall, Event, Reply, SignRequest, Signature, TokenClaims};
@@ -58,6 +59,77 @@ pub fn demo_stake(byte: &str) -> String {
 /// A synthetic EVM account, `byte` repeated.
 pub fn demo_evm(byte: &str) -> String {
     format!("0x{}", byte.repeat(20))
+}
+
+/// A synthetic Midnight unshielded address over `byte` repeated, bech32m as a
+/// wallet writes it. Synthetic in the same way the Cardano fixtures are: the
+/// payload is visibly a repeated byte, no wallet holds the key, and the checksum
+/// is real — [`bech32m_encode`] is checked against the connector
+/// specification's own `makeTransfer` address in this module's tests.
+pub fn demo_midnight(byte: u8) -> String {
+    bech32m_encode("mn_addr", &[byte; 32])
+}
+
+/// bech32m's charset, and its checksum constant. Plain bech32 is `1`; Midnight
+/// addresses are bech32m, so a Cardano-style encoder would produce a string no
+/// Midnight wallet accepts.
+const CHARSET: &[u8; 32] = b"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+const BECH32M_CONST: u32 = 0x2bc8_30a3;
+
+fn polymod(values: impl Iterator<Item = u8>) -> u32 {
+    const GEN: [u32; 5] = [
+        0x3b6a_57b2,
+        0x2650_8e6d,
+        0x1ea1_19fa,
+        0x3d42_33dd,
+        0x2a14_62b3,
+    ];
+    let mut chk = 1u32;
+    for v in values {
+        let top = chk >> 25;
+        chk = ((chk & 0x01ff_ffff) << 5) ^ u32::from(v);
+        for (i, g) in GEN.iter().enumerate() {
+            if (top >> i) & 1 == 1 {
+                chk ^= g;
+            }
+        }
+    }
+    chk
+}
+
+/// `bytes` as a bech32m string under `hrp`.
+fn bech32m_encode(hrp: &str, bytes: &[u8]) -> String {
+    let mut values = Vec::with_capacity(bytes.len() * 8 / 5 + 1);
+    let (mut acc, mut bits) = (0u32, 0u32);
+    for b in bytes {
+        acc = (acc << 8) | u32::from(*b);
+        bits += 8;
+        while bits >= 5 {
+            bits -= 5;
+            values.push(((acc >> bits) & 31) as u8);
+        }
+    }
+    if bits > 0 {
+        values.push(((acc << (5 - bits)) & 31) as u8);
+    }
+    let expanded = hrp
+        .bytes()
+        .map(|b| b >> 5)
+        .chain([0])
+        .chain(hrp.bytes().map(|b| b & 31));
+    let mut input: Vec<u8> = expanded.chain(values.iter().copied()).collect();
+    input.extend_from_slice(&[0u8; 6]);
+    let residue = polymod(input.into_iter()) ^ BECH32M_CONST;
+    let mut out = String::with_capacity(hrp.len() + 1 + values.len() + 6);
+    out.push_str(hrp);
+    out.push('1');
+    for v in &values {
+        out.push(CHARSET[usize::from(*v)] as char);
+    }
+    for i in 0..6 {
+        out.push(CHARSET[((residue >> (5 * (5 - i))) & 31) as usize] as char);
+    }
+    out
 }
 
 /// What the demo user starts with linked.
@@ -218,6 +290,10 @@ impl LinkIo for DemoIo {
                 let body = self.link("eip155", r.address.to_lowercase());
                 self.reply(call, CALL_FRAMES, body);
             }
+            ApiCall::VerifyMidnight(r) => {
+                let body = self.link("midnight:mainnet", r.address.clone());
+                self.reply(call, CALL_FRAMES, body);
+            }
             ApiCall::Unlink(r) => {
                 self.wallets.retain(|w| w.address != r.address);
                 let body = self.list();
@@ -241,6 +317,11 @@ impl LinkIo for DemoIo {
             }),
             SignRequest::Evm { .. } => Event::Signed(Signature::Evm {
                 signature: "demo".into(),
+            }),
+            SignRequest::Midnight { .. } => Event::Signed(Signature::Midnight {
+                signature: "demo".into(),
+                key: "demo".into(),
+                scheme: None,
             }),
         };
         self.after(WALLET_FRAMES, event);
@@ -293,6 +374,16 @@ impl DemoChain {
         )
     }
 
+    /// One wallet, because it is the one Midnight wallet this repository has a
+    /// name for. A second invented brand would be a fixture pretending to be a
+    /// product.
+    pub fn midnight() -> Self {
+        Self::new(
+            ChainFamily::Midnight,
+            vec![WalletOption::new("com.example.1am", "1AM")],
+        )
+    }
+
     fn new(family: ChainFamily, wallets: Vec<WalletOption>) -> Self {
         Self {
             family,
@@ -321,6 +412,7 @@ impl DemoChain {
             "typhoncip30" => cardano("44"),
             "io.rabby" => evm("1f"),
             "io.metamask" => evm("2e"),
+            "com.example.1am" => midnight_account(&demo_midnight(0x55)),
             _ => return None,
         })
     }
@@ -375,6 +467,60 @@ impl ChainHost for DemoChain {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The connector specification's own `makeTransfer` example address: a
+    /// wallet's output, not something this module built, which is what makes it
+    /// worth checking the codec against.
+    const SPEC_ADDRESS: &str = "mn_addr1asujt0dayj4pelgq97wv75hjhscqv9epmzzpapkf8sy8c87jhh9s6e0fs3";
+
+    /// The bech32m checksum over `address`, as a decoder computes it. `Ok(())`
+    /// means the string a Midnight wallet would accept as well-formed.
+    fn checksum_ok(address: &str) -> Result<(), u32> {
+        let split = address.rfind('1').expect("a separator");
+        let (hrp, data) = (&address[..split], &address[split + 1..]);
+        let values: Vec<u8> = data
+            .bytes()
+            .map(|c| CHARSET.iter().position(|&x| x == c).map(|i| i as u8))
+            .collect::<Option<_>>()
+            .expect("bech32 characters");
+        let expanded = hrp
+            .bytes()
+            .map(|b| b >> 5)
+            .chain([0])
+            .chain(hrp.bytes().map(|b| b & 31));
+        match polymod(expanded.chain(values)) {
+            BECH32M_CONST => Ok(()),
+            other => Err(other),
+        }
+    }
+
+    /// A wallet's own address passes the decoder's check, so the charset, the
+    /// HRP expansion and the polymod this module encodes with are the real
+    /// ones — not a self-consistent invention.
+    #[test]
+    fn a_real_wallet_address_checks_out() {
+        assert_eq!(checksum_ok(SPEC_ADDRESS), Ok(()));
+    }
+
+    #[test]
+    fn a_synthetic_address_is_a_well_formed_mainnet_address() {
+        let address = demo_midnight(0x55);
+        assert!(address.starts_with("mn_addr1"), "{address}");
+        assert_eq!(checksum_ok(&address), Ok(()), "checksum: {address}");
+        assert_ne!(address, demo_midnight(0x56));
+    }
+
+    /// A changed payload changes the checksum, which is why a preview address
+    /// cannot be made by editing the HRP of a mainnet one.
+    #[test]
+    fn the_hrp_is_covered_by_the_checksum() {
+        let payload = [0x55u8; 32];
+        let mainnet = bech32m_encode("mn_addr", &payload);
+        let preview = bech32m_encode("mn_addr_preview", &payload);
+        assert_ne!(mainnet[..mainnet.len() - 6], preview[..preview.len() - 6]);
+        assert_eq!(checksum_ok(&mainnet), Ok(()));
+        assert_eq!(checksum_ok(&preview), Ok(()));
+    }
 
     #[test]
     fn the_fixtures_are_readable_addresses() {

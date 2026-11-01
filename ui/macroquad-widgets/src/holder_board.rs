@@ -208,11 +208,16 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
         p.text_in(label, r, s, p.theme.color.text_muted, align);
     }
     let rows_y = heads.bottom() + 2.0;
+    // The footer is drawn in the last 12 points when the list runs past the
+    // screen, so a row is not allowed into that band even if the host handed
+    // it more than it said fits: the band and the range it prints must agree.
+    let footer = vm.count > vm.fits || !vm.complete;
+    let foot = if footer { 12.0 } else { 0.0 };
     for row in vm.rows {
         let y = rows_y + row.at * ROW_H;
         // Off the list either way: past its foot, or scrolled up out of it
         // and still easing away.
-        if y + ROW_H > area.bottom() + 0.5 || y < rows_y - 0.5 {
+        if y + ROW_H > area.bottom() - foot + 0.5 || y < rows_y - 0.5 {
             continue;
         }
         let rect = Rect::new(area.x, y, area.w, ROW_H - 2.0);
@@ -282,14 +287,7 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
         // The selection's own mark, over the fills: the row the detail belongs
         // to, in the accent the rest of the screen uses for "this one".
         if selected {
-            draw_rounded_rect(
-                rect.x,
-                rect.y,
-                2.0,
-                rect.h,
-                1.0,
-                p.theme.color.accent,
-            );
+            draw_rounded_rect(rect.x, rect.y, 2.0, rect.h, 1.0, p.theme.color.accent);
         }
         let mid = |x: f32, w: f32| Rect::new(x, rect.y, w, rect.h);
         p.text_in(
@@ -367,7 +365,7 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
     }
     // Where the list is, when it runs past the screen, and whether the
     // client holds every holder or only the largest.
-    if vm.count > vm.fits || !vm.complete {
+    if footer {
         let first = vm.top + 1;
         let last = (vm.top + vm.fits).min(vm.count);
         let range = match vm.count > vm.fits {

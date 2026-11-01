@@ -44,7 +44,8 @@ use statig::prelude::{InitializedStateMachine, IntoStateMachineExt};
 use wallet_link::LinkedWallet;
 use wallet_link::link::{
     CARDANO_CHALLENGE_PATH, CARDANO_VERIFY_PATH, CardanoLinkRequest, EVM_CHALLENGE_PATH,
-    EVM_VERIFY_PATH, EvmLinkRequest, Identity, ME_PATH, UNLINK_PATH, UnlinkRequest, WALLETS_PATH,
+    EVM_VERIFY_PATH, EvmLinkRequest, Identity, ME_PATH, MIDNIGHT_CHALLENGE_PATH,
+    MIDNIGHT_VERIFY_PATH, MidnightLinkRequest, UNLINK_PATH, UnlinkRequest, WALLETS_PATH,
 };
 
 pub use claim::{Claim, LINKABLE, SignRequest, Signature, bech32_to_hex, hex};
@@ -131,6 +132,7 @@ pub enum ApiCall {
     Challenge(ChainFamily),
     VerifyCardano(CardanoLinkRequest),
     VerifyEvm(EvmLinkRequest),
+    VerifyMidnight(MidnightLinkRequest),
     Unlink(UnlinkRequest),
 }
 
@@ -140,7 +142,9 @@ impl ApiCall {
             Self::Me => CallKind::Me,
             Self::Wallets => CallKind::Wallets,
             Self::Challenge(_) => CallKind::Challenge,
-            Self::VerifyCardano(_) | Self::VerifyEvm(_) => CallKind::Verify,
+            Self::VerifyCardano(_) | Self::VerifyEvm(_) | Self::VerifyMidnight(_) => {
+                CallKind::Verify
+            }
             Self::Unlink(_) => CallKind::Unlink,
         }
     }
@@ -159,10 +163,12 @@ impl ApiCall {
             Self::Me => ME_PATH,
             Self::Wallets => WALLETS_PATH,
             Self::Challenge(ChainFamily::Evm) => EVM_CHALLENGE_PATH,
+            Self::Challenge(ChainFamily::Midnight) => MIDNIGHT_CHALLENGE_PATH,
             // Only linkable chains reach a challenge (see [`LINKABLE`]).
             Self::Challenge(_) => CARDANO_CHALLENGE_PATH,
             Self::VerifyCardano(_) => CARDANO_VERIFY_PATH,
             Self::VerifyEvm(_) => EVM_VERIFY_PATH,
+            Self::VerifyMidnight(_) => MIDNIGHT_VERIFY_PATH,
             Self::Unlink(_) => UNLINK_PATH,
         }
     }
@@ -172,6 +178,7 @@ impl ApiCall {
         match self {
             Self::VerifyCardano(r) => serde_json::to_string(r).ok(),
             Self::VerifyEvm(r) => serde_json::to_string(r).ok(),
+            Self::VerifyMidnight(r) => serde_json::to_string(r).ok(),
             Self::Unlink(r) => serde_json::to_string(r).ok(),
             _ => None,
         }

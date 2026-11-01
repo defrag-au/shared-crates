@@ -181,11 +181,7 @@ mod tests {
         book.want("stake1a");
         book.want("stake1b");
         assert_eq!(book.next_batch().as_deref(), Some(batch.as_slice()));
-        assert!(apply_reply(
-            &mut book,
-            &batch,
-            r#"{"stake1a":"$alice"}"#
-        ));
+        assert!(apply_reply(&mut book, &batch, r#"{"stake1a":"$alice"}"#));
         assert_eq!(book.name("stake1a"), Some("$alice"));
         // Absent from the map is an answer too, and is settled as one.
         assert_eq!(book.status("stake1b"), Status::Nameless);

@@ -39,6 +39,7 @@ pub struct LinkedWallet {
     /// |---|---|---|
     /// | Cardano | `cardano:mainnet` | a stake address encodes its network |
     /// | EVM | `eip155` | the account comes from a key alone, so a signature proves control on **every** EVM chain |
+    /// | Midnight | `midnight:mainnet` | an unshielded address's HRP names its network (`mn_addr` on mainnet), and only mainnet is accepted |
     ///
     /// So an EVM link asserts no chain. A consumer that reads ownership on a
     /// particular EVM chain looks the address up *there*; the link does not, and
@@ -47,9 +48,9 @@ pub struct LinkedWallet {
     pub chain: String,
 
     /// The address in the form its chain uses: bech32 `stake1…` on Cardano,
-    /// lower-case `0x…` on EVM. Cardano links carry the **reward** address —
-    /// the one credential a CIP-8 signature proves, so every payment address
-    /// under it is covered.
+    /// lower-case `0x…` on EVM, bech32m `mn_addr…` on Midnight. Cardano links
+    /// carry the **reward** address — the one credential a CIP-8 signature
+    /// proves, so every payment address under it is covered.
     pub address: String,
 
     /// ADA handle, when the wallet has one. Cardano only — handles are Cardano
@@ -140,6 +141,17 @@ impl LinkedWallet {
         (self.namespace() == "eip155").then_some(self.address.as_str())
     }
 
+    /// The unshielded address when this is a Midnight link, else `None` — the
+    /// Midnight sibling of [`Self::cardano_address`].
+    ///
+    /// Chain-specific, unlike [`Self::evm_address`]: the link names
+    /// `midnight:mainnet`, and a bech32m address for another Midnight network
+    /// would decode to the same 32 bytes, so a consumer that accepted the
+    /// address without reading the chain could confuse the two.
+    pub fn midnight_address(&self) -> Option<&str> {
+        (self.namespace() == "midnight").then_some(self.address.as_str())
+    }
+
     /// The CAIP namespace half of `chain` — the whole string for a family-wide
     /// link, the part before the colon for a chain-specific one. Read by hand
     /// rather than through `chains`, so this crate keeps serde as its only
@@ -204,6 +216,37 @@ mod tests {
         assert_eq!(evm("eip155:4663").evm_address(), Some(ACCOUNT));
         assert_eq!(evm("eip155").cardano_address(), None);
         assert_eq!(cardano("stake1abc", None).evm_address(), None);
+    }
+
+    /// The address from the connector specification's own `makeTransfer`
+    /// example — a wallet's output, not something this crate built.
+    const UNSHIELDED: &str = "mn_addr1asujt0dayj4pelgq97wv75hjhscqv9epmzzpapkf8sy8c87jhh9s6e0fs3";
+
+    /// A Midnight link is chain-specific, and each of the three accessors names
+    /// its own chain and nothing else — a Midnight address handed to a Cardano
+    /// lookup must not resolve.
+    #[test]
+    fn midnight_address_yields_only_midnight_links() {
+        let midnight = LinkedWallet {
+            chain: "midnight:mainnet".to_string(),
+            address: UNSHIELDED.to_string(),
+            handle: None,
+        };
+        assert_eq!(midnight.midnight_address(), Some(UNSHIELDED));
+        assert_eq!(midnight.cardano_address(), None);
+        assert_eq!(midnight.evm_address(), None);
+        assert_eq!(cardano("stake1abc", None).midnight_address(), None);
+        assert_eq!(evm("eip155").midnight_address(), None);
+
+        let json = serde_json::to_string(&midnight).unwrap();
+        assert!(
+            json.contains(r#""chain":"midnight:mainnet""#),
+            "chain on the wire: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<LinkedWallet>(&json).unwrap(),
+            midnight
+        );
     }
 
     /// Producers may add fields; a consumer must not break on them.

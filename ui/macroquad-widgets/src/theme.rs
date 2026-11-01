@@ -47,7 +47,7 @@
 //! difference between a divergence and a drift.
 
 use macroquad::prelude::Color;
-use ui_theme::{tokens::raw, ColorTokens, Paint, Palette, Sequential, SeriesPalette, TypeScale};
+use ui_theme::{ColorTokens, Paint, Palette, Sequential, SeriesPalette, TypeScale, tokens::raw};
 
 /// One shared value as this renderer's colour.
 ///

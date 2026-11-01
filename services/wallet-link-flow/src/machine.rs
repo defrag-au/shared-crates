@@ -420,6 +420,7 @@ impl Signature {
         match self {
             Self::Cardano { .. } => ChainFamily::Cardano,
             Self::Evm { .. } => ChainFamily::Evm,
+            Self::Midnight { .. } => ChainFamily::Midnight,
         }
     }
 }

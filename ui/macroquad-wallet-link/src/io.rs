@@ -71,6 +71,12 @@ impl LinkIo for LiveIo {
                 ChainFamily::Evm,
                 wallet_miniquad::evm::personal_sign(message_hex, address),
             ),
+            // The message goes over as text: the wallet does the
+            // `midnight_signed_message:` prefixing and the hashing itself.
+            SignRequest::Midnight { address, message } => (
+                ChainFamily::Midnight,
+                wallet_miniquad::midnight::sign_message(address, message),
+            ),
         });
     }
 
@@ -91,6 +97,7 @@ impl LinkIo for LiveIo {
         if let Some((family, req)) = self.signing {
             let polled = match family {
                 ChainFamily::Evm => wallet_miniquad::evm::poll(req),
+                ChainFamily::Midnight => wallet_miniquad::midnight::poll(req),
                 _ => wallet_miniquad::poll_detailed(req),
             };
             if let Some(event) = signature_event(family, polled) {
@@ -109,6 +116,14 @@ pub fn signature_event(family: ChainFamily, polled: PollResultDetailed) -> Optio
         PollResultDetailed::Pending => return None,
         PollResultDetailed::Ok { data } => match family {
             ChainFamily::Evm => Event::Signed(Signature::Evm { signature: data }),
+            ChainFamily::Midnight => match wallet_miniquad::midnight::parse_signature(&data) {
+                Some(s) => Event::Signed(Signature::Midnight {
+                    signature: s.signature,
+                    key: s.verifying_key,
+                    scheme: s.scheme,
+                }),
+                None => Event::SignFailed("The wallet's signature couldn't be read.".into()),
+            },
             _ => match serde_json::from_str::<DataSignature>(&data) {
                 Ok(s) => Event::Signed(Signature::Cardano {
                     signature: s.signature,
@@ -142,6 +157,24 @@ mod tests {
             Some(Event::Signed(Signature::Cardano {
                 signature: "84a4".into(),
                 key: "a401".into()
+            }))
+        );
+    }
+
+    #[test]
+    fn a_midnight_signature_reads_into_its_key_and_scheme() {
+        let event = signature_event(
+            ChainFamily::Midnight,
+            PollResultDetailed::Ok {
+                data: r#"{"signature":"ef","verifyingKey":"12","scheme":null}"#.into(),
+            },
+        );
+        assert_eq!(
+            event,
+            Some(Event::Signed(Signature::Midnight {
+                signature: "ef".into(),
+                key: "12".into(),
+                scheme: None,
             }))
         );
     }

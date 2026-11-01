@@ -43,7 +43,9 @@ use macroquad_gamekit::wallet_modal::{
     Account, ProofWords, SignInPhase, WalletModalAction, short_address,
 };
 use macroquad_gamekit::{Animated, Ease, Frame, Starfield};
-use macroquad_wallet_flow::{CardanoHost, EvmHost, WalletConnector, WalletFlow, copy_text};
+use macroquad_wallet_flow::{
+    CardanoHost, EvmHost, MIDNIGHT_DETAIL, MidnightHost, WalletConnector, WalletFlow, copy_text,
+};
 use macroquad_widgets::{
     Align, COPIED_SECS, Gradient, Line, Message, Painter, Pill, Sheet, SheetForm, SheetState,
     TextSize, Trailing, WellRow, fill_gradient, pill_row, segmented, sheet_card, sheet_chrome,
@@ -232,7 +234,8 @@ impl WalletLinker {
     pub fn demo_with(wallets: Vec<LinkedWallet>) -> Self {
         let connector = WalletConnector::new()
             .host(demo::DemoChain::cardano())
-            .host(demo::DemoChain::evm());
+            .host(demo::DemoChain::evm())
+            .host(demo::DemoChain::midnight());
         Self::new(
             demo::DemoIo::new(wallets),
             link_copy(connector),
@@ -1000,7 +1003,8 @@ pub fn live_connector() -> WalletConnector {
     link_copy(
         WalletConnector::new()
             .host(CardanoHost::new(WalletFlow::new()))
-            .host(EvmHost::new()),
+            .host(EvmHost::new())
+            .host(MidnightHost::new()),
     )
 }
 
@@ -1025,6 +1029,17 @@ pub fn claim_of(family: ChainFamily, account: &Account) -> Option<Claim> {
         ChainFamily::Evm => Some(Claim::Evm {
             address: account.address.clone(),
         }),
+        // Read from the detail, not the account's own address: a Midnight
+        // wallet holds several kinds of address and only the unshielded one can
+        // be linked, so the claim names the credential rather than assuming the
+        // one on screen is the right one.
+        ChainFamily::Midnight => account
+            .details
+            .iter()
+            .find(|d| d.label == MIDNIGHT_DETAIL)
+            .map(|d| Claim::Midnight {
+                address: d.value.clone(),
+            }),
         _ => None,
     }
 }
@@ -1152,6 +1167,27 @@ mod tests {
         assert_eq!(claim_of(ChainFamily::Solana, &account), None);
     }
 
+    /// The live connector offers every linkable chain, and offers it as ready
+    /// rather than as a placeholder. This is the wiring a missing chain tile
+    /// comes from: a host nobody added cannot appear in the modal, and a chain
+    /// listed with `ChainOption::soon` is shown dimmed and untappable.
+    #[test]
+    fn the_live_connector_offers_every_linkable_chain() {
+        use macroquad_gamekit::wallet_modal::Support;
+
+        let connector = live_connector();
+        let chains: Vec<_> = connector.vm().chains.iter().map(|c| c.family).collect();
+        assert_eq!(chains, LINKABLE.to_vec());
+        assert!(
+            connector
+                .vm()
+                .chains
+                .iter()
+                .all(|c| c.support == Support::Ready),
+            "every linkable chain is connectable, not \"coming soon\""
+        );
+    }
+
     /// The bech32 a link is stored in decodes to the hex `signData` takes:
     /// the flow's decoder agrees with pallas, both ways.
     #[test]
@@ -1159,5 +1195,31 @@ mod tests {
         let stake = demo::demo_stake("33");
         let hex = wallet_link_flow::bech32_to_hex(&stake).expect("decodes");
         assert_eq!(wallet_miniquad::hex_to_bech32(&hex), stake);
+    }
+
+    /// A Midnight account claims the address under the label that names the
+    /// credential — not whatever address the account happens to show first.
+    #[test]
+    fn a_midnight_account_claims_its_unshielded_address() {
+        let unshielded = demo::demo_midnight(0x55);
+        let account = macroquad_wallet_flow::midnight_account(&unshielded);
+        assert_eq!(
+            claim_of(ChainFamily::Midnight, &account),
+            Some(Claim::Midnight {
+                address: unshielded.clone()
+            })
+        );
+
+        // The claim comes from the labelled detail, so an account that has no
+        // unshielded address claims nothing — it does not fall back to whatever
+        // address the account is showing.
+        let hex = format!("01{}{}", "11".repeat(28), "22".repeat(28));
+        let cardano = macroquad_wallet_flow::cardano_account(
+            &wallet_miniquad::hex_to_bech32(&hex),
+            wallet_miniquad::stake_address_bech32(&hex).as_deref(),
+            1,
+            None,
+        );
+        assert_eq!(claim_of(ChainFamily::Midnight, &cardano), None);
     }
 }

@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use holder_behaviour::{Definition, Predicate};
+use holder_behaviour::{Definition, Predicate, StatusPredicate, TokenRef};
 
 /// A catalogue, with the predicates this build can answer resolved once at load.
 pub struct LoadedCatalogue {
@@ -16,9 +16,10 @@ pub struct LoadedCatalogue {
     /// One entry per catalogue achievement, in the same order: what this build can answer,
     /// or `None`. Computed once, so a definition and a rarity row cannot disagree.
     predicates: Vec<Option<Predicate>>,
-    /// The `[allocation]` block, when the catalogue carries one. Definitions are frozen;
-    /// this policy is what a campaign tunes.
-    allocation: Option<Allocation>,
+    /// The policy the catalogue proposes, when it carries an `[allocation]` block.
+    plan: Option<Plan>,
+    /// Every declared status, by id.
+    statuses: Vec<Status>,
 }
 
 /// A gated allocation policy, as the catalogue writes it.
@@ -38,10 +39,42 @@ pub struct Allocation {
     pub count_rarest: u32,
 }
 
+/// A condition that is true at a read, declared once and referenced by id.
+///
+/// Declared in the catalogue rather than in the workspace's code so a campaign can add
+/// "holds a leader role" or "holds a partner collection" without a deploy — the same reason the
+/// achievement definitions live there.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Status {
+    /// Stable id, which is what `requires` and `promotes` name.
+    pub id: String,
+    /// What it asks.
+    pub predicate: StatusPredicate,
+}
+
+/// The policy a campaign runs: the thresholds, and the statuses that decide who is in.
+///
+/// Kept apart from [`Allocation`] because that type is `Copy` and swept over every field, while
+/// this names statuses by id and is read once.
+#[derive(Debug, Clone)]
+pub struct Plan {
+    /// The thresholds and the cap.
+    pub allocation: Allocation,
+    /// Statuses that must **all** hold for any achievement to count. The gate.
+    pub requires: Vec<String>,
+    /// Statuses that put an identity in the guaranteed phase regardless of its score. Any one
+    /// suffices.
+    pub promotes: Vec<String>,
+    /// Extra mints a promoted identity may take, on top of `allocation.per_identity`.
+    pub promote_bonus: u32,
+}
+
 #[derive(serde::Deserialize)]
 struct CatalogueFile {
     #[serde(default, rename = "achievement")]
     achievements: Vec<CatalogueEntry>,
+    #[serde(default)]
+    status: Vec<StatusFile>,
     #[serde(default)]
     allocation: Option<AllocationFile>,
 }
@@ -56,6 +89,28 @@ struct AllocationFile {
     rarity_floor: f64,
     #[serde(default = "default_rarest")]
     count_rarest: u32,
+    /// Status ids that must all hold before any achievement counts. Empty means no gate.
+    #[serde(default)]
+    requires: Vec<String>,
+    /// Status ids that put an identity straight into the guaranteed phase.
+    #[serde(default)]
+    promotes: Vec<String>,
+    /// Mints a promoted identity may take beyond `per_identity`.
+    #[serde(default)]
+    promote_bonus: u32,
+}
+
+#[derive(serde::Deserialize)]
+struct StatusFile {
+    id: String,
+    /// A CAIP-19 asset id — the collection the read must cover.
+    collection: TokenRef,
+    /// Holds at least this many units. Mutually exclusive with `trait`.
+    #[serde(default)]
+    at_least: Option<u64>,
+    /// A trait category; any value satisfies it. Mutually exclusive with `at_least`.
+    #[serde(default, rename = "trait")]
+    trait_category: Option<String>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -78,8 +133,8 @@ fn default_rarest() -> u32 {
     3
 }
 
-impl From<AllocationFile> for Allocation {
-    fn from(file: AllocationFile) -> Self {
+impl From<&AllocationFile> for Allocation {
+    fn from(file: &AllocationFile) -> Self {
         Self {
             gtd_core: file.gtd.core_at_least,
             fcfs_core: file.fcfs.core_at_least,
@@ -88,6 +143,36 @@ impl From<AllocationFile> for Allocation {
             rarity_floor: file.rarity_floor,
             count_rarest: file.count_rarest,
         }
+    }
+}
+
+impl StatusFile {
+    /// A status asks for a holding **or** a trait, never both and never neither.
+    fn resolve(&self) -> Result<Status, String> {
+        let predicate = match (&self.at_least, &self.trait_category) {
+            (Some(at_least), None) => StatusPredicate::HoldsOf {
+                collection: self.collection.clone(),
+                at_least: *at_least,
+            },
+            (None, Some(category)) => StatusPredicate::HoldsTrait {
+                collection: self.collection.clone(),
+                category: category.clone(),
+                value: None,
+            },
+            (Some(_), Some(_)) => {
+                return Err(format!(
+                    "status {}: `at_least` and `trait` are alternatives, not both",
+                    self.id
+                ));
+            }
+            (None, None) => {
+                return Err(format!("status {}: needs `at_least` or `trait`", self.id));
+            }
+        };
+        Ok(Status {
+            id: self.id.clone(),
+            predicate,
+        })
     }
 }
 
@@ -129,16 +214,57 @@ impl LoadedCatalogue {
             .iter()
             .map(CatalogueEntry::predicate)
             .collect();
+
+        let mut status_ids = std::collections::BTreeSet::new();
+        let mut statuses = Vec::with_capacity(file.status.len());
+        for status in &file.status {
+            if !status_ids.insert(status.id.as_str()) {
+                return Err(format!("{path}: duplicate status id {}", status.id));
+            }
+            statuses.push(status.resolve()?);
+        }
+
+        let plan = match file.allocation {
+            Some(allocation) => {
+                let plan = Plan {
+                    allocation: Allocation::from(&allocation),
+                    requires: allocation.requires.clone(),
+                    promotes: allocation.promotes.clone(),
+                    promote_bonus: allocation.promote_bonus,
+                };
+                for id in plan.requires.iter().chain(&plan.promotes) {
+                    if !status_ids.contains(id.as_str()) {
+                        return Err(format!(
+                            "{path}: `{id}` is named by [allocation] but no [[status]] declares it"
+                        ));
+                    }
+                }
+                Some(plan)
+            }
+            None => None,
+        };
+
         Ok(Self {
             entries: file.achievements,
             predicates,
-            allocation: file.allocation.map(Allocation::from),
+            plan,
+            statuses,
         })
     }
 
     /// The policy the catalogue proposes, if it carries an `[allocation]` block.
-    pub fn allocation(&self) -> Option<Allocation> {
-        self.allocation
+    pub fn plan(&self) -> Option<&Plan> {
+        self.plan.as_ref()
+    }
+
+    /// Every declared status, in catalogue order.
+    pub fn statuses(&self) -> &[Status] {
+        &self.statuses
+    }
+
+    /// One status by id.
+    pub fn status(&self, id: &str) -> Option<&Status> {
+        self.statuses.iter().find(|status| status.id == id)
     }
 
     pub fn len(&self) -> usize {

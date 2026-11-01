@@ -81,7 +81,10 @@ mod tests {
     #[test]
     fn the_browser_asks_the_worker_first() {
         let urls = policy_picture_urls(POLICY, "41");
-        assert_eq!(urls.first().map(String::as_str), Some("/api/token-logo/d9d59e71eb99e653a493956a6826a406060706bd8c9a2427b3564f64/41"));
+        assert_eq!(
+            urls.first().map(String::as_str),
+            Some("/api/token-logo/d9d59e71eb99e653a493956a6826a406060706bd8c9a2427b3564f64/41")
+        );
     }
 
     #[cfg(not(target_arch = "wasm32"))]

@@ -7,6 +7,9 @@ use super::*;
 
 const STAKE: &str = "stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9";
 const EVM: &str = "0x7980aa64093853cb78c927e05b88fed96e945f81";
+/// The connector specification's own `makeTransfer` example address — a
+/// wallet's output, not something this crate built.
+const UNSHIELDED: &str = "mn_addr1asujt0dayj4pelgq97wv75hjhscqv9epmzzpapkf8sy8c87jhh9s6e0fs3";
 const USER: &str = "179744071361757184";
 const MESSAGE: &str =
     "Link this wallet to your Discord account.\n\nDiscord ID: 179744071361757184\nNonce: ab12";
@@ -148,6 +151,108 @@ fn a_cardano_link_runs_challenge_sign_verify_and_lands_in_the_list() {
     assert_eq!(link.wallets().unwrap().last(), Some(&wallet));
     link.handle(Event::Done);
     assert_eq!(link.phase(), Phase::Idle);
+}
+
+fn midnight() -> Claim {
+    Claim::Midnight {
+        address: UNSHIELDED.into(),
+    }
+}
+
+/// Connected and signing a Midnight link.
+fn midnight_signing() -> Linker {
+    let mut link = loaded();
+    assert_eq!(
+        link.handle(Event::Link(Some(ChainFamily::Midnight))),
+        [Effect::OpenConnector(Some(ChainFamily::Midnight))]
+    );
+    assert_eq!(
+        link.handle(Event::Claim(midnight())),
+        [Effect::Call(ApiCall::Challenge(ChainFamily::Midnight))]
+    );
+    let effects = link.handle(ok(CallKind::Challenge, &challenge()));
+    let [Effect::Sign(SignRequest::Midnight { address, message })] = effects.as_slice() else {
+        panic!("a Midnight signature asked for: {effects:?}");
+    };
+    assert_eq!(address, UNSHIELDED);
+    assert_eq!(
+        message, MESSAGE,
+        "plain text: the wallet does the `midnight_signed_message:` prefixing"
+    );
+    assert_eq!(
+        link.phase(),
+        Phase::Link {
+            family: Some(ChainFamily::Midnight),
+            step: LinkStep::Sign
+        }
+    );
+    link
+}
+
+#[test]
+fn a_midnight_link_runs_challenge_sign_verify_and_lands_in_the_list() {
+    let mut link = midnight_signing();
+    assert_eq!(
+        link.handle(Event::Signed(Signature::Midnight {
+            signature: "ef".into(),
+            key: "12".into(),
+            scheme: None,
+        })),
+        [Effect::Call(ApiCall::VerifyMidnight(MidnightLinkRequest {
+            address: UNSHIELDED.into(),
+            signature: "ef".into(),
+            verifying_key: "12".into(),
+            scheme: None,
+        }))]
+    );
+    let verified = format!(
+        r#"{{"chain":"midnight:mainnet","address":"{UNSHIELDED}","handle":null,"discord_user_id":"{USER}"}}"#
+    );
+    let effects = link.handle(ok(CallKind::Verify, &verified));
+    let wallet = LinkedWallet {
+        chain: "midnight:mainnet".into(),
+        address: UNSHIELDED.into(),
+        handle: None,
+    };
+    assert_eq!(
+        effects,
+        [
+            Effect::Linked(wallet.clone()),
+            Effect::Call(ApiCall::Wallets)
+        ]
+    );
+    assert_eq!(
+        link.phase(),
+        Phase::Link {
+            family: Some(ChainFamily::Midnight),
+            step: LinkStep::Linked {
+                address: UNSHIELDED.into()
+            }
+        }
+    );
+    assert_eq!(link.wallets().unwrap().last(), Some(&wallet));
+    link.handle(Event::Done);
+    assert_eq!(link.phase(), Phase::Idle);
+}
+
+/// A proof from the wrong chain never becomes a verify call: the machine says
+/// so on screen rather than posting a Cardano signature to the Midnight route.
+#[test]
+fn a_proof_from_the_wrong_chain_stops_the_link() {
+    let mut link = midnight_signing();
+    assert!(
+        link.handle(Event::Signed(Signature::Evm {
+            signature: "dead".into()
+        }))
+        .is_empty()
+    );
+    assert_eq!(
+        link.phase(),
+        Phase::Link {
+            family: Some(ChainFamily::Midnight),
+            step: LinkStep::Failed(words::WRONG_SIGNATURE.into())
+        }
+    );
 }
 
 #[test]
@@ -295,6 +400,20 @@ fn calls_are_written_as_auth_service_routes_them() {
         ApiCall::Challenge(ChainFamily::Cardano).path(),
         "/auth/cardano/challenge"
     );
+    assert_eq!(
+        ApiCall::Challenge(ChainFamily::Midnight).path(),
+        "/auth/midnight/challenge"
+    );
+    assert_eq!(
+        ApiCall::VerifyMidnight(MidnightLinkRequest {
+            address: UNSHIELDED.into(),
+            signature: "ef".into(),
+            verifying_key: "12".into(),
+            scheme: None,
+        })
+        .path(),
+        "/auth/midnight/verify"
+    );
     assert_eq!(ApiCall::Challenge(ChainFamily::Cardano).body(), None);
     let unlink = ApiCall::Unlink(UnlinkRequest {
         address: EVM.into(),
@@ -314,5 +433,9 @@ fn a_link_names_its_family_by_namespace() {
     assert_eq!(family_of(&w("cardano:mainnet")), Some(ChainFamily::Cardano));
     assert_eq!(family_of(&w("eip155")), Some(ChainFamily::Evm));
     assert_eq!(family_of(&w("eip155:4663")), Some(ChainFamily::Evm));
+    assert_eq!(
+        family_of(&w("midnight:mainnet")),
+        Some(ChainFamily::Midnight)
+    );
     assert_eq!(family_of(&w("nope")), None);
 }

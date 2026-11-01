@@ -47,6 +47,7 @@ mod fold;
 mod memory;
 mod predicate;
 mod state;
+mod status;
 
 pub use bundle::{
     Bundle, BundleError, BundleStore, Earned, Lot, Rarity, Snapshot, SubjectRecord, SubjectView,
@@ -59,6 +60,10 @@ pub use evaluate::{
 pub use fold::{Anomaly, Applied, Report, apply, rebuild};
 pub use memory::MemoryStore;
 pub use predicate::Predicate;
+pub use status::{StatusError, StatusPredicate, StatusView, status_holds};
+// The chain-qualified asset id, so a gate config can name a collection without also taking
+// `chains` as a dependency — the same reason `chain-events` re-exports it.
+pub use chain_events::TokenRef;
 pub use state::{
     AcquiredBy, Ask, BookChange, Drawdown, Fill, FloorPoint, FloorSeries, Holding, LotId,
     MarketHistory, MarketSide, MintFact, MintSummary, NewFill, NewLot, Placement, Slot, Store,

@@ -25,7 +25,7 @@
 //! three crates, in two precisions, and two copies had drifted apart.
 
 use macroquad_widgets::Theme;
-use ui_theme::{contrast_ratio, Paint, Srgb, Token};
+use ui_theme::{Paint, Srgb, Token, contrast_ratio};
 
 /// WCAG AA for text below 18pt.
 const AA_SMALL: f32 = 4.5;

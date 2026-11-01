@@ -14,9 +14,12 @@
 //! a client signs [`LinkChallenge::message`] exactly as it arrives. Cardano
 //! signs the UTF-8 bytes as bare hex through CIP-30 `signData`, over the
 //! **reward** address; EVM signs `0x`-prefixed hex through EIP-191
-//! `personal_sign` and sends the signature back without the `0x`.
+//! `personal_sign` and sends the signature back without the `0x`; Midnight
+//! hands the wallet the plain UTF-8 string through the DApp connector's
+//! `signData`, which prepends its own `midnight_signed_message:` header before
+//! signing — so the client must **not** pre-hash or pre-hex it.
 //!
-//! One challenge is pending per Discord user, shared by both chains, for five
+//! One challenge is pending per Discord user, shared by every chain, for five
 //! minutes, and it is burned before the signature is checked: a failed verify
 //! needs a new challenge.
 
@@ -37,6 +40,11 @@ pub const CARDANO_VERIFY_PATH: &str = "/auth/cardano/verify";
 pub const EVM_CHALLENGE_PATH: &str = "/auth/evm/challenge";
 /// `POST` [`EvmLinkRequest`]. Answers [`LinkVerified`] with `chain: "eip155"`.
 pub const EVM_VERIFY_PATH: &str = "/auth/evm/verify";
+/// `POST`, no body — a challenge for a Midnight link. Answers [`LinkChallenge`].
+pub const MIDNIGHT_CHALLENGE_PATH: &str = "/auth/midnight/challenge";
+/// `POST` [`MidnightLinkRequest`]. Answers [`LinkVerified`] with
+/// `chain: "midnight:mainnet"`.
+pub const MIDNIGHT_VERIFY_PATH: &str = "/auth/midnight/verify";
 
 /// The auth-service host every client uses today. There is no dev
 /// deployment: dev and prod share it, and share the links it holds.
@@ -51,7 +59,7 @@ pub struct Identity {
     pub intent: Option<String>,
 }
 
-/// A challenge to sign. Shared by the Cardano and EVM routes.
+/// A challenge to sign. Shared by every chain's route.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LinkChallenge {
     pub nonce: String,
@@ -79,6 +87,32 @@ pub struct EvmLinkRequest {
     pub address: String,
     /// 65-byte `r || s || v`, hex, without `0x`.
     pub signature: String,
+}
+
+/// `POST /auth/midnight/verify`.
+///
+/// Unlike the EVM request this carries the verifying key: Midnight's connector
+/// hands it over beside the signature and there is nothing to recover. The
+/// server re-derives the unshielded address from that key and requires the
+/// claim to name it — so the address here is a claim to be checked, not the
+/// source of truth.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MidnightLinkRequest {
+    /// The bech32m unshielded address being claimed (`mn_addr…`). Mainnet only:
+    /// an address for any other network carries it in the HRP
+    /// (`mn_addr_preview…`) and is refused.
+    pub address: String,
+    /// 64-byte `r ‖ s`, hex.
+    pub signature: String,
+    /// 32-byte x-only key for `schnorr_bip340`, 33-byte SEC1-compressed for
+    /// `ecdsa_secp256k1_sha256`, hex.
+    pub verifying_key: String,
+    /// `schnorr_bip340`, `ecdsa_secp256k1_sha256`, or absent — which the
+    /// connector specification defines as `schnorr_bip340`. Omitted from the
+    /// body when absent, because the server's own field is `Option` and defaults
+    /// to the same answer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheme: Option<String>,
 }
 
 /// A verified link: what was linked, and to whom.
@@ -154,6 +188,27 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&evm).unwrap(),
             r#"{"address":"0xab","signature":"cd"}"#
+        );
+        // No `scheme` when the wallet did not name one: the field is optional on
+        // the wire and absent means `schnorr_bip340`, so writing
+        // `"scheme":null` would be a different body for the same request.
+        let midnight = MidnightLinkRequest {
+            address: "mn_addr1qq".into(),
+            signature: "ef".into(),
+            verifying_key: "12".into(),
+            scheme: None,
+        };
+        assert_eq!(
+            serde_json::to_string(&midnight).unwrap(),
+            r#"{"address":"mn_addr1qq","signature":"ef","verifying_key":"12"}"#
+        );
+        let ecdsa = MidnightLinkRequest {
+            scheme: Some("ecdsa_secp256k1_sha256".into()),
+            ..midnight
+        };
+        assert_eq!(
+            serde_json::to_string(&ecdsa).unwrap(),
+            r#"{"address":"mn_addr1qq","signature":"ef","verifying_key":"12","scheme":"ecdsa_secp256k1_sha256"}"#
         );
         let unlink = UnlinkRequest {
             address: "0xab".into(),

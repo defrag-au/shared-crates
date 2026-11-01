@@ -152,6 +152,7 @@ impl Command {
             ["link"] => Self::Link,
             ["chain", "cardano"] => Self::Chain(chains::ChainFamily::Cardano),
             ["chain", "evm"] => Self::Chain(chains::ChainFamily::Evm),
+            ["chain", "midnight"] => Self::Chain(chains::ChainFamily::Midnight),
             ["wallet", key] => Self::Wallet(key.to_string()),
             ["wait", frames] => Self::Wait(n(frames)? as u32),
             _ => {
