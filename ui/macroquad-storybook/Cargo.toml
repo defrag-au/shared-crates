@@ -36,6 +36,9 @@ macroquad-gamekit = { path = "../../gaming/macroquad-gamekit" }
 # The operator panel a game shows itself through; its story is here for the same
 # reason every other widget's is — so a change is reviewed by looking at it.
 arcade-admin-quad = { workspace = true }
+# The app shell's stories ("app shell" in the sidebar): bar, navigation, text
+# field, chips, toasts, grid.
+macroquad-app = { workspace = true }
 # The shared vocabulary the stories speak: `Token` to name a palette entry and
 # `TextSize` to name a rung, rather than restating either as a literal.
 ui-theme = { workspace = true, features = ["macroquad"] }

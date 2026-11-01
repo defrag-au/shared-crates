@@ -10,7 +10,7 @@ across frames and takes time as an argument. Stories are in `macroquad-storybook
 under "gamekit". MACROQUAD only: no wasm-bindgen, see the shared-crates CLAUDE.md on
 runtime pairs.
 
-39 modules.
+40 modules.
 
 | module | what it is |
 |---|---|
@@ -32,6 +32,7 @@ runtime pairs.
 | `motion` | `motion` — a sprite's animation measured as it plays: how long each pose shows at 60 Hz, how far the moving part travels at each change, whether the mass holds, and the path the moving part traces, with the problems that make motion look cheap named |
 | `pads` | `Pads` — gamepads by player slot, with sticks deadzoned and running y-down like the screen (feature `gamepads`) |
 | `paint` | `fill_gradient` and friends — the depth a printed card has and flat fills do not: gradient plates, bevels, inner shadows, a seeded grain texture and CRT scanlines |
+| `phosphor` | `Phosphor` — the Phosphor icon font, subset to the glyphs a game uses, drawn by its ink box: the honest alternative to hand-drawn shape icons |
 | `pixel` | `PixelSprite` — pixel art written as text in code, one character a pixel, baked into nearest-filtered textures: sprites with no asset files, diffable and editable by anyone |
 | `plan` | `plan` — a capture plan (`--plan plan.txt`): many conditions, many captures, one launch |
 | `pointer` | `Pointer` — the press, drag, long-press and tap a card game needs, built on the widgets crate's `Gesture`; `Swipes`, the four-way swipe an arcade game needs; and `HoverGrace`, which keeps a hover alive for a moment between targets |

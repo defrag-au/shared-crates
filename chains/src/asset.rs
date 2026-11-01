@@ -67,6 +67,13 @@ impl AssetNamespace {
     /// Named for the ledger concept rather than for CIP-25 or CIP-68, because it
     /// has to cover both: the same collection can hold either, and a namespace
     /// named after one of them would mis-describe the other.
+    ///
+    /// With no token half, the reference is the **policy id** — so `cardano:mainnet/cnt:<policy>`
+    /// names the collection, exactly as `erc721:<contract>` does on EVM. The namespace describes
+    /// the standard the reference is drawn from, not the granularity, which is why the collection
+    /// form is not a separate `pol:` namespace: that would make Cardano the one chain whose
+    /// namespace names a ledger object instead of a token standard, and the same namespace is
+    /// also what a real asset is written under (`…/<asset_name_hex>`).
     pub const CNT: &'static str = "cnt";
 
     /// A Solana non-fungible token, per the Solana CAIP-19 profile.

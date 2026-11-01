@@ -43,6 +43,10 @@ macroquad-widgets = { path = "../../ui/macroquad-widgets" }
 # shared with the widgets, so both draw text one way. Re-exported as `text`
 # and `harness::report`.
 macroquad-text = { path = "../../ui/macroquad-text" }
+# The ink box of an icon glyph, so `Phosphor` places it by what is drawn rather
+# than by the em square. The same rasteriser macroquad itself uses for text;
+# the kit only measures through it, and never draws with it.
+fontdue = "0.9"
 # `profile`: the scope recorder and its text tables. No dependencies and no
 # clock of its own (the kit passes miniquad's), so nothing in it needs
 # wasm-bindgen.

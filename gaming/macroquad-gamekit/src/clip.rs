@@ -11,15 +11,30 @@
 //! the top of a wall draw over whatever sits above it, unless every host
 //! remembers to paint over them.
 //!
-//! Clips do not nest: the scissor's current state cannot be read back, so on
-//! leaving, the clip is cleared rather than restored.
+//! Clips nest. A list scrolled inside a page that scrolls is clipped to both:
+//! the inner clip is the intersection of the two, and leaving it puts the
+//! outer one back. The scissor's state cannot be read back from GL, so the
+//! clips in force are kept here, on the drawing thread, the way GL keeps the
+//! scissor itself. A clip is a pixel rectangle on the target it was opened
+//! on, so switch render targets outside a clip, not inside one.
+
+use std::cell::RefCell;
 
 use macroquad::prelude::*;
 
-/// Run `f` with drawing clipped to `rect`, in the current camera's units.
-/// Returns what `f` returns.
+/// A scissor: x and y from the top-left, then width and height, in pixels.
+type Scissor = (i32, i32, i32, i32);
+
+thread_local! {
+    /// The clips in force, outermost first. Mirrors GL's scissor, which is
+    /// global state on the drawing thread and cannot be queried.
+    static CLIPS: RefCell<Vec<Scissor>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Run `f` with drawing clipped to `rect`, in the current camera's units,
+/// and to every clip already in force around it. Returns what `f` returns.
 pub fn with_clip<T>(rect: Rect, f: impl FnOnce() -> T) -> T {
-    {
+    let scissor = {
         // SAFETY: macroquad's own escape hatch to its GL state; used and
         // dropped here on the drawing thread, between draws.
         let gl = unsafe { get_internal_gl() };
@@ -34,13 +49,34 @@ pub fn with_clip<T>(rect: Rect, f: impl FnOnce() -> T) -> T {
             }
         };
         let projection = gl.quad_gl.get_projection_matrix();
-        gl.quad_gl.scissor(Some(pixel_rect(projection, rect, w, h)));
-    }
+        let own = pixel_rect(projection, rect, w, h);
+        let scissor = CLIPS.with_borrow(|clips| match clips.last() {
+            Some(outer) => intersect(*outer, own),
+            None => own,
+        });
+        gl.quad_gl.scissor(Some(scissor));
+        scissor
+    };
+    CLIPS.with_borrow_mut(|clips| clips.push(scissor));
     let out = f();
+    let outer = CLIPS.with_borrow_mut(|clips| {
+        clips.pop();
+        clips.last().copied()
+    });
     // SAFETY: as above.
     let gl = unsafe { get_internal_gl() };
-    gl.quad_gl.scissor(None);
+    gl.quad_gl.scissor(outer);
     out
+}
+
+/// The part of two scissors both cover; empty (zero width or height) where
+/// they do not meet.
+fn intersect(a: Scissor, b: Scissor) -> Scissor {
+    let left = a.0.max(b.0);
+    let top = a.1.max(b.1);
+    let right = (a.0 + a.2).min(b.0 + b.2);
+    let bottom = (a.1 + a.3).min(b.1 + b.3);
+    (left, top, (right - left).max(0), (bottom - top).max(0))
 }
 
 /// `rect` through `projection`, as a scissor on a `w`×`h` pixel target:
@@ -113,5 +149,20 @@ mod tests {
             pixel_rect(p, Rect::new(-50.0, 250.0, 100.0, 100.0), 400, 300),
             (0, 250, 50, 50)
         );
+    }
+
+    #[test]
+    fn a_nested_clip_is_cut_to_the_one_around_it() {
+        // A page clip, and a list inside it that pokes out of its foot.
+        assert_eq!(
+            intersect((0, 100, 400, 500), (20, 400, 360, 300)),
+            (20, 400, 360, 200)
+        );
+    }
+
+    #[test]
+    fn clips_that_do_not_meet_draw_nothing() {
+        let (_, _, w, h) = intersect((0, 0, 100, 100), (200, 200, 50, 50));
+        assert_eq!((w, h), (0, 0));
     }
 }

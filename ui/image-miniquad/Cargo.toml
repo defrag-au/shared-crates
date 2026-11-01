@@ -1,0 +1,49 @@
+[package]
+name = "image-miniquad"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+description = "The macroquad edge of image-core: fetch and decode through the browser on wasm and a thread natively, then upload to a Texture2D. No wasm-bindgen."
+
+# The edge half of `image-core`'s pure-core / thin-edge pair:
+#
+#   image-core       ← URLs, sizes, cache + queue. Pure, testable.
+#     image-web      ← web-sys edge      → egui ColorImage
+#     image-miniquad ← plugin-JS edge    → this crate, raw RGBA for macroquad
+#
+# Everything here is transport and GPU upload. What to fetch, in what order,
+# how often to retry and when to evict is `image-core`'s.
+[dependencies]
+# Direct, not a workspace dep — matches the sibling macroquad crates, which
+# all pin 0.4 the same way.
+macroquad = "0.4"
+# The queue, the cache and the interchange type. Dependency-free itself.
+image-core = { path = "../image-core" }
+# `ImageLoader` is an image source for the gamekit's wall tiles, and a foreign
+# trait on a foreign type needs a home here rather than at the call site.
+macroquad-gamekit = { path = "../../gaming/macroquad-gamekit" }
+serde = { workspace = true, features = ["derive"] }
+
+# The plugin bridge: `JsObject` transport between Rust and js/image.js, and the
+# JSON its poll replies arrive as. Wasm only — natively there is no bridge and
+# no wire format at all: `ureq` returns a typed response and macroquad's decoder
+# a typed error.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+sapp-jsutils = "0.1"
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# `the_plugin_failure_shape_parses` reads the exact bytes `js/image.js` writes,
+# which is the only place the wasm wire format can be checked without a browser.
+# Declared here so the test reaches it on any host while a native build links
+# nothing of it.
+serde_json = { workspace = true }
+
+# Native HTTP. Already in the tree through quad-net (arcade-harness), at the
+# same major version and default features, so it adds no crates.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ureq = "2"

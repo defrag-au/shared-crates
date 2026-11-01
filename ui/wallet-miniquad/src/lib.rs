@@ -36,6 +36,9 @@
 //! - [`balance::extract_handle`] — walk the balance CBOR for an ADA Handle
 //! - [`evm`] — EVM wallets: EIP-6963 discovery and the EIP-1193 provider,
 //!   in their own plugin ([`EVM_PLUGIN_JS`])
+//! - [`midnight`] — Midnight wallets: the DApp connector's `window.midnight`
+//!   discovery, the unshielded address and `signData`, in their own plugin
+//!   ([`MIDNIGHT_PLUGIN_JS`])
 //!
 //! ## Wiring it into a consumer
 //!
@@ -66,6 +69,7 @@
 pub mod balance;
 pub mod bridge;
 pub mod evm;
+pub mod midnight;
 
 pub use bridge::*;
 
@@ -111,6 +115,11 @@ pub const PLUGIN_JS: &str = include_str!("../js/wallet.js");
 /// [`PLUGIN_JS`] as `evm.js` by a consumer that connects EVM wallets. A
 /// consumer that never calls [`evm`] imports none of it, and needs none.
 pub const EVM_PLUGIN_JS: &str = include_str!("../js/evm.js");
+
+/// JavaScript source for the Midnight plugin ([`midnight`]), stamped beside
+/// [`PLUGIN_JS`] as `midnight.js` by a consumer that connects Midnight wallets.
+/// A consumer that never calls [`midnight`] imports none of it, and needs none.
+pub const MIDNIGHT_PLUGIN_JS: &str = include_str!("../js/midnight.js");
 
 /// Convert a CIP-30 hex address into its bech32 form. Falls back to
 /// returning the raw hex when the header byte is unknown or the

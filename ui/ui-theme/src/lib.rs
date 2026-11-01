@@ -42,6 +42,9 @@
 //!   [`TypeScale`]. Renderer-free by the same split as colour: it answers "what
 //!   point size, in which family", and each front end builds its own font
 //!   handle from that.
+//! - **[`breakpoint`]** — [`Breakpoint`], how much room a layout has, with the
+//!   page gutter and touch minimum read off it, so both renderers agree on
+//!   where a phone ends.
 //! - **`egui` / `macroquad` features** — [`Paint`] and `From` impls for
 //!   `egui::Color32` and `macroquad::color::Color`. They live here because the
 //!   orphan rule forbids them anywhere else: to a widget crate, both the trait
@@ -73,12 +76,14 @@
 //!   chrome describes structure. Conflating them is how a palette change becomes
 //!   a wrong chart that still looks fine.
 
+pub mod breakpoint;
 pub mod color;
 pub mod encoding;
 pub mod ink;
 pub mod tokens;
 pub mod type_scale;
 
+pub use breakpoint::Breakpoint;
 pub use color::{
     Dichromacy, Paint, Srgb, contrast_ratio, delta_e, from_oklab, lab, legible_on, mix, oklab,
     relative_luminance, simulate, to_linear, to_srgb, with_alpha,

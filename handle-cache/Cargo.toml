@@ -9,7 +9,13 @@ default = []
 # Pass through to local-cache's localStorage store. Off by default so a target
 # without wasm-bindgen (miniquad) can still use the TTL policy and the book.
 browser = ["local-cache/browser"]
+# The macroquad edge: `localStorage` through miniquad-platform's storage plugin,
+# and the `/api/handles` reply rule (`apply_reply`). Off by default so a target
+# without that plugin can still use the TTL policy and the book.
+miniquad = ["dep:miniquad-platform", "dep:serde_json"]
 
 [dependencies]
 handle-resolver = { path = "../handle-resolver" }
 local-cache = { path = "../local-cache" }
+miniquad-platform = { path = "../ui/miniquad-platform", optional = true }
+serde_json = { workspace = true, optional = true }

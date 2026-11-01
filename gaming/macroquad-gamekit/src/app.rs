@@ -18,7 +18,8 @@
 //! drawn nearest-neighbour and scaled to the window by the largest whole
 //! number that fits, letterboxed, so pixels stay square and chunky
 //! ([`run_on`]). The loop owns the canvas: a game draws into it as it would
-//! the window, and the loop presents it.
+//! the window, and the loop presents it. [`Stage::Fluid`] is the window at one
+//! unit per point, for an app whose page reflows rather than scales.
 //!
 //! ## What a game gets without writing it
 //!
@@ -102,6 +103,12 @@ pub enum Stage {
     /// [`Game::draw_margin`], over [`Frame::bounds`], which reaches past the
     /// board to the window's edges (negative on the top and left).
     Board { size: Vec2, align: Vec2 },
+    /// The window itself, one unit per point, drawn at its device pixels: an
+    /// app's page rather than a game's design. Nothing is fitted or scaled,
+    /// so a phone turned on its side gets a wider page at the same text size,
+    /// and the app lays itself out from [`Frame::viewport`]'s `size` every
+    /// frame (with breakpoints for the width, and a scroll for the height).
+    Fluid,
 }
 
 impl Stage {
@@ -878,6 +885,17 @@ fn place(stage: Stage, args: &Args) -> Placed {
             }
         }
         Stage::Board { size, align } => board_fit(args.viewport(size), size, align),
+        Stage::Fluid => {
+            let vp = args.viewport_points();
+            Placed {
+                viewport: vp,
+                px: vp.px(),
+                origin: Vec2::ZERO,
+                bounds: Rect::new(0.0, 0.0, vp.size.x, vp.size.y),
+                window: vp.size,
+                offset: Vec2::ZERO,
+            }
+        }
         // Resolved by `fitted` before it gets here; placed as its pixel stage.
         Stage::PixelFit(_) => place(fitted(stage, args), args),
     }

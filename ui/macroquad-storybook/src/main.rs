@@ -10,13 +10,16 @@
 //! The story list scrolls with the mouse wheel or trackpad over the sidebar,
 //! and a story chosen by key or `--story` is scrolled into view.
 
+mod app_stories;
 mod cart_stories;
 mod chain_fixture;
 mod gamekit_stories;
+mod page_stories;
 mod route_stories;
 mod trading_stories;
 mod wallet_modal_stories;
 
+use app_stories::{AppStory, AppView};
 use cart_stories::{CartStory, CartView};
 use chain_fixture::{ChainSim, Scenario};
 use gamekit_stories::{KitStory, KitView};
@@ -33,6 +36,7 @@ use macroquad_widgets::{
     floating_stick, mint_checkout, order_fulfilment, quantity_stepper, segmented, segmented_pills,
     squad_picker, theme, wallet_connect, wallet_list,
 };
+use page_stories::{PageStory, PageView};
 use route_stories::RouteStory;
 use trading_stories::{TradingStory, TradingView};
 use ui_theme::{TextSize, Token};
@@ -152,6 +156,10 @@ enum Body {
     WalletModal(Box<WalletModalStory>),
     /// The gamekit's cart, in a stage or driven by hand.
     Cart(Box<CartStory>),
+    /// A part of `macroquad-app`'s shell.
+    App(Box<AppStory>),
+    /// A page piece: the message, the surface, wrapped prose.
+    Page(Box<PageStory>),
 }
 
 /// The operator panel with a game's numbers in it and its buttons wired to an
@@ -206,6 +214,8 @@ enum Kind {
     Admin,
     WalletModal,
     Cart,
+    App,
+    Page,
 }
 
 struct Story {
@@ -332,6 +342,24 @@ impl Story {
             Body::Admin(_) => Kind::Admin,
             Body::WalletModal(_) => Kind::WalletModal,
             Body::Cart(_) => Kind::Cart,
+            Body::App(_) => Kind::App,
+            Body::Page(_) => Kind::Page,
+        }
+    }
+
+    fn page(name: &'static str, view: PageView) -> Self {
+        Self {
+            category: "page",
+            name,
+            body: Body::Page(Box::new(PageStory::new(view))),
+        }
+    }
+
+    fn app(name: &'static str, view: AppView) -> Self {
+        Self {
+            category: "app shell",
+            name,
+            body: Body::App(Box::new(AppStory::new(view))),
         }
     }
 
@@ -952,6 +980,7 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::kit("preloader", KitView::Preload),
         Story::kit("card face", KitView::Face),
         Story::kit("wall", KitView::Wall),
+        Story::kit("phosphor icons", KitView::Phosphor),
         Story::admin("operator panel", 640.0, true),
         // Tall enough for the one-column form: a portrait phone's 16 facts,
         // its sparklines and the commands.
@@ -970,6 +999,8 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::trading("price chart · phone", TradingView::ChartPhone),
         Story::trading("price chart · scrub", TradingView::ChartScrub),
         Story::trading("price chart · new high", TradingView::ChartHigh),
+        Story::trading("rate chart", TradingView::Rate),
+        Story::trading("rate chart · phone", TradingView::RatePhone),
         Story::trading("life strip · brush", TradingView::Strip),
         Story::trading("life strip · phone", TradingView::StripPhone),
         Story::trading("life strip · pending", TradingView::StripPending),
@@ -1001,6 +1032,20 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::cart("cart · phone · editing", CartView::Editing, true, icon),
         Story::cart("cart · phone · many", CartView::Many, true, icon),
         Story::cart("cart · phone · working", CartView::Working, true, icon),
+        // "app · …" so `--story` finds these rather than another category's.
+        Story::app("app · bar", AppView::Bar),
+        Story::app("app · navigation", AppView::Nav),
+        Story::app("app · text field", AppView::Field),
+        Story::app("app · chips", AppView::Chips),
+        Story::app("app · toasts", AppView::Toasts),
+        Story::app("app · grid", AppView::Grid),
+        // "page · …" so `--story` finds these rather than another category's.
+        Story::page("page · message", PageView::Message),
+        Story::page("page · message with action", PageView::MessageAction),
+        Story::page("page · surface", PageView::Surface),
+        Story::page("page · wrap", PageView::Wrap),
+        Story::page("page · holder profile", PageView::HolderProfile),
+        Story::page("page · holder one core short", PageView::HolderNearMiss),
     ]);
     stories
 }
@@ -1383,7 +1428,12 @@ impl Storybook {
         );
         y += 20.0;
         let help = match self.stories[sel].kind() {
-            Kind::Kit | Kind::Route | Kind::Trading | Kind::WalletModal | Kind::Cart => format!(
+            Kind::Kit
+            | Kind::Route
+            | Kind::Trading
+            | Kind::WalletModal
+            | Kind::Cart
+            | Kind::App => format!(
                 "arrows / click to switch  ·  t = theme: {}  ·  p pause · . step · s slow  ·  {}",
                 p.theme.name,
                 self.clock.label()
@@ -1508,6 +1558,29 @@ impl Storybook {
                         screen_height() - y - 20.0,
                     );
                     story.draw(p, area, &g, t);
+                }
+            }
+            Kind::Page => {
+                if let Body::Page(story) = &mut self.stories[sel].body {
+                    let area = Rect::new(
+                        x0,
+                        y,
+                        screen_width() - x0 - 20.0,
+                        screen_height() - y - 20.0,
+                    );
+                    story.draw(p, area);
+                }
+            }
+            Kind::App => {
+                let (dt, g) = (self.dt, self.gesture);
+                if let Body::App(story) = &mut self.stories[sel].body {
+                    let area = Rect::new(
+                        x0,
+                        y,
+                        screen_width() - x0 - 20.0,
+                        screen_height() - y - 20.0,
+                    );
+                    story.draw(p, area, &g, dt);
                 }
             }
             Kind::Cart => {

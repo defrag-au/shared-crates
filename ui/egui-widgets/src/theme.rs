@@ -853,6 +853,8 @@ impl Theme {
                 accent_orange: Color32::from_rgb(251, 146, 60),
                 accent_red: Color32::from_rgb(244, 88, 110),
                 accent_magenta: Color32::from_rgb(192, 132, 252),
+                // No hue to cast: white is white in both palettes.
+                accent_white: Color32::from_rgb(255, 255, 255),
 
                 accent: Color32::from_rgb(59, 142, 240),
                 success: Color32::from_rgb(52, 199, 123),

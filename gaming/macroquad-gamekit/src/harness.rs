@@ -174,6 +174,17 @@ impl Viewport {
         }
     }
 
+    /// One unit per screen point: the stage is the window, at any size. What
+    /// an app with a page that scrolls and reflows wants, where a design
+    /// fitted to the window would shrink its text on a landscape phone.
+    pub fn points(screen: Vec2, dpi: f32) -> Self {
+        Self {
+            u: 1.0,
+            size: screen.max(Vec2::ONE),
+            dpi,
+        }
+    }
+
     /// The window as it is now.
     pub fn current(design: Vec2) -> Self {
         Self::fit(
@@ -531,6 +542,16 @@ impl Args {
             }
             _ => Viewport::current(design),
         }
+    }
+
+    /// This frame's viewport at one unit per point ([`Viewport::points`]):
+    /// `--size` while capturing, as [`Args::viewport`] does, else the window.
+    pub fn viewport_points(&self) -> Viewport {
+        let screen = match self.size {
+            Some((w, h)) if self.capturing() => vec2(w as f32, h as f32),
+            _ => vec2(screen_width(), screen_height()),
+        };
+        Viewport::points(screen, screen_dpi_scale())
     }
 
     /// Under `--frame-log`, print the last frame if it took longer than

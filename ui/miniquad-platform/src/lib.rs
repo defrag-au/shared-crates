@@ -60,6 +60,9 @@ unsafe extern "C" {
     fn platform_fullscreen_zone(x0: f32, y0: f32, x1: f32, y1: f32);
     fn platform_fullscreen_state() -> u32;
     fn platform_clipboard_write(text: JsObject);
+    fn platform_clipboard_prepare_image(url: JsObject);
+    fn platform_clipboard_copy_image(url: JsObject) -> u32;
+    fn platform_clipboard_image_poll(id: u32) -> u32;
     fn platform_focus_returns() -> u32;
     fn platform_link_zone(x0: f32, y0: f32, x1: f32, y1: f32, url: JsObject);
 }
@@ -130,6 +133,61 @@ pub fn clipboard_write(text: &str) -> bool {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn clipboard_write(_text: &str) -> bool {
     false
+}
+
+/// What became of an image copy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageCopy {
+    /// The image is on the clipboard.
+    Copied,
+    /// The page refused: no clipboard API, no activation, or the image would
+    /// not fetch or decode.
+    Failed,
+}
+
+/// Ask the page for `url`'s image now, so a Copy button later writes from a
+/// ready PNG rather than waiting on the network. Asking twice for a URL is
+/// cheap; the page keeps one fetch per image.
+#[cfg(target_arch = "wasm32")]
+pub fn clipboard_image_prepare(url: &str) {
+    unsafe { platform_clipboard_prepare_image(JsObject::string(url)) };
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn clipboard_image_prepare(_url: &str) {}
+
+/// Start copying the image at `url` to the system clipboard, from a tap.
+/// Returns the page's request id, or `None` natively, where there is no page
+/// to copy through.
+///
+/// Call this in the frame that handles the tap: like [`clipboard_write`], the
+/// browser allows it within the activation a tap grants, and a fetch before the
+/// write would spend it. The image itself may still be arriving — the page
+/// hands the clipboard a promise — so poll [`clipboard_image_poll`].
+#[cfg(target_arch = "wasm32")]
+pub fn clipboard_image_copy(url: &str) -> Option<u32> {
+    Some(unsafe { platform_clipboard_copy_image(JsObject::string(url)) })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn clipboard_image_copy(_url: &str) -> Option<u32> {
+    None
+}
+
+/// Whether a copy started with [`clipboard_image_copy`] has finished. `None`
+/// while it is pending, and natively always.
+#[cfg(target_arch = "wasm32")]
+pub fn clipboard_image_poll(id: u32) -> Option<ImageCopy> {
+    match unsafe { platform_clipboard_image_poll(id) } {
+        0 => None,
+        1 => Some(ImageCopy::Copied),
+        _ => Some(ImageCopy::Failed),
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn clipboard_image_poll(_id: u32) -> Option<ImageCopy> {
+    None
 }
 
 /// Whether the page can go fullscreen, and whether it is.
@@ -333,17 +391,17 @@ getrandom::register_custom_getrandom!(webcrypto_getrandom);
 
 /// Plugin handshake for `gl.js` — silences the
 /// `Plugin platform is present in JS bundle, but is not used in the
-/// rust code` warning. JS-side `version: 7`, must match.
+/// rust code` warning. JS-side `version: 8`, must match.
 ///
 /// Bumped 1 → 2 with the `localStorage` calls, 2 → 3 with the page's host
 /// and path, 3 → 4 with fullscreen, 4 → 5 with the clipboard, 5 → 6 with the
-/// focus count, and 6 → 7 with link zones: a consumer carrying an older
-/// `platform.js` then fails the handshake at instantiate rather than calling
-/// a function gl.js would stub out.
+/// focus count, 6 → 7 with link zones, and 7 → 8 with the image clipboard: a
+/// consumer carrying an older `platform.js` then fails the handshake at
+/// instantiate rather than calling a function gl.js would stub out.
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn platform_crate_version() -> u32 {
-    7
+    8
 }
 
 #[cfg(test)]

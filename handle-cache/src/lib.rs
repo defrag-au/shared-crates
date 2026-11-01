@@ -51,6 +51,11 @@ use std::collections::HashMap;
 pub use handle_resolver::{HandleResolver, MAX_BATCH, Status};
 pub use local_cache::{MemoryStore, Store};
 
+/// The macroquad end: the platform store, and the batch-reply rule. Behind a
+/// feature because its store is a miniquad plugin, not a browser API.
+#[cfg(feature = "miniquad")]
+pub mod miniquad;
+
 use local_cache::{Cache, CacheConfig};
 
 /// A remembered answer: a name, or `None` for "asked, and there is no handle".

@@ -2869,6 +2869,8 @@ version = "0.1.0"
 dependencies = [
  "handle-resolver",
  "local-cache",
+ "miniquad-platform",
+ "serde_json",
 ]
 
 [[package]]
@@ -2962,6 +2964,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest 0.10.7",
+]
+
+[[package]]
+name = "holder-behaviour"
+version = "0.1.0"
+dependencies = [
+ "chain-events",
+ "chains",
+ "serde",
+ "serde_json",
+ "toml 0.8.23",
 ]
 
 [[package]]
@@ -3353,6 +3366,19 @@ name = "image-hash"
 version = "0.1.0"
 dependencies = [
  "image 0.25.10",
+]
+
+[[package]]
+name = "image-miniquad"
+version = "0.1.0"
+dependencies = [
+ "image-core",
+ "macroquad",
+ "macroquad-gamekit",
+ "sapp-jsutils",
+ "serde",
+ "serde_json",
+ "ureq 2.12.1",
 ]
 
 [[package]]
@@ -3985,6 +4011,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "macroquad-app"
+version = "0.1.0"
+dependencies = [
+ "macroquad",
+ "macroquad-gamekit",
+ "macroquad-widgets",
+ "sapp-jsutils",
+ "serde",
+ "serde_json",
+ "ui-theme",
+ "ureq 2.12.1",
+]
+
+[[package]]
 name = "macroquad-bundle"
 version = "0.1.0"
 dependencies = [
@@ -3999,14 +4039,11 @@ version = "0.1.0"
 dependencies = [
  "cnft-holdings",
  "image-core",
+ "image-miniquad",
  "macroquad",
  "macroquad-gamekit",
  "macroquad-widgets",
- "sapp-jsutils",
- "serde",
- "serde_json",
  "ui-theme",
- "ureq 2.12.1",
 ]
 
 [[package]]
@@ -4015,6 +4052,7 @@ version = "0.1.0"
 dependencies = [
  "chains",
  "discord-auth",
+ "fontdue",
  "gamepads",
  "macroquad",
  "macroquad-text",
@@ -4030,6 +4068,7 @@ dependencies = [
  "arcade-admin-quad",
  "chain-heartbeat",
  "macroquad",
+ "macroquad-app",
  "macroquad-gamekit",
  "macroquad-wallet-flow",
  "macroquad-widgets",
@@ -4063,6 +4102,24 @@ dependencies = [
  "macroquad-gamekit",
  "macroquad-widgets",
  "miniquad-platform",
+ "wallet-miniquad",
+]
+
+[[package]]
+name = "macroquad-wallet-link"
+version = "0.1.0"
+dependencies = [
+ "chains",
+ "discord-auth",
+ "macroquad",
+ "macroquad-app",
+ "macroquad-gamekit",
+ "macroquad-wallet-flow",
+ "macroquad-widgets",
+ "miniquad-platform",
+ "serde_json",
+ "ui-theme",
+ "wallet-link-flow",
  "wallet-miniquad",
 ]
 
@@ -5100,6 +5157,7 @@ dependencies = [
 name = "opensea-client"
 version = "0.1.0"
 dependencies = [
+ "dotenvy",
  "http-client",
  "serde",
  "serde_json",
@@ -8682,6 +8740,17 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "wallet-link-flow"
+version = "0.1.0"
+dependencies = [
+ "chains",
+ "serde",
+ "serde_json",
+ "statig",
+ "wallet-link",
 ]
 
 [[package]]

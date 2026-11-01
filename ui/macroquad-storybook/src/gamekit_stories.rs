@@ -1,7 +1,8 @@
 //! Stories for `macroquad-gamekit`: easing curves, a fanned card hand you can
 //! hover, drag and long-press, rich text with inline icons, hit effects,
-//! rounded art, the preloader's cover lifting off a screen, and a shuffling
-//! wall of tiles to drive by hand.
+//! rounded art, the preloader's cover lifting off a screen, a shuffling wall of
+//! tiles to drive by hand, and the Phosphor icon subset at the sizes a host
+//! draws it.
 //!
 //! Every story is driven by the storybook's clock (`dt` and `t`), so P pauses,
 //! `.` steps a frame and S slows time: the way to judge a 150 ms settle. With
@@ -16,10 +17,10 @@ use macroquad_gamekit::wall::{
     ColourTile, FnTile, ImageSource, ImageTile, ImageView, Layered, TileCtx, Tiles,
 };
 use macroquad_gamekit::{
-    Align, Animated, Baked, Ease, HoverGrace, Icon, MacroquadMeasure, Particles, Pointer,
-    PointerConfig, PointerEvent, Popups, Pose, Preloader, RichText, RoundedArt, Sequencer, Shake,
-    Sprite, TextStyle, draw_icon, draw_order, emblem, fill_rounded, gem, line, plate,
-    shrink_to_fit, stroke_rounded, topmost,
+    Align, Animated, Baked, Ease, Finish, HoverGrace, Icon, MacroquadMeasure, Particles, Phosphor,
+    PhosphorIcon, Pointer, PointerConfig, PointerEvent, Popups, Pose, Preloader, RichText,
+    RoundedArt, Sequencer, Shake, Sprite, TextStyle, draw_icon, draw_order, emblem, fill_rounded,
+    gem, line, plate, shrink_to_fit, stroke_rounded, topmost,
 };
 use macroquad_widgets::{Gesture, Painter, Scroll, ScrollInput};
 use ui_theme::TextSize;
@@ -35,6 +36,7 @@ pub enum KitView {
     Preload,
     Face,
     Wall,
+    Phosphor,
 }
 
 /// Card size in points. // theme-exempt: geometry, not text
@@ -170,6 +172,7 @@ pub struct KitStory {
     preload: PreloadStage,
     /// Made on first draw: only the wall story pays for its tiles.
     wall: Option<WallStage>,
+    phosphor: Phosphor,
 }
 
 impl KitStory {
@@ -191,6 +194,7 @@ impl KitStory {
                 started: 0.0,
             },
             wall: None,
+            phosphor: Phosphor::new(),
         }
     }
 
@@ -205,6 +209,7 @@ impl KitStory {
             KitView::Preload => self.preload_story(p, area, g, dt, t),
             KitView::Face => face_story(p, area),
             KitView::Wall => self.wall_story(p, area, g, dt, t),
+            KitView::Phosphor => phosphor_story(p, area, &self.phosphor),
         }
     }
 
@@ -494,6 +499,56 @@ impl KitStory {
                 self.art.draw(tex, *r, 16.0, WHITE);
             }
             stroke_rounded(*r, 16.0, 2.0, p.theme.color.border);
+        }
+
+        // The finishes a host can ask for: the same picture desaturated,
+        // dimmed, or tinted, so a listed asset can read inactive rather than
+        // only be captioned as such. The tint is a wash over the grey, not a
+        // colour the desaturation would remove.
+        let finishes: [(&str, Finish, Color); 7] = [
+            ("colour", Finish::NONE, WHITE),
+            ("grey", Finish::GREY, WHITE),
+            (
+                "grey · dim 0.85",
+                Finish {
+                    grey: 1.0,
+                    dim: 0.85,
+                },
+                WHITE,
+            ),
+            (
+                "grey · cool",
+                Finish::GREY,
+                Color::new(0.84, 0.90, 1.0, 1.0),
+            ),
+            (
+                "grey · warm",
+                Finish::GREY,
+                Color::new(1.0, 0.90, 0.78, 1.0),
+            ),
+            (
+                "dim 0.7",
+                Finish {
+                    grey: 0.0,
+                    dim: 0.7,
+                },
+                WHITE,
+            ),
+            ("warm", Finish::NONE, Color::new(1.0, 0.86, 0.72, 1.0)),
+        ];
+        if let Some(tex) = self.textures.first() {
+            for (i, (label, finish, tint)) in finishes.iter().enumerate() {
+                let r = Rect::new(area.x + 24.0 + i as f32 * 100.0, area.y + 236.0, 88.0, 88.0);
+                self.art.draw_with(tex, r, 16.0, *tint, *finish);
+                stroke_rounded(r, 16.0, 2.0, p.theme.color.border);
+                p.text(
+                    label,
+                    r.x,
+                    r.bottom() + 18.0,
+                    p.size(TextSize::Xs),
+                    p.theme.color.text_muted,
+                );
+            }
         }
     }
 }
@@ -786,6 +841,50 @@ fn face_story(p: &Painter, area: Rect) {
         );
         y += 34.0;
     }
+}
+
+/// The Phosphor subset at the sizes a host draws it: both glyphs large enough
+/// to judge the outline, then the ladder down to the 14 points a header pill
+/// uses.
+fn phosphor_story(p: &Painter, area: Rect, icons: &Phosphor) {
+    fill_rounded(area, 12.0, p.theme.color.bg_secondary);
+    let note = if icons.available() {
+        "Phosphor (MIT), subset to two glyphs · fitted to the ink box, not the em"
+    } else {
+        "the subset did not load on this backend"
+    };
+    p.text(
+        note,
+        area.x + 16.0,
+        area.y + 24.0,
+        p.size(TextSize::Sm),
+        p.theme.color.text_muted,
+    );
+    let ink = p.theme.color.text_primary;
+    for (i, icon) in PhosphorIcon::ALL.iter().enumerate() {
+        let x = area.x + 24.0 + i as f32 * 240.0;
+        icons.draw(p, *icon, Rect::new(x, area.y + 44.0, 96.0, 96.0), ink);
+        p.text(
+            icon.name(),
+            x,
+            area.y + 164.0,
+            p.size(TextSize::Xs),
+            p.theme.color.text_muted,
+        );
+        let mut at = x;
+        for size in [48.0, 32.0, 20.0, 14.0] {
+            let top = area.y + 184.0 + (48.0 - size) * 0.5;
+            icons.draw(p, *icon, Rect::new(at, top, size, size), ink);
+            at += size + 14.0;
+        }
+    }
+    p.text(
+        "48 · 32 · 20 · 14 points",
+        area.x + 24.0,
+        area.y + 256.0,
+        p.size(TextSize::Xs),
+        p.theme.color.text_muted,
+    );
 }
 
 /// One paragraph at three widths and three alignments, boxes drawn to show

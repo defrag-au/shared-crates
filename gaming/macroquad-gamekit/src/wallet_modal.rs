@@ -406,6 +406,78 @@ impl ChainOption {
     }
 }
 
+/// What the site's proof step is called, wherever the modal names it: the
+/// account view's button and the line under the name, and the answer step's
+/// titles and buttons. [`ProofWords::SIGN_IN`] by default; a site that proves
+/// the account for something other than a session — linking it to a Discord
+/// account — names the step for what it does ([`ProofWords::LINK`]).
+///
+/// The step itself is the same either way: a message the wallet signs and the
+/// site's server checks, carried by [`SignInPhase`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ProofWords {
+    /// The account view's button: "Sign in".
+    pub action: &'static str,
+    /// Before the wallet's name, while its dialog is up: "Sign in with".
+    pub in_wallet: &'static str,
+    /// The answer step's title while the site checks: "Signing in".
+    pub working: &'static str,
+    /// Before the wallet's name once proved: "Signed in with".
+    pub done: &'static str,
+    /// After the wallet's name, not yet proved: "not signed in".
+    pub not_done: &'static str,
+    /// The title after a refusal: "Sign-in cancelled".
+    pub cancelled: &'static str,
+    /// The title after a fault: "Couldn't sign in".
+    pub failed: &'static str,
+    /// The button that proves the new account after a switch: "Sign in again".
+    pub again: &'static str,
+    /// The button that lets the wallet go after a switch: "Sign out".
+    pub undo: &'static str,
+    /// Before the old account, after a switch: "You signed in as".
+    pub changed_lead: &'static str,
+    /// The sentence that ends the switch message.
+    pub changed_tail: &'static str,
+}
+
+impl ProofWords {
+    /// Signing in to the site: the modal's words from the start.
+    pub const SIGN_IN: Self = Self {
+        action: "Sign in",
+        in_wallet: "Sign in with",
+        working: "Signing in",
+        done: "Signed in with",
+        not_done: "not signed in",
+        cancelled: "Sign-in cancelled",
+        failed: "Couldn't sign in",
+        again: "Sign in again",
+        undo: "Sign out",
+        changed_lead: "You signed in as",
+        changed_tail: "Sign in again with this account, or sign out.",
+    };
+
+    /// Linking the account to the reader's Discord account.
+    pub const LINK: Self = Self {
+        action: "Link to Discord",
+        in_wallet: "Sign with",
+        working: "Linking",
+        done: "Linked with",
+        not_done: "not linked yet",
+        cancelled: "Link cancelled",
+        failed: "Couldn't link",
+        again: "Link this account",
+        undo: "Disconnect",
+        changed_lead: "You were linking",
+        changed_tail: "Link this account instead, or disconnect.",
+    };
+}
+
+impl Default for ProofWords {
+    fn default() -> Self {
+        Self::SIGN_IN
+    }
+}
+
 /// Everything the modal and its button draw.
 #[derive(Clone)]
 pub struct WalletModalVm {
@@ -415,6 +487,8 @@ pub struct WalletModalVm {
     pub intro: Option<String>,
     /// The chains offered, in the order to offer them.
     pub chains: Vec<ChainOption>,
+    /// What the proof step is called. Signing in, unless the site says.
+    pub proof: ProofWords,
 }
 
 impl WalletModalVm {
@@ -423,11 +497,17 @@ impl WalletModalVm {
             title: "Connect a wallet".to_string(),
             intro: None,
             chains,
+            proof: ProofWords::SIGN_IN,
         }
     }
 
     pub fn with_title(mut self, title: impl Into<String>) -> Self {
         self.title = title.into();
+        self
+    }
+
+    pub fn with_proof(mut self, proof: ProofWords) -> Self {
+        self.proof = proof;
         self
     }
 
@@ -1967,12 +2047,16 @@ impl WalletModal {
         // Under the name: how it came, and — on a site that signs in —
         // whether it has.
         let sub = p.size(TextSize::Md);
+        let words = vm.proof;
         let (line, ink) = match sign_in {
             SignInPhase::SignedIn { detail: Some(d) } => {
-                (format!("Signed in with {name} · {d}"), c.success)
+                (format!("{} {name} · {d}", words.done), c.success)
             }
-            SignInPhase::SignedIn { detail: None } => (format!("Signed in with {name}"), c.success),
-            SignInPhase::Offered => (format!("Connected with {name} · not signed in"), c.warning),
+            SignInPhase::SignedIn { detail: None } => (format!("{} {name}", words.done), c.success),
+            SignInPhase::Offered => (
+                format!("Connected with {name} · {}", words.not_done),
+                c.warning,
+            ),
             _ => (format!("Connected with {name}"), c.text_muted),
         };
         p.text_mid(
@@ -2003,7 +2087,7 @@ impl WalletModal {
             if pill_button(
                 p,
                 rect,
-                "Sign in",
+                words.action,
                 PillStyle::Filled,
                 tint,
                 layer.live && room > 0.9,
@@ -2362,6 +2446,7 @@ fn sign_in_copy(
     let name = family
         .and_then(|f| vm.chain(f))
         .map_or(wallet.to_string(), |c| c.wallet_name(wallet).to_string());
+    let words = vm.proof;
     let again = vec![
         ("Try again", PillStyle::Filled, Act::SignIn),
         ("Switch wallet", PillStyle::Ghost, Act::Another),
@@ -2369,33 +2454,35 @@ fn sign_in_copy(
     match sign_in {
         SignInPhase::Working { step, in_wallet } => AnswerCopy {
             title: if *in_wallet {
-                format!("Sign in with {name}")
+                format!("{} {name}", words.in_wallet)
             } else {
-                "Signing in".to_string()
+                words.working.to_string()
             },
             message: step.clone(),
             buttons: Vec::new(),
         },
         SignInPhase::Declined => AnswerCopy {
-            title: "Sign-in cancelled".to_string(),
+            title: words.cancelled.to_string(),
             message: format!("{name} didn't sign the message. Try again, or switch wallet."),
             buttons: again,
         },
         SignInPhase::Failed { message } => AnswerCopy {
-            title: "Couldn't sign in".to_string(),
+            title: words.failed.to_string(),
             message: message.clone(),
             buttons: again,
         },
         SignInPhase::Changed { was, now } => AnswerCopy {
             title: "Wallet account changed".to_string(),
             message: format!(
-                "You signed in as {}, but {name} is now on {}. Sign in again with this account, or sign out.",
+                "{} {}, but {name} is now on {}. {}",
+                words.changed_lead,
                 short_address(was),
-                short_address(now)
+                short_address(now),
+                words.changed_tail
             ),
             buttons: vec![
-                ("Sign in again", PillStyle::Filled, Act::SignIn),
-                ("Sign out", PillStyle::Ghost, Act::Disconnect),
+                (words.again, PillStyle::Filled, Act::SignIn),
+                (words.undo, PillStyle::Ghost, Act::Disconnect),
             ],
         },
         // Not an answer: the account view shows these.
@@ -2588,17 +2675,20 @@ pub fn chain_tint(theme: &Theme, family: ChainFamily) -> Color {
         ChainFamily::Solana => c.accent_green,
         ChainFamily::Tezos => c.accent_cyan,
         ChainFamily::Xrpl => c.text_secondary,
-        ChainFamily::Midnight => c.accent_yellow,
+        // White on black is the whole of Midnight's identity, so its accent is
+        // the one with no hue — see `raw::ACCENT_WHITE`.
+        ChainFamily::Midnight => c.accent_white,
     }
 }
 
 /// A chain's mark, drawn with shapes and centred on `at`, `size` across.
 ///
-/// Evocations, not the chains' logos: a ring of dots for Cardano, a faceted
-/// diamond for EVM, three slanted bars for Solana, a hooked `t` for Tezos, two
-/// chevrons for XRPL and a crescent for Midnight. Recognisable at 14 px and
-/// clean at 48, with no asset to ship and nothing that overlaps itself, so a
-/// mark fades evenly.
+/// Evocations, not the chains' logos — with one exception: a ring of dots for
+/// Cardano, a faceted diamond for EVM, three slanted bars for Solana, a hooked
+/// `t` for Tezos, two chevrons for XRPL, and Midnight's ring with three squares,
+/// which is its logo, drawn rather than shipped. Recognisable at 14 px and clean
+/// at 48, with no asset and nothing that overlaps itself, so a mark fades
+/// evenly.
 pub fn chain_mark(family: ChainFamily, at: Vec2, size: f32, color: Color) {
     let r = size * 0.5;
     let dim = Color::new(color.r, color.g, color.b, color.a * 0.68);
@@ -2698,9 +2788,15 @@ pub fn chain_mark(family: ChainFamily, at: Vec2, size: f32, color: Color) {
             fill_strip(&bottom, &bottom.map(|q| q - t), color);
         }
         ChainFamily::Midnight => {
-            crescent(at, 0.78 * r, 0.36 * r, 0.64 * r, -45f32.to_radians(), color);
-            let star = at + vec2(0.5, -0.5) * r;
-            draw_circle(star.x, star.y, 0.1 * r, dim);
+            // White on black: a ring, and three squares stacked in its middle.
+            // One ink at one alpha — the shape carries the identity, so the
+            // mark needs no second tone to be read.
+            ring(at, 0.94 * r, 0.75 * r, color);
+            let side = 0.2 * r;
+            for dy in [-0.42f32, 0.0, 0.42] {
+                let c = at + vec2(0.0, dy * r);
+                draw_rectangle(c.x - side * 0.5, c.y - side * 0.5, side, side, color);
+            }
         }
     }
 }
@@ -2842,25 +2938,16 @@ fn fill_strip(outer: &[Vec2], inner: &[Vec2], color: Color) {
     });
 }
 
-/// The part of a circle (radius `outer`, centre `at`) outside a second circle
-/// of radius `bite`, `offset` away from it in direction `angle`: a crescent,
-/// filled as one strip so it fades evenly.
-fn crescent(at: Vec2, outer: f32, offset: f32, bite: f32, angle: f32, color: Color) {
-    let d = offset;
-    let x = (d * d + outer * outer - bite * bite) / (2.0 * d);
-    let y = (outer * outer - x * x).max(0.0).sqrt();
-    let phi = y.atan2(x);
-    let psi = y.atan2(x - d);
-    let (sin, cos) = angle.sin_cos();
-    let turn = |v: Vec2| at + vec2(v.x * cos - v.y * sin, v.x * sin + v.y * cos);
+/// An annulus centred on `at`: a circle of radius `outer` with a hole of
+/// radius `inner`, filled as one strip so it fades evenly.
+fn ring(at: Vec2, outer: f32, inner: f32, color: Color) {
     let n = 32;
     let (mut a, mut b) = (Vec::with_capacity(n + 1), Vec::with_capacity(n + 1));
     for i in 0..=n {
-        let t = i as f32 / n as f32;
-        let ao = phi + t * (TAU - 2.0 * phi);
-        let ai = psi + t * (TAU - 2.0 * psi);
-        a.push(turn(vec2(ao.cos(), ao.sin()) * outer));
-        b.push(turn(vec2(d + bite * ai.cos(), bite * ai.sin())));
+        let t = i as f32 / n as f32 * TAU;
+        let d = vec2(t.cos(), t.sin());
+        a.push(at + d * outer);
+        b.push(at + d * inner);
     }
     fill_strip(&a, &b, color);
 }
@@ -3602,6 +3689,28 @@ mod tests {
                 wallet: "eternl".into()
             }
         );
+    }
+
+    /// A site that links rather than signs in names the step for what it does,
+    /// and the step's buttons and actions are the same ones.
+    #[test]
+    fn a_linking_site_names_the_step_by_its_own_words() {
+        let working = SignInPhase::Working {
+            step: "Approve the message in Eternl".into(),
+            in_wallet: true,
+        };
+        let vm = signing(working.clone()).with_proof(ProofWords::LINK);
+        let copy = sign_in_copy(&vm, Some(ChainFamily::Cardano), "eternl", &working);
+        assert_eq!(copy.title, "Sign with Eternl");
+        let copy = sign_in_copy(
+            &vm,
+            Some(ChainFamily::Cardano),
+            "eternl",
+            &SignInPhase::Declined,
+        );
+        assert_eq!(copy.title, "Link cancelled");
+        let acts: Vec<&Act> = copy.buttons.iter().map(|(_, _, a)| a).collect();
+        assert_eq!(acts, [&Act::SignIn, &Act::Another]);
     }
 
     /// The wallet moved to another account after the sign-in: the answer step

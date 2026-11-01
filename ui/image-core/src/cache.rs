@@ -102,6 +102,29 @@ impl<V> ImageCache<V> {
         Some(&slot.value)
     }
 
+    /// Read without counting as a use.
+    ///
+    /// For a caller that draws from a pass it cannot take `&mut self` in — a
+    /// map's tile pass reads a texture per placement while the same owner is
+    /// also read for other state. Pair it with [`Self::touch`] where the thing
+    /// is actually drawn, so use and read stay separable.
+    pub fn peek(&self, key: &str) -> Option<&V> {
+        self.slots.get(key).map(|slot| &slot.value)
+    }
+
+    /// Mark as recently used without reading the value. True if it was held.
+    pub fn touch(&mut self, key: &str) -> bool {
+        self.tick += 1;
+        let tick = self.tick;
+        match self.slots.get_mut(key) {
+            Some(slot) => {
+                slot.used = tick;
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Is it held? Does **not** count as a use, so a caller polling
     /// availability can't keep something alive it never actually draws.
     pub fn contains(&self, key: &str) -> bool {
@@ -227,6 +250,30 @@ mod tests {
         // `a` is still the oldest despite the `contains`, so it goes first.
         let evicted = c.insert("c", "C", 100);
         assert_eq!(evicted[0].key, "a");
+    }
+
+    #[test]
+    fn peek_reads_without_counting_as_a_use() {
+        let mut c = cache();
+        c.insert("a", "A", 100);
+        c.insert("b", "B", 100);
+        assert_eq!(c.peek("a"), Some(&"A"));
+        // Still the oldest.
+        let evicted = c.insert("c", "C", 100);
+        assert_eq!(evicted[0].key, "a");
+    }
+
+    #[test]
+    fn touch_keeps_an_entry_alive() {
+        // The other half of `peek`: the draw pass marks what it actually drew.
+        let mut c = cache();
+        c.insert("a", "A", 100);
+        c.insert("b", "B", 100);
+        assert!(c.touch("a"));
+        assert!(!c.touch("missing"));
+        let evicted = c.insert("c", "C", 100);
+        assert_eq!(evicted[0].key, "b");
+        assert!(c.contains("a") && c.contains("c"));
     }
 
     #[test]

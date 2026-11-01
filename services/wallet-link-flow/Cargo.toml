@@ -1,0 +1,25 @@
+[package]
+name = "wallet-link-flow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "The Discord wallet-link flow as a pure state machine: what to ask auth-service, what to ask the wallet, and what to tell the reader, as data. No I/O and no runtime: a macroquad client, a wasm-bindgen frontend and a test drive the same machine."
+publish = false
+
+# Pure on purpose (see the shared-crates rule on runtime pairs): no macroquad,
+# no wasm-bindgen, no HTTP. The edge crates execute the effects this machine
+# emits and feed the outcomes back as events.
+
+[dependencies]
+# The wire types, shared with every service that asks about links.
+wallet-link = { path = "../wallet-link" }
+# `ChainFamily`, the vocabulary the wallet modal speaks.
+chains = { workspace = true }
+# The flow is a statig machine: no_std, plain sync `handle(&event)`, nothing
+# beyond its macro crate, safe under miniquad and wasm-bindgen alike.
+statig = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+# Replies arrive as text and are decoded here, into the wire types.
+serde_json = { workspace = true }

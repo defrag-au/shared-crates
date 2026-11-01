@@ -37,6 +37,39 @@ pub fn ada(lovelace: u64) -> String {
     compact(lovelace as f64 / 1e6)
 }
 
+/// A count with its thousands separated: `8888` → `8,888`.
+pub fn grouped(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// An amount of ADA as a figure: whole ADA grouped, then up to two decimals
+/// where there are any. `1_234_500_000` → `1,234.5`. For a caption with room
+/// for the number but not its unit; [`ada_full`] adds the unit, and [`ada`] is
+/// the compact form for a chart's axis.
+pub fn ada_amount(lovelace: u64) -> String {
+    let whole = grouped(lovelace / 1_000_000);
+    match (lovelace % 1_000_000) / 10_000 {
+        0 => whole,
+        c if c % 10 == 0 => format!("{whole}.{}", c / 10),
+        c => format!("{whole}.{c:02}"),
+    }
+}
+
+/// An amount of ADA in full, as a reader reads a price or a total:
+/// `1_234_500_000` → `1,234.5 ADA`. "ADA", not "₳": the faces these widgets
+/// load (the Latin subsets) have no ₳.
+pub fn ada_full(lovelace: u64) -> String {
+    format!("{} ADA", ada_amount(lovelace))
+}
+
 /// A price in ADA with four significant digits however small:
 /// `0.000006626` → `0.000006627`.
 pub fn price(ada: f64) -> String {
@@ -132,6 +165,24 @@ mod tests {
         assert_eq!(share(0.135_282), "13.5%");
         assert_eq!(share(0.000_2), "<0.1%");
         assert_eq!(share(0.0), "0.0%");
+    }
+
+    #[test]
+    fn full_amounts_read_as_a_person_writes_them() {
+        // The staking site's cases, and the holder app's, which both read
+        // their amounts through this now.
+        assert_eq!(ada_full(30_000_000), "30 ADA");
+        assert_eq!(ada_full(1_234_000_000), "1,234 ADA");
+        assert_eq!(ada_full(30_500_000), "30.5 ADA");
+        assert_eq!(ada_full(30_250_000), "30.25 ADA");
+        assert_eq!(ada_full(1_250_000), "1.25 ADA");
+        assert_eq!(ada_full(1_234_500_000), "1,234.5 ADA");
+        assert_eq!(ada_full(0), "0 ADA");
+        assert_eq!(ada_amount(1_234_500_000), "1,234.5", "the figure alone");
+        assert_eq!(ada_amount(30_000_000), "30");
+        assert_eq!(grouped(999), "999");
+        assert_eq!(grouped(8_888), "8,888");
+        assert_eq!(grouped(1_000_000), "1,000,000");
     }
 
     #[test]

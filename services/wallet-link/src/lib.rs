@@ -39,6 +39,7 @@ pub struct LinkedWallet {
     /// |---|---|---|
     /// | Cardano | `cardano:mainnet` | a stake address encodes its network |
     /// | EVM | `eip155` | the account comes from a key alone, so a signature proves control on **every** EVM chain |
+    /// | Midnight | `midnight:mainnet` | an unshielded address's HRP names its network (`mn_addr` on mainnet), and only mainnet is accepted |
     ///
     /// So an EVM link asserts no chain. A consumer that reads ownership on a
     /// particular EVM chain looks the address up *there*; the link does not, and
@@ -47,9 +48,9 @@ pub struct LinkedWallet {
     pub chain: String,
 
     /// The address in the form its chain uses: bech32 `stake1…` on Cardano,
-    /// lower-case `0x…` on EVM. Cardano links carry the **reward** address —
-    /// the one credential a CIP-8 signature proves, so every payment address
-    /// under it is covered.
+    /// lower-case `0x…` on EVM, bech32m `mn_addr…` on Midnight. Cardano links
+    /// carry the **reward** address — the one credential a CIP-8 signature
+    /// proves, so every payment address under it is covered.
     pub address: String,
 
     /// ADA handle, when the wallet has one. Cardano only — handles are Cardano
@@ -63,6 +64,57 @@ pub struct LinkedWallet {
 pub fn wallets_path(discord_user_id: &str) -> String {
     format!("{INTERNAL_WALLETS_PATH}/{discord_user_id}")
 }
+
+/// Path auth-service serves the BATCH reverse lookup on: given credentials, who
+/// owns them.
+///
+/// Deliberately not a suffix of [`INTERNAL_WALLETS_PATH`] — that route takes a
+/// user id, and a literal segment beside a `:id` parameter is a collision
+/// waiting for whichever router rule happens to come first.
+///
+/// Internal-key authenticated for the same reason as the forward lookup: it is
+/// the wallet↔identity mapping, and W14 keeps that out of any public read.
+pub const INTERNAL_WALLET_OWNERS_PATH: &str = "/_internal/wallet-owners";
+
+/// A set of credentials to resolve, in one call.
+///
+/// The caller sends the form its holder source gave it — the token ledger keys
+/// holders by the 28-byte hex stake credential — and auth-service decides which
+/// stored form that corresponds to. Doing the encoding on the identity side is
+/// deliberate: how a credential is written into `user_wallet` is that service's
+/// business, and a caller that mirrored it would break the day a legacy row
+/// reaches it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WalletOwnerQuery {
+    pub credentials: Vec<String>,
+}
+
+/// One credential that resolved to an owner.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WalletOwner {
+    /// Echoed exactly as asked, so a caller can key its own aggregation without
+    /// re-deriving an encoding it never owned.
+    pub credential: String,
+    pub discord_user_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handle: Option<String>,
+}
+
+/// The batch answer.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WalletOwners {
+    pub resolved: Vec<WalletOwner>,
+    /// Asked about and not linked.
+    ///
+    /// Echoed so "nobody has linked this wallet" is distinguishable from "the
+    /// request never carried it" — a truncated request and a cold holder set
+    /// look identical otherwise, and the first is a bug while the second is a
+    /// fact.
+    #[serde(default)]
+    pub unresolved: Vec<String>,
+}
+
+pub mod link;
 
 impl LinkedWallet {
     /// The address when this is a Cardano link, else `None`.
@@ -87,6 +139,17 @@ impl LinkedWallet {
     /// Valid on any EVM chain the consumer reads; see [`Self::chain`].
     pub fn evm_address(&self) -> Option<&str> {
         (self.namespace() == "eip155").then_some(self.address.as_str())
+    }
+
+    /// The unshielded address when this is a Midnight link, else `None` — the
+    /// Midnight sibling of [`Self::cardano_address`].
+    ///
+    /// Chain-specific, unlike [`Self::evm_address`]: the link names
+    /// `midnight:mainnet`, and a bech32m address for another Midnight network
+    /// would decode to the same 32 bytes, so a consumer that accepted the
+    /// address without reading the chain could confuse the two.
+    pub fn midnight_address(&self) -> Option<&str> {
+        (self.namespace() == "midnight").then_some(self.address.as_str())
     }
 
     /// The CAIP namespace half of `chain` — the whole string for a family-wide
@@ -155,6 +218,37 @@ mod tests {
         assert_eq!(cardano("stake1abc", None).evm_address(), None);
     }
 
+    /// The address from the connector specification's own `makeTransfer`
+    /// example — a wallet's output, not something this crate built.
+    const UNSHIELDED: &str = "mn_addr1asujt0dayj4pelgq97wv75hjhscqv9epmzzpapkf8sy8c87jhh9s6e0fs3";
+
+    /// A Midnight link is chain-specific, and each of the three accessors names
+    /// its own chain and nothing else — a Midnight address handed to a Cardano
+    /// lookup must not resolve.
+    #[test]
+    fn midnight_address_yields_only_midnight_links() {
+        let midnight = LinkedWallet {
+            chain: "midnight:mainnet".to_string(),
+            address: UNSHIELDED.to_string(),
+            handle: None,
+        };
+        assert_eq!(midnight.midnight_address(), Some(UNSHIELDED));
+        assert_eq!(midnight.cardano_address(), None);
+        assert_eq!(midnight.evm_address(), None);
+        assert_eq!(cardano("stake1abc", None).midnight_address(), None);
+        assert_eq!(evm("eip155").midnight_address(), None);
+
+        let json = serde_json::to_string(&midnight).unwrap();
+        assert!(
+            json.contains(r#""chain":"midnight:mainnet""#),
+            "chain on the wire: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<LinkedWallet>(&json).unwrap(),
+            midnight
+        );
+    }
+
     /// Producers may add fields; a consumer must not break on them.
     #[test]
     fn unknown_fields_are_ignored() {
@@ -177,6 +271,32 @@ mod tests {
         assert_eq!(
             wallets_path("179744071361757184"),
             "/_internal/wallets/179744071361757184"
+        );
+    }
+
+    #[test]
+    fn the_batch_owner_answer_round_trips() {
+        let answer = WalletOwners {
+            resolved: vec![WalletOwner {
+                credential: "aa11".into(),
+                discord_user_id: "42".into(),
+                handle: None,
+            }],
+            unresolved: vec!["bb22".into()],
+        };
+        let json = serde_json::to_string(&answer).unwrap();
+        assert!(!json.contains("handle"), "absent handle should be omitted");
+        assert_eq!(serde_json::from_str::<WalletOwners>(&json).unwrap(), answer);
+    }
+
+    /// A resolver that is only ever asked about linked wallets answers with an
+    /// empty list, not an error — an empty guild is not a failed request.
+    #[test]
+    fn an_empty_query_is_a_valid_request() {
+        let query = WalletOwnerQuery::default();
+        assert_eq!(
+            serde_json::from_str::<WalletOwnerQuery>(r#"{"credentials":[]}"#).unwrap(),
+            query
         );
     }
 

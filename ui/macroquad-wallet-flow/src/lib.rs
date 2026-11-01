@@ -58,6 +58,7 @@ pub mod cardano;
 pub mod connector;
 pub mod evm;
 pub mod icons;
+pub mod midnight;
 
 pub use cardano::{CardanoHost, cardano_account};
 pub use connector::{ChainHost, WalletConnector, copy_text};
@@ -67,6 +68,9 @@ pub use evm::{
 };
 pub use macroquad_widgets::WalletState;
 use macroquad_widgets::{Painter, WalletAction, WalletConnectVm, WalletItem, wallet_connect};
+pub use midnight::{
+    MIDNIGHT_DETAIL, MidnightBridge, MidnightHost, MiniquadMidnightBridge, midnight_account,
+};
 use wallet_miniquad::{self as wallet, FailureKind, PollResultDetailed, Provider, ReqId};
 
 /// What the flow needs from a wallet bridge.

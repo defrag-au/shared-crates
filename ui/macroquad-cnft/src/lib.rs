@@ -39,12 +39,18 @@
 //!
 //! ```no_run
 //! # fn main() -> std::io::Result<()> {
-//! std::fs::write("web/cnft.js", macroquad_cnft::PLUGIN_JS)?;
+//! std::fs::write("web/image.js", macroquad_cnft::PLUGIN_JS)?;
 //! # Ok(()) }
 //! ```
 //!
 //! Natively there is nothing to set up: requests run on threads, and art is
 //! fetched as PNG because that is what macroquad decodes.
+//!
+//! The plugin, the fetch and the texture loader are `image-miniquad`'s — this
+//! crate re-exports them under the names it has always used, so an existing
+//! `web/cnft.js` stamp keeps working. The file's *name* is irrelevant to
+//! miniquad; what matters is that the JS matches the Rust that imports from it.
+//! New code should reach for `image_miniquad::PLUGIN_JS` directly.
 //!
 //! # Trust
 //!
@@ -54,16 +60,18 @@
 pub mod art;
 pub mod card;
 pub mod collection;
-pub mod fetch;
 pub mod holdings;
 pub mod tile;
 
 pub use art::{ArtLoader, ArtStats, ArtView, art_url, art_url_on};
 pub use card::{CardData, CardFx, CardLayout, CardPainter, CardPalette, draw_stat_icon, tier_name};
 pub use collection::{BrowseLoader, CollectionsLoader};
-pub use fetch::{FetchError, ImageRequest, Stage, TextRequest, get_image, get_text};
 pub use holdings::HoldingsLoader;
 pub use tile::{ArtTile, TileStyle};
+
+// The transport and the loader, from `image-miniquad`. Re-exported rather than
+// depended on directly by consumers, so this crate's surface does not change.
+pub use image_miniquad::{FetchError, ImageRequest, Stage, TextRequest, get_image, get_text};
 
 pub use cnft_holdings::{
     AssetRarity, Browse, CardProfile, CollectionList, CollectionSummary, Holdings, LoadState,
@@ -72,17 +80,10 @@ pub use cnft_holdings::{
 };
 pub use image_core::ImageSize;
 
-/// The JS half of the bridge, for stamping into a web build as `cnft.js`.
+/// The JS half of the bridge, for stamping into a web build.
 ///
-/// Shipped from the crate so it cannot drift from the Rust that calls it: a
-/// stale copy fails on a missing import at instantiate.
-pub const PLUGIN_JS: &str = include_str!("../js/cnft.js");
-
-/// Plugin version handshake. miniquad's `gl.js` compares the export
-/// `<plugin>_crate_version` with the plugin's JS `version`; `cnft.js`
-/// declares `version: 1`. Bump both together when the JS surface changes.
-#[cfg(target_arch = "wasm32")]
-#[unsafe(no_mangle)]
-extern "C" fn cnft_crate_version() -> u32 {
-    1
-}
+/// Shipped from `image-miniquad` so it cannot drift from the Rust that calls
+/// it: a stale copy fails on a missing import at instantiate. Kept re-exported
+/// here because every consumer of this crate stages `macroquad_cnft::PLUGIN_JS`
+/// today; moving them to `image_miniquad::PLUGIN_JS` is a rename, not a fix.
+pub use image_miniquad::PLUGIN_JS;

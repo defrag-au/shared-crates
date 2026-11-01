@@ -75,7 +75,10 @@ femtovg. Do **not** build it here:
 
 When you hit one, in order: **(a) design the need away** — paginate instead of
 scroll, let the wallet handle input, use a fixed layout; **(b)** if you genuinely
-can't, the surface is the **wrong shape for macroquad** — move it (see below).
+can't, the surface is the **wrong shape for this crate** — move it (see below).
+An app that needs text entry, a long grid or routing is built on `macroquad-app`,
+which owns that machinery (decided 2026-10-31, for the collection-ownership holder
+app); nothing of it moves back into this crate.
 
 ### Where each surface lives
 
@@ -83,6 +86,7 @@ can't, the surface is the **wrong shape for macroquad** — move it (see below).
 |---|---|---|
 | Mint / reveal / order heartbeat (buyer, tap-first) | **macroquad** (this crate) | bounded, lightweight (~1.4 MB release wasm, ~½ that over the wire), survives the wallet webview |
 | Token market & lifecycle (chart, holders, replay) | **macroquad** (this crate, `trading`) | one dataset, fixed layout, bounded marks; pan/zoom is the line — a browsable chart belongs in HTML |
+| A holder-facing app that browses, searches and navigates (a collection, its traits, a wallet's holdings) | **macroquad**, on **`macroquad-app`** | the app shell lives in its own crate, behind its own charter: a real text field over the canvas, a virtualised grid, routes in the page's hash. The stop signs still hold *here* |
 | Operator dashboards (dense, scrolling, filtering, tables) | **egui** (`egui-widgets`) | needs the machinery the stop-signs list |
 | Marketing / galleries / browse-all-N grids | **HTML / Leptos** | virtualised scroll, SEO, social cards |
 

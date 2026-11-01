@@ -12,18 +12,53 @@ use macroquad::prelude::*;
 use macroquad_widgets::theme::with_alpha;
 use macroquad_widgets::{
     BoardRow, ChangeChipVm, ChartLabels, ChartPoint, FEED_ROW_STEP, FeedRow, FeedVm, Gesture,
-    HolderBoardVm, HolderMapLayout, HolderMapState, HolderMapVm, Holding, HoldingKind, KindInk,
-    LifeBucket, LifeStripVm, MapGroup, MapTile, MarketInk, Painter, PriceChartVm, SplitBarVm,
-    StatMark, StatTile, StatTilesVm, TokenHeaderVm, TokenLogo, TradeMark, TradeSide, TradeSize,
-    TreemapGroup, TreemapState, TreemapTile, TreemapVm, change_chip, draw_rounded_rect, feed,
-    format, holder_board, holder_map, life_strip, price_chart, split_bar, stat_tiles, time_at_x,
-    token_header, treemap,
+    HolderBoardVm, HolderMapLayout, HolderMapState, HolderMapVm, Holding, HoldingKind,
+    HoldingSplit, KindInk, LifeBucket, LifeStripVm, MapGroup, MapTile, MarketInk, Painter,
+    PriceChartVm, RateChartLabels, RateChartVm, RateStep, SplitBarVm, StatMark, StatTile,
+    StatTilesVm, TokenHeaderVm, TokenLogo, TradeMark, TradeSide, TradeSize, TreemapGroup,
+    TreemapState, TreemapTile, TreemapVm, change_chip, draw_rounded_rect, feed, format,
+    holder_board, holder_map, life_strip, price_chart, rate_chart, split_bar, stat_tiles,
+    time_at_x, token_header, treemap,
 };
 
 /// Where the fixture's history starts: 13 Oct 2026, 10:13 UTC.
 const T0: u64 = 1_792_000_000;
 /// One fixture point an hour.
 const STEP: u64 = 3_600;
+
+/// The rate story's month: season 2's anchor, so the axis reads as a real
+/// season. `RATE_MEAN` is what a host computes over the priced stretch.
+const RATE_T0: u64 = 1_790_812_800;
+const RATE_MEAN: f64 = 52.5;
+
+/// A wallet's rate over that month: two buys, a sale, and the campaign's rate
+/// rising once — the shape the staking site's history draws. A layout fixture
+/// like the price path, not anybody's ledger.
+fn rate_steps() -> Vec<RateStep> {
+    let d = 86_400;
+    vec![
+        RateStep {
+            at: RATE_T0,
+            value: 0.0,
+        },
+        RateStep {
+            at: RATE_T0 + 2 * d,
+            value: 30.0,
+        },
+        RateStep {
+            at: RATE_T0 + 5 * d,
+            value: 76.0,
+        },
+        RateStep {
+            at: RATE_T0 + 12 * d,
+            value: 41.0,
+        },
+        RateStep {
+            at: RATE_T0 + 19 * d,
+            value: 82.0,
+        },
+    ]
+}
 
 /// The arena's burn ink, where its role palette differs from the shared seven:
 /// a burned token is orange-red there, not a sell's pink. The stories pass it so
@@ -40,6 +75,8 @@ pub enum TradingView {
     ChartPhone,
     ChartScrub,
     ChartHigh,
+    Rate,
+    RatePhone,
     Strip,
     StripPhone,
     StripPending,
@@ -62,6 +99,9 @@ struct OwnedHolding {
     label: String,
     kind: HoldingKind,
     amount: f64,
+    /// What of `amount` is locked and what a pool adds; `None` for the stories
+    /// that predate the split.
+    split: Option<HoldingSplit>,
 }
 
 /// A feed row as the story owns it.
@@ -195,6 +235,51 @@ impl TradingStory {
                     },
                 };
                 price_chart(p, &vm, plot);
+            }
+            TradingView::Rate | TradingView::RatePhone => {
+                let width = if self.view == TradingView::RatePhone {
+                    w.min(350.0)
+                } else {
+                    w
+                };
+                let plot = Rect::new(x, y + 26.0, width, (area.h - 52.0).clamp(120.0, 240.0));
+                draw_rounded_rect(
+                    plot.x - 10.0,
+                    plot.y - 12.0,
+                    plot.w + 20.0,
+                    plot.h + 20.0,
+                    10.0,
+                    with_alpha(p.theme.color.bg_secondary, 0.7),
+                );
+                let steps = rate_steps();
+                // A month of a season, three weeks of it priced: past `earned`
+                // the line is what the rate would go on to earn.
+                let t0 = RATE_T0;
+                let t1 = RATE_T0 + 30 * 86_400;
+                let earned = RATE_T0 + 22 * 86_400;
+                let peak = steps.iter().map(|s| s.value).fold(0.0f64, f64::max);
+                let peak_label = format!("PEAK {peak:.0} $PERP/DAY");
+                let mean_label = format!("MEAN {RATE_MEAN:.0}");
+                let start = format::day(t0);
+                let end = format::day(t1);
+                let vm = RateChartVm {
+                    steps: &steps,
+                    t0,
+                    t1,
+                    // The story is a rate, so the axis starts at zero.
+                    range: None,
+                    earned_to: Some(earned),
+                    mean: Some(RATE_MEAN),
+                    line: p.theme.color.accent,
+                    fill: with_alpha(p.theme.color.accent, 0.18),
+                    labels: RateChartLabels {
+                        peak: Some(&peak_label),
+                        mean: Some(&mean_label),
+                        start: Some(&start),
+                        end: Some(&end),
+                    },
+                };
+                rate_chart(p, &vm, plot);
             }
             TradingView::Strip | TradingView::StripPhone | TradingView::StripPending => {
                 let width = if self.view == TradingView::StripPhone {
@@ -338,8 +423,12 @@ impl TradingStory {
             TradingView::Board | TradingView::BoardPartial => {
                 let holdings = borrowed(&self.holdings);
                 let fits = 8;
-                let total: f64 = holdings.iter().map(|h| h.amount).sum();
-                let largest = holdings.first().map_or(1.0, |h| h.amount);
+                let total: f64 = holdings.iter().map(|h| h.position()).sum();
+                let largest = holdings.iter().map(|h| h.position()).fold(1.0, f64::max);
+                let largest_pool = holdings
+                    .iter()
+                    .map(|h| h.split.map_or(0.0, |s| s.lp))
+                    .fold(0.0, f64::max);
                 let rows: Vec<BoardRow> = holdings
                     .iter()
                     .take(fits)
@@ -357,10 +446,14 @@ impl TradingStory {
                     fits,
                     count: holdings.len(),
                     largest,
+                    largest_pool,
                     total,
                     complete: self.view != TradingView::BoardPartial,
                     ink,
                     kinds: &[KIND_BURN],
+                    // The story draws no selection: there is no detail beside
+                    // the board here to belong to.
+                    selected: None,
                 };
                 holder_board(p, &vm, Rect::new(x, y + 20.0, w.min(390.0), 220.0));
             }
@@ -372,11 +465,15 @@ impl TradingStory {
                     w.min(390.0),
                     (area.h - 90.0).clamp(180.0, 330.0),
                 );
-                let total: f64 = holdings.iter().map(|h| h.amount).sum();
+                let total: f64 = holdings.iter().map(|h| h.position()).sum();
+                let largest_pool = holdings
+                    .iter()
+                    .map(|h| h.split.map_or(0.0, |s| s.lp))
+                    .fold(0.0, f64::max);
                 // A title over the map, as the arena draws one. The widget
                 // draws the body only; the host names the panel.
                 p.text(
-                    "THE SUPPLY, BY HOLDER",
+                    "THE POSITION, BY HOLDER",
                     body.x,
                     body.y - 18.0,
                     p.size(ui_theme::TextSize::Xs),
@@ -414,6 +511,7 @@ impl TradingStory {
                         tiles: &placed,
                         groups: &named,
                         total,
+                        largest_pool,
                         ink,
                         kinds: &[KIND_BURN],
                     },
@@ -494,6 +592,7 @@ fn borrowed(holdings: &[OwnedHolding]) -> Vec<Holding<'_>> {
             label: &h.label,
             kind: h.kind,
             amount: h.amount,
+            split: h.split,
         })
         .collect()
 }
@@ -615,9 +714,26 @@ fn holdings() -> Vec<OwnedHolding> {
             label: label.to_string(),
             kind,
             amount,
+            split: None,
         })
         .collect();
     out.sort_by(|a, b| b.amount.total_cmp(&a.amount).then(a.key.cmp(&b.key)));
+    // Two of the rows the board actually shows carry a tip split, so the
+    // locked band and the LP figure are both on screen: the largest holding is
+    // partly locked, and a smaller person holds LP beside their balance.
+    for h in &mut out {
+        h.split = match h.key.as_str() {
+            "$perpstaking" => Some(HoldingSplit {
+                vested: 60_000.0,
+                lp: 0.0,
+            }),
+            "q9el..erfa" => Some(HoldingSplit {
+                vested: 0.0,
+                lp: 40_000.0,
+            }),
+            _ => None,
+        };
+    }
     out
 }
 

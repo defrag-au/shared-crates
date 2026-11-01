@@ -104,6 +104,13 @@ impl<'a> Painter<'a> {
         self.theme.role_size(role)
     }
 
+    /// The pixel scale this painter draws at: device pixels per point. Text
+    /// uses it to rasterise; a glyph drawn by a host's own face needs it for
+    /// the same reason.
+    pub fn scale(&self) -> f32 {
+        self.px
+    }
+
     pub fn text(&self, s: &str, x: f32, y: f32, size: f32, color: Color) {
         self.draw_in(self.font, s, x, y, size, color);
     }
@@ -188,6 +195,17 @@ impl<'a> Painter<'a> {
         }
         out.push('…');
         out
+    }
+
+    /// `s` broken into lines no wider than `max_w` in the proportional face:
+    /// at spaces, and inside a word only when one word (a URL in an error, a
+    /// stake address) is wider than a whole line.
+    ///
+    /// The wrap every host was writing for itself — three copies across the
+    /// staking site and the holder app, one of them unable to break a long
+    /// word. Draw the lines with [`Painter::text_in`] or [`Painter::stack_in`].
+    pub fn wrap(&self, s: &str, size: f32, max_w: f32) -> Vec<String> {
+        wrap_words(s, |line| self.measure(line, size).width <= max_w)
     }
 
     /// Baseline `y` that vertically centres text (at `size`) within a band of
@@ -396,6 +414,40 @@ impl<'s> Line<'s> {
     }
 }
 
+/// The breaking behind [`Painter::wrap`], given whether a line fits: words
+/// joined while they fit, and a word too long for any line cut where it must
+/// be. Apart from the painter so it is tested without a font.
+fn wrap_words(text: &str, fits: impl Fn(&str) -> bool) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        let candidate = if line.is_empty() {
+            word.to_string()
+        } else {
+            format!("{line} {word}")
+        };
+        if fits(&candidate) {
+            line = candidate;
+            continue;
+        }
+        if !line.is_empty() {
+            lines.push(std::mem::take(&mut line));
+        }
+        for c in word.chars() {
+            line.push(c);
+            if !fits(&line) && line.chars().count() > 1 {
+                line.pop();
+                lines.push(std::mem::take(&mut line));
+                line.push(c);
+            }
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
+}
+
 /// Where text `w` wide starts in `rect` for `align`.
 fn aligned_x(rect: Rect, w: f32, align: Align) -> f32 {
     match align {
@@ -479,4 +531,40 @@ pub fn frame_tap() -> Option<Vec2> {
         return Some(vec2(x, y));
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wrap_words;
+
+    /// A line fits when it has at most `n` characters: a monospace measure.
+    fn width(n: usize) -> impl Fn(&str) -> bool {
+        move |s: &str| s.chars().count() <= n
+    }
+
+    #[test]
+    fn words_wrap_at_spaces() {
+        assert_eq!(
+            wrap_words("the quick brown fox jumps", width(10)),
+            ["the quick", "brown fox", "jumps"]
+        );
+    }
+
+    #[test]
+    fn a_word_wider_than_a_line_is_cut_where_it_must_be() {
+        assert_eq!(
+            wrap_words("see stake1u8a9bcdefg now", width(6)),
+            ["see", "stake1", "u8a9bc", "defg", "now"]
+        );
+    }
+
+    #[test]
+    fn nothing_wraps_to_no_lines() {
+        assert!(wrap_words("   ", width(10)).is_empty());
+        assert_eq!(
+            wrap_words("one", width(0)),
+            ["o", "n", "e"],
+            "never an empty line"
+        );
+    }
 }

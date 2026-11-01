@@ -72,9 +72,11 @@ members = [
     "ui/wallet-miniquad",
     "ui/macroquad-tui",
     "ui/macroquad-wallet-flow",
+    "ui/macroquad-wallet-link",
     "ui/macroquad-cnft",
     "ui/macroquad-text",
     "ui/macroquad-widgets",
+    "ui/macroquad-app",
     "ui/macroquad-bundle",
     # Its runner: cargo runs only this workspace's binaries.
     "tools/mq-bundle",
@@ -82,6 +84,7 @@ members = [
     "ui/miniquad-platform",
     "ui/canvas-bridge",
     "ui/image-core",
+    "ui/image-miniquad",
     "ui/mq-flow-probe",
     "ui/egui-widgets",
     "ui/portal-pane",
@@ -277,6 +280,7 @@ arcade-harness = { path = "gaming/arcade-harness" }
 macroquad-wallet-flow = { path = "ui/macroquad-wallet-flow" }
 macroquad-cnft = { path = "ui/macroquad-cnft" }
 macroquad-widgets = { path = "ui/macroquad-widgets" }
+macroquad-app = { path = "ui/macroquad-app" }
 wallet-miniquad = { path = "ui/wallet-miniquad" }
 tx_insights = { path = "tx-insights" }
 tx-verdict = { path = "tx-verdict" }

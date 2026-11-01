@@ -15,6 +15,9 @@ thiserror = { workspace = true }
 [dev-dependencies]
 # `time` is for the example's pacing between requests, not for the crate.
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+# The examples are the entry points, and the key belongs in `.env`, never in the tree.
+# Already in the workspace's lock via `opensea-ws-client`; a dev-dependency only.
+dotenvy = "0.15"
 
 [features]
 # Exercises the live API from `tests/live.rs`. Off by default: CI runs

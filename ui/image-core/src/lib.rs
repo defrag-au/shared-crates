@@ -25,10 +25,12 @@
 #![forbid(unsafe_code)]
 
 mod cache;
+mod picture;
 mod queue;
 mod url;
 
 pub use cache::{Evicted, ImageCache};
+pub use picture::policy_picture_urls;
 pub use queue::{LoadQueue, Outcome, Slot};
 pub use url::{
     DEFAULT_IIIF_BASE, Format, IiifUrl, ImageSize, SizeSpec, base_for_network, hosts,

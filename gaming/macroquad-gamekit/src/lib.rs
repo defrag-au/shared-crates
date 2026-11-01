@@ -41,6 +41,19 @@ pub mod app;
 /// Discord login for a game: see the crate docs.
 #[cfg(feature = "discord-auth")]
 pub use discord_auth::miniquad as auth;
+/// Inertial movement after a flick: the content follows the pointer while it is
+/// down, then keeps going and slows to a stop. See
+/// [`macroquad_widgets::Momentum`], which measures the release speed over the
+/// last tenth of a second so a finger that stops before it lifts does not fling.
+pub use macroquad_widgets::Momentum;
+/// A wheel report as screen points, on this platform.
+///
+/// The platform rule and its numbers live in `macroquad_widgets::scroll`, which
+/// the kit already depends on: the browser and macOS report a trackpad's
+/// precise points, Windows and Linux a mouse wheel's notches, so a caller that
+/// scales a raw `mouse_wheel()` by a constant is off by
+/// [`macroquad_widgets::NOTCH_POINTS`] on one half of the estate.
+pub use macroquad_widgets::wheel_points;
 #[cfg(feature = "audio")]
 pub mod audio;
 pub mod bake;
@@ -60,6 +73,7 @@ pub mod motion;
 #[cfg(feature = "gamepads")]
 pub mod pads;
 pub mod paint;
+pub mod phosphor;
 pub mod pixel;
 pub mod plan;
 pub mod pointer;
@@ -106,11 +120,14 @@ pub use paint::{
     Gradient, bevel, fill_circle_gradient, fill_gradient, grain, inner_shadow, noise_pixels,
     noise_texture, scanlines,
 };
+pub use phosphor::{Phosphor, PhosphorIcon};
 pub use pixel::{Grid, Onion, Palette, PixelError, PixelSprite, parse_frames};
 pub use pointer::{HoverGrace, Pointer, PointerConfig, PointerEvent, Swipe, Swipes};
 pub use preload::Preloader;
 pub use sequence::{Sequencer, stagger};
-pub use shape::{RoundedArt, cover_source, fill_rounded, fill_texture_rounded, stroke_rounded};
+pub use shape::{
+    Finish, RoundedArt, cover_source, fill_rounded, fill_texture_rounded, stroke_rounded,
+};
 pub use sprite::{Pose, Sprite, draw_order, topmost};
 pub use sprite_file::{SpriteFile, SpriteFileError};
 pub use starfield::{Star, Starfield};
@@ -127,7 +144,7 @@ pub use tween::{Animated, Lerp};
 pub use wall::{Wall, WallStyle};
 pub use wallet_connection::{Connection, ConnectionEvent};
 pub use wallet_modal::{
-    Account, AccountDetail, ChainOption, ChainPhase, DetailKind, SignInPhase, Support, WalletModal,
-    WalletModalAction, WalletModalVm, WalletOption, chain_mark, chain_tint, wallet_button,
-    wallet_icon, wallet_icon_shaped,
+    Account, AccountDetail, ChainOption, ChainPhase, DetailKind, ProofWords, SignInPhase, Support,
+    WalletModal, WalletModalAction, WalletModalVm, WalletOption, chain_mark, chain_tint,
+    wallet_button, wallet_icon, wallet_icon_shaped,
 };

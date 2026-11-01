@@ -20,16 +20,9 @@ macroquad-widgets = { workspace = true }
 # macroquad-widgets with the same feature, so it adds no crates.
 ui-theme = { workspace = true, features = ["macroquad"] }
 cnft-holdings = { workspace = true }
-# The fetch queue and texture cache policy (dependency-free).
+# The URL policy and the image sizes.
 image-core = { path = "../image-core" }
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
-
-# Plugin bridge — JsObject transport between Rust and js/cnft.js.
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-sapp-jsutils = "0.1"
-
-# Native HTTP. Already in the tree through quad-net (arcade-harness), at the
-# same major version and default features, so it adds no crates.
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-ureq = "2"
+# Fetch, decode, the texture queue/cache and the JS plugin. Split out so a map
+# or a gallery can load images without depending on an NFT crate; re-exported
+# below under this crate's existing names.
+image-miniquad = { path = "../image-miniquad" }

@@ -13,6 +13,7 @@
 // like an event, cancel, poll.
 //
 // Plugin version 2: adds `evm_switch_chain`. Version 3: adds `evm_recheck`.
+// Version 4: adds `evm_personal_sign`.
 
 (function () {
     let nextReqId = 1;
@@ -186,6 +187,30 @@
         return id;
     }
 
+    // EIP-191 `personal_sign` by the connected wallet. `request` is the JSON
+    // `{ message: "0x…", address: "0x…" }`, the message already hex; on ok,
+    // `data` is the signature as the wallet returned it (`0x…`).
+    function evm_personal_sign(request_handle) {
+        const request = JSON.parse(consume_js_object(request_handle));
+        const id = nextReqId++;
+        pending.set(id, { status: 'pending' });
+        if (!current) {
+            fail(id, 'no wallet connected');
+            return id;
+        }
+        current.request({ method: 'personal_sign', params: [request.message, request.address] })
+            .then(function (signature) {
+                if (!pending.has(id)) return;
+                pending.set(id, { status: 'ok', data: String(signature) });
+            })
+            .catch(function (err) {
+                if (!pending.has(id)) return;
+                const f = failure_of(err);
+                fail(id, f.message, f.kind);
+            });
+        return id;
+    }
+
     // The icon an announcement carries, rasterised to RGBA — as wallet.js
     // does for CIP-30, so an SVG needs no decoder on the Rust side.
     function evm_icon(id_handle, size) {
@@ -290,6 +315,7 @@
         importObject.env.evm_connect = evm_connect;
         importObject.env.evm_chain_id = evm_chain_id;
         importObject.env.evm_switch_chain = evm_switch_chain;
+        importObject.env.evm_personal_sign = evm_personal_sign;
         importObject.env.evm_icon = evm_icon;
         importObject.env.evm_icon_pixels = evm_icon_pixels;
         importObject.env.evm_disconnect = evm_disconnect;
@@ -299,5 +325,5 @@
         importObject.env.evm_poll = evm_poll;
     };
 
-    miniquad_add_plugin({ register_plugin, version: 3, name: 'evm' });
+    miniquad_add_plugin({ register_plugin, version: 4, name: 'evm' });
 })();
