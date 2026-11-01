@@ -25,7 +25,7 @@
 //! three crates, in two precisions, and two copies had drifted apart.
 
 use macroquad_widgets::Theme;
-use ui_theme::{Paint, Srgb, Token, contrast_ratio};
+use ui_theme::{contrast_ratio, Paint, Srgb, Token};
 
 /// WCAG AA for text below 18pt.
 const AA_SMALL: f32 = 4.5;
@@ -35,6 +35,18 @@ const VISIBLE: f32 = 1.5;
 
 fn presets() -> Vec<Theme> {
     Theme::PRESETS.iter().map(|p| p()).collect()
+}
+
+/// Every theme the crate ships: the accent presets AND the full brand palettes.
+/// The contrast floors cover all of them; the "presets vary the accent" rule
+/// covers [`Theme::PRESETS`] only, because a brand palette is a different base
+/// on purpose.
+fn themes() -> Vec<Theme> {
+    Theme::PRESETS
+        .iter()
+        .chain(Theme::BRAND)
+        .map(|p| p())
+        .collect()
 }
 
 /// Every surface a colour can land on in this crate. `Painter` clears to
@@ -50,7 +62,7 @@ fn surfaces(t: &Theme) -> [(&'static str, Srgb); 3] {
 
 #[test]
 fn the_text_ramp_clears_aa_on_every_surface() {
-    for t in presets() {
+    for t in themes() {
         for (label, tier) in [
             ("text_primary", t.color.text_primary),
             ("text_muted", t.color.text_muted),
@@ -72,7 +84,7 @@ fn the_text_ramp_clears_aa_on_every_surface() {
 /// each other.
 #[test]
 fn every_status_colour_reads_on_every_surface() {
-    for t in presets() {
+    for t in themes() {
         for (label, colour) in [
             ("accent", t.color.accent),
             ("accent_blue", t.color.accent_blue),
@@ -96,7 +108,7 @@ fn every_status_colour_reads_on_every_surface() {
 /// a progress bar has no visible extent.
 #[test]
 fn the_track_separates_from_the_background() {
-    for t in presets() {
+    for t in themes() {
         let ratio = contrast_ratio(t.color.bg_highlight.srgb(), t.color.bg_primary.srgb());
         assert!(
             ratio >= 1.15,

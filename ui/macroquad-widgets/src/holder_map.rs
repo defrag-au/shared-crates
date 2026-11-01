@@ -9,13 +9,13 @@
 use std::collections::HashMap;
 
 use macroquad::prelude::*;
-use ui_theme::{TextSize, mix};
+use ui_theme::{mix, TextSize};
 
-use crate::holder_board::{Holding, HoldingKind, KindInk, holding_colour_with};
+use crate::holder_board::{holding_colour_with, Holding, HoldingKind, KindInk};
 use crate::market_ink::MarketInk;
-use crate::painter::{Painter, draw_rounded_rect};
+use crate::painter::{draw_rounded_rect, Painter};
 use crate::theme::with_alpha;
-use crate::treemap::{DEFAULT_MAX_ASPECT, TreemapState};
+use crate::treemap::{TreemapState, DEFAULT_MAX_ASPECT};
 
 /// The groups, in the fixed order the map lays them out: a group's block stays
 /// where it is as the shares shift, and only its edges move.
@@ -170,6 +170,24 @@ pub fn holder_map(p: &Painter, vm: &HolderMapVm, area: Rect) {
             r.h - inset * 2.0,
             with_alpha(fill, 0.85),
         );
+        // A one-pixel bevel: a field of equal-weight tiles reads as one flat
+        // colour, and the edge is what gives each tile its own surface.
+        if r.h > 8.0 {
+            draw_rectangle(
+                r.x + inset,
+                r.y + inset,
+                r.w - inset * 2.0,
+                1.0,
+                with_alpha(WHITE, 0.10),
+            );
+            draw_rectangle(
+                r.x + inset,
+                r.bottom() - inset - 1.0,
+                r.w - inset * 2.0,
+                1.0,
+                with_alpha(BLACK, 0.18),
+            );
+        }
         if r.w > 52.0 && r.h > 22.0 {
             let ink = ink_on(fill, p.theme.color.bg_primary, p.theme.color.text_primary);
             let name = Rect::new(r.x + 4.0, r.y + 3.0, r.w - 8.0, 11.0);
@@ -197,7 +215,7 @@ pub fn holder_map(p: &Painter, vm: &HolderMapVm, area: Rect) {
         let Some(r) = group.rect.intersect(area) else {
             continue;
         };
-        if r.w > 70.0 && r.h > 50.0 {
+        if r.w > 70.0 && r.h > 30.0 {
             let w = p.measure(group.label, s).width;
             let plate = Rect::new(r.right() - w - 8.0, r.bottom() - 15.0, w + 8.0, 13.0);
             draw_rounded_rect(
@@ -258,11 +276,10 @@ mod tests {
         for h in &holdings {
             assert!(laid.tiles.contains_key(h.key), "{} has no tile", h.key);
         }
-        assert!(
-            laid.groups
-                .iter()
-                .any(|(g, _)| *g == "PEOPLE" && laid.tiles.contains_key("a"))
-        );
+        assert!(laid
+            .groups
+            .iter()
+            .any(|(g, _)| *g == "PEOPLE" && laid.tiles.contains_key("a")));
         let filled: f64 = laid.tiles.values().map(|r| r.w as f64 * r.h as f64).sum();
         let whole = (area.w * area.h) as f64;
         assert!((filled - whole).abs() / whole < 1e-3);

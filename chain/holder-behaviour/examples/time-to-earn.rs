@@ -50,6 +50,8 @@ struct Stat {
     /// Earners whose predicate the fold only knew was true at the reading slot.
     as_at: u32,
     days: Vec<f64>,
+    /// The same timings for subjects whose first lot was bought, not minted.
+    buyer_days: Vec<f64>,
 }
 
 fn main() -> ExitCode {
@@ -64,10 +66,9 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let args = parse_args()?;
-    let bytes = std::fs::read(&args.bundle)
-        .map_err(|error| format!("read {}: {error}", args.bundle))?;
-    let bundle =
-        Bundle::open(&bytes).map_err(|error| format!("open {}: {error}", args.bundle))?;
+    let bytes =
+        std::fs::read(&args.bundle).map_err(|error| format!("read {}: {error}", args.bundle))?;
+    let bundle = Bundle::open(&bytes).map_err(|error| format!("open {}: {error}", args.bundle))?;
     let catalogue = LoadedCatalogue::load(&args.catalogue)?;
 
     let (slot_seconds, lot_pairs) = slot_seconds(&bundle)?;
@@ -90,13 +91,15 @@ fn run() -> Result<(), String> {
         for earned in subject.earned() {
             let index = earned.achievement as usize;
             let Some(stat) = stats.get_mut(index) else {
-                return Err(format!("bundle achievement #{index} is not in the catalogue"));
+                return Err(format!(
+                    "bundle achievement #{index} is not in the catalogue"
+                ));
             };
             stat.earners += 1;
             let is_core = catalogue.role_at(index) == Some("core");
-            let recomputed = catalogue.predicate_days(index).and_then(|days| {
-                true_span_slot(&lots, days, slot_seconds, holder_cursor)
-            });
+            let recomputed = catalogue
+                .predicate_days(index)
+                .and_then(|days| true_span_slot(&lots, days, slot_seconds, holder_cursor));
             let timed_slot = match recomputed {
                 Some(slot) => Some(slot),
                 None if earned.valid_from == holder_cursor => None,
@@ -104,7 +107,11 @@ fn run() -> Result<(), String> {
             };
             match (timed_slot, first) {
                 (Some(slot), Some(first)) => {
-                    stat.days.push(elapsed_days(first, slot, slot_seconds));
+                    let days = elapsed_days(first, slot, slot_seconds);
+                    stat.days.push(days);
+                    if !first.from_mint {
+                        stat.buyer_days.push(days);
+                    }
                     if is_core {
                         core_slots.push(slot);
                     }
@@ -195,8 +202,7 @@ fn slot_seconds(bundle: &Bundle<'_>) -> Result<(f64, usize), String> {
         (Some((first_slot, first_unix)), Some((last_slot, last_unix)))
             if last_slot > first_slot && last_unix > first_unix =>
         {
-            let seconds =
-                (last_unix - first_unix) as f64 / (last_slot - first_slot) as f64;
+            let seconds = (last_unix - first_unix) as f64 / (last_slot - first_slot) as f64;
             (0.1..=60.0).contains(&seconds).then_some(seconds)
         }
         _ => None,
@@ -298,16 +304,16 @@ fn print_achievements(catalogue: &LoadedCatalogue, stats: &[Stat]) {
         "note        as-at means the fold only knew the predicate was true at the reading slot."
     );
     println!(
-        "            `any_span_at_least` is recomputed from the lots; drawdown, round-trip and holding"
+        "            `any_span_at_least` is recomputed from the lots; round-trip and holding counts"
     );
-    println!(
-        "            counts are not, and are excluded from the timing rather than given a false one."
-    );
+    println!("            are not, and are excluded rather than given a false time.");
 }
 
 fn print_core(core: &BTreeMap<(bool, usize), Vec<f64>>, cohorts: &[u32; 2]) {
     println!();
-    println!("core accumulation   (median days from first acquisition to the Nth core, sample in brackets)");
+    println!(
+        "core accumulation   (median days from first acquisition to the Nth core, sample in brackets)"
+    );
     println!(
         "{:<8} {:>9} {:>13} {:>13} {:>13} {:>13} {:>13}",
         "cohort", "subjects", "core1", "core2", "core3", "core4", "core5"
@@ -331,50 +337,56 @@ fn print_core(core: &BTreeMap<(bool, usize), Vec<f64>>, cohorts: &[u32; 2]) {
     println!(
         "note        a cohort is set by the first lot: minted, or bought. Market-only subjects have no row."
     );
-    println!(
-        "            as-at core achievements (a drawdown, a round trip) are excluded from the accumulation."
-    );
 }
 
 fn print_windows(catalogue: &LoadedCatalogue, stats: &[Stat]) {
     println!();
     println!("campaign window   (core achievements whose timing fits)");
     println!(
-        "{:>7} {:>18} {:>14}",
-        "window", "median ≤ window", "p90 ≤ window"
+        "{:>7} {:>16} {:>12} {:>16} {:>12}",
+        "window", "median ≤ W", "p90 ≤ W", "buyers ≤ W", "buyer p90"
     );
     for window in WINDOWS {
         let mut median_fits = 0;
         let mut p90_fits = 0;
-        for index in 0..catalogue.len() {
+        let mut buyer_fits = 0;
+        let mut buyer_p90 = 0;
+        for (index, stat) in stats.iter().enumerate() {
             if catalogue.role_at(index) != Some("core") {
                 continue;
             }
-            let stat = &stats[index];
-            if stat.days.is_empty() {
-                continue;
+            if !stat.days.is_empty() {
+                let mut days = stat.days.clone();
+                days.sort_by(f64::total_cmp);
+                if percentile(&days, 0.5) <= f64::from(window) {
+                    median_fits += 1;
+                }
+                if percentile(&days, 0.9) <= f64::from(window) {
+                    p90_fits += 1;
+                }
             }
-            let mut days = stat.days.clone();
-            days.sort_by(f64::total_cmp);
-            if percentile(&days, 0.5) <= f64::from(window) {
-                median_fits += 1;
-            }
-            if percentile(&days, 0.9) <= f64::from(window) {
-                p90_fits += 1;
+            if !stat.buyer_days.is_empty() {
+                let mut days = stat.buyer_days.clone();
+                days.sort_by(f64::total_cmp);
+                if percentile(&days, 0.5) <= f64::from(window) {
+                    buyer_fits += 1;
+                }
+                if percentile(&days, 0.9) <= f64::from(window) {
+                    buyer_p90 += 1;
+                }
             }
         }
-        println!("{window:>6}d {median_fits:>18} {p90_fits:>14}");
+        println!("{window:>6}d {median_fits:>16} {p90_fits:>12} {buyer_fits:>16} {buyer_p90:>12}");
     }
     println!(
         "note        a long minimum means a new holder cannot earn it inside the window, however many they attempt."
     );
+    println!(
+        "            the buyer columns exclude mint-only achievements, which a partner holder can never earn."
+    );
 }
 
-fn write_csv(
-    path: &str,
-    catalogue: &LoadedCatalogue,
-    stats: &[Stat],
-) -> Result<(), String> {
+fn write_csv(path: &str, catalogue: &LoadedCatalogue, stats: &[Stat]) -> Result<(), String> {
     let mut out = String::from(
         "achievement,role,axis,earners,no_lot,as_at,min_days,p10_days,median_days,p90_days,within_30_pct\n",
     );
@@ -385,7 +397,13 @@ fn write_csv(
         let mut days = stat.days.clone();
         days.sort_by(f64::total_cmp);
         let (min, p10, median, p90, within_30) = if days.is_empty() {
-            ("-".to_string(), "-".to_string(), "-".to_string(), "-".to_string(), "-".to_string())
+            (
+                "-".to_string(),
+                "-".to_string(),
+                "-".to_string(),
+                "-".to_string(),
+                "-".to_string(),
+            )
         } else {
             (
                 format!("{:.1}", days[0]),

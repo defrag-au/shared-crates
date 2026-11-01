@@ -291,6 +291,19 @@ pub enum Predicate {
         at_least: u32,
     },
 
+    /// `at_least` distinct units were held at one instant.
+    ///
+    /// A **historical peak**, not the current count: the achievement is earned at the first
+    /// slot the running count reaches the threshold and is never un-earned. Intervals are
+    /// half-open `[from, to)`, and a unit held through overlapping lots counts once.
+    ///
+    /// This is the trait-free sibling of [`Predicate::HeldWithTraitAtOnce`], for a collection
+    /// whose holding ladder is about the collection itself rather than one trait value.
+    HoldsAtLeast {
+        /// How many distinct units must be held together.
+        at_least: u32,
+    },
+
     /// `assets` distinct units sharing one value in `category` were ever held.
     ///
     /// "Ever", not "at once": the pair need not have overlapped. The answer is earned at
@@ -388,6 +401,7 @@ impl Predicate {
             Self::HasTrait { .. } => "has_trait",
             Self::HasTraitValues { .. } => "has_trait_values",
             Self::HeldWithTraitAtOnce { .. } => "held_with_trait_at_once",
+            Self::HoldsAtLeast { .. } => "holds_at_least",
             Self::SameValueAcrossAssets { .. } => "same_value_across_assets",
             Self::MintWithin { .. } => "mint_within",
             Self::MintRankAtMost { .. } => "mint_rank_at_most",

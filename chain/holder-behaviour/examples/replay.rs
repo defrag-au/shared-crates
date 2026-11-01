@@ -811,6 +811,19 @@ fn describe(outcome: &Outcome<'_>, store: &MemoryStore) -> Result<String, String
             Evidence::Traits { unit, values } => {
                 format!("unit {unit:?} {}", values.join(", "))
             }
+            Evidence::HeldAtOnce { units } => {
+                let listed: Vec<String> = units
+                    .iter()
+                    .take(3)
+                    .map(|unit| format!("{unit:?}"))
+                    .collect();
+                let more = if units.len() > 3 { ", …" } else { "" };
+                format!(
+                    "{} units held at once ({}{more})",
+                    units.len(),
+                    listed.join(", ")
+                )
+            }
             Evidence::Market {
                 order,
                 side,

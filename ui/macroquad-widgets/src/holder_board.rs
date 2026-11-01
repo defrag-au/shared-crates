@@ -162,6 +162,10 @@ pub struct HolderBoardVm<'a> {
     /// Ink per kind, where the host's palette differs from the shared seven.
     /// A kind not listed uses [`holding_colour`].
     pub kinds: &'a [KindInk],
+    /// The holding the reader picked, by [`Holding::key`]. Its row gets the
+    /// raised plate and an accent rule at the start — the cue that the detail
+    /// shown beside the board belongs to THIS row rather than to the top one.
+    pub selected: Option<&'a str>,
 }
 
 /// The board's row height.
@@ -213,6 +217,7 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
         }
         let rect = Rect::new(area.x, y, area.w, ROW_H - 2.0);
         let tone = holding_colour_with(vm.ink, &p.theme, row.holding.kind, vm.kinds);
+        let selected = vm.selected == Some(row.holding.key);
         // The share as a bar behind the row, against the largest. Where the
         // host knows the split, the locked part is drawn INSIDE that length in
         // the Lock ink: how much of a row cannot move is then a length rather
@@ -225,7 +230,16 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
             rect.w,
             rect.h,
             4.0,
-            with_alpha(p.theme.color.bg_secondary, 0.75),
+            with_alpha(
+                match selected {
+                    true => p.theme.color.bg_highlight,
+                    false => p.theme.color.bg_secondary,
+                },
+                match selected {
+                    true => 0.9,
+                    false => 0.75,
+                },
+            ),
         );
         let locked = row
             .holding
@@ -263,6 +277,18 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
                 rect.h,
                 4.0,
                 with_alpha(c, 0.35 * a.clamp(0.0, 1.0)),
+            );
+        }
+        // The selection's own mark, over the fills: the row the detail belongs
+        // to, in the accent the rest of the screen uses for "this one".
+        if selected {
+            draw_rounded_rect(
+                rect.x,
+                rect.y,
+                2.0,
+                rect.h,
+                1.0,
+                p.theme.color.accent,
             );
         }
         let mid = |x: f32, w: f32| Rect::new(x, rect.y, w, rect.h);

@@ -24,15 +24,18 @@
 //!   are therefore a floor on qualifying people, not a forecast of the linked population.
 //! - Every eligible subject is assumed to take the full `per_identity` cap. For a free mint
 //!   that is the right upper bound for a guaranteed phase, which must fit its reserve.
-//! - Partner collections and the token axis are absent from this bundle. Their effect is not
-//!   estimated; the headroom is what they have to fill.
+//! - The token axis is absent from this bundle, and the partner collections are a separate
+//!   population with no bundle at all — pass their measured holder sets with `--partners`
+//!   and their pressure is a turnout sweep, not a count. Their crossover with Perps cannot
+//!   be measured before bonding.
 
 mod support;
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::process::ExitCode;
 
-use holder_behaviour::{Bundle, catalogue_digest};
+use holder_behaviour::{Bundle, Lot, catalogue_digest};
 use support::catalogue::{Allocation, LoadedCatalogue};
 
 const DEFAULT_GTD_CORE: u32 = 4;
@@ -59,6 +62,8 @@ struct Args {
     public_reserve: u32,
     sweep_core: u32,
     sweep_flavour: u32,
+    /// Measured holder sets, one `holder_census --out` JSONL per partner collection.
+    partners: Vec<String>,
     out: Option<String>,
 }
 
@@ -80,6 +85,8 @@ struct Counts {
     core: u32,
     /// Flavour achievements that clear the floor, rarest first, already capped.
     credits: Vec<u16>,
+    /// The most distinct units held at one instant — the ladder's input.
+    peak: u32,
 }
 
 #[derive(Default)]
@@ -104,10 +111,9 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let args = parse_args()?;
-    let bytes = std::fs::read(&args.bundle)
-        .map_err(|error| format!("read {}: {error}", args.bundle))?;
-    let bundle =
-        Bundle::open(&bytes).map_err(|error| format!("open {}: {error}", args.bundle))?;
+    let bytes =
+        std::fs::read(&args.bundle).map_err(|error| format!("read {}: {error}", args.bundle))?;
+    let bundle = Bundle::open(&bytes).map_err(|error| format!("open {}: {error}", args.bundle))?;
     let catalogue = LoadedCatalogue::load(&args.catalogue)?;
 
     let digest = catalogue_digest(catalogue.ids());
@@ -176,6 +182,8 @@ fn run() -> Result<(), String> {
     print_floor_sweep(&bundle, &catalogue, policy, total)?;
     print_rarest_sweep(&bundle, &catalogue, policy, total)?;
     print_cap_table(policy, reserves, &tally);
+    print_ladder(&counts, policy);
+    print_partners(&args.partners, policy, reserves, &tally)?;
     print_caveats();
 
     if let Some(path) = &args.out {
@@ -207,6 +215,7 @@ fn parse_args() -> Result<Args, String> {
     let mut public_reserve = DEFAULT_PUBLIC_RESERVE;
     let mut sweep_core = 10;
     let mut sweep_flavour = 6;
+    let mut partners = Vec::new();
     let mut out = None;
 
     while let Some(arg) = args.next() {
@@ -227,6 +236,7 @@ fn parse_args() -> Result<Args, String> {
             "--public-reserve" => public_reserve = number(&mut args, "--public-reserve")?,
             "--sweep-core" => sweep_core = number(&mut args, "--sweep-core")?,
             "--sweep-flavour" => sweep_flavour = number(&mut args, "--sweep-flavour")?,
+            "--partners" => partners.push(next(&mut args, "--partners")?),
             "--out" => out = Some(next(&mut args, "--out")?),
             other if other.starts_with("--") => return Err(format!("unknown flag {other}")),
             other if bundle.is_none() => bundle = Some(other.to_string()),
@@ -248,6 +258,7 @@ fn parse_args() -> Result<Args, String> {
         public_reserve,
         sweep_core,
         sweep_flavour,
+        partners,
         out,
     })
 }
@@ -284,6 +295,7 @@ fn print_help() {
     println!("  --public-reserve N  public supply (default {DEFAULT_PUBLIC_RESERVE})");
     println!("  --sweep-core N      highest GTD core threshold shown (default 10)");
     println!("  --sweep-flavour N   highest FCFS flavour threshold shown (default 6)");
+    println!("  --partners <path>   a partner holder set from `holder_census --out`, repeatable");
     println!("  --out <path.csv>    write the threshold grid");
 }
 
@@ -328,8 +340,11 @@ fn counts_for(
     policy: Allocation,
 ) -> Result<Vec<Counts>, String> {
     let mut subjects = Vec::with_capacity(bundle.subject_count() as usize);
+    let cursor = bundle.holder_cursor();
     for subject in bundle.subjects() {
         let subject = subject.map_err(|error| format!("read subject: {error}"))?;
+        let lots: Vec<Lot> = subject.lots().collect();
+        let peak = peak_concurrent(&lots, cursor);
         let mut core = 0u32;
         let mut flavour: Vec<(f64, u16)> = Vec::new();
         for earned in subject.earned() {
@@ -346,8 +361,7 @@ fn counts_for(
                             subject.key_str()
                         ));
                     }
-                    let share =
-                        f64::from(rarity.holders_with) / f64::from(rarity.population);
+                    let share = f64::from(rarity.holders_with) / f64::from(rarity.population);
                     if share <= policy.rarity_floor {
                         flavour.push((share, index));
                     }
@@ -369,33 +383,48 @@ fn counts_for(
         subjects.push(Counts {
             core,
             credits: flavour.into_iter().map(|(_, index)| index).collect(),
+            peak,
         });
     }
     Ok(subjects)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Phase {
+    Gtd,
+    Fcfs,
+    Ungated,
+}
+
+fn phase(subject: &Counts, policy: Allocation) -> Phase {
+    if subject.core >= policy.gtd_core {
+        Phase::Gtd
+    } else if subject.core >= policy.fcfs_core
+        || (policy.fcfs_flavour > 0 && subject.credits.len() as u32 >= policy.fcfs_flavour)
+    {
+        Phase::Fcfs
+    } else {
+        Phase::Ungated
+    }
+}
+
 fn tally(counts: &[Counts], policy: Allocation) -> Tally {
     let mut tally = Tally::default();
     for subject in counts {
-        if subject.core >= policy.gtd_core {
-            tally.gtd += 1;
-            continue;
-        }
-        if subject.core + 1 == policy.gtd_core {
+        if subject.core < policy.gtd_core && subject.core + 1 == policy.gtd_core {
             tally.one_core_short += 1;
         }
-        let by_core = subject.core >= policy.fcfs_core;
-        let by_flavour = policy.fcfs_flavour > 0
-            && subject.credits.len() as u32 >= policy.fcfs_flavour;
-        if by_core || by_flavour {
-            tally.fcfs += 1;
-            if by_core {
-                tally.fcfs_by_core += 1;
-            } else {
-                tally.fcfs_by_flavour += 1;
+        match phase(subject, policy) {
+            Phase::Gtd => tally.gtd += 1,
+            Phase::Fcfs => {
+                tally.fcfs += 1;
+                if subject.core >= policy.fcfs_core {
+                    tally.fcfs_by_core += 1;
+                } else {
+                    tally.fcfs_by_flavour += 1;
+                }
             }
-        } else {
-            tally.ungated += 1;
+            Phase::Ungated => tally.ungated += 1,
         }
     }
     tally
@@ -409,6 +438,91 @@ fn share_of(count: u32, total: u32) -> f64 {
     }
 }
 
+/// The most distinct units held at one instant, from the lots' half-open intervals.
+///
+/// Ends sort before starts at a shared slot, so a sale and a purchase are never simultaneous;
+/// a unit held through two overlapping lots is one unit.
+fn peak_concurrent(lots: &[Lot], cursor: u64) -> u32 {
+    #[derive(Clone, Copy)]
+    struct Mark {
+        slot: u64,
+        start: bool,
+        unit: u32,
+    }
+
+    let mut marks: Vec<Mark> = Vec::new();
+    for lot in lots {
+        let end = lot.disposed_at.unwrap_or(cursor);
+        if end <= lot.acquired_at {
+            continue;
+        }
+        marks.push(Mark {
+            slot: lot.acquired_at,
+            start: true,
+            unit: lot.unit,
+        });
+        marks.push(Mark {
+            slot: end,
+            start: false,
+            unit: lot.unit,
+        });
+    }
+    marks.sort_unstable_by(|left, right| {
+        left.slot
+            .cmp(&right.slot)
+            .then_with(|| left.start.cmp(&right.start))
+    });
+
+    let mut open: BTreeMap<u32, u32> = BTreeMap::new();
+    let mut peak = 0u32;
+    for mark in marks {
+        if mark.start {
+            *open.entry(mark.unit).or_default() += 1;
+        } else if let Some(count) = open.get_mut(&mark.unit) {
+            *count -= 1;
+            if *count == 0 {
+                open.remove(&mark.unit);
+            }
+        }
+        peak = peak.max(open.len() as u32);
+    }
+    peak
+}
+
+fn print_ladder(counts: &[Counts], policy: Allocation) {
+    println!();
+    println!("holding ladder (peak concurrent units, before any ladder achievement exists)");
+    println!(
+        "{:>7} {:>9} {:>7} {:>7} {:>8} {:>7}",
+        "peak≥", "subjects", "gtd", "fcfs", "ungated", "share"
+    );
+    let total = counts.len() as u32;
+    for rung in [1u32, 5, 25, 100] {
+        let selected: Vec<&Counts> = counts
+            .iter()
+            .filter(|subject| subject.peak >= rung)
+            .collect();
+        let mut gtd = 0;
+        let mut fcfs = 0;
+        let mut ungated = 0;
+        for subject in &selected {
+            match phase(subject, policy) {
+                Phase::Gtd => gtd += 1,
+                Phase::Fcfs => fcfs += 1,
+                Phase::Ungated => ungated += 1,
+            }
+        }
+        println!(
+            "{rung:>7} {:>9} {gtd:>7} {fcfs:>7} {ungated:>8} {:>6.1}%",
+            selected.len(),
+            share_of(selected.len() as u32, total)
+        );
+    }
+    println!(
+        "note        this does not add a path; it shows which part of the ladder is already gated."
+    );
+}
+
 fn print_tally(total: u32, policy: Allocation, reserves: Reserves, tally: &Tally) {
     println!();
     println!(
@@ -418,7 +532,12 @@ fn print_tally(total: u32, policy: Allocation, reserves: Reserves, tally: &Tally
     for (name, count, reserve, note) in [
         ("gtd", tally.gtd, reserves.gtd, ""),
         ("fcfs", tally.fcfs, reserves.fcfs, ""),
-        ("ungated", tally.ungated, reserves.public, "  (holders only)"),
+        (
+            "ungated",
+            tally.ungated,
+            reserves.public,
+            "  (holders only)",
+        ),
     ] {
         let share = share_of(count, total);
         let demand = count * policy.per_identity;
@@ -590,13 +709,175 @@ fn print_cap_table(policy: Allocation, reserves: Reserves, tally: &Tally) {
 fn print_caveats() {
     println!();
     println!("caveats");
-    println!("  - subjects are wallets, not identities: only those that establish an anchor can be");
-    println!("    allocated, and an identity that unions wallets can only gain, so these counts are");
+    println!(
+        "  - subjects are wallets, not identities: only those that establish an anchor can be"
+    );
+    println!(
+        "    allocated, and an identity that unions wallets can only gain, so these counts are"
+    );
     println!("    a floor on qualifying people.");
-    println!("  - partner collections and the token axis are absent from this bundle; the headroom is");
-    println!("    what they have to fill.");
-    println!("  - demand assumes every eligible subject takes the full cap, which is the upper bound a");
+    println!(
+        "  - the token axis is absent from this bundle, and a partner holder is an EVM wallet with"
+    );
+    println!(
+        "    no Perps history of its own: a partner who also scores needs a linked Cardano wallet,"
+    );
+    println!("    which is the crossover this cannot measure before bonding.");
+    println!(
+        "  - demand assumes every eligible subject takes the full cap, which is the upper bound a"
+    );
     println!("    guaranteed phase must fit.");
+}
+
+/// Every partner collection's measured holders, unioned into one reach picture.
+///
+/// A partner wallet is not a bundle subject: it holds no Perps history, so it earns no
+/// Perps achievement. What it can do is anchor an identity, which makes the count of
+/// distinct wallets the pool a turnout applies to.
+struct PartnerBook {
+    /// One entry per collection: its label and how many holders it has.
+    collections: Vec<(String, u32)>,
+    /// Per wallet: how many partner collections it holds, and how many assets in total.
+    wallets: BTreeMap<String, PartnerWallet>,
+}
+
+#[derive(Default, Clone, Copy)]
+struct PartnerWallet {
+    collections: u32,
+    assets: u32,
+}
+
+/// A line of `holder_census --out`.
+#[derive(serde::Deserialize)]
+struct HeldLine {
+    address: String,
+    balance: u32,
+}
+
+/// Turnout shares the partner pressure is shown at. The pool is large enough that a single
+/// number would imply a forecast this cannot make.
+const TURNOUTS: [f64; 7] = [0.01, 0.025, 0.05, 0.10, 0.25, 0.50, 1.00];
+
+fn print_partners(
+    paths: &[String],
+    policy: Allocation,
+    reserves: Reserves,
+    tally: &Tally,
+) -> Result<(), String> {
+    if paths.is_empty() {
+        println!();
+        println!(
+            "partners    none given — pass --partners <holders.jsonl> for each partner collection"
+        );
+        return Ok(());
+    }
+
+    let book = load_partners(paths)?;
+    println!();
+    println!("partner collections (measured from Transfer logs, not OpenSea's owner count)");
+    println!("{:<46} {:>9}", "collection", "holders");
+    for (label, holders) in &book.collections {
+        println!("{label:<46} {holders:>9}");
+    }
+
+    let wallets = book.wallets.len() as u32;
+    let in_two = book
+        .wallets
+        .values()
+        .filter(|wallet| wallet.collections >= 2)
+        .count() as u32;
+    let in_three = book
+        .wallets
+        .values()
+        .filter(|wallet| wallet.collections >= 3)
+        .count() as u32;
+    println!();
+    println!("partner reach");
+    println!("  wallets            {wallets}");
+    println!("  in ≥2 collections  {in_two}");
+    println!("  in ≥3 collections  {in_three}");
+    let rungs: Vec<String> = [2u32, 3, 5, 10, 25, 50]
+        .iter()
+        .map(|rung| {
+            let count = book
+                .wallets
+                .values()
+                .filter(|wallet| wallet.assets >= *rung)
+                .count();
+            format!("≥{rung} {count}")
+        })
+        .collect();
+    println!("  assets across all  {}", rungs.join(" · "));
+
+    // What the Perps policy leaves of the guaranteed reserve, at full take-up.
+    let headroom = i64::from(reserves.gtd) - i64::from(tally.gtd * policy.per_identity);
+    println!();
+    println!("partner-only demand (one partner wallet is one identity, because it is the anchor)");
+    println!(
+        "{:>8} {:>11} {:>9} {:>9} {:>11} {:>13}",
+        "turnout", "identities", "at 1 each", "at cap", "vs fcfs", "gtd fits at 1"
+    );
+    for share in TURNOUTS {
+        let identities = (f64::from(wallets) * share).round() as u32;
+        let demand = identities * policy.per_identity;
+        let oversub = f64::from(demand) / f64::from(reserves.fcfs.max(1));
+        let gtd_fits = if headroom > 0 {
+            identities.min(headroom as u32)
+        } else {
+            0
+        };
+        println!(
+            "{:>7.1}% {identities:>11} {identities:>9} {demand:>9} {oversub:>10.2}x {gtd_fits:>13}",
+            share * 100.0
+        );
+    }
+    println!(
+        "note        one mint per partner identity fills the FCFS reserve at a turnout of {:.1}%",
+        f64::from(reserves.fcfs) * 100.0 / f64::from(wallets.max(1))
+    );
+    println!("            of the pool; above that an entitlement is a race, not a reward.");
+    println!(
+        "note        gtd headroom is {headroom:+} mints after the Perps policy — that is what a"
+    );
+    println!("            partner discount has to fit inside, and a partner who takes it needs a");
+    println!("            linked Cardano wallet that also reaches the Perps threshold.");
+    Ok(())
+}
+
+fn load_partners(paths: &[String]) -> Result<PartnerBook, String> {
+    let mut book = PartnerBook {
+        collections: Vec::new(),
+        wallets: BTreeMap::new(),
+    };
+    for path in paths {
+        let text =
+            std::fs::read_to_string(path).map_err(|error| format!("read {path}: {error}"))?;
+        let mut holders = 0u32;
+        for (number, line) in text.lines().enumerate() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let held: HeldLine = serde_json::from_str(line)
+                .map_err(|error| format!("{path}:{}: {error}", number + 1))?;
+            if held.balance == 0 {
+                continue;
+            }
+            holders += 1;
+            let wallet = book.wallets.entry(held.address).or_default();
+            wallet.collections += 1;
+            wallet.assets += held.balance;
+        }
+        book.collections.push((label(path), holders));
+    }
+    Ok(book)
+}
+
+/// `…/0x2370….holders.jsonl` → `0x2370…`, so a census written by `--out` labels itself.
+fn label(path: &str) -> String {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    let name = name.strip_suffix(".holders.jsonl").unwrap_or(name);
+    name.to_string()
 }
 
 fn write_grid(

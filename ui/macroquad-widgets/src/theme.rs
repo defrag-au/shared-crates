@@ -47,7 +47,7 @@
 //! difference between a divergence and a drift.
 
 use macroquad::prelude::Color;
-use ui_theme::{ColorTokens, Paint, Palette, SeriesPalette, TypeScale, tokens::raw};
+use ui_theme::{tokens::raw, ColorTokens, Paint, Palette, Sequential, SeriesPalette, TypeScale};
 
 /// One shared value as this renderer's colour.
 ///
@@ -151,6 +151,56 @@ impl Theme {
         Self::from_parts("tokyo night", Self::tokens())
     }
 
+    /// The holder-map brand: deep space, alien green, a green ordinal ramp.
+    ///
+    /// A FULL palette, not an accent swap, so it lives in [`Theme::BRAND`] and
+    /// not [`Theme::PRESETS`] — that list's contract is "one neutral base,
+    /// different accent", and `tests/contrast.rs` holds it. The same contrast
+    /// floors cover this one.
+    ///
+    /// Derived from the egui Aliens globe this surface replaces
+    /// (`projects/holder-map/frontends/aliens/src/theme.rs`): `BG_SPACE`,
+    /// `BG_PANEL`, `ALIEN_GREEN`, `ALIEN_CYAN`, the mint text ramp and the
+    /// chart slices. Two values are deliberately NOT the old ones:
+    /// `text_muted` is brightened to clear WCAG AA on all three surfaces (the
+    /// old 60/100/70 measured ~2.9:1), and `success` is the settled teal
+    /// rather than the buy-green, so "landed" cannot read as the accent.
+    pub fn deep_space() -> Self {
+        let h = |hex: u32| c(ui_theme::Srgb::hex(hex));
+        let mut theme = Self::from_parts(
+            "deep space",
+            ColorTokens {
+                bg_primary: h(0x0a_0a_1a),   // BG_SPACE
+                bg_secondary: h(0x0f_19_14), // BG_PANEL
+                bg_highlight: h(0x14_28_1e), // BG_HIGHLIGHT
+                text_primary: h(0xc8_ff_dc),
+                text_secondary: h(0x8c_c8_a0),
+                // Brightened from TEXT_MUTED's 60/100/70: de-emphasis is
+                // expressed inside the passing range, never below it.
+                text_muted: h(0x6e_a0_78),
+                accent: h(0x44_ff_44), // ALIEN_GREEN
+                accent_blue: h(0x50_a0_dc),
+                accent_cyan: h(0x00_ff_c8),  // ALIEN_CYAN
+                accent_green: h(0x22_b4_22), // ALIEN_GREEN_DIM
+                accent_yellow: h(0xff_d7_00),
+                accent_orange: h(0xff_b4_28),
+                accent_red: h(0xc83232),
+                accent_magenta: h(0xa0_78_dc),
+                success: h(0x73_da_ca),
+                warning: h(0xff_b4_28),
+                error: h(0xff_44_44),
+                border: h(0x1e_3c_2d),
+            },
+        );
+        // People run dim forest to alien green: one hue, lightness carrying the
+        // rank, which is what makes the treemap read without a legend.
+        theme.series.ordinal = Sequential {
+            low: h(0x16_33_22),
+            high: h(0x4f_d9_6a),
+        };
+        theme
+    }
+
     /// Build a theme from its chrome palette, deriving the deprecated flat
     /// fields so the two spellings cannot disagree.
     ///
@@ -212,6 +262,11 @@ impl Theme {
         Theme::aqua,
         Theme::rose,
     ];
+
+    /// Full palettes, not accents. Kept out of [`Theme::PRESETS`] because that
+    /// list's contract is "one neutral base, different accent" — which
+    /// `tests/contrast.rs` asserts. These are held to the same contrast floors.
+    pub const BRAND: &'static [fn() -> Theme] = &[Theme::deep_space];
 
     /// Point size for a step of the type ramp — the one place a size is
     /// allowed to come from.

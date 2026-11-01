@@ -2869,6 +2869,8 @@ version = "0.1.0"
 dependencies = [
  "handle-resolver",
  "local-cache",
+ "miniquad-platform",
+ "serde_json",
 ]
 
 [[package]]
@@ -5155,6 +5157,7 @@ dependencies = [
 name = "opensea-client"
 version = "0.1.0"
 dependencies = [
+ "dotenvy",
  "http-client",
  "serde",
  "serde_json",

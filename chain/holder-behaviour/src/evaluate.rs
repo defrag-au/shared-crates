@@ -182,6 +182,11 @@ pub enum Evidence {
         /// The values that were found, in the predicate's order.
         values: Vec<String>,
     },
+    /// The units open at the instant a simultaneous holding crossed its threshold.
+    HeldAtOnce {
+        /// One entry per distinct unit open at that slot.
+        units: Vec<UnitId>,
+    },
     /// One marketplace fact.
     Market {
         /// The order, when the source named one.
@@ -352,6 +357,7 @@ pub fn evaluate<'a, S: Store>(
                 value,
                 at_least,
             } => held_with_trait_at_once(&traits, &lots, at, category, value.as_deref(), *at_least),
+            Predicate::HoldsAtLeast { at_least } => holds_at_least(&lots, at, *at_least),
             Predicate::SameValueAcrossAssets { category, assets } => {
                 same_value_across_assets(&traits, &lots, at, category, *assets)
             }
@@ -1780,6 +1786,99 @@ fn held_with_trait_at_once(
     }
     if any_unknown(traits, &units_ever(lots)) {
         return (Progress::Unavailable(Gap::Traits), Vec::new());
+    }
+    (
+        Progress::Pending {
+            have: peak,
+            need,
+            eta_unix: None,
+        },
+        Vec::new(),
+    )
+}
+
+/// The historical peak of distinct units held at one instant, with no trait filter.
+///
+/// The same sweep as [`held_with_trait_at_once`]: half-open intervals, ends before starts at a
+/// shared slot, and a unit held through two overlapping lots counts once. A partial source is
+/// a gap rather than a short count, because a missing movement hides a disposal and would
+/// overstate the peak.
+fn holds_at_least(lots: &[Holding], at: &Assessment, at_least: u32) -> (Progress, Vec<Evidence>) {
+    if at.holder_coverage != Coverage::Complete {
+        return (Progress::Unavailable(Gap::HolderCoverage), Vec::new());
+    }
+
+    struct Mark {
+        slot: Slot,
+        start: bool,
+        unit: UnitId,
+    }
+
+    let mut marks: Vec<Mark> = Vec::new();
+    for lot in lots {
+        // A half-open interval that ends where it starts covers no instant.
+        if lot
+            .disposed_at
+            .is_some_and(|disposed| disposed <= lot.acquired_at)
+        {
+            continue;
+        }
+        marks.push(Mark {
+            slot: lot.acquired_at,
+            start: true,
+            unit: lot.unit,
+        });
+        if let Some(disposed) = lot.disposed_at {
+            marks.push(Mark {
+                slot: disposed,
+                start: false,
+                unit: lot.unit,
+            });
+        }
+    }
+    marks.sort_by_key(|mark| (mark.slot, mark.start));
+
+    let need = u64::from(at_least.max(1));
+    let mut open: BTreeMap<UnitId, u32> = BTreeMap::new();
+    let mut current: u64 = 0;
+    let mut peak: u64 = 0;
+    let mut crossed: Option<(Slot, Vec<UnitId>)> = None;
+    let mut index = 0;
+    while index < marks.len() {
+        let slot = marks[index].slot;
+        while index < marks.len() && marks[index].slot == slot && !marks[index].start {
+            let unit = marks[index].unit;
+            if let Some(count) = open.get_mut(&unit) {
+                debug_assert!(*count > 0, "an end mark without an open lot");
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    current = current.saturating_sub(1);
+                }
+            }
+            index += 1;
+        }
+        while index < marks.len() && marks[index].slot == slot && marks[index].start {
+            let unit = marks[index].unit;
+            let count = open.entry(unit).or_insert(0);
+            if *count == 0 {
+                current += 1;
+            }
+            *count += 1;
+            index += 1;
+        }
+        peak = peak.max(current);
+        if crossed.is_none() && current >= need {
+            crossed = Some((slot, open.keys().copied().collect()));
+        }
+    }
+
+    if let Some((since, units)) = crossed {
+        return (
+            Progress::Earned {
+                since: EarnedSince::Exact(since),
+            },
+            vec![Evidence::HeldAtOnce { units }],
+        );
     }
     (
         Progress::Pending {
@@ -4498,6 +4597,70 @@ mod tests {
 
         assert_eq!(
             find(&outcomes, "post-it-overload").progress,
+            Progress::Pending {
+                have: 1,
+                need: 2,
+                eta_unix: None,
+            }
+        );
+    }
+
+    #[test]
+    fn holds_at_least_is_a_peak_and_needs_no_traits() {
+        // One [100, …), two [150, …): the peak is two from 150, even after one is sold.
+        use crate::memory::fixtures::{account, mint, perp, transfer};
+        let mut store = MemoryStore::default();
+        let one = perp("5065727031");
+        let two = perp("5065727032");
+        apply(&mut store, &mint(&one, "addr1alice", 100)).unwrap();
+        apply(&mut store, &mint(&two, "addr1alice", 150)).unwrap();
+        apply(&mut store, &transfer(&one, "addr1alice", "addr1bob", 200)).unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[definition(
+                "two-perps",
+                Predicate::HoldsAtLeast { at_least: 2 },
+            )],
+        )
+        .unwrap();
+
+        assert_eq!(
+            find(&outcomes, "two-perps").progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(150)
+            }
+        );
+    }
+
+    #[test]
+    fn holds_at_least_does_not_count_a_sale_and_buy_at_the_same_slot() {
+        // One [100, 200) and two [200, …): half-open, so the peak stays at one.
+        use crate::memory::fixtures::{account, mint, perp, transfer};
+        let mut store = MemoryStore::default();
+        let one = perp("5065727031");
+        let two = perp("5065727032");
+        apply(&mut store, &mint(&one, "addr1alice", 100)).unwrap();
+        apply(&mut store, &mint(&two, "addr1alice", 200)).unwrap();
+        apply(&mut store, &transfer(&one, "addr1alice", "addr1bob", 200)).unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[definition(
+                "two-perps",
+                Predicate::HoldsAtLeast { at_least: 2 },
+            )],
+        )
+        .unwrap();
+
+        assert_eq!(
+            find(&outcomes, "two-perps").progress,
             Progress::Pending {
                 have: 1,
                 need: 2,
