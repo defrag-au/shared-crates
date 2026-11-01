@@ -35,8 +35,11 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::process::ExitCode;
 
-use holder_behaviour::{Bundle, Lot, StatusPredicate, StatusView, catalogue_digest, status_holds};
-use support::catalogue::{Allocation, LoadedCatalogue, Plan, Status};
+use holder_behaviour::{
+    Allocation, Bundle, Counts, Lot, Phase, StatusPredicate, StatusView, catalogue_digest, held_at,
+    peak_concurrent, phase, score, status_holds,
+};
+use support::catalogue::{LoadedCatalogue, Plan, Status};
 
 const DEFAULT_GTD_CORE: u32 = 4;
 const DEFAULT_FCFS_CORE: u32 = 2;
@@ -88,20 +91,9 @@ impl Reserves {
 }
 
 /// One subject's inputs to the policy, computed once for every threshold sweep.
-struct Counts {
-    core: u32,
-    /// Flavour achievements that clear the floor, rarest first, already capped.
-    credits: Vec<u16>,
-    /// The most distinct units held at one instant — the ladder's input.
-    peak: u32,
-    /// Units held **now**, at the bundle's reading slot. Not the same as `peak`: an account
-    /// that held and sold is at zero, and that is what "holding a Perp" means at the mint.
-    current: u32,
-    /// Whether the catalogue's holding gate is met, which decides if any achievement counts.
-    enabled: bool,
-    /// Whether a promoting status puts this subject straight into the guaranteed phase.
-    promoted: bool,
-}
+///
+/// [`Counts`], [`Phase`] and the phase decision itself are `holder_behaviour`'s: this tool and
+/// the site that shows a holder their estimate must not each carry a copy of the rule.
 
 #[derive(Default)]
 struct Tally {
@@ -557,8 +549,14 @@ fn counts_for(
     let no_traits: [(String, String); 0] = [];
     for subject in bundle.subjects() {
         let subject = subject.map_err(|error| format!("read subject: {error}"))?;
+        let scored = score(
+            bundle,
+            &subject,
+            |index| catalogue.role_at(index as usize),
+            policy,
+        )
+        .map_err(|error| error.to_string())?;
         let lots: Vec<Lot> = subject.lots().collect();
-        let peak = peak_concurrent(&lots, cursor);
         let current = held_at(&lots, cursor);
         let view = StatusView {
             collection: bundle.collection(),
@@ -567,75 +565,9 @@ fn counts_for(
         };
         let enabled = ask_all(gate, &view)?;
         let promoted = ask_any(promotions, &view)?;
-        let mut core = 0u32;
-        let mut flavour: Vec<(f64, u16)> = Vec::new();
-        for earned in subject.earned() {
-            let index = earned.achievement;
-            match catalogue.role_at(index as usize) {
-                Some("core") => core += 1,
-                Some("flavour") => {
-                    let rarity = bundle.rarity(index).ok_or_else(|| {
-                        format!("bundle has no rarity row for achievement #{index}")
-                    })?;
-                    if rarity.population == 0 {
-                        return Err(format!(
-                            "{} earned #{index}, which the bundle marks unmeasured",
-                            subject.key_str()
-                        ));
-                    }
-                    let share = f64::from(rarity.holders_with) / f64::from(rarity.population);
-                    if share <= policy.rarity_floor {
-                        flavour.push((share, index));
-                    }
-                }
-                Some(role) => {
-                    return Err(format!(
-                        "achievement #{index} has role {role:?}, which is neither core nor flavour"
-                    ));
-                }
-                None => {
-                    return Err(format!(
-                        "bundle achievement #{index} is not in this catalogue"
-                    ));
-                }
-            }
-        }
-        flavour.sort_by(|left, right| left.0.total_cmp(&right.0));
-        flavour.truncate(policy.count_rarest as usize);
-        subjects.push(Counts {
-            core,
-            credits: flavour.into_iter().map(|(_, index)| index).collect(),
-            peak,
-            current,
-            enabled,
-            promoted,
-        });
+        subjects.push(scored.counts(peak_concurrent(&lots, cursor), current, enabled, promoted));
     }
     Ok(subjects)
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Phase {
-    Gtd,
-    Fcfs,
-    Ungated,
-}
-
-fn phase(subject: &Counts, policy: Allocation) -> Phase {
-    // No profile without the gate: an account that holds none of the required collection has no
-    // achievements to be scored on, whatever it earned before it sold.
-    if !subject.enabled {
-        return Phase::Ungated;
-    }
-    if subject.promoted || subject.core >= policy.gtd_core {
-        Phase::Gtd
-    } else if subject.core >= policy.fcfs_core
-        || (policy.fcfs_flavour > 0 && subject.credits.len() as u32 >= policy.fcfs_flavour)
-    {
-        Phase::Fcfs
-    } else {
-        Phase::Ungated
-    }
 }
 
 fn tally(counts: &[Counts], policy: Allocation) -> Tally {
@@ -677,68 +609,6 @@ fn share_of(count: u32, total: u32) -> f64 {
     } else {
         f64::from(count) * 100.0 / f64::from(total)
     }
-}
-
-/// Units held at one instant, from the lots' half-open intervals.
-///
-/// A lot is open at `slot` when it was acquired at or before it and has not been disposed of
-/// by then — the same boundary `peak_concurrent` uses, so a sale and a purchase at one slot
-/// are never both true.
-fn held_at(lots: &[Lot], slot: u64) -> u32 {
-    lots.iter()
-        .filter(|lot| lot.acquired_at <= slot && lot.disposed_at.is_none_or(|end| end > slot))
-        .count() as u32
-}
-
-/// The most distinct units held at one instant, from the lots' half-open intervals.
-///
-/// Ends sort before starts at a shared slot, so a sale and a purchase are never simultaneous;
-/// a unit held through two overlapping lots is one unit.
-fn peak_concurrent(lots: &[Lot], cursor: u64) -> u32 {
-    #[derive(Clone, Copy)]
-    struct Mark {
-        slot: u64,
-        start: bool,
-        unit: u32,
-    }
-
-    let mut marks: Vec<Mark> = Vec::new();
-    for lot in lots {
-        let end = lot.disposed_at.unwrap_or(cursor);
-        if end <= lot.acquired_at {
-            continue;
-        }
-        marks.push(Mark {
-            slot: lot.acquired_at,
-            start: true,
-            unit: lot.unit,
-        });
-        marks.push(Mark {
-            slot: end,
-            start: false,
-            unit: lot.unit,
-        });
-    }
-    marks.sort_unstable_by(|left, right| {
-        left.slot
-            .cmp(&right.slot)
-            .then_with(|| left.start.cmp(&right.start))
-    });
-
-    let mut open: BTreeMap<u32, u32> = BTreeMap::new();
-    let mut peak = 0u32;
-    for mark in marks {
-        if mark.start {
-            *open.entry(mark.unit).or_default() += 1;
-        } else if let Some(count) = open.get_mut(&mark.unit) {
-            *count -= 1;
-            if *count == 0 {
-                open.remove(&mark.unit);
-            }
-        }
-        peak = peak.max(open.len() as u32);
-    }
-    peak
 }
 
 fn print_ladder(counts: &[Counts], policy: Allocation) {

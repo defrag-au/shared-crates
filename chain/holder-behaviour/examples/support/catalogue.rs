@@ -10,6 +10,13 @@ use std::collections::BTreeMap;
 
 use holder_behaviour::{Definition, Predicate, StatusPredicate, TokenRef};
 
+/// A gated allocation policy, as the catalogue writes it.
+///
+/// The type is `holder_behaviour`'s, not this loader's: the modelling tool and the site that
+/// answers one holder must decide a phase the same way, so the policy and the rule that reads
+/// it live beside the earned set they are read against.
+pub use holder_behaviour::Allocation;
+
 /// A catalogue, with the predicates this build can answer resolved once at load.
 pub struct LoadedCatalogue {
     entries: Vec<CatalogueEntry>,
@@ -20,23 +27,6 @@ pub struct LoadedCatalogue {
     plan: Option<Plan>,
     /// Every declared status, by id.
     statuses: Vec<Status>,
-}
-
-/// A gated allocation policy, as the catalogue writes it.
-#[derive(Debug, Clone, Copy)]
-pub struct Allocation {
-    /// Core achievements for the guaranteed phase.
-    pub gtd_core: u32,
-    /// Core achievements for the first-come phase.
-    pub fcfs_core: u32,
-    /// Flavour achievements that also reach the first-come phase.
-    pub fcfs_flavour: u32,
-    /// Mints per identity, at most.
-    pub per_identity: u32,
-    /// A flavour achievement held by more than this share does not count.
-    pub rarity_floor: f64,
-    /// How many of a holder's rarest flavour achievements count.
-    pub count_rarest: u32,
 }
 
 /// A condition that is true at a read, declared once and referenced by id.

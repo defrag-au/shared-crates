@@ -32,6 +32,14 @@ pub mod raw {
     pub const ACCENT_RED: Srgb = Srgb::rgb(247, 118, 142);
     pub const ACCENT_MAGENTA: Srgb = Srgb::rgb(187, 154, 247);
 
+    /// The accent with no hue at all, for a brand that has none.
+    ///
+    /// Midnight's identity is white on black, so every coloured token would be
+    /// a claim its logo does not make. Pure white rather than a warm near-white:
+    /// this is the logo's own stroke, and the one place the estate paints that
+    /// chain — the Discord link card — uses the same value.
+    pub const ACCENT_WHITE: Srgb = Srgb::rgb(255, 255, 255);
+
     /// Deliberately its own value: when this aliased the highlight background it
     /// sat at 1.24:1 against the primary background and panel edges were
     /// effectively invisible.
@@ -101,6 +109,7 @@ pub struct ColorTokens<P> {
     pub accent_orange: P,
     pub accent_red: P,
     pub accent_magenta: P,
+    pub accent_white: P,
 
     pub accent: P,
     pub success: P,
@@ -132,6 +141,7 @@ impl<P: Paint> ColorTokens<P> {
             accent_orange: c(raw::ACCENT_ORANGE),
             accent_red: c(raw::ACCENT_RED),
             accent_magenta: c(raw::ACCENT_MAGENTA),
+            accent_white: c(raw::ACCENT_WHITE),
             accent: c(raw::ACCENT_BLUE),
             success: c(raw::ACCENT_GREEN),
             warning: c(raw::ACCENT_YELLOW),
@@ -157,6 +167,7 @@ impl<P: Paint> ColorTokens<P> {
             accent_orange: c(raw::OS_ACCENT_ORANGE),
             accent_red: c(raw::OS_ACCENT_RED),
             accent_magenta: c(raw::OS_ACCENT_MAGENTA),
+            accent_white: c(raw::ACCENT_WHITE),
             accent: c(raw::OS_ACCENT_BLUE),
             success: c(raw::OS_ACCENT_GREEN),
             warning: c(raw::OS_ACCENT_YELLOW),
@@ -223,6 +234,7 @@ pub enum Token {
     AccentOrange,
     AccentRed,
     AccentMagenta,
+    AccentWhite,
     Accent,
     Success,
     Warning,
@@ -233,7 +245,7 @@ pub enum Token {
 impl Token {
     /// Every token, in [`ColorTokens`] declaration order. Drives token
     /// inspectors and the contrast suite.
-    pub const ALL: [Token; 18] = [
+    pub const ALL: [Token; 19] = [
         Token::BgPrimary,
         Token::BgSecondary,
         Token::BgHighlight,
@@ -247,6 +259,7 @@ impl Token {
         Token::AccentOrange,
         Token::AccentRed,
         Token::AccentMagenta,
+        Token::AccentWhite,
         Token::Accent,
         Token::Success,
         Token::Warning,
@@ -270,6 +283,7 @@ impl Token {
             Token::AccentOrange => c.accent_orange,
             Token::AccentRed => c.accent_red,
             Token::AccentMagenta => c.accent_magenta,
+            Token::AccentWhite => c.accent_white,
             Token::Accent => c.accent,
             Token::Success => c.success,
             Token::Warning => c.warning,
@@ -309,6 +323,7 @@ impl Token {
             Token::AccentOrange => "accent_orange",
             Token::AccentRed => "accent_red",
             Token::AccentMagenta => "accent_magenta",
+            Token::AccentWhite => "accent_white",
             Token::Accent => "accent",
             Token::Success => "success",
             Token::Warning => "warning",
@@ -328,7 +343,7 @@ mod tests {
     /// checking whichever token was forgotten.
     #[test]
     fn every_token_is_listed_and_named_once() {
-        assert_eq!(Token::ALL.len(), 18);
+        assert_eq!(Token::ALL.len(), 19);
         let mut names: Vec<&str> = Token::ALL.iter().map(|t| t.name()).collect();
         names.sort_unstable();
         let before = names.len();

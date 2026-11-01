@@ -186,6 +186,9 @@ impl Theme {
                 accent_orange: h(0xff_b4_28),
                 accent_red: h(0xc83232),
                 accent_magenta: h(0xa0_78_dc),
+                // Hue-free on purpose: it is a chain's brand, not this theme's
+                // palette, and the two themes' whites have to agree.
+                accent_white: h(0xff_ff_ff),
                 success: h(0x73_da_ca),
                 warning: h(0xff_b4_28),
                 error: h(0xff_44_44),

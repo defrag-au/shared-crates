@@ -2675,17 +2675,20 @@ pub fn chain_tint(theme: &Theme, family: ChainFamily) -> Color {
         ChainFamily::Solana => c.accent_green,
         ChainFamily::Tezos => c.accent_cyan,
         ChainFamily::Xrpl => c.text_secondary,
-        ChainFamily::Midnight => c.accent_yellow,
+        // White on black is the whole of Midnight's identity, so its accent is
+        // the one with no hue — see `raw::ACCENT_WHITE`.
+        ChainFamily::Midnight => c.accent_white,
     }
 }
 
 /// A chain's mark, drawn with shapes and centred on `at`, `size` across.
 ///
-/// Evocations, not the chains' logos: a ring of dots for Cardano, a faceted
-/// diamond for EVM, three slanted bars for Solana, a hooked `t` for Tezos, two
-/// chevrons for XRPL and a crescent for Midnight. Recognisable at 14 px and
-/// clean at 48, with no asset to ship and nothing that overlaps itself, so a
-/// mark fades evenly.
+/// Evocations, not the chains' logos — with one exception: a ring of dots for
+/// Cardano, a faceted diamond for EVM, three slanted bars for Solana, a hooked
+/// `t` for Tezos, two chevrons for XRPL, and Midnight's ring with three squares,
+/// which is its logo, drawn rather than shipped. Recognisable at 14 px and clean
+/// at 48, with no asset and nothing that overlaps itself, so a mark fades
+/// evenly.
 pub fn chain_mark(family: ChainFamily, at: Vec2, size: f32, color: Color) {
     let r = size * 0.5;
     let dim = Color::new(color.r, color.g, color.b, color.a * 0.68);
@@ -2785,9 +2788,15 @@ pub fn chain_mark(family: ChainFamily, at: Vec2, size: f32, color: Color) {
             fill_strip(&bottom, &bottom.map(|q| q - t), color);
         }
         ChainFamily::Midnight => {
-            crescent(at, 0.78 * r, 0.36 * r, 0.64 * r, -45f32.to_radians(), color);
-            let star = at + vec2(0.5, -0.5) * r;
-            draw_circle(star.x, star.y, 0.1 * r, dim);
+            // White on black: a ring, and three squares stacked in its middle.
+            // One ink at one alpha — the shape carries the identity, so the
+            // mark needs no second tone to be read.
+            ring(at, 0.94 * r, 0.75 * r, color);
+            let side = 0.2 * r;
+            for dy in [-0.42f32, 0.0, 0.42] {
+                let c = at + vec2(0.0, dy * r);
+                draw_rectangle(c.x - side * 0.5, c.y - side * 0.5, side, side, color);
+            }
         }
     }
 }
@@ -2929,25 +2938,16 @@ fn fill_strip(outer: &[Vec2], inner: &[Vec2], color: Color) {
     });
 }
 
-/// The part of a circle (radius `outer`, centre `at`) outside a second circle
-/// of radius `bite`, `offset` away from it in direction `angle`: a crescent,
-/// filled as one strip so it fades evenly.
-fn crescent(at: Vec2, outer: f32, offset: f32, bite: f32, angle: f32, color: Color) {
-    let d = offset;
-    let x = (d * d + outer * outer - bite * bite) / (2.0 * d);
-    let y = (outer * outer - x * x).max(0.0).sqrt();
-    let phi = y.atan2(x);
-    let psi = y.atan2(x - d);
-    let (sin, cos) = angle.sin_cos();
-    let turn = |v: Vec2| at + vec2(v.x * cos - v.y * sin, v.x * sin + v.y * cos);
+/// An annulus centred on `at`: a circle of radius `outer` with a hole of
+/// radius `inner`, filled as one strip so it fades evenly.
+fn ring(at: Vec2, outer: f32, inner: f32, color: Color) {
     let n = 32;
     let (mut a, mut b) = (Vec::with_capacity(n + 1), Vec::with_capacity(n + 1));
     for i in 0..=n {
-        let t = i as f32 / n as f32;
-        let ao = phi + t * (TAU - 2.0 * phi);
-        let ai = psi + t * (TAU - 2.0 * psi);
-        a.push(turn(vec2(ao.cos(), ao.sin()) * outer));
-        b.push(turn(vec2(d + bite * ai.cos(), bite * ai.sin())));
+        let t = i as f32 / n as f32 * TAU;
+        let d = vec2(t.cos(), t.sin());
+        a.push(at + d * outer);
+        b.push(at + d * inner);
     }
     fill_strip(&a, &b, color);
 }

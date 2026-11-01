@@ -35,12 +35,14 @@
 //!
 //! Not a ledger (it stores only what an achievement reads — the subject's lots, the
 //! collection's mint order, and the marketplace placements and fills a subject was party
-//! to), not an allocation (that is a mapping over earned events), and not a catalogue loader
-//! (the TOML is read by the caller — the predicate type deserialises from the same
-//! `{ kind = … }` table the published rules use).
+//! to), and not a catalogue loader (the TOML is read by the caller — the predicate type
+//! deserialises from the same `{ kind = … }` table the published rules use). It does own
+//! [`allocation`], the threshold policy that turns an earned set into a phase, because the
+//! tool that models a mint and the site that shows an estimate must not each carry a copy.
 //! The design is `cnft.dev-workers/docs/design/HOLDER_BEHAVIOUR.md`; the first client is
 //! the frozen Perps catalogue.
 
+mod allocation;
 mod bundle;
 mod evaluate;
 mod fold;
@@ -49,6 +51,10 @@ mod predicate;
 mod state;
 mod status;
 
+pub use allocation::{
+    Allocation, Counts, Phase, Role, Score, ScoreError, held_at, peak_concurrent, phase, score,
+    score_earned,
+};
 pub use bundle::{
     Bundle, BundleError, BundleStore, Earned, Lot, Rarity, Snapshot, SubjectRecord, SubjectView,
     VERSION as BUNDLE_VERSION, catalogue_digest, evaluate_row, fnv1a, write as write_bundle,
@@ -64,6 +70,9 @@ pub use status::{StatusError, StatusPredicate, StatusView, status_holds};
 // The chain-qualified asset id, so a gate config can name a collection without also taking
 // `chains` as a dependency — the same reason `chain-events` re-exports it.
 pub use chain_events::TokenRef;
+// And the walk's coverage, which [`Snapshot`] has as a public field: without this a crate
+// outside this one can read a snapshot but never write the struct that produces one.
+pub use chain_events::Coverage;
 pub use state::{
     AcquiredBy, Ask, BookChange, Drawdown, Fill, FloorPoint, FloorSeries, Holding, LotId,
     MarketHistory, MarketSide, MintFact, MintSummary, NewFill, NewLot, Placement, Slot, Store,
