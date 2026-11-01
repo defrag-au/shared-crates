@@ -2,6 +2,27 @@
 //! for what is not a person, the amount and the share, with the share as a bar
 //! behind the row.
 //!
+//! The bar is the party's POSITION — free + locked + what a pool adds beside the
+//! balance ([`Holding::position`]) — as a share of the table's total position.
+//! That is what the ranking is, and a share of the raw balance would contradict
+//! it: a wallet whose whole involvement is liquidity would be ranked high and
+//! read `0.0%`. A locked part is a length inside the bar, in the Lock ink; the
+//! pool side is a second, thinner length along the row's foot in the pool's ink.
+//!
+//! ⚠️ A pool's reserve is counted here TWICE — once at the pool's own row, which
+//! holds it, and once at each provider whose share of it is attributed — so the
+//! total position sums above the supply. That is deliberate: the column answers
+//! "how much of this token does this party command", and the reserve is
+//! commanded by whoever funded it. [`HolderBoardVm::total`] is that position
+//! total, not the supply.
+//!
+//! The foot band is scaled to the largest pool position in the whole table
+//! ([`HolderBoardVm::largest_pool`]), so the biggest provider spans its row and a
+//! party with no balance at all still carries a band. A row with no units says
+//! `—` rather than `0` for its amount and share: it holds none of the supply,
+//! and `0.0%` beside a real pool position reads as a broken figure rather than
+//! as an absence.
+//!
 //! A row is `at` a position the host eased, so a rank change slides rather than
 //! jumps; the host keeps the scroll and the easing. The footer says where the
 //! list is, and whether the client holds every holder or only the largest.
@@ -71,6 +92,16 @@ impl Holding<'_> {
     /// Units this holder's LP share is worth, beside its own balance.
     pub fn lp(&self) -> f64 {
         self.split.map_or(0.0, |s| s.lp)
+    }
+
+    /// What the party commands: `free + locked + lp`.
+    ///
+    /// The three parts added up once, which is what the ranking, the bar and the
+    /// map's area are all of. `locked` is inside `amount` and `lp` is beside it,
+    /// so this is `amount + lp`. Use it rather than `amount` anywhere a reader
+    /// is comparing parties, or a provider's pool side silently disappears.
+    pub fn position(&self) -> f64 {
+        self.amount + self.lp()
     }
 }
 
@@ -152,9 +183,16 @@ pub struct HolderBoardVm<'a> {
     pub fits: usize,
     /// Every holding the client has.
     pub count: usize,
-    /// The largest holding's amount, for the share bar's width.
+    /// The largest POSITION in the table, for the share bar's width. Not the
+    /// largest balance: a bar is what the party commands.
     pub largest: f64,
-    /// Every holding's amount together, for the share.
+    /// The largest pool position in the table, for the foot band's length, so
+    /// the biggest provider spans its row. `0.0` when no holding has one, and
+    /// no band is drawn.
+    pub largest_pool: f64,
+    /// Every holding's POSITION together, for the share: above the supply
+    /// wherever a pool's reserve is attributed to its providers as well as
+    /// held by the pool.
     pub total: f64,
     /// Whether the client holds every holder or only the largest.
     pub complete: bool,
@@ -223,11 +261,12 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
         let rect = Rect::new(area.x, y, area.w, ROW_H - 2.0);
         let tone = holding_colour_with(vm.ink, &p.theme, row.holding.kind, vm.kinds);
         let selected = vm.selected == Some(row.holding.key);
-        // The share as a bar behind the row, against the largest. Where the
-        // host knows the split, the locked part is drawn INSIDE that length in
-        // the Lock ink: how much of a row cannot move is then a length rather
-        // than another number to read.
-        let share = (row.holding.amount / largest) as f32;
+        // The share as a bar behind the row, against the largest POSITION.
+        // Where the host knows the split, the locked part is drawn INSIDE that
+        // length in the Lock ink: how much of a row cannot move is then a
+        // length rather than another number to read.
+        let position = row.holding.position();
+        let share = (position / largest) as f32;
         let w = (rect.w - 4.0) * share.clamp(0.0, 1.0);
         draw_rounded_rect(
             rect.x,
@@ -250,7 +289,7 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
             .holding
             .split
             .map_or(0.0, |s| {
-                s.vested / row.holding.amount.max(f64::MIN_POSITIVE)
+                s.vested / position.max(f64::MIN_POSITIVE)
             })
             .clamp(0.0, 1.0) as f32;
         let free_w = w * (1.0 - locked);
@@ -272,6 +311,28 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
                 rect.h,
                 4.0,
                 with_alpha(vm.ink.ada, 0.3),
+            );
+        }
+        // THE POOL SIDE, as its own measure along the row's foot. Not inside
+        // the share bar: a pool position is BESIDE a balance, not part of it,
+        // and a full-height length read as a selected row rather than as a
+        // second number. Scaled to the largest POOL position rather than to the
+        // largest balance, so the biggest provider's band is the full row and
+        // the order of the pools is legible at a glance.
+        let pool_w = match vm.largest_pool > 0.0 {
+            true => ((row.holding.lp() / vm.largest_pool) as f32 * (rect.w - 4.0))
+                .clamp(0.0, rect.w - 4.0),
+            false => 0.0,
+        };
+        if pool_w > 1.0 {
+            let band = (rect.h * 0.34).clamp(3.0, 5.0);
+            draw_rounded_rect(
+                rect.x,
+                rect.y + rect.h - band,
+                pool_w,
+                band,
+                2.0,
+                with_alpha(vm.ink.pool, 0.55),
             );
         }
         if let Some((c, a)) = row.flash {
@@ -325,8 +386,17 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
         // The amount, with the units a pool adds beside it: `+` and the figure
         // in the pool's ink, so an LP position reads at a glance and is never
         // mistaken for part of the balance.
+        //
+        // A party with no units says `—`: it holds none of the supply, and a
+        // `0` beside a real pool position reads as a figure that failed to
+        // load rather than as an absence.
         let amount_box = Rect::new(col_amt - 80.0, rect.y, 80.0, rect.h);
         let lp = row.holding.lp();
+        let holds = row.holding.amount > 0.0;
+        let units = match holds {
+            true => format::compact(row.holding.amount),
+            false => "—".to_string(),
+        };
         match lp > 0.0 {
             true => {
                 let extra = format!("+{}", format::compact(lp));
@@ -338,9 +408,9 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
                     vm.ink.pool,
                     crate::Align::End,
                 );
-                let room = (amount_box.w - ew - 3.0).max(10.0);
+                let room = (amount_box.w - ew - 5.0).max(10.0);
                 p.text_in(
-                    &format::compact(row.holding.amount),
+                    &units,
                     Rect::new(amount_box.x, rect.y, room, rect.h),
                     s,
                     p.theme.color.text_primary,
@@ -348,15 +418,19 @@ pub fn holder_board(p: &Painter, vm: &HolderBoardVm, area: Rect) {
                 );
             }
             false => p.text_in(
-                &format::compact(row.holding.amount),
+                &units,
                 amount_box,
                 s,
                 p.theme.color.text_primary,
                 crate::Align::End,
             ),
         }
+        let share = match holds {
+            true => format::share(position / total),
+            false => "—".to_string(),
+        };
         p.text_in(
-            &format::share(row.holding.amount / total),
+            &share,
             mid(col_pct - 50.0, 50.0),
             s,
             p.theme.color.accent,

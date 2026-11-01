@@ -5,6 +5,19 @@
 //! a trade moves tiles by slivers rather than re-packing them. The host eases
 //! each tile and lights the trader's; this draws the placed tiles and the
 //! groups' names, and clips a tile still easing in from elsewhere.
+//!
+//! # Area is the POSITION, not the balance
+//!
+//! A tile's area is what the party COMMANDS — free + locked + a pool's share of
+//! its reserve ([`Holding::position`]) — because a tile sized by balance alone
+//! says "small holder" about the largest liquidity provider. The pool's own row
+//! keeps its whole reserve, so the areas sum above the supply wherever a reserve
+//! is attributed to its providers too; [`HolderMapVm::total`] is that position
+//! total, and the panel is named for it.
+//!
+//! The pool side is also drawn as a band along the tile's foot
+//! ([`HolderMapVm::largest_pool`]), so a tile says which part of its area is a
+//! liquidity position rather than a balance.
 
 use std::collections::HashMap;
 
@@ -88,7 +101,7 @@ impl HolderMapState {
                 let w: f64 = holdings
                     .iter()
                     .filter(|h| group_of(h.kind) == *g)
-                    .map(|h| h.amount.max(0.0))
+                    .map(|h| h.position().max(0.0))
                     .sum();
                 (*g, w)
             })
@@ -103,7 +116,7 @@ impl HolderMapState {
             let members: Vec<(String, f64)> = holdings
                 .iter()
                 .filter(|h| group_of(h.kind) == *group)
-                .map(|h| (h.key.to_string(), h.amount.max(0.0)))
+                .map(|h| (h.key.to_string(), h.position().max(0.0)))
                 .collect();
             let tree = self.members.entry(group).or_default();
             tiles.extend(tree.layout(&members, *rect));
@@ -136,8 +149,14 @@ pub struct MapGroup<'a> {
 pub struct HolderMapVm<'a> {
     pub tiles: &'a [MapTile<'a>],
     pub groups: &'a [MapGroup<'a>],
-    /// Every holding's amount together, for the shares.
+    /// Every holding's POSITION together, for the shares. Above the supply
+    /// wherever a pool's reserve is attributed to its providers as well as held
+    /// by the pool.
     pub total: f64,
+    /// The largest pool position in the table, for the foot band's length: the
+    /// biggest provider's band spans its tile. `0.0` when no holding has one,
+    /// and no band is drawn.
+    pub largest_pool: f64,
     pub ink: MarketInk,
     /// Ink per kind, where the host's palette differs from the shared seven.
     /// A kind not listed uses the shared colour.
@@ -188,23 +207,72 @@ pub fn holder_map(p: &Painter, vm: &HolderMapVm, area: Rect) {
                 with_alpha(BLACK, 0.18),
             );
         }
-        if r.w > 52.0 && r.h > 22.0 {
-            let ink = ink_on(fill, p.theme.color.bg_primary, p.theme.color.text_primary);
-            let name = Rect::new(r.x + 4.0, r.y + 3.0, r.w - 8.0, 11.0);
-            // A name that does not fit is not drawn at all: an ellipsis on a
-            // tile reads as a mistake (the rule `token_header`'s venue line
-            // already follows), and the board lists every name in full.
-            if p.measure(tile.holding.label, s).width <= name.w {
-                p.text_in(tile.holding.label, name, s, ink, crate::Align::Start);
-                if r.h > 34.0 {
-                    let line = Rect::new(r.x + 4.0, r.y + 15.0, r.w - 8.0, 11.0);
-                    p.text_in(
-                        &crate::format::share(tile.holding.amount / total),
-                        line,
-                        s,
-                        with_alpha(ink, 0.75),
-                        crate::Align::Start,
+        // THE POOL SIDE, along the tile's foot and never as its area — see the
+        // module note. The same mark, on the same scale, as the board's: the
+        // largest provider spans its tile, so a party whose balance is a
+        // sliver still carries a band the eye cannot miss.
+        let inner_w = (r.w - inset * 2.0).max(0.0);
+        let band = (r.h * 0.22).clamp(2.0, 5.0);
+        let mut pool = 0.0;
+        if vm.largest_pool > 0.0 {
+            let lp = tile.holding.lp();
+            if lp > 0.0 {
+                let w = ((lp / vm.largest_pool) as f32 * inner_w).clamp(0.0, inner_w);
+                if w > 1.0 {
+                    draw_rectangle(
+                        r.x + inset,
+                        r.bottom() - inset - band,
+                        w,
+                        band,
+                        with_alpha(vm.ink.pool, 0.9),
                     );
+                    pool = band;
+                }
+            }
+        }
+        // The name, and the share under it where the tile is tall enough. A
+        // tile that can only carry one line sets it on the tile's MIDLINE: a
+        // name at a tile's top edge with nothing under it reads as a heading
+        // for the tile below, which is exactly what a thin tile beside a tall
+        // one looked like.
+        if r.w > 52.0 && r.h > 16.0 {
+            let ink = ink_on(fill, p.theme.color.bg_primary, p.theme.color.text_primary);
+            let share = crate::format::share(tile.holding.position() / total);
+            let room = (r.w - 8.0).max(1.0);
+            let name_w = p.measure(tile.holding.label, s).width;
+            let line_h = (r.h - pool - 2.0).max(6.0);
+            let (label, dim) = (ink, with_alpha(ink, 0.75));
+            match r.h > 34.0 {
+                true => {
+                    if name_w <= room {
+                        p.text_in(
+                            tile.holding.label,
+                            Rect::new(r.x + 4.0, r.y + 3.0, room, 11.0),
+                            s,
+                            label,
+                            crate::Align::Start,
+                        );
+                        p.text_in(
+                            &share,
+                            Rect::new(r.x + 4.0, r.y + 15.0, room, 11.0),
+                            s,
+                            dim,
+                            crate::Align::Start,
+                        );
+                    }
+                }
+                false => {
+                    let line = Rect::new(r.x + 4.0, r.y, room, line_h);
+                    // A name that does not fit is not drawn at all: an ellipsis
+                    // on a tile reads as a mistake (the rule `token_header`'s
+                    // venue line already follows), and the board lists every
+                    // name in full.
+                    if name_w <= room {
+                        p.text_in(tile.holding.label, line, s, label, crate::Align::Start);
+                        if name_w + p.measure(&share, s).width + 8.0 <= room {
+                            p.text_in(&share, line, s, dim, crate::Align::End);
+                        }
+                    }
                 }
             }
         }

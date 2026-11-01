@@ -97,6 +97,14 @@ pub struct RateChartVm<'a> {
     /// The axis's left and right edges, unix seconds.
     pub t0: u64,
     pub t1: u64,
+    /// The y range, where the host wants one of its own.
+    ///
+    /// `None` starts at zero, which is right for a rate: a run of nothing and a
+    /// run of something are the two facts. A series whose whole story is a
+    /// DRIFT — a holder count that spikes on its first day and then sags — is
+    /// flattened to a single line against zero, so a host that cares about the
+    /// shape rather than the distance from nothing passes the band itself.
+    pub range: Option<(f64, f64)>,
     /// The moment the figures are priced to: the fill stops here and the line
     /// past it is dimmed. `None` for a series earned all the way to `t1`.
     pub earned_to: Option<u64>,
@@ -143,7 +151,7 @@ pub fn rate_chart(p: &Painter, vm: &RateChartVm, rect: Rect) {
         with_alpha(vm.line, 0.25),
     );
 
-    let (lo, hi) = range(vm.steps, vm.mean);
+    let (lo, hi) = vm.range.unwrap_or_else(|| range(vm.steps, vm.mean));
     if hi > lo {
         let span = vm.t1.saturating_sub(vm.t0).max(1) as f64;
         let x_of = |at: u64| {

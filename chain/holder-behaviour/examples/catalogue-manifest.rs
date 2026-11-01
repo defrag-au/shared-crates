@@ -48,6 +48,9 @@ struct Entry<'a> {
     index: u32,
     id: &'a str,
     role: &'a str,
+    /// What the achievement is worth. Required: a consumer that meets an unpriced achievement
+    /// cannot score it, and a default here would publish a manifest that looks complete.
+    points: u32,
 }
 
 struct Args {
@@ -115,12 +118,21 @@ fn run() -> Result<(), String> {
     }
 
     let achievements: Vec<Entry<'_>> = (0..catalogue.len())
-        .map(|index| Entry {
-            index: index as u32,
-            id: catalogue.id_at(index).unwrap_or_default(),
-            role: catalogue.role_at(index).unwrap_or_default(),
+        .map(|index| {
+            Ok(Entry {
+                index: index as u32,
+                id: catalogue.id_at(index).unwrap_or_default(),
+                role: catalogue.role_at(index).unwrap_or_default(),
+                points: catalogue.points_at(index).ok_or_else(|| {
+                    format!(
+                        "{} prices no points for {} — every achievement is worth a number",
+                        args.catalogue,
+                        catalogue.id_at(index).unwrap_or("an unnamed entry")
+                    )
+                })?,
+            })
         })
-        .collect();
+        .collect::<Result<_, String>>()?;
 
     let manifest = Manifest {
         campaign: &args.campaign,

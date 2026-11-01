@@ -20,7 +20,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::bundle::{Bundle, Lot, Rarity, SubjectView};
+use crate::bundle::{Bundle, Lot, SubjectView};
 
 /// The part an achievement plays in a score.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,12 +57,13 @@ impl Role {
 /// not be configured with its own copy of the thresholds.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Allocation {
-    /// Core achievements for the guaranteed phase.
-    pub gtd_core: u32,
-    /// Core achievements for the first-come phase.
-    pub fcfs_core: u32,
-    /// Flavour achievements that also reach the first-come phase. Zero disables this path.
-    pub fcfs_flavour: u32,
+    /// The score that reaches the guaranteed phase.
+    pub gtd_score: u32,
+    /// The score that reaches the first-come phase.
+    pub fcfs_score: u32,
+    /// Rare achievements that also reach the first-come phase, whatever the score. Zero disables
+    /// this path rather than widening it.
+    pub fcfs_rarest: u32,
     /// Mints per identity, at most.
     pub per_identity: u32,
     /// A flavour achievement held by more than this share does not count.
@@ -82,6 +83,10 @@ pub struct Score {
     pub core: Vec<u16>,
     /// The flavour achievements that cleared the floor, rarest first, already capped.
     pub credits: Vec<u16>,
+    /// What the counted set is worth. Summed from the catalogue's own weights, never counted
+    /// from how many achievements there are: an achievement is worth what curation said it is,
+    /// so a hard one can lift a holder the way three easy ones cannot.
+    pub points: u32,
 }
 
 impl Score {
@@ -89,8 +94,8 @@ impl Score {
     /// holdings it wants to state.
     pub fn counts(self, peak: u32, current: u32, enabled: bool, promoted: bool) -> Counts {
         Counts {
-            core: self.core.len() as u32,
-            credits: self.credits,
+            score: self.points,
+            rarest: self.credits.len() as u32,
             peak,
             current,
             enabled,
@@ -102,8 +107,10 @@ impl Score {
 /// Everything a phase decision reads.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Counts {
-    pub core: u32,
-    pub credits: Vec<u16>,
+    /// The points of every counted achievement.
+    pub score: u32,
+    /// How many rare achievements counted, which is the alternate first-come path.
+    pub rarest: u32,
     pub peak: u32,
     pub current: u32,
     /// Whether the campaign's gate holds **now**. A subject without it has no profile at all,
@@ -135,16 +142,16 @@ impl Phase {
 /// Which phase this subject is in.
 ///
 /// The order is the campaign's, and each step is deliberate: no gate means no profile at all,
-/// a promotion outranks any score, and the flavour path is disabled rather than widened when
-/// `fcfs_flavour` is zero.
+/// a promotion outranks any score, and the rare path is disabled rather than widened when
+/// `fcfs_rarest` is zero.
 pub fn phase(subject: &Counts, policy: Allocation) -> Phase {
     if !subject.enabled {
         return Phase::Ungated;
     }
-    if subject.promoted || subject.core >= policy.gtd_core {
+    if subject.promoted || subject.score >= policy.gtd_score {
         Phase::Gtd
-    } else if subject.core >= policy.fcfs_core
-        || (policy.fcfs_flavour > 0 && subject.credits.len() as u32 >= policy.fcfs_flavour)
+    } else if subject.score >= policy.fcfs_score
+        || (policy.fcfs_rarest > 0 && subject.rarest >= policy.fcfs_rarest)
     {
         Phase::Fcfs
     } else {
@@ -167,6 +174,8 @@ pub enum ScoreError {
     UnknownRole { achievement: u16, role: String },
     /// The bundle's achievement index is past the end of the catalogue given.
     NotInCatalogue { achievement: u16 },
+    /// The catalogue gives the achievement no points, so the score it contributes is unknown.
+    Unweighted { achievement: u16 },
 }
 
 impl std::fmt::Display for ScoreError {
@@ -188,17 +197,89 @@ impl std::fmt::Display for ScoreError {
                 formatter,
                 "bundle achievement #{achievement} is not in this catalogue"
             ),
+            Self::Unweighted { achievement } => write!(
+                formatter,
+                "achievement #{achievement} carries no points in this catalogue, so it cannot score"
+            ),
         }
     }
 }
 
 impl std::error::Error for ScoreError {}
 
+/// What happened to one earned achievement, in the order a reader would ask.
+///
+/// This is the scoring rule's own vocabulary: a debug surface renders these rather than deciding
+/// again what counted, so an answer and its explanation cannot disagree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// A core achievement. Every one counts.
+    Core,
+    /// A rare enough flavour achievement that counted.
+    Credit,
+    /// Flavour the rarity floor drops: held by too much of the population to tell holders apart.
+    Crowded,
+    /// Flavour rare enough to count, but past `count_rarest`.
+    Capped,
+    /// The bundle has no rarity row for it, so its share is unknown.
+    NoRarity,
+    /// The bundle marks it unmeasured: the fold never answered it.
+    Unmeasured,
+    /// The catalogue names a role that is neither core nor flavour.
+    UnknownRole,
+    /// The bundle's index is past the end of the catalogue.
+    NotInCatalogue,
+    /// It would count, but the catalogue gives it no points.
+    Unweighted,
+}
+
+impl Outcome {
+    /// Whether this achievement is part of the score.
+    pub fn counted(self) -> bool {
+        matches!(self, Self::Core | Self::Credit)
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Core => "core",
+            Self::Credit => "rarest",
+            Self::Crowded => "crowded",
+            Self::Capped => "capped",
+            Self::NoRarity => "no-rarity",
+            Self::Unmeasured => "unmeasured",
+            Self::UnknownRole => "unknown-role",
+            Self::NotInCatalogue => "not-in-catalogue",
+            Self::Unweighted => "unweighted",
+        }
+    }
+}
+
+/// One earned achievement, what the catalogue says it is worth, and what scoring made of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TraceRow {
+    pub achievement: u16,
+    /// The catalogue's weight. `None` when the catalogue did not give one, or does not carry the
+    /// achievement at all. Present on a capped row too: it is what would have counted.
+    pub points: Option<u32>,
+    pub outcome: Outcome,
+}
+
+/// Every earned achievement with its outcome, and the score when one could be formed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Trace {
+    /// One row per earned achievement, in index order.
+    pub rows: Vec<TraceRow>,
+    /// The score, or the first refusal. A refused trace still carries every row, which is the
+    /// point: the rows say which achievement the catalogue or the bundle failed to answer for.
+    pub score: Result<Score, ScoreError>,
+}
+
 /// Score one subject's bundle row against a policy.
 pub fn score<'a>(
     bundle: &Bundle<'_>,
     subject: &SubjectView<'_>,
     role_of: impl Fn(u16) -> Option<&'a str>,
+    points_of: impl Fn(u16) -> Option<u32>,
     policy: Allocation,
 ) -> Result<Score, ScoreError> {
     score_earned(
@@ -206,6 +287,7 @@ pub fn score<'a>(
         &subject.key_str(),
         subject.earned().map(|earned| earned.achievement),
         role_of,
+        points_of,
         policy,
     )
 }
@@ -216,55 +298,131 @@ pub fn score<'a>(
 /// wallets' sets: the caller concatenates the rows and this deduplicates, so one achievement
 /// earned twice — by two wallets, or by one asset that came back — counts once. `key` names the
 /// subject in an error message, and for a union it is the identity.
-///
-/// The result carries the indexes and not only how many: a surface has to be able to name what
-/// lifted a holder, and a count cannot.
 pub fn score_earned<'a>(
     bundle: &Bundle<'_>,
     key: &str,
     earned: impl IntoIterator<Item = u16>,
     role_of: impl Fn(u16) -> Option<&'a str>,
+    points_of: impl Fn(u16) -> Option<u32>,
     policy: Allocation,
 ) -> Result<Score, ScoreError> {
-    let mut core: Vec<u16> = Vec::new();
-    let mut flavour: Vec<(f64, u16)> = Vec::new();
+    explain(bundle, key, earned, role_of, points_of, policy).score
+}
 
-    for index in earned.into_iter().collect::<BTreeSet<u16>>() {
-        match role_of(index) {
-            Some(text) if Role::parse(text) == Some(Role::Core) => core.push(index),
-            Some(text) if Role::parse(text) == Some(Role::Flavour) => {
-                let rarity: Rarity = bundle.rarity(index).ok_or_else(|| ScoreError::NoRarity {
-                    key: key.to_string(),
-                    achievement: index,
-                })?;
-                if rarity.population == 0 {
-                    return Err(ScoreError::Unmeasured {
+/// Every earned achievement with what scoring made of it, and the score they add up to.
+///
+/// The rule lives here and [`score_earned`] is this function's `score`: a surface that explains
+/// an answer renders these rows instead of re-deciding which achievements counted, which is the
+/// bug a debug view exists to catch rather than to reintroduce.
+pub fn explain<'a>(
+    bundle: &Bundle<'_>,
+    key: &str,
+    earned: impl IntoIterator<Item = u16>,
+    role_of: impl Fn(u16) -> Option<&'a str>,
+    points_of: impl Fn(u16) -> Option<u32>,
+    policy: Allocation,
+) -> Trace {
+    let indices: BTreeSet<u16> = earned.into_iter().collect();
+    let mut rows: Vec<TraceRow> = Vec::with_capacity(indices.len());
+    let mut refusal: Option<ScoreError> = None;
+    let mut eligible: Vec<(f64, u16)> = Vec::new();
+
+    for index in indices {
+        let outcome = match role_of(index) {
+            Some(text) if Role::parse(text) == Some(Role::Core) => Outcome::Core,
+            Some(text) if Role::parse(text) == Some(Role::Flavour) => match bundle.rarity(index) {
+                None => {
+                    refusal.get_or_insert(ScoreError::NoRarity {
                         key: key.to_string(),
                         achievement: index,
                     });
+                    Outcome::NoRarity
                 }
-                let share = f64::from(rarity.holders_with) / f64::from(rarity.population);
-                if share <= policy.rarity_floor {
-                    flavour.push((share, index));
+                Some(rarity) if rarity.population == 0 => {
+                    refusal.get_or_insert(ScoreError::Unmeasured {
+                        key: key.to_string(),
+                        achievement: index,
+                    });
+                    Outcome::Unmeasured
                 }
-            }
+                Some(rarity) => {
+                    let share = f64::from(rarity.holders_with) / f64::from(rarity.population);
+                    if share <= policy.rarity_floor {
+                        eligible.push((share, index));
+                        Outcome::Credit
+                    } else {
+                        Outcome::Crowded
+                    }
+                }
+            },
             Some(text) => {
-                return Err(ScoreError::UnknownRole {
+                refusal.get_or_insert(ScoreError::UnknownRole {
                     achievement: index,
                     role: text.to_string(),
                 });
+                Outcome::UnknownRole
             }
-            None => return Err(ScoreError::NotInCatalogue { achievement: index }),
+            None => {
+                refusal.get_or_insert(ScoreError::NotInCatalogue { achievement: index });
+                Outcome::NotInCatalogue
+            }
+        };
+        rows.push(TraceRow {
+            achievement: index,
+            points: points_of(index),
+            outcome,
+        });
+    }
+
+    // The rarest keep their place, and the rest are told so rather than dropped silently.
+    eligible.sort_by(|left, right| left.0.total_cmp(&right.0));
+    let keep: BTreeSet<u16> = eligible
+        .iter()
+        .take(policy.count_rarest as usize)
+        .map(|(_, index)| *index)
+        .collect();
+    for row in &mut rows {
+        if row.outcome == Outcome::Credit && !keep.contains(&row.achievement) {
+            row.outcome = Outcome::Capped;
         }
     }
 
-    flavour.sort_by(|left, right| left.0.total_cmp(&right.0));
-    flavour.truncate(policy.count_rarest as usize);
+    // Every achievement that counts must be priced. One the catalogue left unpriced is a refusal
+    // rather than a zero: a score that silently omits it understates a holder, and the surface
+    // showing that score has no way to tell.
+    let mut points = 0;
+    for row in &mut rows {
+        if !row.outcome.counted() {
+            continue;
+        }
+        match row.points {
+            Some(weight) => points += weight,
+            None => {
+                row.outcome = Outcome::Unweighted;
+                refusal.get_or_insert(ScoreError::Unweighted {
+                    achievement: row.achievement,
+                });
+            }
+        }
+    }
 
-    Ok(Score {
-        core,
-        credits: flavour.into_iter().map(|(_, index)| index).collect(),
-    })
+    let score = match refusal {
+        Some(error) => Err(error),
+        None => Ok(Score {
+            core: rows
+                .iter()
+                .filter(|row| row.outcome == Outcome::Core)
+                .map(|row| row.achievement)
+                .collect(),
+            credits: eligible
+                .iter()
+                .take(policy.count_rarest as usize)
+                .map(|(_, index)| *index)
+                .collect(),
+            points,
+        }),
+    };
+    Trace { rows, score }
 }
 
 /// Units held at one instant, from the lots' half-open intervals.
@@ -332,6 +490,7 @@ pub fn peak_concurrent(lots: &[Lot], cursor: u64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bundle::Rarity;
     use crate::bundle::{Earned, Snapshot, SubjectRecord, write};
     use crate::memory::fixtures;
     use chain_events::Coverage;
@@ -340,19 +499,24 @@ mod tests {
 
     fn policy() -> Allocation {
         Allocation {
-            gtd_core: 3,
-            fcfs_core: 1,
-            fcfs_flavour: 2,
+            gtd_score: 30,
+            fcfs_score: 10,
+            fcfs_rarest: 2,
             per_identity: 7,
             rarity_floor: 0.02,
             count_rarest: 3,
         }
     }
 
-    fn counts(core: u32, credits: usize, enabled: bool, promoted: bool) -> Counts {
+    /// The weight every achievement carries in the tests that are not about weights.
+    fn ten(_: u16) -> Option<u32> {
+        Some(10)
+    }
+
+    fn counts(score: u32, rarest: u32, enabled: bool, promoted: bool) -> Counts {
         Counts {
-            core,
-            credits: vec![0; credits],
+            score,
+            rarest,
             peak: 0,
             current: 0,
             enabled,
@@ -362,7 +526,7 @@ mod tests {
 
     #[test]
     fn a_subject_without_the_gate_has_no_phase_whatever_it_earned() {
-        let drowned = counts(9, 5, false, false);
+        let drowned = counts(90, 5, false, false);
         assert_eq!(phase(&drowned, policy()), Phase::Ungated);
     }
 
@@ -374,12 +538,12 @@ mod tests {
 
     #[test]
     fn the_guaranteed_threshold_is_inclusive() {
-        assert_eq!(phase(&counts(3, 0, true, false), policy()), Phase::Gtd);
-        assert_eq!(phase(&counts(2, 0, true, false), policy()), Phase::Fcfs);
+        assert_eq!(phase(&counts(30, 0, true, false), policy()), Phase::Gtd);
+        assert_eq!(phase(&counts(29, 0, true, false), policy()), Phase::Fcfs);
     }
 
     #[test]
-    fn enough_rare_flavour_reaches_the_first_come_phase_without_the_core_count() {
+    fn enough_rare_flavour_reaches_the_first_come_phase_without_the_score() {
         let rarest = counts(0, 2, true, false);
         assert_eq!(phase(&rarest, policy()), Phase::Fcfs);
         let one_short = counts(0, 1, true, false);
@@ -387,14 +551,14 @@ mod tests {
     }
 
     #[test]
-    fn a_zero_flavour_threshold_disables_that_path_rather_than_widening_it() {
-        let only_core = Allocation {
-            fcfs_flavour: 0,
+    fn a_zero_rare_threshold_disables_that_path_rather_than_widening_it() {
+        let only_score = Allocation {
+            fcfs_rarest: 0,
             ..policy()
         };
         let rarest = counts(0, 5, true, false);
-        assert_eq!(phase(&rarest, only_core), Phase::Ungated);
-        assert_eq!(phase(&counts(1, 0, true, false), only_core), Phase::Fcfs);
+        assert_eq!(phase(&rarest, only_score), Phase::Ungated);
+        assert_eq!(phase(&counts(10, 0, true, false), only_score), Phase::Fcfs);
     }
 
     /// A bundle with one subject earning `earned`, and a rarity row per achievement supplied
@@ -455,11 +619,35 @@ mod tests {
             &bundle,
             &subject,
             |index| (index == 0).then_some("core"),
+            ten,
             policy(),
         )
         .unwrap();
         assert_eq!(score.core, vec![0], "the index, so a surface can name it");
         assert!(score.credits.is_empty());
+        assert_eq!(score.points, 10);
+    }
+
+    #[test]
+    fn an_achievement_is_worth_its_own_points_rather_than_one_each() {
+        // Two core achievements, one common and one scarce: the count is two either way, and the
+        // score is the sum of what curation said each is worth.
+        let bytes = bundle_with(&[0, 1], vec![crowded(), scarce()]);
+        let bundle = Bundle::open(&bytes).unwrap();
+        let subject = bundle.find(&"aa".repeat(28)).unwrap().unwrap();
+        let weighed = |index: u16| Some(if index == 1 { 40 } else { 5 });
+        let score = score(&bundle, &subject, |_| Some("core"), weighed, policy()).unwrap();
+        assert_eq!(score.core.len(), 2);
+        assert_eq!(score.points, 45, "5 + 40, not two of anything");
+    }
+
+    #[test]
+    fn an_achievement_the_catalogue_leaves_unpriced_is_an_error_rather_than_a_zero() {
+        let bytes = bundle_with(&[0], vec![crowded()]);
+        let bundle = Bundle::open(&bytes).unwrap();
+        let subject = bundle.find(&"aa".repeat(28)).unwrap().unwrap();
+        let error = score(&bundle, &subject, |_| Some("core"), |_| None, policy()).unwrap_err();
+        assert_eq!(error, ScoreError::Unweighted { achievement: 0 });
     }
 
     #[test]
@@ -467,8 +655,12 @@ mod tests {
         let bytes = bundle_with(&[0], vec![crowded()]);
         let bundle = Bundle::open(&bytes).unwrap();
         let subject = bundle.find(&"aa".repeat(28)).unwrap().unwrap();
-        let score = score(&bundle, &subject, |_| Some("flavour"), policy()).unwrap();
+        let score = score(&bundle, &subject, |_| Some("flavour"), ten, policy()).unwrap();
         assert!(score.core.is_empty());
+        assert_eq!(
+            score.points, 0,
+            "an achievement that does not count is worth nothing"
+        );
         assert!(
             score.credits.is_empty(),
             "half the population holding it is not a credit at a 2% floor"
@@ -485,12 +677,13 @@ mod tests {
             count_rarest: 2,
             ..policy()
         };
-        let score = score(&bundle, &subject, |_| Some("flavour"), capped).unwrap();
+        let score = score(&bundle, &subject, |_| Some("flavour"), ten, capped).unwrap();
         assert_eq!(
             score.credits,
             vec![0, 2],
             "the two scarce ones, in index order"
         );
+        assert_eq!(score.points, 20, "only the two that count");
     }
 
     #[test]
@@ -504,7 +697,7 @@ mod tests {
         );
         let bundle = Bundle::open(&bytes).unwrap();
         let subject = bundle.find(&"aa".repeat(28)).unwrap().unwrap();
-        let error = score(&bundle, &subject, |_| Some("flavour"), policy()).unwrap_err();
+        let error = score(&bundle, &subject, |_| Some("flavour"), ten, policy()).unwrap_err();
         assert!(matches!(error, ScoreError::Unmeasured { .. }));
     }
 
@@ -513,7 +706,7 @@ mod tests {
         let bytes = bundle_with(&[0], vec![scarce()]);
         let bundle = Bundle::open(&bytes).unwrap();
         let subject = bundle.find(&"aa".repeat(28)).unwrap().unwrap();
-        let error = score(&bundle, &subject, |_| None, policy()).unwrap_err();
+        let error = score(&bundle, &subject, |_| None, ten, policy()).unwrap_err();
         assert!(matches!(error, ScoreError::NotInCatalogue { .. }));
     }
 
@@ -522,7 +715,7 @@ mod tests {
         let bytes = bundle_with(&[0], vec![scarce()]);
         let bundle = Bundle::open(&bytes).unwrap();
         let subject = bundle.find(&"aa".repeat(28)).unwrap().unwrap();
-        let error = score(&bundle, &subject, |_| Some("bonus"), policy()).unwrap_err();
+        let error = score(&bundle, &subject, |_| Some("bonus"), ten, policy()).unwrap_err();
         assert_eq!(
             error,
             ScoreError::UnknownRole {
@@ -575,6 +768,71 @@ mod tests {
     }
 
     #[test]
+    fn the_trace_says_what_happened_to_every_earned_achievement() {
+        // #0 is core; #1 is flavour half the population holds; #2-#4 are scarce, and
+        // `count_rarest` keeps two of them.
+        let bytes = bundle_with(
+            &[0, 1, 2, 3, 4],
+            vec![crowded(), crowded(), scarce(), scarce(), scarce()],
+        );
+        let bundle = Bundle::open(&bytes).unwrap();
+        let capped = Allocation {
+            count_rarest: 2,
+            ..policy()
+        };
+        let trace = explain(
+            &bundle,
+            "0xidentity",
+            [0u16, 1, 2, 3, 4],
+            |index| match index {
+                0 => Some("core"),
+                _ => Some("flavour"),
+            },
+            ten,
+            capped,
+        );
+        let outcomes: Vec<Outcome> = trace.rows.iter().map(|row| row.outcome).collect();
+        assert_eq!(
+            outcomes,
+            vec![
+                Outcome::Core,
+                Outcome::Crowded,
+                Outcome::Credit,
+                Outcome::Credit,
+                Outcome::Capped,
+            ],
+            "index order, one row each, and the capped one named rather than dropped"
+        );
+        assert_eq!(
+            trace.rows[4].points,
+            Some(10),
+            "a capped row still says what it would have been worth"
+        );
+        assert_eq!(
+            trace.score.as_ref().map(|score| score.points),
+            Ok(30),
+            "one core and two credits"
+        );
+    }
+
+    #[test]
+    fn a_refused_trace_still_carries_every_row() {
+        let bytes = bundle_with(&[0], vec![crowded()]);
+        let bundle = Bundle::open(&bytes).unwrap();
+        let trace = explain(
+            &bundle,
+            "0xidentity",
+            [0u16],
+            |_| Some("core"),
+            |_| None,
+            policy(),
+        );
+        assert_eq!(trace.rows.len(), 1);
+        assert_eq!(trace.rows[0].outcome, Outcome::Unweighted);
+        assert!(trace.score.is_err(), "and the score is refused, not zero");
+    }
+
+    #[test]
     fn an_achievement_earned_by_two_wallets_counts_once() {
         // The union of two rows: both earned #0, one also earned #1.
         let bytes = bundle_with(&[0, 1], vec![crowded(), crowded()]);
@@ -584,6 +842,7 @@ mod tests {
             "0xidentity",
             [0u16, 1, 0],
             |_| Some("core"),
+            ten,
             policy(),
         )
         .unwrap();
@@ -592,5 +851,6 @@ mod tests {
             vec![0, 1],
             "three entries, two distinct achievements"
         );
+        assert_eq!(union.points, 20, "and two weights, not three");
     }
 }

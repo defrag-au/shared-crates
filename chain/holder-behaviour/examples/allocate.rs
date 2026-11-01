@@ -9,13 +9,15 @@
 //! cargo run --release -p holder-behaviour --example allocate -- \
 //!     .tmp/perps-status.bundle \
 //!     --catalogue ~/code/defrag/cnft.dev-workers/config/achievements/perps.toml \
-//!     --gtd-core 4 --fcfs-core 2 --fcfs-flavour 3 \
+//!     --gtd-score 60 --fcfs-score 25 --fcfs-flavour 3 \
 //!     --gtd-reserve 3000 --fcfs-reserve 1500 --public-reserve 1500
 //! ```
 //!
-//! What counts is the pipeline the design doc names: core achievements are never filtered;
-//! a flavour achievement above `rarity_floor` does not count; a subject keeps its
-//! `count_rarest` rarest remaining flavour achievements.
+//! What counts is the pipeline the design doc names: core achievements are never filtered; a
+//! flavour achievement above `rarity_floor` does not count; a subject keeps its
+//! `count_rarest` rarest remaining flavour achievements. Each counted achievement is worth the
+//! points the catalogue gives it, and a phase threshold is a sum of those points rather than a
+//! count of achievements.
 //!
 //! Three caveats it prints rather than hides:
 //!
@@ -41,8 +43,8 @@ use holder_behaviour::{
 };
 use support::catalogue::{LoadedCatalogue, Plan, Status};
 
-const DEFAULT_GTD_CORE: u32 = 4;
-const DEFAULT_FCFS_CORE: u32 = 2;
+const DEFAULT_GTD_SCORE: u32 = 60;
+const DEFAULT_FCFS_SCORE: u32 = 25;
 const DEFAULT_FCFS_FLAVOUR: u32 = 3;
 const DEFAULT_CAP: u32 = 3;
 const DEFAULT_FLOOR: f64 = 0.02;
@@ -50,24 +52,38 @@ const DEFAULT_RAREST: u32 = 3;
 const DEFAULT_GTD_RESERVE: u32 = 3_000;
 const DEFAULT_FCFS_RESERVE: u32 = 1_500;
 const DEFAULT_PUBLIC_RESERVE: u32 = 1_500;
+/// The score step the GTD frontier walks in. A threshold moves the population in jumps the
+/// catalogue's weights decide, so a sweep finer than a weight would only repeat itself.
+/// A sweep step that gives about forty rows whatever scale the weights are on: a catalogue
+/// priced in thousands would otherwise print seven thousand lines.
+fn sweep_step(ceiling: u32) -> u32 {
+    const NICE: [u32; 10] = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1_000];
+    let wanted = (ceiling / 40).max(1);
+    NICE.iter()
+        .copied()
+        .find(|step| *step >= wanted)
+        .unwrap_or(wanted)
+}
+/// The shortest frontier shown when `--sweep-score` is not given.
+const DEFAULT_SWEEP_SCORE: u32 = 100;
 
 struct Args {
     bundle: String,
     catalogue: String,
-    gtd_core: Option<u32>,
-    fcfs_core: Option<u32>,
-    fcfs_flavour: Option<u32>,
+    gtd_score: Option<u32>,
+    fcfs_score: Option<u32>,
+    fcfs_rarest: Option<u32>,
     cap: Option<u32>,
     floor: Option<f64>,
     rarest: Option<u32>,
     gtd_reserve: u32,
     fcfs_reserve: u32,
     public_reserve: u32,
-    sweep_core: u32,
+    sweep_score: Option<u32>,
     sweep_flavour: u32,
     /// Measured holder sets, one `holder_census --out` JSONL per partner collection.
     partners: Vec<String>,
-    /// Core achievements a partner holding buys. Never buys the Perp itself.
+    /// The score a partner holding buys. Never buys the Perp itself.
     partner_promote: u32,
     /// Model without the catalogue's holding gate.
     ignore_gate: bool,
@@ -100,9 +116,8 @@ struct Tally {
     gtd: u32,
     fcfs: u32,
     ungated: u32,
-    fcfs_by_core: u32,
+    fcfs_by_score: u32,
     fcfs_by_flavour: u32,
-    one_core_short: u32,
     /// Scored enough for a gated phase but fails the holding gate — public only.
     gated_out: u32,
     /// Subjects in the guaranteed phase through a status rather than a score.
@@ -174,10 +189,10 @@ fn run() -> Result<(), String> {
         bundle.subject_count()
     );
     println!(
-        "policy      gtd core≥{} · fcfs core≥{} or flavour≥{} · floor {:.1}% · rarest {} · cap {}",
-        policy.gtd_core,
-        policy.fcfs_core,
-        policy.fcfs_flavour,
+        "policy      gtd score≥{} · fcfs score≥{} or flavour≥{} · floor {:.1}% · rarest {} · cap {}",
+        policy.gtd_score,
+        policy.fcfs_score,
+        policy.fcfs_rarest,
         policy.rarity_floor * 100.0,
         policy.count_rarest,
         policy.per_identity
@@ -214,9 +229,21 @@ fn run() -> Result<(), String> {
         apply_assumed_promotions(&mut counts, policy, args.assume_promoted);
     }
     let total = counts.len() as u32;
+    // The frontier's ceiling: the caller's, or far enough past the population that the score at
+    // which the guaranteed phase stops filling its reserve is always in the table.
+    let ceiling = args.sweep_score.unwrap_or_else(|| {
+        let top = counts
+            .iter()
+            .map(|subject| subject.score)
+            .max()
+            .unwrap_or(0);
+        top.max(DEFAULT_SWEEP_SCORE)
+    });
+    let step = sweep_step(ceiling);
+    let max_score = ceiling.div_ceil(step) * step;
     let tally = tally(&counts, policy);
-    print_tally(total, policy, reserves, &tally, promote_bonus);
-    print_gtd_frontier(&counts, policy, reserves, args.sweep_core);
+    print_tally(total, &counts, policy, reserves, &tally, promote_bonus);
+    print_gtd_frontier(&counts, policy, reserves, max_score, step);
     print_fcfs_frontier(&counts, policy, reserves, args.sweep_flavour);
     print_floor_sweep(
         &bundle,
@@ -246,7 +273,8 @@ fn run() -> Result<(), String> {
             &counts,
             policy,
             reserves,
-            args.sweep_core,
+            max_score,
+            step,
             args.sweep_flavour,
         )?;
         println!("wrote       {path}");
@@ -258,16 +286,16 @@ fn parse_args() -> Result<Args, String> {
     let mut args = std::env::args().skip(1);
     let mut bundle = None;
     let mut catalogue = None;
-    let mut gtd_core = None;
-    let mut fcfs_core = None;
-    let mut fcfs_flavour = None;
+    let mut gtd_score = None;
+    let mut fcfs_score = None;
+    let mut fcfs_rarest = None;
     let mut cap = None;
     let mut floor = None;
     let mut rarest = None;
     let mut gtd_reserve = DEFAULT_GTD_RESERVE;
     let mut fcfs_reserve = DEFAULT_FCFS_RESERVE;
     let mut public_reserve = DEFAULT_PUBLIC_RESERVE;
-    let mut sweep_core = 10;
+    let mut sweep_score = None;
     let mut sweep_flavour = 6;
     let mut partners = Vec::new();
     let mut partner_promote = 1;
@@ -282,16 +310,16 @@ fn parse_args() -> Result<Args, String> {
                 std::process::exit(0);
             }
             "--catalogue" => catalogue = Some(next(&mut args, "--catalogue")?),
-            "--gtd-core" => gtd_core = Some(number(&mut args, "--gtd-core")?),
-            "--fcfs-core" => fcfs_core = Some(number(&mut args, "--fcfs-core")?),
-            "--fcfs-flavour" => fcfs_flavour = Some(number(&mut args, "--fcfs-flavour")?),
+            "--gtd-score" => gtd_score = Some(number(&mut args, "--gtd-score")?),
+            "--fcfs-score" => fcfs_score = Some(number(&mut args, "--fcfs-score")?),
+            "--fcfs-flavour" => fcfs_rarest = Some(number(&mut args, "--fcfs-flavour")?),
             "--cap" => cap = Some(number(&mut args, "--cap")?),
             "--floor" => floor = Some(decimal(&mut args, "--floor")?),
             "--rarest" => rarest = Some(number(&mut args, "--rarest")?),
             "--gtd-reserve" => gtd_reserve = number(&mut args, "--gtd-reserve")?,
             "--fcfs-reserve" => fcfs_reserve = number(&mut args, "--fcfs-reserve")?,
             "--public-reserve" => public_reserve = number(&mut args, "--public-reserve")?,
-            "--sweep-core" => sweep_core = number(&mut args, "--sweep-core")?,
+            "--sweep-score" => sweep_score = Some(number(&mut args, "--sweep-score")?),
             "--sweep-flavour" => sweep_flavour = number(&mut args, "--sweep-flavour")?,
             "--partners" => partners.push(next(&mut args, "--partners")?),
             "--partner-promote" => partner_promote = number(&mut args, "--partner-promote")?,
@@ -307,16 +335,16 @@ fn parse_args() -> Result<Args, String> {
     Ok(Args {
         bundle: bundle.ok_or("give the path to a bundle")?,
         catalogue: catalogue.ok_or("--catalogue is required")?,
-        gtd_core,
-        fcfs_core,
-        fcfs_flavour,
+        gtd_score,
+        fcfs_score,
+        fcfs_rarest,
         cap,
         floor,
         rarest,
         gtd_reserve,
         fcfs_reserve,
         public_reserve,
-        sweep_core,
+        sweep_score,
         sweep_flavour,
         partners,
         partner_promote,
@@ -347,19 +375,22 @@ fn decimal(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<f64, S
 fn print_help() {
     println!("allocate <bundle> --catalogue <path> [options]");
     println!();
-    println!("  --gtd-core N        core achievements for GTD (catalogue, else 4)");
-    println!("  --fcfs-core N       core achievements for FCFS (catalogue, else 2)");
-    println!("  --fcfs-flavour N    flavour achievements for FCFS (catalogue, else 3)");
+    println!("  --gtd-score N       score for GTD (catalogue, else {DEFAULT_GTD_SCORE})");
+    println!("  --fcfs-score N      score for FCFS (catalogue, else {DEFAULT_FCFS_SCORE})");
+    println!("  --fcfs-flavour N    rare flavour achievements for FCFS (catalogue, else 3)");
     println!("  --cap N             mints per identity (catalogue, else 3)");
     println!("  --floor F           rarity floor as a share (catalogue, else 0.02)");
     println!("  --rarest N          flavour achievements that count (catalogue, else 3)");
     println!("  --gtd-reserve N     GTD supply (default {DEFAULT_GTD_RESERVE})");
     println!("  --fcfs-reserve N    FCFS supply (default {DEFAULT_FCFS_RESERVE})");
     println!("  --public-reserve N  public supply (default {DEFAULT_PUBLIC_RESERVE})");
-    println!("  --sweep-core N      highest GTD core threshold shown (default 10)");
+    println!(
+        "  --sweep-score N     highest GTD score threshold shown, in about forty steps (default \
+                 {DEFAULT_SWEEP_SCORE}, or the top score if higher)"
+    );
     println!("  --sweep-flavour N   highest FCFS flavour threshold shown (default 6)");
     println!("  --partners <path>   a partner holder set from `holder_census --out`, repeatable");
-    println!("  --partner-promote N core achievements a partner holding buys (default 1)");
+    println!("  --partner-promote N score a partner holding buys (default 1)");
     println!("  --ignore-gate       model without the catalogue's holding requirement");
     println!("  --assume-promoted N treat N identities as holding a live-only promoting status");
     println!("  --out <path.csv>    write the threshold grid");
@@ -367,17 +398,17 @@ fn print_help() {
 
 fn resolve_policy(args: &Args, from_catalogue: Option<Allocation>) -> Allocation {
     let base = from_catalogue.unwrap_or(Allocation {
-        gtd_core: DEFAULT_GTD_CORE,
-        fcfs_core: DEFAULT_FCFS_CORE,
-        fcfs_flavour: DEFAULT_FCFS_FLAVOUR,
+        gtd_score: DEFAULT_GTD_SCORE,
+        fcfs_score: DEFAULT_FCFS_SCORE,
+        fcfs_rarest: DEFAULT_FCFS_FLAVOUR,
         per_identity: DEFAULT_CAP,
         rarity_floor: DEFAULT_FLOOR,
         count_rarest: DEFAULT_RAREST,
     });
     Allocation {
-        gtd_core: args.gtd_core.unwrap_or(base.gtd_core),
-        fcfs_core: args.fcfs_core.unwrap_or(base.fcfs_core),
-        fcfs_flavour: args.fcfs_flavour.unwrap_or(base.fcfs_flavour),
+        gtd_score: args.gtd_score.unwrap_or(base.gtd_score),
+        fcfs_score: args.fcfs_score.unwrap_or(base.fcfs_score),
+        fcfs_rarest: args.fcfs_rarest.unwrap_or(base.fcfs_rarest),
         per_identity: args.cap.unwrap_or(base.per_identity),
         rarity_floor: args.floor.unwrap_or(base.rarity_floor),
         count_rarest: args.rarest.unwrap_or(base.count_rarest),
@@ -516,8 +547,8 @@ fn apply_assumed_promotions(counts: &mut [Counts], policy: Allocation, count: u3
     let mut order: Vec<usize> = (0..counts.len()).collect();
     order.sort_by(|left, right| {
         counts[*right]
-            .core
-            .cmp(&counts[*left].core)
+            .score
+            .cmp(&counts[*left].score)
             .then(left.cmp(right))
     });
     let mut promoted = 0;
@@ -527,7 +558,9 @@ fn apply_assumed_promotions(counts: &mut [Counts], policy: Allocation, count: u3
         }
         // Only subjects the promotion can actually move: already in the guarantee is not a
         // promotion, and a gated-out subject has no profile to spend it on.
-        if counts[index].enabled && counts[index].core < policy.gtd_core && !counts[index].promoted
+        if counts[index].enabled
+            && counts[index].score < policy.gtd_score
+            && !counts[index].promoted
         {
             counts[index].promoted = true;
             promoted += 1;
@@ -552,7 +585,8 @@ fn counts_for(
         let scored = score(
             bundle,
             &subject,
-            |index| catalogue.role_at(index as usize),
+            |index| catalogue.role_at(usize::from(index)),
+            |index| catalogue.points_at(usize::from(index)),
             policy,
         )
         .map_err(|error| error.to_string())?;
@@ -573,12 +607,9 @@ fn counts_for(
 fn tally(counts: &[Counts], policy: Allocation) -> Tally {
     let mut tally = Tally::default();
     for subject in counts {
-        if subject.core < policy.gtd_core && subject.core + 1 == policy.gtd_core {
-            tally.one_core_short += 1;
-        }
         if !subject.enabled
-            && (subject.core >= policy.fcfs_core
-                || (policy.fcfs_flavour > 0 && subject.credits.len() as u32 >= policy.fcfs_flavour))
+            && (subject.score >= policy.fcfs_score
+                || (policy.fcfs_rarest > 0 && subject.rarest >= policy.fcfs_rarest))
         {
             tally.gated_out += 1;
         }
@@ -591,8 +622,8 @@ fn tally(counts: &[Counts], policy: Allocation) -> Tally {
             }
             Phase::Fcfs => {
                 tally.fcfs += 1;
-                if subject.core >= policy.fcfs_core {
-                    tally.fcfs_by_core += 1;
+                if subject.score >= policy.fcfs_score {
+                    tally.fcfs_by_score += 1;
                 } else {
                     tally.fcfs_by_flavour += 1;
                 }
@@ -647,6 +678,7 @@ fn print_ladder(counts: &[Counts], policy: Allocation) {
 
 fn print_tally(
     total: u32,
+    counts: &[Counts],
     policy: Allocation,
     reserves: Reserves,
     tally: &Tally,
@@ -677,8 +709,8 @@ fn print_tally(
     }
     println!();
     println!(
-        "fcfs        {} by core · {} by flavour (after the floor and the rarest cap)",
-        tally.fcfs_by_core, tally.fcfs_by_flavour
+        "fcfs        {} by score · {} by flavour (after the floor and the rarest cap)",
+        tally.fcfs_by_score, tally.fcfs_by_flavour
     );
     if tally.gated_out > 0 {
         println!(
@@ -699,33 +731,49 @@ fn print_tally(
         tally.promoted,
         tally.gtd - tally.promoted
     );
-    if policy.gtd_core > 0 {
+    // The band nearest the guarantee. With catalogue weights the step below the threshold is
+    // whatever the population holds, rather than always one achievement.
+    if let Some(band) = counts
+        .iter()
+        .map(|subject| subject.score)
+        .filter(|score| *score < policy.gtd_score)
+        .max()
+    {
+        let near = counts
+            .iter()
+            .filter(|subject| subject.score == band)
+            .count();
         println!(
-            "near-miss   {} subjects are one core short of GTD (core {})",
-            tally.one_core_short,
-            policy.gtd_core - 1
+            "near-miss   {near} subjects at score {band}, the nearest band below GTD (score {})",
+            policy.gtd_score
         );
     }
 }
 
-fn print_gtd_frontier(counts: &[Counts], policy: Allocation, reserves: Reserves, max_core: u32) {
+fn print_gtd_frontier(
+    counts: &[Counts],
+    policy: Allocation,
+    reserves: Reserves,
+    max_score: u32,
+    step: u32,
+) {
     let total = counts.len() as u32;
     println!();
     println!("gtd frontier (fcfs and floor fixed)");
     println!(
-        "{:>4} {:>8} {:>7} {:>9} {:>10}",
-        "core", "gtd", "share", "demand", "headroom"
+        "{:>5} {:>8} {:>7} {:>9} {:>10}",
+        "score", "gtd", "share", "demand", "headroom"
     );
-    for core in 0..=max_core {
+    for score in (0..=max_score).step_by(step as usize) {
         let candidate = Allocation {
-            gtd_core: core,
+            gtd_score: score,
             ..policy
         };
         let tally = tally(counts, candidate);
         let demand = tally.gtd * policy.per_identity;
         let headroom = i64::from(reserves.gtd) - i64::from(demand);
         println!(
-            "{core:>4} {:>8} {:>6.1}% {demand:>9} {headroom:>+10}",
+            "{score:>5} {:>8} {:>6.1}% {demand:>9} {headroom:>+10}",
             tally.gtd,
             share_of(tally.gtd, total)
         );
@@ -740,14 +788,14 @@ fn print_fcfs_frontier(
 ) {
     let total = counts.len() as u32;
     println!();
-    println!("fcfs frontier (gtd core≥{} fixed)", policy.gtd_core);
+    println!("fcfs frontier (gtd score≥{} fixed)", policy.gtd_score);
     println!(
         "{:>7} {:>8} {:>7} {:>9} {:>8}",
         "flavour", "fcfs", "share", "demand", "oversub"
     );
     for flavour in 0..=max_flavour {
         let candidate = Allocation {
-            fcfs_flavour: flavour,
+            fcfs_rarest: flavour,
             ..policy
         };
         let tally = tally(counts, candidate);
@@ -762,8 +810,8 @@ fn print_fcfs_frontier(
     let chosen = tally(counts, policy);
     if chosen.fcfs_by_flavour == 0 {
         println!(
-            "note        the flavour path adds nobody at this max share — all {} are by core",
-            chosen.fcfs_by_core
+            "note        the flavour path adds nobody at this max share — all {} are by score",
+            chosen.fcfs_by_score
         );
     }
 }
@@ -778,8 +826,8 @@ fn print_floor_sweep(
 ) -> Result<(), String> {
     println!();
     println!(
-        "max share (fcfs at core≥{} or flavour≥{}; lower is stricter)",
-        policy.fcfs_core, policy.fcfs_flavour
+        "max share (fcfs at score≥{} or flavour≥{}; lower is stricter)",
+        policy.fcfs_score, policy.fcfs_rarest
     );
     println!("{:>9} {:>8} {:>7}", "max share", "fcfs", "share");
     for floor in [0.01, 0.02, 0.05, 0.10, 0.25, 0.50, 1.0] {
@@ -809,8 +857,8 @@ fn print_rarest_sweep(
 ) -> Result<(), String> {
     println!();
     println!(
-        "rarest cap (fcfs at core≥{} or flavour≥{})",
-        policy.fcfs_core, policy.fcfs_flavour
+        "rarest cap (fcfs at score≥{} or flavour≥{})",
+        policy.fcfs_score, policy.fcfs_rarest
     );
     println!("{:>7} {:>8} {:>7}", "rarest", "fcfs", "share");
     for rarest in 1..=5 {
@@ -1006,10 +1054,9 @@ fn print_partners(paths: &[String], policy: Allocation, reserves: Reserves) -> R
 
 /// What a partner holding is worth toward the guaranteed phase.
 ///
-/// The rule the simulation enforces: **a partner holding can buy achievements, never the
-/// Perp**. A subject with `current == 0` is not holding one at the read, so it is outside the
-/// band whatever `--partner-promote` says — which is also why partner turnout does not appear
-/// here.
+/// The rule the simulation enforces: **a partner holding can buy score, never the Perp**. A
+/// subject with `current == 0` is not holding one at the read, so it is outside the band
+/// whatever `--partner-promote` says — which is also why partner turnout does not appear here.
 fn print_partner_promotion(
     counts: &[Counts],
     policy: Allocation,
@@ -1020,16 +1067,18 @@ fn print_partner_promotion(
     let holders = counts.iter().filter(|subject| subject.current >= 1).count() as u32;
     let at_threshold = counts
         .iter()
-        .filter(|subject| subject.core >= policy.gtd_core)
+        .filter(|subject| subject.score >= policy.gtd_score)
         .count() as u32;
     let gtd = counts
         .iter()
-        .filter(|subject| subject.enabled && (subject.promoted || subject.core >= policy.gtd_core))
+        .filter(|subject| {
+            subject.enabled && (subject.promoted || subject.score >= policy.gtd_score)
+        })
         .count() as u32;
     let band = counts
         .iter()
         .filter(|subject| {
-            subject.enabled && subject.core >= promote && subject.core < policy.gtd_core
+            subject.enabled && subject.score >= promote && subject.score < policy.gtd_score
         })
         .count() as u32;
 
@@ -1040,8 +1089,8 @@ fn print_partner_promotion(
         counts.len()
     );
     println!(
-        "  gtd        {gtd} at core≥{} · {} mints at cap {}",
-        policy.gtd_core,
+        "  gtd        {gtd} at score≥{} · {} mints at cap {}",
+        policy.gtd_score,
         gtd * policy.per_identity,
         policy.per_identity
     );
@@ -1051,13 +1100,13 @@ fn print_partner_promotion(
             at_threshold - gtd
         );
     }
-    if promote >= policy.gtd_core {
+    if promote >= policy.gtd_score {
         println!("  band       none — --partner-promote {promote} is not below the GTD threshold");
         return;
     }
     println!(
-        "  band       {band} subjects at core {promote}..{} — the only ones promotion moves",
-        policy.gtd_core.saturating_sub(1)
+        "  band       {band} subjects at score {promote}..{} — the only ones promotion moves",
+        policy.gtd_score.saturating_sub(1)
     );
     if band == 0 {
         println!("  note        inert: no subject in that band has ever held one");
@@ -1128,17 +1177,18 @@ fn write_grid(
     counts: &[Counts],
     policy: Allocation,
     reserves: Reserves,
-    max_core: u32,
+    max_score: u32,
+    step: u32,
     max_flavour: u32,
 ) -> Result<(), String> {
     let mut out = String::from(
-        "gtd_core,fcfs_core,fcfs_flavour,gtd,fcfs,ungated,gtd_demand,fcfs_demand,gtd_headroom,fcfs_headroom\n",
+        "gtd_score,fcfs_score,fcfs_rarest,gtd,fcfs,ungated,gtd_demand,fcfs_demand,gtd_headroom,fcfs_headroom\n",
     );
-    for core in 0..=max_core {
+    for score in (0..=max_score).step_by(step as usize) {
         for flavour in 0..=max_flavour {
             let candidate = Allocation {
-                gtd_core: core,
-                fcfs_flavour: flavour,
+                gtd_score: score,
+                fcfs_rarest: flavour,
                 ..policy
             };
             let tally = tally(counts, candidate);
@@ -1148,8 +1198,8 @@ fn write_grid(
             let fcfs_headroom = i64::from(reserves.fcfs) - i64::from(fcfs_demand);
             writeln!(
                 out,
-                "{core},{fcfs_core},{flavour},{gtd},{fcfs},{ungated},{gtd_demand},{fcfs_demand},{gtd_headroom},{fcfs_headroom}",
-                fcfs_core = candidate.fcfs_core,
+                "{score},{fcfs_score},{flavour},{gtd},{fcfs},{ungated},{gtd_demand},{fcfs_demand},{gtd_headroom},{fcfs_headroom}",
+                fcfs_score = candidate.fcfs_score,
                 gtd = tally.gtd,
                 fcfs = tally.fcfs,
                 ungated = tally.ungated

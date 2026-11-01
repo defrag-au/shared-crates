@@ -29,6 +29,15 @@ pub struct LoadedCatalogue {
     statuses: Vec<Status>,
 }
 
+/// What a consumer needs from a catalogue entry without its predicate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Entry<'a> {
+    pub id: &'a str,
+    pub role: &'a str,
+    pub axis: &'a str,
+    pub points: Option<u32>,
+}
+
 /// A condition that is true at a read, declared once and referenced by id.
 ///
 /// Declared in the catalogue rather than in the workspace's code so a campaign can add
@@ -106,9 +115,9 @@ struct StatusFile {
 #[derive(serde::Deserialize, Default)]
 struct PhaseFile {
     #[serde(default)]
-    core_at_least: u32,
+    score_at_least: u32,
     #[serde(default)]
-    or_flavour_at_least: u32,
+    or_rarest_at_least: u32,
 }
 
 fn default_per_identity() -> u32 {
@@ -126,9 +135,9 @@ fn default_rarest() -> u32 {
 impl From<&AllocationFile> for Allocation {
     fn from(file: &AllocationFile) -> Self {
         Self {
-            gtd_core: file.gtd.core_at_least,
-            fcfs_core: file.fcfs.core_at_least,
-            fcfs_flavour: file.fcfs.or_flavour_at_least,
+            gtd_score: file.gtd.score_at_least,
+            fcfs_score: file.fcfs.score_at_least,
+            fcfs_rarest: file.fcfs.or_rarest_at_least,
             per_identity: file.per_identity,
             rarity_floor: file.rarity_floor,
             count_rarest: file.count_rarest,
@@ -177,6 +186,10 @@ struct CatalogueEntry {
     axis: String,
     #[serde(default)]
     role: String,
+    /// What the achievement is worth. Required for every entry that can count: a catalogue
+    /// without a weight cannot be scored, and a default would silently price it at nothing.
+    #[serde(default)]
+    points: Option<u32>,
     /// The source cannot answer; the catalogue says why. Never scores.
     #[serde(default)]
     unavailable: Option<String>,
@@ -264,6 +277,22 @@ impl LoadedCatalogue {
     /// The catalogue id at `index`, in catalogue order.
     pub fn id_at(&self, index: usize) -> Option<&str> {
         self.entries.get(index).map(|entry| entry.id.as_str())
+    }
+
+    /// One entry's role and weight, in catalogue order.
+    pub fn entry(&self, index: usize) -> Option<Entry<'_>> {
+        self.entries.get(index).map(|entry| Entry {
+            id: entry.id.as_str(),
+            role: entry.role.as_str(),
+            axis: entry.axis.as_str(),
+            points: entry.points,
+        })
+    }
+
+    /// The weight at a catalogue index, for the scorer. `None` is a catalogue that has not
+    /// priced the achievement, which the scorer refuses rather than counting as nothing.
+    pub fn points_at(&self, index: usize) -> Option<u32> {
+        self.entries.get(index).and_then(|entry| entry.points)
     }
 
     /// Every id, in catalogue order — the input to the bundle's digest.

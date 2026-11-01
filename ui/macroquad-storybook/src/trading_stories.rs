@@ -266,6 +266,8 @@ impl TradingStory {
                     steps: &steps,
                     t0,
                     t1,
+                    // The story is a rate, so the axis starts at zero.
+                    range: None,
                     earned_to: Some(earned),
                     mean: Some(RATE_MEAN),
                     line: p.theme.color.accent,
@@ -421,8 +423,12 @@ impl TradingStory {
             TradingView::Board | TradingView::BoardPartial => {
                 let holdings = borrowed(&self.holdings);
                 let fits = 8;
-                let total: f64 = holdings.iter().map(|h| h.amount).sum();
-                let largest = holdings.first().map_or(1.0, |h| h.amount);
+                let total: f64 = holdings.iter().map(|h| h.position()).sum();
+                let largest = holdings.iter().map(|h| h.position()).fold(1.0, f64::max);
+                let largest_pool = holdings
+                    .iter()
+                    .map(|h| h.split.map_or(0.0, |s| s.lp))
+                    .fold(0.0, f64::max);
                 let rows: Vec<BoardRow> = holdings
                     .iter()
                     .take(fits)
@@ -440,10 +446,14 @@ impl TradingStory {
                     fits,
                     count: holdings.len(),
                     largest,
+                    largest_pool,
                     total,
                     complete: self.view != TradingView::BoardPartial,
                     ink,
                     kinds: &[KIND_BURN],
+                    // The story draws no selection: there is no detail beside
+                    // the board here to belong to.
+                    selected: None,
                 };
                 holder_board(p, &vm, Rect::new(x, y + 20.0, w.min(390.0), 220.0));
             }
@@ -455,11 +465,15 @@ impl TradingStory {
                     w.min(390.0),
                     (area.h - 90.0).clamp(180.0, 330.0),
                 );
-                let total: f64 = holdings.iter().map(|h| h.amount).sum();
+                let total: f64 = holdings.iter().map(|h| h.position()).sum();
+                let largest_pool = holdings
+                    .iter()
+                    .map(|h| h.split.map_or(0.0, |s| s.lp))
+                    .fold(0.0, f64::max);
                 // A title over the map, as the arena draws one. The widget
                 // draws the body only; the host names the panel.
                 p.text(
-                    "THE SUPPLY, BY HOLDER",
+                    "THE POSITION, BY HOLDER",
                     body.x,
                     body.y - 18.0,
                     p.size(ui_theme::TextSize::Xs),
@@ -497,6 +511,7 @@ impl TradingStory {
                         tiles: &placed,
                         groups: &named,
                         total,
+                        largest_pool,
                         ink,
                         kinds: &[KIND_BURN],
                     },
