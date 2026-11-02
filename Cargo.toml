@@ -29,6 +29,7 @@ members = [
     "perf-probe",
     "pinata",
     "test-utils",
+    "tx-grammar",
     "tx-insights",
     "tx-verdict",
     "wasm-safe-serde",
@@ -286,6 +287,10 @@ macroquad-widgets = { path = "ui/macroquad-widgets" }
 macroquad-app = { path = "ui/macroquad-app" }
 wallet-miniquad = { path = "ui/wallet-miniquad" }
 tx_insights = { path = "tx-insights" }
+# The transaction grammar: primitives, derived readings, and the renderer-neutral
+# Cell projection that both the visual and text surfaces draw from. Pure serde +
+# `chains`; it is not a classifier and carries no thresholds or display policy.
+tx-grammar = { path = "tx-grammar" }
 tx-verdict = { path = "tx-verdict" }
 test_utils = { path = "test-utils" }
 pipeline-types = { path = "pipeline/pipeline-types" }

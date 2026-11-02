@@ -8271,6 +8271,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tx-grammar"
+version = "0.1.0"
+dependencies = [
+ "chains",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "tx-verdict"
 version = "0.1.0"
 dependencies = [
