@@ -66,6 +66,10 @@ pub struct Plan {
     pub promotes: Vec<String>,
     /// Extra mints a promoted identity may take, on top of `allocation.per_identity`.
     pub promote_bonus: u32,
+    /// The achievement whose holders keep a first-come door when they hold none now.
+    pub lapsed: Option<String>,
+    /// Statuses that read a partner holding: the crossover bonus, and the partner-only door.
+    pub partners: Vec<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -97,6 +101,26 @@ struct AllocationFile {
     /// Mints a promoted identity may take beyond `per_identity`.
     #[serde(default)]
     promote_bonus: u32,
+    /// Mints by units held now. See [`Allocation::holding`].
+    #[serde(default)]
+    holding: Vec<holder_behaviour::Rung>,
+    /// Mints the score adds, rung by rung. See [`Allocation::bonus`].
+    #[serde(default)]
+    bonus: Vec<holder_behaviour::Rung>,
+    #[serde(default)]
+    partner_bonus: u32,
+    /// The achievement id whose earners keep a first-come door after selling.
+    #[serde(default)]
+    lapsed: Option<String>,
+    #[serde(default)]
+    lapsed_mints: u32,
+    /// Status ids that read a partner holding.
+    #[serde(default)]
+    partners: Vec<String>,
+    #[serde(default)]
+    partner_mints: u32,
+    #[serde(default)]
+    max_per_identity: u32,
 }
 
 #[derive(serde::Deserialize)]
@@ -132,16 +156,27 @@ fn default_rarest() -> u32 {
     3
 }
 
-impl From<&AllocationFile> for Allocation {
-    fn from(file: &AllocationFile) -> Self {
-        Self {
+impl TryFrom<&AllocationFile> for Allocation {
+    type Error = String;
+
+    fn try_from(file: &AllocationFile) -> Result<Self, String> {
+        Ok(Self {
             gtd_score: file.gtd.score_at_least,
             fcfs_score: file.fcfs.score_at_least,
             fcfs_rarest: file.fcfs.or_rarest_at_least,
             per_identity: file.per_identity,
             rarity_floor: file.rarity_floor,
             count_rarest: file.count_rarest,
-        }
+            holding: holder_behaviour::Rungs::new(&file.holding)
+                .map_err(|e| format!("[allocation] holding: {e}"))?,
+            bonus: holder_behaviour::Rungs::new(&file.bonus)
+                .map_err(|e| format!("[allocation] bonus: {e}"))?,
+            promote_bonus: file.promote_bonus,
+            partner_bonus: file.partner_bonus,
+            lapsed_mints: file.lapsed_mints,
+            partner_mints: file.partner_mints,
+            max_per_identity: file.max_per_identity,
+        })
     }
 }
 
@@ -230,17 +265,39 @@ impl LoadedCatalogue {
         let plan = match file.allocation {
             Some(allocation) => {
                 let plan = Plan {
-                    allocation: Allocation::from(&allocation),
+                    allocation: Allocation::try_from(&allocation)
+                        .map_err(|e| format!("{path}: {e}"))?,
                     requires: allocation.requires.clone(),
                     promotes: allocation.promotes.clone(),
                     promote_bonus: allocation.promote_bonus,
+                    lapsed: allocation.lapsed.clone(),
+                    partners: allocation.partners.clone(),
                 };
-                for id in plan.requires.iter().chain(&plan.promotes) {
+                for id in plan
+                    .requires
+                    .iter()
+                    .chain(&plan.promotes)
+                    .chain(&plan.partners)
+                {
                     if !status_ids.contains(id.as_str()) {
                         return Err(format!(
                             "{path}: `{id}` is named by [allocation] but no [[status]] declares it"
                         ));
                     }
+                }
+                // A door keyed on an achievement that does not exist would open for nobody and
+                // look like a policy decision.
+                if let Some(id) = &plan.lapsed
+                    && !seen.contains(id.as_str())
+                {
+                    return Err(format!(
+                        "{path}: [allocation] lapsed names `{id}`, which is not an achievement"
+                    ));
+                }
+                if plan.allocation.lapsed_mints > 0 && plan.lapsed.is_none() {
+                    return Err(format!(
+                        "{path}: [allocation] lapsed_mints needs a `lapsed` achievement to key on"
+                    ));
                 }
                 Some(plan)
             }

@@ -52,8 +52,9 @@ mod state;
 mod status;
 
 pub use allocation::{
-    Allocation, Counts, Outcome as ScoreOutcome, Phase, Role, Score, ScoreError, Trace, TraceRow,
-    explain, held_at, peak_concurrent, phase, score, score_earned,
+    Allocation, Counts, Outcome as ScoreOutcome, Phase, RUNGS_MAX, Role, Rung, Rungs, Score,
+    ScoreError, Trace, TraceRow, explain, held_at, mints, peak_concurrent, phase, score,
+    score_earned,
 };
 pub use bundle::{
     Bundle, BundleError, BundleStore, Earned, Lot, Rarity, Snapshot, SubjectRecord, SubjectView,

@@ -80,6 +80,9 @@ members = [
     "ui/macroquad-bundle",
     # Its runner: cargo runs only this workspace's binaries.
     "tools/mq-bundle",
+    # The APK twin of the web bundle: the packager and its runner.
+    "ui/macroquad-apk",
+    "tools/mq-apk",
     "ui/macroquad-storybook",
     "ui/miniquad-platform",
     "ui/canvas-bridge",

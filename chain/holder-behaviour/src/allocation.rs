@@ -55,21 +55,133 @@ impl Role {
 /// each threshold combination, and a policy that had to be borrowed through that would be noise.
 /// `Serialize` because the published manifest carries it: a consumer that reads the bundle must
 /// not be configured with its own copy of the thresholds.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Allocation {
-    /// The score that reaches the guaranteed phase.
+    /// The score that reaches the guaranteed phase. Zero: every gated subject is guaranteed.
     pub gtd_score: u32,
     /// The score that reaches the first-come phase.
     pub fcfs_score: u32,
     /// Rare achievements that also reach the first-come phase, whatever the score. Zero disables
     /// this path rather than widening it.
     pub fcfs_rarest: u32,
-    /// Mints per identity, at most.
+    /// Mints per identity when there is no holding ladder: the flat allocation.
     pub per_identity: u32,
     /// A flavour achievement held by more than this share does not count.
     pub rarity_floor: f64,
     /// How many of a holder's rarest flavour achievements count.
     pub count_rarest: u32,
+    /// Mints by units held now: the highest rung reached is the base. Empty: `per_identity`.
+    ///
+    /// This is what lets a whale's allocation scale without a single score deciding it: the
+    /// holding is a status read at the claim, and the ladder is published, so a holder can see
+    /// exactly which rung their count reaches.
+    #[serde(default, skip_serializing_if = "Rungs::is_empty")]
+    pub holding: Rungs,
+    /// Mints the score adds on a guaranteed allocation: every rung reached adds its own.
+    #[serde(default, skip_serializing_if = "Rungs::is_empty")]
+    pub bonus: Rungs,
+    /// Mints a promoting status (a Leader) adds on a guaranteed allocation.
+    #[serde(default)]
+    pub promote_bonus: u32,
+    /// Mints a partner holding adds on a guaranteed allocation: the crossover.
+    #[serde(default)]
+    pub partner_bonus: u32,
+    /// First-come mints for an identity that holds none now but once earned the campaign's
+    /// lapsed marker. Zero disables the path.
+    #[serde(default)]
+    pub lapsed_mints: u32,
+    /// First-come mints for an identity whose only standing is a partner holding. Zero disables.
+    #[serde(default)]
+    pub partner_mints: u32,
+    /// The most any identity takes, whatever adds up. Zero: no ceiling beyond the rungs.
+    #[serde(default)]
+    pub max_per_identity: u32,
+}
+
+/// The most rungs a ladder may have. A ladder is a published table a holder reads, so it is
+/// short by nature; a fixed capacity keeps [`Allocation`] `Copy` for the modelling sweeps.
+pub const RUNGS_MAX: usize = 8;
+
+/// One rung: reach `at_least` (units, or score) and it is worth `mints`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct Rung {
+    pub at_least: u32,
+    pub mints: u32,
+}
+
+/// A ladder of rungs, ascending by `at_least`. Reads and writes as a plain list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(try_from = "Vec<Rung>", into = "Vec<Rung>")]
+pub struct Rungs {
+    len: u8,
+    items: [Rung; RUNGS_MAX],
+}
+
+impl Rungs {
+    /// A ladder from rungs strictly ascending by `at_least`, at most [`RUNGS_MAX`] of them.
+    pub fn new(rungs: &[Rung]) -> Result<Self, String> {
+        if rungs.len() > RUNGS_MAX {
+            return Err(format!(
+                "a ladder has at most {RUNGS_MAX} rungs, not {}",
+                rungs.len()
+            ));
+        }
+        if let Some(pair) = rungs
+            .windows(2)
+            .find(|pair| pair[1].at_least <= pair[0].at_least)
+        {
+            return Err(format!(
+                "rungs must ascend: {} does not follow {}",
+                pair[1].at_least, pair[0].at_least
+            ));
+        }
+        let mut items = [Rung::default(); RUNGS_MAX];
+        items[..rungs.len()].copy_from_slice(rungs);
+        Ok(Self {
+            len: rungs.len() as u8,
+            items,
+        })
+    }
+
+    pub fn as_slice(&self) -> &[Rung] {
+        &self.items[..usize::from(self.len)]
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// The highest rung `value` reaches.
+    pub fn highest(&self, value: u32) -> Option<Rung> {
+        self.as_slice()
+            .iter()
+            .rev()
+            .find(|rung| value >= rung.at_least)
+            .copied()
+    }
+
+    /// Every rung `value` reaches, summed: a bonus ladder.
+    pub fn reached(&self, value: u32) -> u32 {
+        self.as_slice()
+            .iter()
+            .filter(|rung| value >= rung.at_least)
+            .map(|rung| rung.mints)
+            .sum()
+    }
+}
+
+impl TryFrom<Vec<Rung>> for Rungs {
+    type Error = String;
+
+    fn try_from(rungs: Vec<Rung>) -> Result<Self, Self::Error> {
+        Self::new(&rungs)
+    }
+}
+
+impl From<Rungs> for Vec<Rung> {
+    fn from(rungs: Rungs) -> Self {
+        rungs.as_slice().to_vec()
+    }
 }
 
 /// What an earned set scores, before any holding is read.
@@ -100,7 +212,24 @@ impl Score {
             current,
             enabled,
             promoted,
+            lapsed: false,
+            partner: false,
         }
+    }
+}
+
+impl Counts {
+    /// Whether the subject once earned the campaign's lapsed marker: a first-come path for one
+    /// that holds none now. Only read when the gate is shut.
+    pub fn lapsed(mut self, lapsed: bool) -> Self {
+        self.lapsed = lapsed;
+        self
+    }
+
+    /// Whether a partner holding was read for the subject.
+    pub fn partner(mut self, partner: bool) -> Self {
+        self.partner = partner;
+        self
     }
 }
 
@@ -118,6 +247,10 @@ pub struct Counts {
     pub enabled: bool,
     /// Whether a live status puts it in the guaranteed phase regardless of its score.
     pub promoted: bool,
+    /// Whether it once earned the lapsed marker. See [`Counts::lapsed`].
+    pub lapsed: bool,
+    /// Whether a partner holding was read. See [`Counts::partner`].
+    pub partner: bool,
 }
 
 /// The phase a subject is allocated.
@@ -146,7 +279,14 @@ impl Phase {
 /// `fcfs_rarest` is zero.
 pub fn phase(subject: &Counts, policy: Allocation) -> Phase {
     if !subject.enabled {
-        return Phase::Ungated;
+        // No gate, no guarantee. Two first-come doors stay open when the campaign opens them:
+        // an identity that once earned the lapsed marker, and one whose standing is a partner.
+        let lapsed = policy.lapsed_mints > 0 && subject.lapsed;
+        let partner = policy.partner_mints > 0 && subject.partner;
+        return match lapsed || partner {
+            true => Phase::Fcfs,
+            false => Phase::Ungated,
+        };
     }
     if subject.promoted || subject.score >= policy.gtd_score {
         Phase::Gtd
@@ -156,6 +296,67 @@ pub fn phase(subject: &Counts, policy: Allocation) -> Phase {
         Phase::Fcfs
     } else {
         Phase::Ungated
+    }
+}
+
+/// How many mints this subject's phase allocates it.
+///
+/// One rule for the worker answering a holder and the tool modelling a mint:
+///
+/// - **Gated and guaranteed:** the holding ladder's rung (or `per_identity` without a ladder),
+///   plus every score rung reached, plus the leader and partner bonuses.
+/// - **Gated, first come:** the holding rung alone.
+/// - **Not gated, first come:** the lapsed or partner mints, whichever is larger.
+/// - **Ungated:** none — the public phase is not this rule's to allocate.
+///
+/// `max_per_identity` caps the total when it is set.
+pub fn mints(subject: &Counts, policy: Allocation) -> u32 {
+    let phase = phase(subject, policy);
+    let total = match (phase, subject.enabled) {
+        (Phase::Ungated, _) => 0,
+        (Phase::Fcfs, false) => {
+            let lapsed = if subject.lapsed {
+                policy.lapsed_mints
+            } else {
+                0
+            };
+            let partner = if subject.partner {
+                policy.partner_mints
+            } else {
+                0
+            };
+            lapsed.max(partner)
+        }
+        (_, true) => {
+            let base = match policy.holding.is_empty() {
+                true => policy.per_identity,
+                false => policy
+                    .holding
+                    .highest(subject.current)
+                    .map_or(0, |rung| rung.mints),
+            };
+            match phase {
+                Phase::Gtd => {
+                    base + policy.bonus.reached(subject.score)
+                        + if subject.promoted {
+                            policy.promote_bonus
+                        } else {
+                            0
+                        }
+                        + if subject.partner {
+                            policy.partner_bonus
+                        } else {
+                            0
+                        }
+                }
+                _ => base,
+            }
+        }
+        (Phase::Gtd, false) => 0,
+    };
+    match policy.max_per_identity {
+        0 => total,
+        cap => total.min(cap),
     }
 }
 
@@ -505,6 +706,7 @@ mod tests {
             per_identity: 7,
             rarity_floor: 0.02,
             count_rarest: 3,
+            ..Allocation::default()
         }
     }
 
@@ -521,7 +723,104 @@ mod tests {
             current: 0,
             enabled,
             promoted,
+            lapsed: false,
+            partner: false,
         }
+    }
+
+    /// The ladder policy: every holder guaranteed, mints by holding, score and leaders on top.
+    fn ladder() -> Allocation {
+        let rung = |at_least, mints| Rung { at_least, mints };
+        Allocation {
+            gtd_score: 0,
+            holding: Rungs::new(&[rung(1, 1), rung(5, 3), rung(25, 6), rung(100, 12)]).unwrap(),
+            bonus: Rungs::new(&[rung(5_000, 1), rung(10_000, 1), rung(15_000, 2)]).unwrap(),
+            promote_bonus: 1,
+            partner_bonus: 1,
+            lapsed_mints: 1,
+            partner_mints: 1,
+            max_per_identity: 16,
+            ..policy()
+        }
+    }
+
+    fn holding(score: u32, current: u32) -> Counts {
+        Counts {
+            current,
+            ..counts(score, 0, true, false)
+        }
+    }
+
+    #[test]
+    fn a_holder_gets_the_rung_their_holding_reaches() {
+        assert_eq!(mints(&holding(0, 1), ladder()), 1);
+        assert_eq!(mints(&holding(0, 4), ladder()), 1);
+        assert_eq!(mints(&holding(0, 5), ladder()), 3);
+        assert_eq!(mints(&holding(0, 99), ladder()), 6);
+        assert_eq!(mints(&holding(0, 100), ladder()), 12);
+        assert_eq!(phase(&holding(0, 1), ladder()), Phase::Gtd);
+    }
+
+    #[test]
+    fn score_rungs_add_up_and_the_ceiling_holds() {
+        assert_eq!(mints(&holding(5_000, 1), ladder()), 2);
+        assert_eq!(mints(&holding(15_000, 1), ladder()), 1 + 1 + 1 + 2);
+        let whale = Counts {
+            promoted: true,
+            partner: true,
+            ..holding(20_000, 500)
+        };
+        assert_eq!(
+            mints(&whale, ladder()),
+            16,
+            "12 + 4 + 1 + 1 = 18, held to the ceiling"
+        );
+    }
+
+    #[test]
+    fn a_lapsed_or_partner_identity_is_first_come_without_the_gate() {
+        let lapsed = counts(9_000, 0, false, false).lapsed(true);
+        assert_eq!(phase(&lapsed, ladder()), Phase::Fcfs);
+        assert_eq!(mints(&lapsed, ladder()), 1);
+        let partner = counts(0, 0, false, false).partner(true);
+        assert_eq!(mints(&partner, ladder()), 1);
+        let neither = counts(9_000, 0, false, false);
+        assert_eq!(mints(&neither, ladder()), 0);
+        assert_eq!(
+            phase(&lapsed, policy()),
+            Phase::Ungated,
+            "a policy without the door keeps it shut"
+        );
+    }
+
+    #[test]
+    fn without_a_ladder_the_flat_allocation_stands() {
+        assert_eq!(mints(&counts(30, 0, true, false), policy()), 7);
+        assert_eq!(mints(&counts(29, 0, true, false), policy()), 7);
+        assert_eq!(mints(&counts(0, 0, true, false), policy()), 0);
+    }
+
+    #[test]
+    fn rungs_must_ascend_and_read_back_as_a_list() {
+        let rung = |at_least, mints| Rung { at_least, mints };
+        assert!(Rungs::new(&[rung(5, 1), rung(5, 2)]).is_err());
+        let ladder = Rungs::new(&[rung(1, 1), rung(5, 3)]).unwrap();
+        let json = serde_json::to_string(&ladder).unwrap();
+        assert_eq!(
+            json,
+            r#"[{"at_least":1,"mints":1},{"at_least":5,"mints":3}]"#
+        );
+        let back: Rungs = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, ladder);
+    }
+
+    #[test]
+    fn a_manifest_written_before_the_ladder_still_reads() {
+        let old = r#"{"gtd_score":5000,"fcfs_score":2000,"fcfs_rarest":3,"per_identity":3,
+                      "rarity_floor":0.02,"count_rarest":3}"#;
+        let policy: Allocation = serde_json::from_str(old).unwrap();
+        assert!(policy.holding.is_empty());
+        assert_eq!(policy.lapsed_mints, 0);
     }
 
     #[test]

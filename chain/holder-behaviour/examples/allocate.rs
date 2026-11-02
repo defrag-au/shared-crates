@@ -39,7 +39,7 @@ use std::process::ExitCode;
 
 use holder_behaviour::{
     Allocation, Bundle, Counts, Lot, Phase, StatusPredicate, StatusView, catalogue_digest, held_at,
-    peak_concurrent, phase, score, status_holds,
+    mints, peak_concurrent, phase, score, status_holds,
 };
 use support::catalogue::{LoadedCatalogue, Plan, Status};
 
@@ -91,6 +91,9 @@ struct Args {
     /// live one this bundle cannot read.
     assume_promoted: u32,
     out: Option<String>,
+    /// One subject's key: print what scoring made of its row and what the policy gives it,
+    /// instead of the population report.
+    explain: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -224,7 +227,36 @@ fn run() -> Result<(), String> {
         println!("note        the catalogue carries no [allocation]; defaults were used");
     }
 
-    let mut counts = counts_for(&bundle, &catalogue, policy, &gate, &evaluable_promotions)?;
+    // The lapsed door is keyed on an achievement, which the bundle answers by index.
+    let lapsed = catalogue_plan
+        .and_then(|plan| plan.lapsed.as_deref())
+        .and_then(|id| catalogue.ids().position(|other| other == id))
+        .map(|index| index as u16);
+    // The partner gate is the smallest holding any partner status asks for.
+    let partner_gate = catalogue_plan
+        .map(|plan| {
+            plan.partners
+                .iter()
+                .filter_map(|id| match catalogue.status(id).map(|s| &s.predicate) {
+                    Some(StatusPredicate::HoldsOf { at_least, .. }) => Some(*at_least as u32),
+                    _ => None,
+                })
+                .min()
+                .unwrap_or(1)
+        })
+        .unwrap_or(1);
+    if let Some(key) = &args.explain {
+        return explain_subject(&bundle, &catalogue, policy, &gate, lapsed, key);
+    }
+
+    let mut counts = counts_for(
+        &bundle,
+        &catalogue,
+        policy,
+        &gate,
+        &evaluable_promotions,
+        lapsed,
+    )?;
     if args.assume_promoted > 0 {
         apply_assumed_promotions(&mut counts, policy, args.assume_promoted);
     }
@@ -241,6 +273,24 @@ fn run() -> Result<(), String> {
     });
     let step = sweep_step(ceiling);
     let max_score = ceiling.div_ceil(step) * step;
+
+    // A ladder policy is a different shape: mints follow the holding and the score adds rungs,
+    // so the flat-cap frontiers below would answer a question this policy does not ask.
+    if !policy.holding.is_empty() {
+        print_ladder_allocation(
+            &counts,
+            policy,
+            reserves,
+            args.assume_promoted,
+            &args.partners,
+            partner_gate,
+        )?;
+        print_ladder(&counts, policy);
+        print_partners(&args.partners, policy, reserves)?;
+        print_caveats();
+        return Ok(());
+    }
+
     let tally = tally(&counts, policy);
     print_tally(total, &counts, policy, reserves, &tally, promote_bonus);
     print_gtd_frontier(&counts, policy, reserves, max_score, step);
@@ -302,6 +352,7 @@ fn parse_args() -> Result<Args, String> {
     let mut ignore_gate = false;
     let mut assume_promoted = 0;
     let mut out = None;
+    let mut explain = None;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -326,6 +377,7 @@ fn parse_args() -> Result<Args, String> {
             "--ignore-gate" => ignore_gate = true,
             "--assume-promoted" => assume_promoted = number(&mut args, "--assume-promoted")?,
             "--out" => out = Some(next(&mut args, "--out")?),
+            "--explain" => explain = Some(next(&mut args, "--explain")?),
             other if other.starts_with("--") => return Err(format!("unknown flag {other}")),
             other if bundle.is_none() => bundle = Some(other.to_string()),
             other => return Err(format!("unexpected argument {other}")),
@@ -351,6 +403,7 @@ fn parse_args() -> Result<Args, String> {
         ignore_gate,
         assume_promoted,
         out,
+        explain,
     })
 }
 
@@ -404,6 +457,7 @@ fn resolve_policy(args: &Args, from_catalogue: Option<Allocation>) -> Allocation
         per_identity: DEFAULT_CAP,
         rarity_floor: DEFAULT_FLOOR,
         count_rarest: DEFAULT_RAREST,
+        ..Allocation::default()
     });
     Allocation {
         gtd_score: args.gtd_score.unwrap_or(base.gtd_score),
@@ -412,6 +466,9 @@ fn resolve_policy(args: &Args, from_catalogue: Option<Allocation>) -> Allocation
         per_identity: args.cap.unwrap_or(base.per_identity),
         rarity_floor: args.floor.unwrap_or(base.rarity_floor),
         count_rarest: args.rarest.unwrap_or(base.count_rarest),
+        // The ladders, bonuses and first-come doors are the catalogue's: a flag sweeps the
+        // thresholds, not the shape of the allocation.
+        ..base
     }
 }
 
@@ -574,6 +631,7 @@ fn counts_for(
     policy: Allocation,
     gate: &[&Status],
     promotions: &[&Status],
+    lapsed: Option<u16>,
 ) -> Result<Vec<Counts>, String> {
     let mut subjects = Vec::with_capacity(bundle.subject_count() as usize);
     let cursor = bundle.holder_cursor();
@@ -599,7 +657,13 @@ fn counts_for(
         };
         let enabled = ask_all(gate, &view)?;
         let promoted = ask_any(promotions, &view)?;
-        subjects.push(scored.counts(peak_concurrent(&lots, cursor), current, enabled, promoted));
+        let once =
+            lapsed.is_some_and(|index| subject.earned().any(|earned| earned.achievement == index));
+        subjects.push(
+            scored
+                .counts(peak_concurrent(&lots, cursor), current, enabled, promoted)
+                .lapsed(once),
+        );
     }
     Ok(subjects)
 }
@@ -835,7 +899,7 @@ fn print_floor_sweep(
             rarity_floor: floor,
             ..policy
         };
-        let counts = counts_for(bundle, catalogue, candidate, gate, promotions)?;
+        let counts = counts_for(bundle, catalogue, candidate, gate, promotions, None)?;
         let tally = tally(&counts, candidate);
         println!(
             "{:>8.1}% {:>8} {:>6.1}%",
@@ -866,7 +930,7 @@ fn print_rarest_sweep(
             count_rarest: rarest,
             ..policy
         };
-        let counts = counts_for(bundle, catalogue, candidate, gate, promotions)?;
+        let counts = counts_for(bundle, catalogue, candidate, gate, promotions, None)?;
         let tally = tally(&counts, candidate);
         println!(
             "{rarest:>7} {:>8} {:>6.1}%",
@@ -950,6 +1014,8 @@ struct PartnerCollection {
 struct PartnerWallet {
     collections: u32,
     assets: u32,
+    /// The largest balance it holds in any one collection: what a per-collection gate reads.
+    largest: u32,
 }
 
 /// A line of `holder_census --out`.
@@ -1133,6 +1199,265 @@ fn print_partner_promotion(
     println!("            absent by construction: a partner with no Perp cannot reach GTD.");
 }
 
+/// A ladder policy against the reserves: who sits on which holding rung, what the score rungs
+/// add, the leaders, the ceiling, and the two first-come doors.
+///
+/// Every mint figure is `holder_behaviour::mints`, the rule the worker answers a holder with,
+/// so a number here and a number on a holder's page cannot disagree.
+fn print_ladder_allocation(
+    counts: &[Counts],
+    policy: Allocation,
+    reserves: Reserves,
+    assumed_leaders: u32,
+    partner_paths: &[String],
+    partner_gate: u32,
+) -> Result<(), String> {
+    let gtd: Vec<&Counts> = counts
+        .iter()
+        .filter(|subject| phase(subject, policy) == Phase::Gtd)
+        .collect();
+
+    println!();
+    println!("ladder allocation (base by units held now · score rungs add · leaders add)");
+    println!(
+        "{:>10} {:>11} {:>6} {:>8}",
+        "held now", "identities", "base", "demand"
+    );
+    let rungs = policy.holding.as_slice();
+    let mut base_total = 0;
+    for (index, rung) in rungs.iter().enumerate() {
+        let next = rungs.get(index + 1).map_or(u32::MAX, |next| next.at_least);
+        let members = gtd
+            .iter()
+            .filter(|subject| subject.current >= rung.at_least && subject.current < next)
+            .count() as u32;
+        let label = match next {
+            u32::MAX => format!("{}+", rung.at_least),
+            next => format!("{}–{}", rung.at_least, next - 1),
+        };
+        base_total += members * rung.mints;
+        println!(
+            "{label:>10} {members:>11} {:>6} {:>8}",
+            rung.mints,
+            members * rung.mints
+        );
+    }
+
+    // Where the guaranteed holders' scores fall: what a bonus rung should be read against.
+    let mut scores: Vec<u32> = gtd.iter().map(|subject| subject.score).collect();
+    scores.sort_unstable();
+    let at = |q: f64| {
+        scores
+            .get(((scores.len() as f64 - 1.0) * q).round() as usize)
+            .copied()
+            .unwrap_or(0)
+    };
+    println!();
+    println!(
+        "scores      p25 {} · p50 {} · p75 {} · p90 {} · p97 {} · max {}",
+        at(0.25),
+        at(0.5),
+        at(0.75),
+        at(0.9),
+        at(0.97),
+        at(1.0)
+    );
+    println!(
+        "{:>10} {:>11} {:>6} {:>8}",
+        "score ≥", "identities", "adds", "demand"
+    );
+    let mut bonus_total = 0;
+    for rung in policy.bonus.as_slice() {
+        let reached = gtd
+            .iter()
+            .filter(|subject| subject.score >= rung.at_least)
+            .count() as u32;
+        bonus_total += reached * rung.mints;
+        println!(
+            "{:>10} {reached:>11} {:>6} {:>8}",
+            rung.at_least,
+            rung.mints,
+            reached * rung.mints
+        );
+    }
+
+    // Leaders are a live trait read this bundle cannot see: an assumption, bounded by supply.
+    let leaders = assumed_leaders * policy.promote_bonus;
+    let mut per: Vec<u32> = gtd.iter().map(|subject| mints(subject, policy)).collect();
+    per.sort_unstable();
+    let ceiling_hits = match policy.max_per_identity {
+        0 => 0,
+        cap => per.iter().filter(|m| **m >= cap).count(),
+    };
+    let gtd_demand: u32 = per.iter().sum::<u32>() + leaders;
+    let pick = |q: f64| {
+        per.get(((per.len() as f64 - 1.0) * q).round() as usize)
+            .copied()
+    };
+    println!();
+    println!(
+        "guaranteed  {} identities · base {base_total} + score {bonus_total} + leaders {leaders} (assumed {assumed_leaders})",
+        gtd.len()
+    );
+    if ceiling_hits > 0 {
+        println!(
+            "ceiling     {ceiling_hits} held to {} — the total above already applies it",
+            policy.max_per_identity
+        );
+    }
+    println!(
+        "per holder  min {} · median {} · p90 {} · max {}",
+        pick(0.0).unwrap_or(0),
+        pick(0.5).unwrap_or(0),
+        pick(0.9).unwrap_or(0),
+        pick(1.0).unwrap_or(0)
+    );
+    let top: Vec<String> = per.iter().rev().take(10).map(u32::to_string).collect();
+    println!("top ten     {}", top.join(" · "));
+    println!(
+        "gtd         demand {gtd_demand} of {} · headroom {:+}",
+        reserves.gtd,
+        i64::from(reserves.gtd) - i64::from(gtd_demand)
+    );
+
+    // Crossover: a guaranteed holder who also holds a partner. Unknowable before bonding.
+    if policy.partner_bonus > 0 {
+        println!();
+        println!(
+            "{:>8} {:>10} {:>8} {:>10}",
+            "overlap", "crossover", "adds", "headroom"
+        );
+        for share in OVERLAPS {
+            let crossing = (gtd.len() as f64 * share).round() as u32;
+            let adds = crossing * policy.partner_bonus;
+            println!(
+                "{:>7.0}% {crossing:>10} {adds:>8} {:>+10}",
+                share * 100.0,
+                i64::from(reserves.gtd) - i64::from(gtd_demand + adds)
+            );
+        }
+    }
+
+    // First come: the lapsed door from the bundle, the partner door from the censuses.
+    let lapsed = counts
+        .iter()
+        .filter(|subject| !subject.enabled && subject.lapsed)
+        .count() as u32;
+    let lapsed_demand = lapsed * policy.lapsed_mints;
+    println!();
+    println!(
+        "lapsed      {lapsed} hold none now and earned the lapsed marker · {lapsed_demand} first-come mints"
+    );
+    if policy.partner_mints > 0 && !partner_paths.is_empty() {
+        let book = load_partners(partner_paths)?;
+        let eligible = book
+            .wallets
+            .values()
+            .filter(|wallet| wallet.largest >= partner_gate)
+            .count() as u32;
+        println!(
+            "partners    {eligible} wallets hold ≥{partner_gate} of one partner collection · {} each",
+            policy.partner_mints
+        );
+        println!(
+            "{:>8} {:>11} {:>8} {:>9}",
+            "turnout", "identities", "fcfs", "vs fcfs"
+        );
+        for share in TURNOUTS {
+            let identities = (f64::from(eligible) * share).round() as u32;
+            let demand = lapsed_demand + identities * policy.partner_mints;
+            println!(
+                "{:>7.1}% {identities:>11} {demand:>8} {:>8.2}x",
+                share * 100.0,
+                f64::from(demand) / f64::from(reserves.fcfs.max(1))
+            );
+        }
+        println!(
+            "note        first come is a race once it passes 1.00x: the reserve does not grow."
+        );
+    }
+    Ok(())
+}
+
+/// One subject under the policy: every earned row with its outcome, the score, the holding
+/// read at the bundle's cursor, and the mints. Leaders and partners are live reads this bundle
+/// cannot answer, so they are left out and said to be.
+fn explain_subject(
+    bundle: &Bundle<'_>,
+    catalogue: &LoadedCatalogue,
+    policy: Allocation,
+    gate: &[&Status],
+    lapsed: Option<u16>,
+    key: &str,
+) -> Result<(), String> {
+    let subject = bundle
+        .find(key)
+        .map_err(|error| format!("read {key}: {error}"))?
+        .ok_or_else(|| format!("{key} is not a subject in this bundle"))?;
+    let trace = holder_behaviour::explain(
+        bundle,
+        key,
+        subject.earned().map(|earned| earned.achievement),
+        |index| catalogue.role_at(usize::from(index)),
+        |index| catalogue.points_at(usize::from(index)),
+        policy,
+    );
+    println!();
+    println!("subject     {key}");
+    for row in &trace.rows {
+        println!(
+            "  {:<22} {:<10} {:>6}",
+            catalogue.id_at(usize::from(row.achievement)).unwrap_or("?"),
+            row.outcome.as_str(),
+            row.points.map_or("—".to_string(), |p| p.to_string())
+        );
+    }
+    let scored = trace.score.map_err(|error| error.to_string())?;
+    let lots: Vec<Lot> = subject.lots().collect();
+    let current = held_at(&lots, bundle.holder_cursor());
+    let no_traits: [(String, String); 0] = [];
+    let view = StatusView {
+        collection: bundle.collection(),
+        units: u64::from(current),
+        traits: &no_traits,
+    };
+    let enabled = ask_all(gate, &view)?;
+    let once = lapsed.is_some_and(|index| subject.earned().any(|e| e.achievement == index));
+    let counts = scored
+        .clone()
+        .counts(
+            peak_concurrent(&lots, bundle.holder_cursor()),
+            current,
+            enabled,
+            false,
+        )
+        .lapsed(once);
+    let ids = |list: &[u16]| {
+        list.iter()
+            .map(|index| {
+                catalogue
+                    .id_at(usize::from(*index))
+                    .unwrap_or("?")
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    println!("score       {}", counts.score);
+    println!("core        {}", ids(&scored.core));
+    println!("credits     {}", ids(&scored.credits));
+    println!(
+        "held now    {current} · gate {}",
+        if enabled { "open" } else { "shut" }
+    );
+    println!(
+        "allocation  {} · {} mints (before any leader or partner read)",
+        phase(&counts, policy).as_str(),
+        mints(&counts, policy)
+    );
+    Ok(())
+}
+
 fn load_partners(paths: &[String]) -> Result<PartnerBook, String> {
     let mut book = PartnerBook {
         collections: Vec::new(),
@@ -1156,6 +1481,7 @@ fn load_partners(paths: &[String]) -> Result<PartnerBook, String> {
             let wallet = book.wallets.entry(held.address).or_default();
             wallet.collections += 1;
             wallet.assets += held.balance;
+            wallet.largest = wallet.largest.max(held.balance);
         }
         book.collections.push(PartnerCollection {
             label: label(path),
