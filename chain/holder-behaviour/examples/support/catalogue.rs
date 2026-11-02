@@ -51,6 +51,15 @@ pub struct Status {
     pub predicate: StatusPredicate,
 }
 
+/// How one purchase could earn an achievement. See [`LoadedCatalogue::purchase_hint`]. The
+/// serialisation is the wire shape a consumer's `Buyable` reads.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "kind")]
+pub enum PurchaseHint {
+    Trait { category: String, values: Vec<String> },
+    Purchase,
+}
+
 /// The policy a campaign runs: the thresholds, and the statuses that decide who is in.
 ///
 /// Kept apart from [`Allocation`] because that type is `Copy` and swept over every field, while
@@ -405,6 +414,41 @@ impl LoadedCatalogue {
             .get("days")?
             .as_integer()
             .and_then(|days| u32::try_from(days).ok())
+    }
+
+    /// How one purchase could earn the achievement, when its predicate is one a single asset
+    /// settles: a trait (`has_trait` with a named value, or `has_trait_values` needing one), or
+    /// any marketplace purchase. Everything else — spans, counts, several assets — is `None`.
+    pub fn purchase_hint(&self, index: usize) -> Option<PurchaseHint> {
+        let predicate = self.entries.get(index)?.predicate.as_ref()?;
+        let text = |key: &str| predicate.get(key)?.as_str().map(str::to_string);
+        match predicate.get("kind")?.as_str()? {
+            "market_purchase" => Some(PurchaseHint::Purchase),
+            "has_trait" => {
+                let value = text("value")?;
+                (value != "*").then(|| PurchaseHint::Trait {
+                    category: text("category").unwrap_or_else(|| "*".into()),
+                    values: vec![value],
+                })
+            }
+            "has_trait_values" => {
+                let at_least = predicate.get("at_least")?.as_integer()?;
+                if at_least != 1 {
+                    return None;
+                }
+                let values = predicate
+                    .get("values")?
+                    .as_array()?
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect();
+                Some(PurchaseHint::Trait {
+                    category: text("category").unwrap_or_else(|| "*".into()),
+                    values,
+                })
+            }
+            _ => None,
+        }
     }
 
     pub fn statement_at(&self, index: usize) -> Option<&str> {

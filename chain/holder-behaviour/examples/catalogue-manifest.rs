@@ -70,6 +70,9 @@ struct Entry<'a> {
     holders: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     population: Option<u32>,
+    /// How one purchase earns it, for a page that ranks listings by what they would add.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    buy: Option<support::catalogue::PurchaseHint>,
 }
 
 struct Args {
@@ -160,6 +163,7 @@ fn run() -> Result<(), String> {
                 axis: catalogue.axis_at(index).unwrap_or_default(),
                 holders: rarity.get(index).copied().flatten().map(|r| r.holders_with),
                 population: rarity.get(index).copied().flatten().map(|r| r.population),
+                buy: catalogue.purchase_hint(index),
             })
         })
         .collect::<Result<_, String>>()?;

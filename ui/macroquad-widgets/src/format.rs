@@ -9,7 +9,9 @@
 //! UTC, never local time: a token's history is read against block timestamps,
 //! and a reader comparing two screens should not see two dates for one beat.
 
-/// `1234` → `1.2K`, `21848564` → `21.8M`.
+/// `1234` → `1.2K`, `21848564` → `21.8M`, `10000000` → `10M`. A round figure
+/// drops its `.0`: a shelf of ten million reads as `10M`, not `10.0M`, and the
+/// decimal says a precision the figure does not have.
 pub fn compact(n: f64) -> String {
     let a = n.abs();
     let (v, unit) = if a >= 1e9 {
@@ -25,7 +27,7 @@ pub fn compact(n: f64) -> String {
             format!("{n:.1}")
         };
     };
-    if v.abs() >= 100.0 {
+    if v.abs() >= 100.0 || (v * 10.0).round() % 10.0 == 0.0 {
         format!("{v:.0}{unit}")
     } else {
         format!("{v:.1}{unit}")
@@ -158,6 +160,11 @@ mod tests {
         assert_eq!(compact(1_234.0), "1.2K");
         assert_eq!(compact(6_106.0), "6.1K");
         assert_eq!(compact(150_000.0), "150K");
+        assert_eq!(compact(10_000_000.0), "10M");
+        assert_eq!(compact(250_000.0), "250K");
+        assert_eq!(compact(1_000_000.0), "1M");
+        assert_eq!(compact(1_040_000.0), "1M", "rounds to the shown digit");
+        assert_eq!(compact(2_000.0), "2K");
         assert_eq!(ada(99_999_627), "100");
         assert_eq!(ada(2_000_005), "2.0");
         assert_eq!(percent(-0.000_2), "0.0%");
