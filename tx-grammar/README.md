@@ -46,8 +46,8 @@ Everything else is a composition:
 | offer accepted | the same two moves + `Retract(bid)` |
 | listing | `Hold(item, seller, InHand→Escrow)` + `Declare(ask)` |
 | delisting | `Hold(item, seller, Escrow→InHand)` + `Retract(ask)` |
-| offer created | `Hold(price, bidder, InHand→Escrow)` + `Declare(bid)` |
-| offer cancelled | `Hold(price, bidder, Escrow→InHand)` + `Retract(bid)` |
+| offer created | `Hold(item, bidder, InHand→Escrow)` + `Declare(bid)` |
+| offer cancelled | `Hold(item, bidder, Escrow→InHand)` + `Retract(bid)` |
 | price change | `Revise(ask, old, new)` |
 | mint | `Create(asset, to)` |
 | burn | `Destroy(asset, from)` |
@@ -64,6 +64,11 @@ A listing is deliberately **not** a `Move`. The UTxO goes to a marketplace
 script; ownership does not. Rendering it as a transfer is how a marketplace
 became the largest holder on a collection page.
 
+A claim's `Hold` is about the **subject**, not the money. A bid holds against
+the thing being bid on; the figures live on the `Declare`. This is what lets a
+`Hold` + `Declare` pair collapse into one cell, and it is why a seller's
+listing and a buyer's offer over the same item are the same two primitives.
+
 ## The axes
 
 Every `Cell` carries the same axes, whatever the chain or the venue:
@@ -74,6 +79,7 @@ Every `Cell` carries the same axes, whatever the chain or the venue:
 | `object` | one asset, a lot, a collection, or a hidden asset |
 | `figure` | paid / ask / bid / fee / refund / price, plus its own asset |
 | `actor` | role (`Own`, `Peer`, `Venue`, `Contract`, `Pool`, `Network`) and party |
+| `other` | the far end of a movement, when the phrase has no owner to stand on |
 | `direction` | in, out, both, in place, unchanged |
 | `custody` | in hand, escrow, script, staked |
 | `basis` | observed, derived, asserted, inferred, proven |
@@ -81,6 +87,11 @@ Every `Cell` carries the same axes, whatever the chain or the venue:
 | `visibility` | public, shielded, unknown |
 | `absence` | hidden, unknown, ambiguous |
 | `count` / `more` | aggregated cells and overflow |
+
+`actor` and `other` are the two ends of a movement. From a wallet, `actor` is
+the counterparty and `other` is absent — naming an own side twice says nothing.
+From a pair (a policy feed), both ends are facts, so `other` carries the second
+party and the cell draws `actor → other`.
 
 A figure carries **its own asset**. An EVM sale settled in WETH is
 `paid 0.000227 WETH`, not `0.000227 ADA`. A USDC bid is not an ETH bid. A
@@ -109,20 +120,24 @@ single "net" across chains; reconciliation is per asset.
 2. **An intention is not a settlement.** `FigureKind::Ask` is not `Paid`. Only
    a `Sale` or `Accept` carries a paid price; a listing carries an asking price.
 3. **A bundle price is a lot price.** `Figure.per` says item / lot / total, so a
-   bundle of five at 500 is never rendered as five at 500.
-4. **A semantic count is not a raw count.** A CIP-68 mint of five NFTs is five
+   bundle of five at 500 is never rendered as five at 500. A settlement's `per`
+   is derived from its subject: a lot's price is the lot's. A `Declare` carries
+   the figure the producer set, so a listing or bid says `Per::Lot` itself.
+4. **A sampled lot still counts every item.** `Object::lot_sampled(items, n, …)`
+   keeps the honest total when the producer capped what it could carry and name.
+5. **A semantic count is not a raw count.** A CIP-68 mint of five NFTs is five
    items, not ten including the reference tokens; an ERC-1155 id at quantity
    five is one item at five units, not five items.
-5. **A cancellation the source cannot attribute is ambiguous.** OpenSea's
+6. **A cancellation the source cannot attribute is ambiguous.** OpenSea's
    `item_cancelled` fires for both a listing and a bid. The adapter emits a
    `Retract` with `ClaimKind::Unknown`; the grammar never guesses `Delist`.
-6. **A reverted transaction is not a completed action.** `Step.outcome` is
+7. **A reverted transaction is not a completed action.** `Step.outcome` is
    `Reverted`, and every cell inherits it. The text says "Attempted" and
    "The transaction reverted."
-7. **A shielded amount is hidden, not zero.** A Midnight object is
+8. **A shielded amount is hidden, not zero.** A Midnight object is
    `Object::Hidden`, a shielded party is `Party::Shielded`, and the amount is
    absent. The grammar never invents either.
-8. **No prose in the model.** `token` and `sentence` live in `text`; the visual
+9. **No prose in the model.** `token` and `sentence` live in `text`; the visual
    renderers draw cells.
 
 ## Forward projections
@@ -176,8 +191,8 @@ for adapters that can establish them; they are not guessed from a shape.
 
 | Crate | Role |
 |---|---|
-| `tx-classifier` | Cardano detector; gains `grammar()` wrapping `TxType` into primitives. |
-| `types/shared` (`flow_explorer`, `policy_feed`) | Cardano row projections into `Sequence`. |
+| `tx-classifier` | Cardano detector; `TxClassification::phrase(&Viewpoint)` wraps every `TxType` into primitives. |
+| `types/shared` (`flow_explorer`, `policy_feed`) | Cardano row projections: `flow_row()` and `policy_row()` into `Sequence`. |
 | `evm/evm-chain-reader` + `evm/opensea-stream` | EVM adapter: `Transfer`, `ItemSold`, `ItemListed`, `ItemCancelled`, `PaymentToken`. |
 | `tx-verdict` | Social-card view derived from `Phrase`; `Shape`/`Headline`/`Tags` become a lossy projection. |
 | `tx-insights` | Notification projection derived from readings. |

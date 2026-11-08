@@ -53,6 +53,25 @@ impl Quantity {
         self.0.iter().all(|byte| *byte == 0)
     }
 
+    /// Sum, saturating at the 256-bit ceiling.
+    ///
+    /// Used to total a lot. Saturating rather than wrapping because a sum that
+    /// overflows is not a smaller lot, and a renderer showing a wrapped figure
+    /// would be lying about the one number it was asked for.
+    pub fn saturating_add(self, other: Self) -> Self {
+        let mut sum = [0u8; QUANTITY_LEN];
+        let mut carry = 0u16;
+        for i in (0..QUANTITY_LEN).rev() {
+            let value = self.0[i] as u16 + other.0[i] as u16 + carry;
+            sum[i] = (value & 0xff) as u8;
+            carry = value >> 8;
+        }
+        if carry > 0 {
+            return Self([0xff; QUANTITY_LEN]);
+        }
+        Self(sum)
+    }
+
     /// The decimal form — the spelling an identified asset uses.
     pub fn to_decimal(self) -> String {
         let mut bytes = self.0;
@@ -545,6 +564,20 @@ impl Object {
     pub fn lot(items: Vec<Asset>, total: Quantity) -> Self {
         Self::Lot {
             distinct: u32::try_from(items.len()).unwrap_or(u32::MAX),
+            items,
+            total,
+        }
+    }
+
+    /// A lot whose `items` are a sample of `distinct` real things.
+    ///
+    /// Producers cap what they carry: a sweep of forty NFTs is forty facts and
+    /// five pictures. `lot` would then report five, which understates the
+    /// sweep; this says both, so the count is the truth and the sample is what
+    /// a renderer can draw.
+    pub fn lot_sampled(items: Vec<Asset>, distinct: u32, total: Quantity) -> Self {
+        Self::Lot {
+            distinct: distinct.max(u32::try_from(items.len()).unwrap_or(u32::MAX)),
             items,
             total,
         }

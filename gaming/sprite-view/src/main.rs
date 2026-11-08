@@ -144,13 +144,13 @@ fn backdrop(files: &[SpriteFile]) -> Backdrop {
 
 fn window_conf() -> Conf {
     let args = Args::read();
-    Conf {
-        window_title: args.window_title("sprite-view"),
+    args.window_conf(Conf {
+        window_title: "sprite-view".to_owned(),
         window_width: 1280,
         window_height: 800,
         high_dpi: true,
         ..Default::default()
-    }
+    })
 }
 
 async fn run(files: Vec<SpriteFile>) {

@@ -8,7 +8,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p macroquad-widgets --test catalog`
 Note: these are MACROQUAD widgets. They cannot use wasm-bindgen, so they do not
 interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime pairs.
 
-37 widgets.
+38 widgets.
 
 | module | what it is |
 |---|---|
@@ -40,6 +40,7 @@ interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime p
 | `segmented` | `Segmented` molecule — a row of mutually exclusive options in one track, the picked one filled |
 | `shape` | Rounded shapes and gradient fills: the surfaces every card, sheet, badge and pill is drawn from |
 | `slider` | `AmountSlider` — pick an amount from a short ladder of snapping stops, for surfaces with no text input |
+| `spinner` | `Spinner` — work under way, as a ring: a comet chasing itself while how long is unknown, or an arc filling from twelve o'clock when the fraction is known |
 | `split_bar` | `SplitBar` — one horizontal bar split between two amounts, with a label at each end and a marker at the split |
 | `squad_picker` | Squad picker — choose N assets from a roster to deploy on a mission |
 | `stat_tiles` | `StatTiles` — a row of equal stat tiles: a figure over its caption, with an optional ADA mark, sharing one baseline and one width |

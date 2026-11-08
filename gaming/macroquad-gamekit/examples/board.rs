@@ -145,14 +145,14 @@ impl Game for Board {
 fn window_conf() -> Conf {
     let args = Args::read();
     let (w, h) = args.window_size((448, 512));
-    Conf {
-        window_title: args.window_title("gamekit board"),
+    args.window_conf(Conf {
+        window_title: "gamekit board".to_owned(),
         window_width: w,
         window_height: h,
         high_dpi: true,
         window_resizable: true,
         ..Default::default()
-    }
+    })
 }
 
 #[macroquad::main(window_conf)]

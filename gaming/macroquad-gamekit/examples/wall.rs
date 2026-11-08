@@ -406,14 +406,14 @@ impl Game for Demo {
 fn window_conf() -> Conf {
     let args = Args::read();
     let (w, h) = args.window_size((DESIGN.x as i32, DESIGN.y as i32));
-    Conf {
-        window_title: args.window_title("gamekit wall"),
+    args.window_conf(Conf {
+        window_title: "gamekit wall".to_owned(),
         window_width: w,
         window_height: h,
         high_dpi: true,
         window_resizable: true,
         ..Default::default()
-    }
+    })
 }
 
 #[macroquad::main(window_conf)]

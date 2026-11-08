@@ -10,6 +10,8 @@ use tracing::info;
 // Re-export types from pipeline crates
 pub use address_registry::*;
 pub use transactions::{MintOperation, RawTxData, TxDatum, TxInput, TxOutput};
+/// What this classification did, as the transaction grammar's primitives.
+pub mod grammar;
 #[cfg(feature = "indexers")]
 pub mod indexers;
 mod insights;

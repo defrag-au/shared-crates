@@ -311,3 +311,20 @@ wasm_safe_serde = { path = "wasm-safe-serde" }
 # Drop it, here and in each consumer, once a release after 0.4.16 is out.
 [patch.crates-io]
 macroquad = { git = "https://github.com/not-fl3/macroquad", rev = "8d602d3f8ebb8a3a582ee15d92983bbb81ee3ef6" }
+# miniquad's `Conf::headless` (fork `defrag-au/miniquad`, branch
+# `damon-headless-rendering`): a capture runs with no window at all. macOS
+# (NSOpenGLContext) and Linux (an EGL pbuffer on the surfaceless platform) are
+# true offscreen paths; the other desktop backends fall back to a window they
+# never show. The local `shared-crates` gamekit sets it on a capture, so this
+# workspace has to link the same miniquad.
+#
+# A [patch] only applies in the workspace that builds, so every consumer of
+# macroquad-gamekit carries the same line. The consumers today are this
+# workspace, tile5-macroquad, factotum and cnft.dev-workers — grep
+# `defrag-au/miniquad` in each when this line changes. Drop the line, here and
+# in every consumer, once a miniquad release after 0.4.11 carries
+# `Conf::headless`.
+#
+# Pinned to the branch's tip, tagged `headless-2026-11` in the fork; not in a
+# miniquad release yet.
+miniquad = { git = "https://github.com/defrag-au/miniquad", rev = "59178c9744c6881e8d600d787e5a4284ab5ccbdc" }

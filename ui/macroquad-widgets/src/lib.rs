@@ -34,6 +34,7 @@ mod route_graph;
 mod scroll;
 mod segmented;
 mod slider;
+mod spinner;
 mod squad_picker;
 mod surface;
 mod wallet_connect;
@@ -126,6 +127,7 @@ pub use scroll::{
 pub use segmented::{pill_rects, segmented, segmented_pills};
 pub use shape::{Gradient, fill_gradient, fill_rounded, fill_texture_rounded, stroke_rounded};
 pub use slider::{AmountSliderVm, SliderStop, amount_slider};
+pub use spinner::Spinner;
 pub use squad_picker::{
     SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerResponse, SquadPickerVm,
     squad_picker,

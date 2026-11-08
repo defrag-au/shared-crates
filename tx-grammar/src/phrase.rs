@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{
     Absence, Actor, Asset, BalanceDelta, Basis, Claim, ClaimKind, Custody, Direction, Facet,
-    Figure, FigureKind, Mechanism, Object, Outcome, PartyKey, Visibility,
+    Figure, FigureKind, Mechanism, Object, Outcome, PartyKey, Per, Visibility,
 };
 use crate::primitive::{Action, Primitive};
 use crate::reading::Reading;
@@ -24,6 +24,37 @@ pub enum Viewpoint {
     Pair,
     /// A chain-level reading with no party.
     Chain,
+}
+
+impl Viewpoint {
+    /// The party a cell is told from.
+    ///
+    /// From a wallet's side that is always the other party, because the cell is
+    /// about what the wallet did. From a pair it is the party the movement
+    /// started at, so the cell can draw `actor → other`.
+    pub fn actor_for(&self, from: &Actor, to: &Actor) -> Actor {
+        match self {
+            Viewpoint::Pair | Viewpoint::Chain => from.clone(),
+            Viewpoint::Wallet { .. } => {
+                if to.is_own() {
+                    from.clone()
+                } else {
+                    to.clone()
+                }
+            }
+        }
+    }
+
+    /// The second side, present only when the phrase has no owner.
+    ///
+    /// A policy row is a pair, so both ends of a movement are facts the reader
+    /// needs. A wallet row has an own side, and naming it twice says nothing.
+    pub fn other_for(&self, from: &Actor, to: &Actor) -> Option<Actor> {
+        match self {
+            Viewpoint::Pair | Viewpoint::Chain if from != to => Some(to.clone()),
+            _ => None,
+        }
+    }
 }
 
 /// One transaction.
@@ -90,7 +121,7 @@ impl Step {
     }
 
     /// The cells a renderer draws, derived from the primitives.
-    pub fn cells(&self) -> Vec<Cell> {
+    pub fn cells(&self, viewpoint: &Viewpoint) -> Vec<Cell> {
         let mut used = vec![false; self.primitives.len()];
         let mut cells = Vec::new();
 
@@ -218,7 +249,8 @@ impl Step {
                 } else {
                     Direction::Both
                 };
-                let actor = counterparty(first_from, first_to);
+                let actor = viewpoint.actor_for(first_from, first_to);
+                let other = viewpoint.other_for(first_from, first_to);
                 let cell = cell_for(
                     self,
                     primitive,
@@ -229,7 +261,8 @@ impl Step {
                     *first_custody,
                     None,
                     None,
-                );
+                )
+                .with_other(other);
                 push(&mut cells, cell);
                 used[i] = true;
                 continue;
@@ -290,7 +323,8 @@ impl Step {
                 } else {
                     Direction::Both
                 };
-                let actor = counterparty(item_from, item_to);
+                let actor = viewpoint.actor_for(item_from, item_to);
+                let other = viewpoint.other_for(item_from, item_to);
                 let cell = cell_for(
                     self,
                     item_primitive,
@@ -302,6 +336,7 @@ impl Step {
                     None,
                     None,
                 )
+                .with_other(other)
                 .with_visibility(primitive.visibility.combine(second.visibility));
                 push(&mut cells, cell);
                 used[i] = true;
@@ -328,7 +363,8 @@ impl Step {
             } else {
                 Direction::Both
             };
-            let actor = counterparty(item_from, item_to);
+            let actor = viewpoint.actor_for(item_from, item_to);
+            let other = viewpoint.other_for(item_from, item_to);
             let cell = cell_for(
                 self,
                 item_primitive,
@@ -337,9 +373,14 @@ impl Step {
                 actor,
                 direction,
                 item_custody,
-                Some(Figure::paid(money)),
+                Some(Figure::paid(money).per(if item_object.distinct() > 1 {
+                    Per::Lot
+                } else {
+                    Per::Item
+                })),
                 None,
             )
+            .with_other(other)
             .with_visibility(primitive.visibility.combine(second.visibility));
             push(&mut cells, cell);
             used[i] = true;
@@ -607,14 +648,6 @@ fn find_claim(step: &Step, used: &[bool], object: &Object, retract: bool) -> Opt
         })
 }
 
-fn counterparty(from: &Actor, to: &Actor) -> Actor {
-    if to.is_own() {
-        from.clone()
-    } else {
-        to.clone()
-    }
-}
-
 fn money_asset(object: &Object) -> Option<Asset> {
     match object {
         Object::Asset(asset) => Some(asset.clone()),
@@ -639,6 +672,7 @@ fn push(cells: &mut Vec<Cell>, cell: Cell) {
         && last.reading == cell.reading
         && last.object == cell.object
         && last.actor == cell.actor
+        && last.other == cell.other
         && last.direction == cell.direction
         && last.custody == cell.custody
         && last.figure == cell.figure
@@ -791,7 +825,7 @@ impl Sequence {
                 when: step.when,
                 outcome: step.outcome,
                 visibility: step.visibility(),
-                cells: step.cells(),
+                cells: step.cells(&self.viewpoint),
             })
             .collect();
 
@@ -882,6 +916,9 @@ pub struct Cell {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub figure: Option<Figure>,
     pub actor: Actor,
+    /// The far end of a movement, when the phrase has no owner to stand on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub other: Option<Actor>,
     pub direction: Direction,
     pub custody: Custody,
     pub basis: Basis,
@@ -902,6 +939,7 @@ impl Cell {
             object,
             figure: None,
             actor: Actor::unknown(),
+            other: None,
             direction: Direction::Unchanged,
             custody: Custody::InHand,
             basis: Basis::Observed,
@@ -925,6 +963,11 @@ impl Cell {
 
     pub fn with_actor(mut self, actor: Actor) -> Self {
         self.actor = actor;
+        self
+    }
+
+    pub fn with_other(mut self, other: Option<Actor>) -> Self {
+        self.other = other;
         self
     }
 

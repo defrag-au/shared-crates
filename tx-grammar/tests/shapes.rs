@@ -581,3 +581,71 @@ fn a_phrase_round_trips_through_json() {
     assert_eq!(back, phrase);
     assert_eq!(back.tokens(), phrase.tokens());
 }
+
+#[test]
+fn a_pair_viewpoint_keeps_both_ends_of_a_movement() {
+    let phrase = Sequence::new(Viewpoint::Pair)
+        .step(
+            Step::new(cardano(), "tx-policy-transfer", 0).primitive(Primitive::transfer(
+                Object::asset(cardano_nft()),
+                peer("alice"),
+                peer("bob"),
+            )),
+        )
+        .phrase();
+
+    assert_eq!(phrase.readings(), vec![Reading::Transfer]);
+    let cell = phrase.cells().next().expect("one transfer");
+    assert_eq!(cell.actor, peer("alice"));
+    assert_eq!(cell.other, Some(peer("bob")));
+    assert_eq!(phrase.tokens(), "transfer · Test NFT · alice → bob");
+    assert!(
+        phrase
+            .sentence()
+            .contains("Test NFT moved from alice to bob.")
+    );
+}
+
+#[test]
+fn a_pair_sale_names_the_seller_the_buyer_and_the_price() {
+    let phrase = Sequence::new(Viewpoint::Pair)
+        .step(
+            Step::new(cardano(), "tx-policy-sale", 0)
+                .primitive(Primitive::transfer(
+                    Object::asset(cardano_nft()),
+                    peer("seller"),
+                    peer("buyer"),
+                ))
+                .primitive(Primitive::transfer(
+                    Object::asset(ada(147_000_000)),
+                    peer("buyer"),
+                    peer("seller"),
+                )),
+        )
+        .phrase();
+
+    assert_eq!(phrase.readings(), vec![Reading::Sale]);
+    let cell = phrase.cells().next().expect("one sale");
+    assert_eq!(cell.actor, peer("seller"));
+    assert_eq!(cell.other, Some(peer("buyer")));
+    assert!(
+        phrase
+            .sentence()
+            .contains("Test NFT moved from seller to buyer for 147 ADA.")
+    );
+}
+
+#[test]
+fn a_wallet_viewpoint_never_names_its_own_side_twice() {
+    let phrase = one(
+        Step::new(cardano(), "tx-wallet-transfer", 0).primitive(Primitive::transfer(
+            Object::asset(cardano_nft()),
+            peer("alice"),
+            own(),
+        )),
+    );
+
+    let cell = phrase.cells().next().expect("one transfer");
+    assert_eq!(cell.actor, peer("alice"));
+    assert_eq!(cell.other, None);
+}

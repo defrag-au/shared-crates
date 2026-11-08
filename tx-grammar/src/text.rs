@@ -113,8 +113,10 @@ fn token_cell(cell: &Cell) -> String {
         parts.push(format_figure(figure));
     }
     let actor = format_actor(&cell.actor);
-    if !actor.is_empty() && actor != "you" && actor != "unknown" {
-        parts.push(actor);
+    match &cell.other {
+        Some(other) => parts.push(format!("{actor} → {}", format_actor(other))),
+        None if !actor.is_empty() && actor != "you" && actor != "unknown" => parts.push(actor),
+        None => {}
     }
     if cell.custody != Custody::InHand {
         parts.push(format_custody(cell.custody).to_string());
@@ -150,14 +152,23 @@ fn sentence_cell(cell: &Cell) -> String {
         .as_ref()
         .map(|figure| format_asset(&figure.amount));
     let venue = (cell.actor.role == Role::Venue && actor != "venue").then_some(actor.as_str());
+    let other = cell.other.as_ref().map(format_actor);
     let body = match cell.reading {
-        crate::reading::Reading::Sale => match (cell.direction, figure) {
-            (Direction::In, Some(amount)) => {
+        crate::reading::Reading::Sale => match (other.as_deref(), cell.direction, figure) {
+            (Some(other), _, Some(amount)) => {
+                format!("{object} moved from {actor} to {other} for {amount}.")
+            }
+            (Some(other), _, None) => {
+                format!("{object} moved from {actor} to {other} at an unknown price.")
+            }
+            (None, Direction::In, Some(amount)) => {
                 format!("Bought {object} from {actor} for {amount}.")
             }
-            (Direction::Out, Some(amount)) => format!("Sold {object} to {actor} for {amount}."),
-            (_, Some(amount)) => format!("Traded {object} with {actor} for {amount}."),
-            (_, None) => format!("Traded {object} with {actor} at an unknown price."),
+            (None, Direction::Out, Some(amount)) => {
+                format!("Sold {object} to {actor} for {amount}.")
+            }
+            (None, _, Some(amount)) => format!("Traded {object} with {actor} for {amount}."),
+            (None, _, None) => format!("Traded {object} with {actor} at an unknown price."),
         },
         crate::reading::Reading::Accept => match figure {
             Some(amount) => format!("Accepted an offer on {object} for {amount}."),
@@ -174,10 +185,11 @@ fn sentence_cell(cell: &Cell) -> String {
             None => format!("Made an offer on {object}."),
         },
         crate::reading::Reading::Transfer | crate::reading::Reading::Shield => {
-            match cell.direction {
-                Direction::In => format!("Received {object} from {actor}."),
-                Direction::Out => format!("Sent {object} to {actor}."),
-                _ => format!("{object} moved between parties."),
+            match (&other, cell.direction) {
+                (Some(other), _) => format!("{object} moved from {actor} to {other}."),
+                (None, Direction::In) => format!("Received {object} from {actor}."),
+                (None, Direction::Out) => format!("Sent {object} to {actor}."),
+                (None, _) => format!("{object} moved between parties."),
             }
         }
         crate::reading::Reading::Unshield => match cell.direction {
@@ -189,7 +201,10 @@ fn sentence_cell(cell: &Cell) -> String {
         }
         crate::reading::Reading::Mint => format!("Minted {object}."),
         crate::reading::Reading::Burn => format!("Burned {object}."),
-        crate::reading::Reading::Swap => format!("Swapped {object} with {actor}."),
+        crate::reading::Reading::Swap => match other {
+            Some(other) => format!("Swapped {object} between {actor} and {other}."),
+            None => format!("Swapped {object} with {actor}."),
+        },
         crate::reading::Reading::Wrap => format!("Wrapped {object}."),
         crate::reading::Reading::Unwrap => format!("Unwrapped {object}."),
         crate::reading::Reading::Lock => format!("Locked {object} in a script."),

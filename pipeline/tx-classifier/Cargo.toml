@@ -11,7 +11,13 @@ address-registry = { workspace = true }
 datum-parsing = { workspace = true }
 pipeline-types = { workspace = true }
 cardano-assets = { workspace = true }
+# Chain and asset identity for the grammar projection's constructors.
+chains = { workspace = true }
 tx_insights = { workspace = true }
+# The transaction GRAMMAR: primitives, readings and the renderer-neutral Cell
+# projection. This crate maps what it already classified onto those primitives;
+# it does not classify anything a second time.
+tx-grammar = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }

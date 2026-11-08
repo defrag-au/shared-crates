@@ -9,7 +9,7 @@
 //! match &bundle {
 //!     Load::Ready(b) => draw(b),
 //!     Load::Failed(why) => Message::new("Unavailable", why).show_in(&p, body),
-//!     _ => Message::new("Loading", "…").show_in(&p, body),
+//!     _ => Message::new("Loading", "…").busy().show_in(&p, body),
 //! };
 //! ```
 //!

@@ -2789,7 +2789,7 @@ dependencies = [
  "log",
  "presser",
  "thiserror 2.0.18",
- "windows 0.58.0",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -4376,8 +4376,7 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 [[package]]
 name = "miniquad"
 version = "0.4.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcbaea978d741f3b60ced666b06a2a1e4a2bc81cb8b9dd29f4a40965e1f59e65"
+source = "git+https://github.com/defrag-au/miniquad?rev=59178c9744c6881e8d600d787e5a4284ab5ccbdc#59178c9744c6881e8d600d787e5a4284ab5ccbdc"
 dependencies = [
  "libc",
  "ndk-sys 0.2.2",
@@ -8245,6 +8244,7 @@ dependencies = [
  "address-registry",
  "base64 0.22.1",
  "cardano-assets",
+ "chains",
  "datum-parsing",
  "dotenvy",
  "hex",
@@ -8266,6 +8266,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "transactions",
+ "tx-grammar",
  "tx_insights",
  "worker",
 ]

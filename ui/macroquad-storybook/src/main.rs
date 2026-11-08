@@ -1042,6 +1042,9 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         // "page · …" so `--story` finds these rather than another category's.
         Story::page("page · message", PageView::Message),
         Story::page("page · message with action", PageView::MessageAction),
+        Story::page("page · message busy", PageView::MessageBusy),
+        Story::page("page · message progress", PageView::MessageProgress),
+        Story::page("page · spinner", PageView::Spinner),
         Story::page("page · surface", PageView::Surface),
         Story::page("page · wrap", PageView::Wrap),
         Story::page("page · holder profile", PageView::HolderProfile),
@@ -2160,13 +2163,13 @@ impl Storybook {
 fn window_conf() -> Conf {
     // Fully qualified: this file has its own `Args` for `--story`/`--shot`.
     let args = macroquad_gamekit::harness::Args::read();
-    Conf {
-        window_title: args.window_title("macroquad-widgets storybook"),
+    args.window_conf(Conf {
+        window_title: "macroquad-widgets storybook".to_owned(),
         window_width: 1000,
         window_height: 760,
         window_resizable: true,
         ..Default::default()
-    }
+    })
 }
 
 /// Command line: `--story <substring>` and `--shot <path>`; in a browser,
