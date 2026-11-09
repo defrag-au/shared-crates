@@ -9,6 +9,18 @@
 //! renderer is the contract — Metal and llvmpipe round differently — so a
 //! platform without its own goldens fails rather than borrowing another's.
 //!
+//! Each story declares the canvas it is drawn for (`Story::canvas`), and
+//! `--no-chrome` captures exactly that plus a margin. A widget's golden is
+//! its own size, not the storybook window's, and the storybook's header or
+//! sidebar cannot invalidate it — neither is drawn.
+//!
+//! A responsive composition gets one story per breakpoint arm, not a story per
+//! width. `app-shell/shell-phone` (390×844: bottom bar and phone insets) and
+//! `app-shell/shell-desk` (1280×800: rail and no insets) share one body, and
+//! `shell_layout` chooses between them from the canvas width. That pair is the
+//! worked example: two goldens cover both compositions, and a third width is
+//! added only when it lays out differently.
+//!
 //! Bless a batch with:
 //!
 //! ```sh
@@ -115,11 +127,10 @@ fn every_selected_story_matches_its_golden() {
                     .expect("a golden has a directory")
                     .to_str()
                     .expect("golden path is UTF-8"),
-                "--size",
-                "1000x760",
-                // The sidebar is navigation: its story numbers shift when a
-                // story is inserted, so it is not part of the golden.
-                "--stage",
+                // The story's own canvas, without the storybook's header or
+                // sidebar: a change to either cannot invalidate a golden. No
+                // `--size`: the window is not what a golden is sized by.
+                "--no-chrome",
                 "--tolerance",
                 "2",
             ])

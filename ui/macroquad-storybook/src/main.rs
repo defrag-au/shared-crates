@@ -43,6 +43,12 @@ use ui_theme::{TextSize, Token};
 use wallet_modal_stories::{ModalView, Preset, WalletModalStory};
 
 const SIDEBAR_W: f32 = 210.0;
+/// Where a story begins, left of the sidebar.
+const CONTENT_X: f32 = SIDEBAR_W + 28.0;
+/// Where a story begins when the storybook's header is drawn.
+const CONTENT_TOP: f32 = 94.0;
+/// Where it begins with `--no-chrome`, which leaves the header out.
+const CONTENT_TOP_BARE: f32 = 24.0;
 /// The sidebar's fixed title band; the story list scrolls beneath it.
 const SIDEBAR_TITLE_H: f32 = 58.0;
 /// The stick story's well radius: roughly a thumb's reach at desktop scale.
@@ -367,6 +373,40 @@ impl Story {
             Body::Cart(_) => Kind::Cart,
             Body::App(_) => Kind::App,
             Body::Page(_) => Kind::Page,
+        }
+    }
+
+    /// The size this story is drawn for, in points. A `--no-chrome` capture is
+    /// exactly this: the story at the size its own code assumes, rather than
+    /// the storybook window.
+    fn canvas(&self) -> Vec2 {
+        match self.kind() {
+            Kind::Buttons => vec2(420.0, 300.0),
+            Kind::Segmented => vec2(420.0, 100.0),
+            Kind::Callout => vec2(420.0, 300.0),
+            Kind::Stepper => vec2(420.0, 140.0),
+            Kind::Stick => vec2(390.0, 240.0),
+            Kind::Kit => vec2(600.0, 760.0),
+            Kind::Page => vec2(390.0, 844.0),
+            Kind::App => match &self.body {
+                Body::App(story) => story.canvas(),
+                _ => vec2(390.0, 844.0),
+            },
+            Kind::Admin => match &self.body {
+                Body::Admin(story) => vec2(if story.wide { 720.0 } else { 360.0 }, story.height),
+                _ => vec2(360.0, 430.0),
+            },
+            // Not in the golden corpus yet; a phone page is the safe default.
+            Kind::Chain
+            | Kind::Wallet
+            | Kind::WalletList
+            | Kind::Checkout
+            | Kind::Fulfilment
+            | Kind::SquadPicker
+            | Kind::Route
+            | Kind::Trading
+            | Kind::WalletModal
+            | Kind::Cart => vec2(390.0, 844.0),
         }
     }
 
@@ -1062,6 +1102,8 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::app("app · chips", AppView::Chips),
         Story::app("app · toasts", AppView::Toasts),
         Story::app("app · grid", AppView::Grid),
+        Story::app("shell · phone", AppView::ShellPhone),
+        Story::app("shell · desk", AppView::ShellDesk),
         // "page · …" so `--story` finds these rather than another category's.
         Story::page("page · message", PageView::Message),
         Story::page("page · message with action", PageView::MessageAction),
@@ -1216,6 +1258,9 @@ struct Storybook {
     /// Scroll the selected story into view on the next sidebar draw: set when
     /// a story is chosen by key or `--story`, which may be off-screen.
     reveal: bool,
+    /// `--no-chrome`: draw the story alone, without the header and help line.
+    /// A golden is the story, not the storybook page that displays it.
+    no_chrome: bool,
 }
 
 impl Storybook {
@@ -1235,6 +1280,7 @@ impl Storybook {
             dt: 0.0,
             scroll: Scroll::new(),
             reveal: false,
+            no_chrome: false,
         }
     }
 
@@ -1244,7 +1290,12 @@ impl Storybook {
 
     fn frame(&mut self, p: &Painter) {
         self.handle_keys();
-        self.draw_sidebar(p);
+        // `--no-chrome` captures the story alone, so the sidebar is not drawn
+        // at all. Its row labels would otherwise show through the capture's
+        // margin wherever a long name overflowed the sidebar.
+        if !self.no_chrome {
+            self.draw_sidebar(p);
+        }
         self.advance_sim(self.selected);
         self.draw_main(p);
     }
@@ -1384,17 +1435,21 @@ impl Storybook {
             }
             let label = format!("{}. {}", i + 1, s.name);
             let baseline = p.centre_baseline(row.y, row.h, 13.0);
-            p.text(
-                &label,
-                18.0,
-                baseline,
-                13.0,
-                if selected {
-                    p.theme.color.accent
-                } else {
-                    p.theme.color.text_primary
-                },
-            );
+            // A name longer than the sidebar is cut at the row, not drawn over
+            // the divider and into whatever sits beside it.
+            macroquad_gamekit::with_clip(row, || {
+                p.text(
+                    &label,
+                    18.0,
+                    baseline,
+                    13.0,
+                    if selected {
+                        p.theme.color.accent
+                    } else {
+                        p.theme.color.text_primary
+                    },
+                );
+            });
             if row.y >= list_top - 1.0 && p.tapped(row) {
                 clicked = Some(i);
             }
@@ -1438,36 +1493,59 @@ impl Storybook {
 
     fn draw_main(&mut self, p: &Painter) {
         let sel = self.selected;
-        let x0 = SIDEBAR_W + 28.0;
-        let col_w = (screen_width() - x0 - 28.0).clamp(280.0, 460.0);
-        let mut y = 44.0;
+        let x0 = CONTENT_X;
+        let canvas = self.stories[sel].canvas();
 
-        p.text(
-            &format!(
-                "{}  >  {}",
-                self.stories[sel].category, self.stories[sel].name
-            ),
-            x0,
-            y,
-            19.0,
-            p.theme.color.text_primary,
-        );
-        y += 20.0;
-        let help = match self.stories[sel].kind() {
-            Kind::Kit
-            | Kind::Route
-            | Kind::Trading
-            | Kind::WalletModal
-            | Kind::Cart
-            | Kind::App => format!(
-                "arrows / click to switch  ·  t = theme: {}  ·  p pause · . step · s slow  ·  {}",
-                p.theme.name,
-                self.clock.label()
-            ),
-            _ => format!("arrows / click to switch  ·  t = theme: {}", p.theme.name),
+        // A golden is the story, not the page it is shown on: with `--no-chrome`
+        // the header and help line are not drawn, and the story is laid out for
+        // its own canvas rather than the storybook window.
+        let mut y = if self.no_chrome {
+            CONTENT_TOP_BARE
+        } else {
+            44.0
         };
-        p.text(&help, x0, y, 12.0, p.theme.color.text_muted);
-        y += 30.0;
+        if !self.no_chrome {
+            p.text(
+                &format!(
+                    "{}  >  {}",
+                    self.stories[sel].category, self.stories[sel].name
+                ),
+                x0,
+                y,
+                19.0,
+                p.theme.color.text_primary,
+            );
+            y += 20.0;
+            let help = match self.stories[sel].kind() {
+                Kind::Kit
+                | Kind::Route
+                | Kind::Trading
+                | Kind::WalletModal
+                | Kind::Cart
+                | Kind::App => format!(
+                    "arrows / click to switch  ·  t = theme: {}  ·  p pause · . step · s slow  ·  {}",
+                    p.theme.name,
+                    self.clock.label()
+                ),
+                _ => format!("arrows / click to switch  ·  t = theme: {}", p.theme.name),
+            };
+            p.text(&help, x0, y, 12.0, p.theme.color.text_muted);
+            y += 30.0;
+        }
+        debug_assert!(
+            self.no_chrome || (y - CONTENT_TOP).abs() < f32::EPSILON,
+            "the header moved; update CONTENT_TOP"
+        );
+        let (avail_w, avail_h) = if self.no_chrome {
+            (canvas.x, canvas.y)
+        } else {
+            (screen_width() - x0 - 20.0, screen_height() - y - 20.0)
+        };
+        let col_w = if self.no_chrome {
+            canvas.x.clamp(280.0, 460.0)
+        } else {
+            (screen_width() - x0 - 28.0).clamp(280.0, 460.0)
+        };
 
         match self.stories[sel].kind() {
             Kind::Buttons => {
@@ -1565,71 +1643,41 @@ impl Storybook {
             Kind::Kit => {
                 let (dt, t, g) = (self.dt, self.clock.t, self.gesture);
                 if let Body::Kit(story) = &mut self.stories[sel].body {
-                    let area = Rect::new(
-                        x0,
-                        y,
-                        screen_width() - x0 - 20.0,
-                        screen_height() - y - 20.0,
-                    );
+                    let area = Rect::new(x0, y, avail_w, avail_h);
                     story.draw(p, area, &g, dt, t);
                 }
             }
             Kind::Trading => {
                 let (t, g) = (self.clock.t, self.gesture);
                 if let Body::Trading(story) = &mut self.stories[sel].body {
-                    let area = Rect::new(
-                        x0,
-                        y,
-                        screen_width() - x0 - 20.0,
-                        screen_height() - y - 20.0,
-                    );
+                    let area = Rect::new(x0, y, avail_w, avail_h);
                     story.draw(p, area, &g, t);
                 }
             }
             Kind::Page => {
                 if let Body::Page(story) = &mut self.stories[sel].body {
-                    let area = Rect::new(
-                        x0,
-                        y,
-                        screen_width() - x0 - 20.0,
-                        screen_height() - y - 20.0,
-                    );
+                    let area = Rect::new(x0, y, avail_w, avail_h);
                     story.draw(p, area);
                 }
             }
             Kind::App => {
                 let (dt, g) = (self.dt, self.gesture);
                 if let Body::App(story) = &mut self.stories[sel].body {
-                    let area = Rect::new(
-                        x0,
-                        y,
-                        screen_width() - x0 - 20.0,
-                        screen_height() - y - 20.0,
-                    );
+                    let area = Rect::new(x0, y, avail_w, avail_h);
                     story.draw(p, area, &g, dt);
                 }
             }
             Kind::Cart => {
                 let (dt, g) = (self.dt, self.gesture);
                 if let Body::Cart(story) = &mut self.stories[sel].body {
-                    let area = Rect::new(
-                        x0,
-                        y,
-                        screen_width() - x0 - 20.0,
-                        screen_height() - y - 44.0,
-                    );
+                    let area = Rect::new(x0, y, avail_w, (avail_h - 24.0).max(0.0));
                     story.draw(p, area, &g, dt);
                 }
             }
             Kind::WalletModal => {
                 let dt = self.dt;
                 if let Body::WalletModal(story) = &mut self.stories[sel].body {
-                    let area = Rect::new(
-                        x0,
-                        y,
-                        screen_width() - x0 - 20.0,
-                        screen_height() - y - 44.0,
-                    );
+                    let area = Rect::new(x0, y, avail_w, (avail_h - 24.0).max(0.0));
                     story.draw(p, area, dt);
                 }
             }
@@ -1638,11 +1686,7 @@ impl Storybook {
                     Body::Admin(story) => (story.height, story.wide),
                     _ => (430.0, false),
                 };
-                let width = if wide {
-                    screen_width() - x0 - 20.0
-                } else {
-                    col_w.min(360.0)
-                };
+                let width = if wide { avail_w } else { col_w.min(360.0) };
                 let area = Rect::new(x0, y, width, story_height);
                 if let Body::Admin(story) = &mut self.stories[sel].body {
                     let trends = arcade_admin_quad::Trends {
@@ -2213,9 +2257,11 @@ fn window_conf() -> Conf {
 /// `--check <dir>` turns that review into a test: the capture is compared with
 /// `<dir>/<platform>.png` and the process exits 2 on a difference, or with
 /// `UPDATE_GOLDENS=1` the golden is written instead. `--stage` leaves the
-/// sidebar out of a capture, for a golden whose story numbers should not count.
-/// `--list` prints every story's slug for `tests/visual.rs`, which runs the
-/// whole selected corpus.
+/// sidebar out of a capture, for a golden whose story numbers should not count;
+/// `--no-chrome` also leaves the storybook's own header and help line out, so
+/// the golden is the story rather than the page displaying it. `--list` prints
+/// every story's slug for `tests/visual.rs`, which runs the whole selected
+/// corpus.
 struct Args {
     story: Option<String>,
     shot: Option<String>,
@@ -2228,6 +2274,8 @@ struct Args {
     tolerance: u8,
     /// With `--shot`: capture the stage only, without the sidebar.
     stage: bool,
+    /// With `--shot`: draw the story alone, without the storybook's header.
+    no_chrome: bool,
     /// Print every story's slug and exit, before anything is drawn.
     list: bool,
 }
@@ -2250,6 +2298,7 @@ fn args() -> Args {
             .and_then(|s| s.parse().ok())
             .unwrap_or(2),
         stage: argv.iter().any(|a| a == "--stage"),
+        no_chrome: argv.iter().any(|a| a == "--no-chrome"),
         list: argv.iter().any(|a| a == "--list"),
     }
 }
@@ -2274,6 +2323,7 @@ async fn main() {
     let font = load_ttf_font_from_bytes(include_bytes!("../assets/NotoSans-Bold.ttf")).ok();
     let mono = load_ttf_font_from_bytes(include_bytes!("../assets/JetBrainsMono-Regular.ttf")).ok();
     let mut book = Storybook::new();
+    book.no_chrome = args.no_chrome;
     // Gesture recognition rather than `frame_tap`, so a mouse *drag* exercises
     // the swipe path on desktop — otherwise page-turning could only be tested
     // on a phone, which is where it would then be discovered broken.
@@ -2331,19 +2381,28 @@ async fn main() {
         let due = frames >= SETTLE_FRAMES && args.at.is_none_or(|at| book.clock.t >= at);
         let shot = args.shot.as_ref().filter(|_| due);
         let target = shot.map(|_| {
-            // `--stage` leaves the sidebar out: its story numbers shift when a
-            // story is inserted, which would invalidate goldens that have
-            // nothing to do with the change.
-            let (left, width) = if args.stage {
-                (SIDEBAR_W, screen_width() - SIDEBAR_W)
+            let canvas = book.stories[book.selected].canvas();
+            // A specimen's canvas plus a margin: the stories draw their first
+            // label at `area.x`/`area.y`, and a glyph's bearing at a hard edge
+            // clips. The margin is background, not content.
+            let margin = 16.0;
+            let (left, top, width, height) = if args.no_chrome {
+                (
+                    CONTENT_X - margin,
+                    CONTENT_TOP_BARE - margin,
+                    canvas.x + margin * 2.0,
+                    canvas.y + margin * 2.0,
+                )
+            } else if args.stage {
+                (SIDEBAR_W, 0.0, screen_width() - SIDEBAR_W, screen_height())
             } else {
-                (0.0, screen_width())
+                (0.0, 0.0, screen_width(), screen_height())
             };
-            let t = render_target(width as u32, screen_height() as u32);
+            let t = render_target(width as u32, height as u32);
             t.texture.set_filter(FilterMode::Linear);
             // `from_display_rect` already yields a top-left origin that matches
             // the screen; the render target needs no extra y-flip on top of it.
-            let mut cam = Camera2D::from_display_rect(Rect::new(left, 0.0, width, screen_height()));
+            let mut cam = Camera2D::from_display_rect(Rect::new(left, top, width, height));
             cam.render_target = Some(t.clone());
             set_camera(&cam);
             t
