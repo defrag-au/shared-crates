@@ -24,7 +24,7 @@ use cart_stories::{CartStory, CartView};
 use chain_fixture::{ChainSim, Scenario};
 use gamekit_stories::{KitStory, KitView};
 use macroquad::prelude::*;
-use macroquad_gamekit::wallet_modal::ChainFamily;
+use macroquad_gamekit::{harness, wallet_modal::ChainFamily};
 use macroquad_widgets::{
     BlockPulseVm, BlockTrainVm, Button, ButtonVariant, CalloutTone, CalloutVm, CheckoutAction,
     CheckoutState, Eligibility, FloatingStick, FulfilmentAction, FulfilmentStatus, FulfilmentTx,
@@ -222,6 +222,29 @@ struct Story {
     category: &'static str,
     name: &'static str,
     body: Body,
+}
+
+impl Story {
+    /// The name a test uses: `category/name`, lowercased, every run of other
+    /// characters collapsed to one `-`. Stable across restyles, and unique
+    /// because the category is part of it.
+    fn slug(&self) -> String {
+        fn part(text: &str) -> String {
+            let mut out = String::new();
+            let mut gap = false;
+            for c in text.chars() {
+                if c.is_ascii_alphanumeric() {
+                    out.push(c.to_ascii_lowercase());
+                    gap = false;
+                } else if !out.is_empty() && !gap {
+                    out.push('-');
+                    gap = true;
+                }
+            }
+            out.trim_end_matches('-').to_string()
+        }
+        format!("{}/{}", part(self.category), part(self.name))
+    }
 }
 
 impl Story {
@@ -2161,31 +2184,52 @@ impl Storybook {
 }
 
 fn window_conf() -> Conf {
-    // Fully qualified: this file has its own `Args` for `--story`/`--shot`.
-    let args = macroquad_gamekit::harness::Args::read();
-    args.window_conf(Conf {
+    let args = harness::Args::read();
+    let mut conf = args.window_conf(Conf {
         window_title: "macroquad-widgets storybook".to_owned(),
         window_width: 1000,
         window_height: 760,
         window_resizable: true,
         ..Default::default()
-    })
+    });
+    // `--list` prints and exits before anything is drawn; headless keeps the
+    // window out of the way. The stories' placeholder art is textures, so the
+    // list itself cannot move ahead of the context.
+    if std::env::args().any(|a| a == "--list") {
+        conf.headless = true;
+    }
+    conf
 }
 
-/// Command line: `--story <substring>` and `--shot <path>`; in a browser,
-/// `?story=<substring>`.
+/// Command line: `--story <slug>` (or a word or two, as a person types it),
+/// `--shot <path>`, `--list`; in a browser, `?story=<substring>`.
 ///
 /// Both exist for the same reason: the sidebar doesn't scroll and the number
 /// keys stop at 9, so a story added late in the list is otherwise unreachable —
 /// and a widget you can't get on screen is a widget you stop checking. `--shot`
 /// additionally makes the storybook the place a UI change gets *reviewed*,
 /// rather than deploying to Discord to find out.
+///
+/// `--check <dir>` turns that review into a test: the capture is compared with
+/// `<dir>/<platform>.png` and the process exits 2 on a difference, or with
+/// `UPDATE_GOLDENS=1` the golden is written instead. `--stage` leaves the
+/// sidebar out of a capture, for a golden whose story numbers should not count.
+/// `--list` prints every story's slug for `tests/visual.rs`, which runs the
+/// whole selected corpus.
 struct Args {
     story: Option<String>,
     shot: Option<String>,
     /// With `--shot`: capture once story time reaches this many seconds. The
     /// clock is fixed at 1/60 s per frame in shot mode, so it is exact.
     at: Option<f64>,
+    /// With `--shot`: compare the capture with `<dir>/<platform>.png`.
+    check: Option<String>,
+    /// With `--check`: the per-channel difference a pixel may have.
+    tolerance: u8,
+    /// With `--shot`: capture the stage only, without the sidebar.
+    stage: bool,
+    /// Print every story's slug and exit, before anything is drawn.
+    list: bool,
 }
 
 fn args() -> Args {
@@ -2201,11 +2245,31 @@ fn args() -> Args {
         story: value("--story").or_else(|| miniquad_platform::launch_query("story")),
         shot: value("--shot"),
         at: value("--at").and_then(|s| s.parse().ok()),
+        check: value("--check"),
+        tolerance: value("--tolerance")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(2),
+        stage: argv.iter().any(|a| a == "--stage"),
+        list: argv.iter().any(|a| a == "--list"),
     }
 }
 
 #[macroquad::main(window_conf)]
 async fn main() {
+    let args = args();
+    if args.list {
+        // The stories' placeholder art is textures, so the context has to
+        // exist before the list can be built; `window_conf` keeps it headless.
+        for story in stories(None) {
+            println!("{}\t{} · {}", story.slug(), story.category, story.name);
+        }
+        std::process::exit(0);
+    }
+    if args.check.is_some() && args.shot.is_none() {
+        eprintln!("--check needs --shot");
+        std::process::exit(2);
+    }
+
     // Proportional sans for chrome, monospace for hashes/data.
     let font = load_ttf_font_from_bytes(include_bytes!("../assets/NotoSans-Bold.ttf")).ok();
     let mono = load_ttf_font_from_bytes(include_bytes!("../assets/JetBrainsMono-Regular.ttf")).ok();
@@ -2215,14 +2279,22 @@ async fn main() {
     // on a phone, which is where it would then be discovered broken.
     let mut gestures = Gestures::new();
 
-    let args = args();
     if let Some(want) = &args.story {
         let want = want.to_lowercase();
-        match book.stories.iter().position(|s| {
-            format!("{} {}", s.category, s.name)
-                .to_lowercase()
-                .contains(&want)
-        }) {
+        // A slug selects exactly; a word or two still selects the first
+        // matching story, so `--story wallet` keeps working by hand.
+        let found = book
+            .stories
+            .iter()
+            .position(|s| s.slug() == want)
+            .or_else(|| {
+                book.stories.iter().position(|s| {
+                    format!("{} {}", s.category, s.name)
+                        .to_lowercase()
+                        .contains(&want)
+                })
+            });
+        match found {
             Some(i) => book.select(i),
             // Loud, because silently showing story 0 would look like the
             // widget rendered wrong rather than never rendered at all.
@@ -2259,12 +2331,19 @@ async fn main() {
         let due = frames >= SETTLE_FRAMES && args.at.is_none_or(|at| book.clock.t >= at);
         let shot = args.shot.as_ref().filter(|_| due);
         let target = shot.map(|_| {
-            let t = render_target(screen_width() as u32, screen_height() as u32);
+            // `--stage` leaves the sidebar out: its story numbers shift when a
+            // story is inserted, which would invalidate goldens that have
+            // nothing to do with the change.
+            let (left, width) = if args.stage {
+                (SIDEBAR_W, screen_width() - SIDEBAR_W)
+            } else {
+                (0.0, screen_width())
+            };
+            let t = render_target(width as u32, screen_height() as u32);
             t.texture.set_filter(FilterMode::Linear);
             // `from_display_rect` already yields a top-left origin that matches
             // the screen; the render target needs no extra y-flip on top of it.
-            let mut cam =
-                Camera2D::from_display_rect(Rect::new(0.0, 0.0, screen_width(), screen_height()));
+            let mut cam = Camera2D::from_display_rect(Rect::new(left, 0.0, width, screen_height()));
             cam.render_target = Some(t.clone());
             set_camera(&cam);
             t
@@ -2275,8 +2354,29 @@ async fn main() {
 
         if let (Some(path), Some(target)) = (shot, target) {
             set_default_camera();
-            target.texture.get_texture_data().export_png(path);
+            // The same normalisation the golden uses (alpha forced opaque), so
+            // the review PNG and the golden are the same picture.
+            harness::save_texture_png(&target.texture, path);
+            let capture = target.texture.get_texture_data();
             println!("wrote {path}");
+
+            if let Some(golden) = &args.check {
+                let check = if harness::update_goldens() {
+                    let blessed = harness::bless_capture(&capture, golden);
+                    println!("blessed {}", blessed.display());
+                    harness::GoldenCheck::Match
+                } else {
+                    let diff = std::path::Path::new(path).with_extension("diff.png");
+                    harness::check_capture(
+                        &capture,
+                        golden,
+                        args.tolerance,
+                        Some(diff.to_str().expect("shot path is not UTF-8")),
+                    )
+                };
+                println!("{check}");
+                std::process::exit(if check.is_match() { 0 } else { 2 });
+            }
             std::process::exit(0);
         }
 

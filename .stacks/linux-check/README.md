@@ -43,6 +43,21 @@ difference is glyph antialiasing. At tolerance 0 the tile fills differ by ±1,
 from Metal and llvmpipe rounding differently. The text report should be
 identical except the file name line.
 
+## The storybook's visual tests
+
+`visual-linux.sh` runs `macroquad-storybook`'s golden test in the same image and
+mounts, through a one-off container rather than the `check-linux.sh` job:
+
+```sh
+container-compose -f .stacks/linux-check/stack.toml run -T check -- \
+    /bin/sh /work/code/defrag/shared-crates/.stacks/linux-check/visual-linux.sh
+```
+
+Add `bless` after the script path to write `tests/goldens/<slug>/linux.png` for
+the selected stories. The script pins the same `CARGO_HOME` and
+`CARGO_TARGET_DIR` as the main job, and installs the GL/EGL packages, so it can
+run without the `up`/`down` lifecycle.
+
 ## Why the paths look like that
 
 `volumes = ["../../../..:/work/code"]` mounts the root that holds the sibling
