@@ -5,9 +5,12 @@
 //! test the same slugs the sidebar and `--story` use, so a story cannot exist
 //! without appearing here.
 //!
-//! One golden per story per platform: `tests/goldens/<slug>/<os>.png`. The
-//! renderer is the contract — Metal and llvmpipe round differently — so a
-//! platform without its own goldens fails rather than borrowing another's.
+//! One golden per story per platform and architecture:
+//! `tests/goldens-<arch>/<slug>/<os>.png`. The renderer is the contract —
+//! Metal and llvmpipe round differently, and llvmpipe on arm64 and x86_64 round
+//! differently too — so a platform without its own goldens fails rather than
+//! borrowing another's. The CI runner is x86_64 Linux; an Apple Silicon
+//! container or Mac is arm64, and an Intel Mac is x86_64.
 //!
 //! Each story declares the canvas it is drawn for (`Story::canvas`), and
 //! `--no-chrome` captures exactly that plus a margin. A widget's golden is
@@ -32,6 +35,11 @@
 //! UPDATE_GOLDENS=1 cargo test -p macroquad-storybook --test visual
 //! ```
 //!
+//! That writes the current machine's set: arm64 on an Apple Silicon host,
+//! x86_64 on an Intel one. The x86_64 Linux set is the CI runner's; take it
+//! from the `visual-captures` artifact (or an Ubuntu 24.04 amd64 container),
+//! not from a bless on an Apple Silicon machine.
+//!
 //! The categories below are the ones stable enough to pin. A category joins
 //! the list once its view models stop moving under feature work; every story
 //! in a listed category is then expected to have a golden.
@@ -52,10 +60,11 @@ fn storybook() -> &'static str {
 }
 
 fn goldens_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/goldens")
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(format!("tests/goldens-{}", std::env::consts::ARCH))
 }
 
-/// `tests/goldens/<slug>/<os>.png`.
+/// `tests/goldens-<arch>/<slug>/<os>.png`.
 fn golden(slug: &str) -> PathBuf {
     goldens_root()
         .join(slug)
@@ -226,7 +235,7 @@ fn every_golden_belongs_to_a_story() {
     let root = goldens_root();
     let mut stray = Vec::new();
     if root.exists() {
-        for category in std::fs::read_dir(&root).expect("read tests/goldens") {
+        for category in std::fs::read_dir(&root).expect("read the goldens directory") {
             let category = category.expect("directory entry").path();
             if !category.is_dir() {
                 continue;

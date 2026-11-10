@@ -53,10 +53,17 @@ container-compose -f .stacks/linux-check/stack.toml run -T check -- \
     /bin/sh /work/code/defrag/shared-crates/.stacks/linux-check/visual-linux.sh
 ```
 
-Add `bless` after the script path to write `tests/goldens/<slug>/linux.png` for
-the selected stories. The script pins the same `CARGO_HOME` and
-`CARGO_TARGET_DIR` as the main job, and installs the GL/EGL packages, so it can
-run without the `up`/`down` lifecycle.
+Add `bless` after the script path to write
+`tests/goldens-<arch>/<slug>/linux.png` for the selected stories, where `<arch>`
+is the container's architecture (`aarch64` on Apple Silicon, `x86_64` on Intel).
+The script pins the same `CARGO_HOME` and `CARGO_TARGET_DIR` as the main job, and
+installs the GL/EGL packages, so it can run without the `up`/`down` lifecycle.
+
+The x86_64 set belongs to the CI runner. When a picture changes, the `Visual
+Goldens` job uploads `visual-captures` on failure; those captures are the
+x86_64 goldens to copy into `tests/goldens-x86_64/<slug>/linux.png`. Blessing
+on Apple Silicon writes the arm64 set instead, because the renderer is part of
+the golden.
 
 ## Why the paths look like that
 

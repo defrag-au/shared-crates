@@ -54,10 +54,10 @@ jobs:
 
   # A capture is a review, and a golden makes it a test. The storybook's
   # `tests/visual.rs` runs every stable story in `admin`, `app-shell`, `atoms`,
-  # `gamekit`, `input` and `page`, and checks the Linux PNG, the text report and
-  # that no golden outlives its story. It is kept out of `check-and-test` so a
-  # picture change is not buried in the functional suite, and so the one
-  # platform-specific dependency is explicit.
+  # `gamekit`, `input` and `page`, and checks the x86_64 Linux PNG, the text
+  # report and that no golden outlives its story. It is kept out of
+  # `check-and-test` so a picture change is not buried in the functional suite,
+  # and so the one platform-specific dependency is explicit.
   #
   # miniquad's headless backend on Linux dlopen()s libEGL and needs a Mesa
   # driver for the surfaceless pbuffer. Without them the storybook panics on
@@ -66,7 +66,9 @@ jobs:
   # the same set; keep the two in step.
   visual:
     name: Visual Goldens
-    runs-on: ubuntu-latest
+    # Pinned to the release the x86_64 goldens were blessed on: the renderer
+    # (Mesa) is part of the contract, and `ubuntu-latest` moves.
+    runs-on: ubuntu-24.04
     # The suite launches the storybook once per story per check on software
     # rendering; a hang must not hold the run.
     timeout-minutes: 20
@@ -88,13 +90,26 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libx11-6 libgl1 libglx-mesa0 libegl1 libgl1-mesa-dri
 
-      # One golden per platform: this checks `linux.png`; `macos.png` is checked
-      # locally by the same test. Two threads run the two per-story sweeps
-      # together without putting four llvmpipe contexts on four cores.
+      # One golden per story per platform and architecture: this checks
+      # `tests/goldens-x86_64/<slug>/linux.png`; the `macos.png` and aarch64
+      # Linux sets are checked locally by the same test. Two threads run the two
+      # per-story sweeps together without putting four llvmpipe contexts on four
+      # cores.
       - name: Check the Linux goldens
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: cargo test -p macroquad-storybook --test visual -- --test-threads=2
+
+      # A mismatch prints its pixel count and box, but the diff image is the
+      # review. Keep the captures and `.diff.png` files when the job fails so a
+      # contributor can see what moved without reproducing the runner locally.
+      - name: Upload the visual captures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-captures
+          path: target/tmp/visual
+          if-no-files-found: ignore
 
   ocfl-fixtures:
     name: OCFL Fixtures

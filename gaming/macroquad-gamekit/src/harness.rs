@@ -72,9 +72,12 @@
 //! asked. [`bless_capture`] writes the golden; a caller that should bless
 //! instead of check on request reads [`update_goldens`] (`UPDATE_GOLDENS=1`).
 //!
-//! One golden per platform: the same renderer is stable, but Metal, llvmpipe
-//! and whatever Windows uses round differently. The PNG is the renderer's
-//! contract; the text report above is the portable one.
+//! One golden per platform, and per architecture where the renderer differs:
+//! Metal, llvmpipe on arm64 and llvmpipe on x86_64 do not round identically.
+//! The file name is the platform, so a caller that needs the architecture in
+//! the path puts it in `dir` — the storybook's root is `tests/goldens-<arch>`.
+//! The PNG is the renderer's contract; the text report above is the portable
+//! one.
 //!
 //! ## A capture is not the window
 //!
@@ -934,10 +937,12 @@ pub fn save_texture_png(texture: &Texture2D, path: &str) {
 /// Where a golden lives: `<dir>/<platform>.png`.
 ///
 /// One file per platform, not one shared file. The same scene draws to the same
-/// pixels on the same renderer, but Metal, llvmpipe and whatever Windows uses
-/// round differently: a macOS and a Linux capture of one scene measured ten
-/// differing pixels, all glyph antialiasing. The PNG is the renderer's
-/// contract; the frame report is the portable one.
+/// pixels on the same renderer, but Metal, llvmpipe on arm64 and llvmpipe on
+/// x86_64 round differently: a macOS and a Linux capture of one scene measured
+/// ten differing pixels, all glyph antialiasing. A caller that needs the
+/// architecture in the path puts it in `dir`; the storybook's root is
+/// `tests/goldens-<arch>`. The PNG is the renderer's contract; the frame report
+/// is the portable one.
 pub fn golden_path(dir: &str) -> PathBuf {
     Path::new(dir).join(format!("{}.png", std::env::consts::OS))
 }
