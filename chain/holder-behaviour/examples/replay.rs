@@ -630,6 +630,8 @@ fn build_snapshot(
             earned.push(Earned {
                 achievement: achievement as u16,
                 valid_from,
+                standing: outcome.standing,
+                held: outcome.held,
             });
         }
 

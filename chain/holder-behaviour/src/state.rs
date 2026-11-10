@@ -559,6 +559,17 @@ pub trait Store {
     /// counts it twice, the same contract every other `record_*` here has.
     fn record_movement(&mut self, subject: SubjectId) -> Result<(), Self::Error>;
 
+    /// The units `subject` has listed for sale in the live ask book.
+    ///
+    /// A Cardano listing keeps the seller's stake credential on the escrow output, so the lots
+    /// still read it as held; this is what tells a holding from one that is for sale. A store
+    /// with no book answers none, which reads every held unit as unlisted — the rule before
+    /// listings were asked.
+    fn listed_units(&self, subject: SubjectId) -> Result<Vec<UnitId>, Self::Error> {
+        let _ = subject;
+        Ok(Vec::new())
+    }
+
     /// How many holder movements the subject has been a party to.
     ///
     /// `None` means this store does not carry movement counts — a bundle row does not — so a

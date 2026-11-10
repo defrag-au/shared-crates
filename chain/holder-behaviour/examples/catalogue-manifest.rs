@@ -58,6 +58,9 @@ struct Entry<'a> {
     /// What the achievement is worth. Required: a consumer that meets an unpriced achievement
     /// cannot score it, and a default here would publish a manifest that looks complete.
     points: u32,
+    /// Slots earning it grants outright. Absent for the many that only score.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    grant: Option<holder_behaviour::Grant>,
     /// What a reader is shown: the name, what earns it, and the axis it sits on. A page that
     /// draws the whole catalogue (the Clone Registry's strands) needs these, and the catalogue
     /// file is the only place they are written down.
@@ -158,6 +161,7 @@ fn run() -> Result<(), String> {
                         catalogue.id_at(index).unwrap_or("an unnamed entry")
                     )
                 })?,
+                grant: catalogue.grant_at(index),
                 title: catalogue.title_at(index).unwrap_or_default(),
                 statement: catalogue.statement_at(index).unwrap_or_default(),
                 axis: catalogue.axis_at(index).unwrap_or_default(),

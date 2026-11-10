@@ -1630,6 +1630,24 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             ),
         },
     ),
+    // ── Project staking, added 2026-11-10 ────────────────────────────────
+    //
+    // The $PERP staking site: one position per UTxO, each datum naming its owner
+    // (`mitos-vesting-decode::perps_staking`), all under the site's own stake key.
+    // Staking, not a lock platform: one project's contract, kept here because
+    // mitos reads it like a lock and `registry_drift` keeps the two in step.
+    (
+        "05d231799bdec5acab13e670b4107d81a5725814c2de7900d422fdb6",
+        CredentialEntry {
+            category: AC::Script(SC::Staking {
+                label: "$PERP staking",
+                project: "Perps",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1zyzayvten00vtt9tz0n8pdqs0kq62ujcznpdu7gq6s30md5uwrkupakg244k2dedgyzg0r6k0wgyplm2qdq0trqny98qv0xlua",
+            ),
+        },
+    ),
     // ── Burn sinks ───────────────────────────────────────────────────────
     //
     // Moved here 2026-09-08 from `mitos tools/token-ledger/tokens.toml`, where

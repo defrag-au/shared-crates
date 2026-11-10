@@ -1,0 +1,4 @@
+# Scorer-facing. Never put this file in a model prompt.
+
+expected = "clean"
+note = "The same gallery after the layout fix: every label has headroom."

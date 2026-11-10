@@ -914,6 +914,14 @@ pub fn write_capture(texture: &Texture2D, path: &str, note: &str) -> std::io::Re
 /// `Camera2D::from_display_rect` camera ([`target_camera`]), and opaque for
 /// the reason [`Capture::save`] gives.
 pub fn save_texture_png(texture: &Texture2D, path: &str) {
+    // A plan names its captures under a scratch directory a clean checkout does not have yet;
+    // `export_png` panics on a missing parent rather than making it.
+    if let Some(parent) = Path::new(path)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+    {
+        let _ = std::fs::create_dir_all(parent);
+    }
     let mut image = texture.get_texture_data();
     opaque(&mut image.bytes);
     image.export_png(path);
@@ -1068,6 +1076,28 @@ pub fn bless_capture(capture: &Image, dir: &str) -> PathBuf {
     opaque(&mut image.bytes);
     image.export_png(path.to_str().expect("golden path is not valid UTF-8"));
     path
+}
+
+/// A capture already on disk — a plan's or a `--shot`'s, upright like every
+/// PNG the kit writes — in the render-target order [`check_capture`] and
+/// [`bless_capture`] take.
+fn read_capture(path: &str) -> Image {
+    let bytes = std::fs::read(path).unwrap_or_else(|err| panic!("cannot read {path}: {err}"));
+    let mut image = Image::from_file_with_format(&bytes, None)
+        .unwrap_or_else(|err| panic!("cannot decode {path}: {err:?}"));
+    flip_rows(&mut image);
+    image
+}
+
+/// [`check_capture`] for a capture written to `path`: how a test checks a
+/// plan's captures after the plan has run, in a process with no GL context.
+pub fn check_capture_file(path: &str, dir: &str, tolerance: u8, diff: Option<&str>) -> GoldenCheck {
+    check_capture(&read_capture(path), dir, tolerance, diff)
+}
+
+/// [`bless_capture`] for a capture written to `path`.
+pub fn bless_capture_file(path: &str, dir: &str) -> PathBuf {
+    bless_capture(&read_capture(path), dir)
 }
 
 /// Compare two upright RGBA images, pixel by pixel.

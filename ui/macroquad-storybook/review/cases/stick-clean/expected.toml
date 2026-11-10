@@ -1,0 +1,4 @@
+# Scorer-facing. Never put this file in a model prompt.
+
+expected = "clean"
+note = "The same story after the canvas was widened: all three samples and labels fit."

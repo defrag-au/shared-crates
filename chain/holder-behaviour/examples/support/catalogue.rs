@@ -56,7 +56,10 @@ pub struct Status {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "kebab-case", tag = "kind")]
 pub enum PurchaseHint {
-    Trait { category: String, values: Vec<String> },
+    Trait {
+        category: String,
+        values: Vec<String>,
+    },
     Purchase,
 }
 
@@ -113,6 +116,9 @@ struct AllocationFile {
     /// Mints by units held now. See [`Allocation::holding`].
     #[serde(default)]
     holding: Vec<holder_behaviour::Rung>,
+    /// The steady climb past the holding ladder's last rung. See [`Allocation::holding_tail`].
+    #[serde(default)]
+    holding_tail: Option<holder_behaviour::Tail>,
     /// Mints the score adds, rung by rung. See [`Allocation::bonus`].
     #[serde(default)]
     bonus: Vec<holder_behaviour::Rung>,
@@ -130,6 +136,18 @@ struct AllocationFile {
     partner_mints: u32,
     #[serde(default)]
     max_per_identity: u32,
+    /// The share a holding keeps once sold. See [`Allocation::past_share`].
+    #[serde(default)]
+    past_share: Option<f64>,
+    /// How the holding ladder weighs a unit by tenure. See [`Allocation::seasoning`].
+    #[serde(default)]
+    seasoning: Option<holder_behaviour::Seasoning>,
+    /// Guaranteed slots for holding the token. See [`Allocation::token`].
+    #[serde(default)]
+    token: Option<holder_behaviour::TokenRule>,
+    /// Units held now that the guaranteed phase needs. See [`Allocation::gtd_min_held`].
+    #[serde(default)]
+    gtd_min_held: u32,
 }
 
 #[derive(serde::Deserialize)]
@@ -178,6 +196,12 @@ impl TryFrom<&AllocationFile> for Allocation {
             count_rarest: file.count_rarest,
             holding: holder_behaviour::Rungs::new(&file.holding)
                 .map_err(|e| format!("[allocation] holding: {e}"))?,
+            holding_tail: match file.holding_tail {
+                Some(tail) if tail.every == 0 => {
+                    return Err("[allocation] holding_tail.every must be at least 1".to_string());
+                }
+                tail => tail,
+            },
             bonus: holder_behaviour::Rungs::new(&file.bonus)
                 .map_err(|e| format!("[allocation] bonus: {e}"))?,
             promote_bonus: file.promote_bonus,
@@ -185,6 +209,30 @@ impl TryFrom<&AllocationFile> for Allocation {
             lapsed_mints: file.lapsed_mints,
             partner_mints: file.partner_mints,
             max_per_identity: file.max_per_identity,
+            past_share: match file.past_share {
+                Some(share) if !(0.0..=1.0).contains(&share) => {
+                    return Err(format!(
+                        "[allocation] past_share is a share in 0..=1, not {share}"
+                    ));
+                }
+                share => share,
+            },
+            gtd_min_held: file.gtd_min_held,
+            seasoning: match file.seasoning {
+                Some(seasoning) if !(0.0..=1.0).contains(&seasoning.share) => {
+                    return Err(format!(
+                        "[allocation] seasoning.share is a share in 0..=1, not {}",
+                        seasoning.share
+                    ));
+                }
+                seasoning => seasoning,
+            },
+            token: match file.token {
+                Some(rule) if rule.per == 0 => {
+                    return Err("[allocation] token.per must be at least 1".to_string());
+                }
+                rule => rule,
+            },
         })
     }
 }
@@ -234,6 +282,9 @@ struct CatalogueEntry {
     /// without a weight cannot be scored, and a default would silently price it at nothing.
     #[serde(default)]
     points: Option<u32>,
+    /// Slots earning it grants outright, beside its points. See [`holder_behaviour::Grant`].
+    #[serde(default)]
+    grant: Option<holder_behaviour::Grant>,
     /// The source cannot answer; the catalogue says why. Never scores.
     #[serde(default)]
     unavailable: Option<String>,
@@ -359,6 +410,14 @@ impl LoadedCatalogue {
     /// priced the achievement, which the scorer refuses rather than counting as nothing.
     pub fn points_at(&self, index: usize) -> Option<u32> {
         self.entries.get(index).and_then(|entry| entry.points)
+    }
+
+    /// The slots an entry grants outright, if any.
+    pub fn grant_at(&self, index: usize) -> Option<holder_behaviour::Grant> {
+        self.entries
+            .get(index)
+            .and_then(|entry| entry.grant)
+            .filter(|grant| !grant.is_empty())
     }
 
     /// Every id, in catalogue order — the input to the bundle's digest.

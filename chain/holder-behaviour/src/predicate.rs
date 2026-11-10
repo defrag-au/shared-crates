@@ -500,6 +500,24 @@ impl Predicate {
         )
     }
 
+    /// Whether the predicate is about a **holding** rather than an act: a thing the subject can
+    /// hold now, or only have held. The evaluator answers these twice, over every lot and over
+    /// the open lots alone, so a score can tell "holds a faction head" from "once did".
+    ///
+    /// Everything else is a record of something that happened — a mint, a span, a sale — and
+    /// has no "now" to be read against.
+    pub fn is_standing(&self) -> bool {
+        matches!(
+            self,
+            Self::HasAllTraits { .. }
+                | Self::HasTrait { .. }
+                | Self::HasTraitValues { .. }
+                | Self::HeldWithTraitAtOnce { .. }
+                | Self::HoldsAtLeast { .. }
+                | Self::SameValueAcrossAssets { .. }
+        )
+    }
+
     /// Whether the answer needs the collection's mint order, not just the subject's lots.
     pub fn needs_mint_facts(&self) -> bool {
         matches!(

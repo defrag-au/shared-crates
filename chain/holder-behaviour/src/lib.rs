@@ -52,9 +52,9 @@ mod state;
 mod status;
 
 pub use allocation::{
-    Allocation, Counts, Outcome as ScoreOutcome, Phase, RUNGS_MAX, Role, Rung, Rungs, Score,
-    ScoreError, Trace, TraceRow, explain, held_at, mints, peak_concurrent, phase, score,
-    score_earned,
+    Allocation, Counts, Grant, Outcome as ScoreOutcome, Phase, RUNGS_MAX, Role, Rung, Rungs, Score,
+    ScoreError, Seasoning, Slots, Tail, TokenRule, Trace, TraceRow, explain, grants, held_at,
+    holding_mints, mints, peak_concurrent, phase, score, score_earned, seasoned_at, slots,
 };
 pub use bundle::{
     Bundle, BundleError, BundleStore, Earned, Lot, Rarity, Snapshot, SubjectRecord, SubjectView,
@@ -62,7 +62,7 @@ pub use bundle::{
 };
 pub use evaluate::{
     Assessment, Definition, EarnedSince, Evidence, Gap, Outcome, Progress, SECONDS_PER_DAY,
-    evaluate,
+    Standing, evaluate,
 };
 pub use fold::{Anomaly, Applied, Report, apply, rebuild};
 pub use memory::MemoryStore;

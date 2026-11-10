@@ -281,6 +281,21 @@ impl Store for MemoryStore {
         ))
     }
 
+    fn listed_units(&self, subject: SubjectId) -> Result<Vec<UnitId>, Self::Error> {
+        let Some(account) = self.subjects_by_id.get(subject.0 as usize) else {
+            return Ok(Vec::new());
+        };
+        let mut units: Vec<UnitId> = self
+            .asks
+            .values()
+            .filter(|ask| ask.seller.as_ref() == Some(account))
+            .filter_map(|ask| self.tokens.get(&ask.asset).copied())
+            .collect();
+        units.sort_unstable();
+        units.dedup();
+        Ok(units)
+    }
+
     fn record_placement(
         &mut self,
         subject: SubjectId,
