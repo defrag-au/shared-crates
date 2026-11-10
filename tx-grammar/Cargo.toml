@@ -1,0 +1,19 @@
+[package]
+name = "tx-grammar"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish = false
+description = "Transaction grammar — compositional primitives, derived readings, and the renderer-neutral Cell projection"
+
+# Pure by construction. `chains` is serde-only CAIP-2/CAIP-19 identity; nothing
+# here fetches, classifies, resolves names, or draws. A renderer depends on this
+# crate, never the other way round.
+[dependencies]
+chains = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

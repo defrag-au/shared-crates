@@ -9,8 +9,9 @@
 
 use macroquad::prelude::*;
 use macroquad_app::{
-    AppBar, ArtGrid, BarAction, Chip, FIELD_H, FieldKind, Glyph, GridSpec, Keyboard, Leading,
-    NavItem, TextField, Toasts, Tone, bottom_nav, chip_row, nav_rail,
+    AppBar, ArtGrid, BarAction, Chip, FIELD_H, FieldKind, Glyph, GridSpec, Insets, Keyboard,
+    Leading, NavItem, NavPlace, TextField, Toasts, Tone, bottom_nav, chip_row, nav_rail,
+    shell_layout,
 };
 use macroquad_widgets::{
     Align, Gesture, Painter, ScrollInput, TextSize, fill_rounded, stroke_rounded,
@@ -34,6 +35,10 @@ pub enum AppView {
     Toasts,
     /// Two thousand cards, of which only those in view are drawn.
     Grid,
+    /// The whole shell at a phone's size: the bottom bar and phone insets.
+    ShellPhone,
+    /// The whole shell at a desk's size: the rail and no insets.
+    ShellDesk,
 }
 
 pub struct AppStory {
@@ -72,6 +77,93 @@ impl AppStory {
         }
     }
 
+    /// The size this story is drawn for, in points: a phone's width, and the
+    /// height its content needs. A `--no-chrome` capture is exactly this.
+    pub fn canvas(&self) -> Vec2 {
+        match self.view {
+            AppView::Bar => vec2(PHONE_W, 380.0),
+            AppView::Nav => vec2(PHONE_W, 560.0),
+            AppView::Field => vec2(PHONE_W, 300.0),
+            AppView::Chips => vec2(PHONE_W, 240.0),
+            AppView::Toasts => vec2(PHONE_W, 320.0),
+            AppView::Grid => vec2(PHONE_W, 844.0),
+            AppView::ShellPhone => vec2(PHONE_W, 844.0),
+            AppView::ShellDesk => vec2(1280.0, 800.0),
+        }
+    }
+
+    /// The whole shell at the story's canvas: the app bar, a scrolling body,
+    /// and the navigation. `shell_layout` picks the rail on a wide canvas and
+    /// the bottom bar on a phone, and the phone variant models its insets, so
+    /// one body covers both compositions.
+    fn shell(&mut self, p: &Painter, area: Rect, gesture: &Gesture, dt: f32) {
+        let insets = if self.view == AppView::ShellPhone {
+            Insets {
+                top: 47.0,
+                bottom: 34.0,
+                ..Insets::default()
+            }
+        } else {
+            Insets::default()
+        };
+        let layout = shell_layout(vec2(area.w, area.h), insets, true);
+        let shift = |r: Rect| Rect::new(r.x + area.x, r.y + area.y, r.w, r.h);
+        let c = p.theme.color;
+
+        // The body: a grid of swatches, scrolling in its own viewport.
+        let body = shift(layout.body);
+        let input = ScrollInput::read(gesture.drag, Vec2::from(mouse_position()));
+        let spec = GridSpec {
+            min_cell: 150.0,
+            ..GridSpec::default()
+        };
+        let geo = self.grid.update(body, &input, 2000, spec, dt);
+        self.grid.draw(body, &geo, 2000, c.text_muted, |i, r| {
+            let hue = (i as f32 * 0.618_034).fract();
+            let ch = |o: f32| 0.5 + 0.38 * ((hue + o) * std::f32::consts::TAU).cos();
+            fill_rounded(r, 14.0, c.bg_secondary);
+            let art = Rect::new(r.x, r.y, r.w, r.w);
+            fill_rounded(art, 14.0, Color::new(ch(0.0), ch(0.667), ch(0.333), 1.0));
+            let cap = Rect::new(r.x + 10.0, art.bottom(), r.w - 20.0, r.h - r.w);
+            let name = format!("Swatch #{i}");
+            p.text_in(
+                &name,
+                cap,
+                p.size(TextSize::Md),
+                c.text_primary,
+                Align::Start,
+            );
+        });
+
+        let actions = [
+            BarAction::Icon(Glyph::Search),
+            BarAction::Chip {
+                glyph: Some(Glyph::Wallet),
+                label: "Connect",
+            },
+        ];
+        let _ = AppBar::new("Collections")
+            .subtitle("2,000 assets · 12 holders")
+            .actions(&actions)
+            .show(p, shift(layout.bar), shift(layout.bar_row));
+
+        let items = [
+            NavItem::new(Glyph::Grid, "Browse"),
+            NavItem::new(Glyph::Dots, "Traits").locked(true),
+            NavItem::new(Glyph::Tag, "Sell").locked(true),
+            NavItem::new(Glyph::Chart, "Market"),
+        ];
+        match layout.nav {
+            Some(NavPlace::Bottom { band, row }) => {
+                let _ = bottom_nav(p, shift(band), shift(row), &items, 0);
+            }
+            Some(NavPlace::Rail(rail)) => {
+                let _ = nav_rail(p, shift(rail), &items, 0);
+            }
+            None => {}
+        }
+    }
+
     pub fn draw(&mut self, p: &Painter, area: Rect, gesture: &Gesture, dt: f32) {
         let c = p.theme.color;
         let phone = Rect::new(area.x, area.y, PHONE_W.min(area.w), area.h.min(760.0));
@@ -80,6 +172,7 @@ impl AppStory {
             p.text_in(text, r, p.size(TextSize::Sm), c.text_muted, Align::Start);
         };
         match self.view {
+            AppView::ShellPhone | AppView::ShellDesk => self.shell(p, area, gesture, dt),
             AppView::Bar => {
                 let mut y = area.y;
                 let filter = [

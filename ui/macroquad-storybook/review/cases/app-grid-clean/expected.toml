@@ -1,0 +1,4 @@
+# Scorer-facing. Never put this file in a model prompt.
+
+expected = "clean"
+note = "Rows below the viewport are clipped by the scroll container, which is expected."

@@ -7,8 +7,8 @@
 use macroquad::prelude::*;
 use macroquad_widgets::theme::with_alpha;
 use macroquad_widgets::{
-    Align, Message, Painter, StatTile, StatTilesVm, TextSize, draw_rounded_rect, stat_tiles,
-    surface,
+    Align, Message, Painter, Spinner, StatTile, StatTilesVm, TextSize, draw_rounded_rect,
+    stat_tiles, surface,
 };
 
 /// A phone's width: where each of these is read first.
@@ -134,6 +134,13 @@ pub enum PageView {
     Message,
     /// The same with an action under it, as an empty state offers one.
     MessageAction,
+    /// A wait of unknown length: the comet over the heading.
+    MessageBusy,
+    /// A wait whose fraction is known: the arc over the heading.
+    MessageProgress,
+    /// The ring on its own: the comet at several sizes, and the arc at several
+    /// fractions.
+    Spinner,
     /// Surfaces of several sizes, one clipped at its foot by a scroll.
     Surface,
     /// A paragraph wrapped at three widths, with a stake address too long
@@ -180,6 +187,30 @@ impl PageStory {
                 }
                 if self.view == PageView::MessageAction {
                     label(&format!("action taps: {}", self.taps), phone.bottom() + 8.0);
+                }
+            }
+            PageView::MessageBusy | PageView::MessageProgress => {
+                draw_rectangle(phone.x, phone.y, phone.w, phone.h, c.bg_primary);
+                let m = Message::new("Loading", "asking the staking site for this campaign");
+                let m = match self.view {
+                    PageView::MessageProgress => m.progress(0.62),
+                    _ => m.busy(),
+                };
+                m.show_in(p, phone);
+            }
+            PageView::Spinner => {
+                label("unknown length, at four sizes", area.y);
+                let mut x = area.x;
+                for side in [16.0, 24.0, 48.0, 96.0] {
+                    Spinner::busy().show(p, Rect::new(x, area.y + 28.0, side, side));
+                    x += side + 24.0;
+                }
+                let y = area.y + 152.0;
+                label("known fractions: none, a sliver, 62%, all", y);
+                let mut x = area.x;
+                for fraction in [0.0, 0.02, 0.62, 1.0] {
+                    Spinner::at(fraction).show(p, Rect::new(x, y + 28.0, 48.0, 48.0));
+                    x += 72.0;
                 }
             }
             PageView::Surface => {

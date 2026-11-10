@@ -1,0 +1,9 @@
+# Model-facing. The scorer's answer is in expected.toml.
+
+story = "app-shell/app-grid"
+platform = "macos"
+intent = """
+A scrolling art grid inside a phone body. Rows are clipped at the body's
+bottom edge by design; the captions in the visible rows sit under their tiles.
+"""
+image = "full.png"

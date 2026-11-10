@@ -34,7 +34,7 @@
 use chain_events::{AccountRef, Coverage};
 use chains::{ChainRef, TokenRef};
 
-use crate::evaluate::{Assessment, Definition, Outcome, evaluate};
+use crate::evaluate::{Assessment, Definition, Outcome, Standing, evaluate};
 use crate::state::{
     AcquiredBy, Holding, LotId, MarketHistory, MarketSide, MintFact, MintSummary, NewFill, NewLot,
     Slot, Store, SubjectId, UnitId,
@@ -44,8 +44,26 @@ use crate::state::{
 /// accidentally match.
 pub const MAGIC: [u8; 8] = *b"HBABv2\0\0";
 
-/// The layout revision. A reader refuses a bundle it does not know rather than guessing.
-pub const VERSION: u16 = 2;
+/// The layout revision this build writes. A reader refuses a bundle it does not know rather
+/// than guessing.
+///
+/// Version 3 adds one byte to each earned entry, its [`Standing`]; version 4 two more, the pieces
+/// held now. An older file still reads: a version 2 entry as [`Standing::Record`], and an entry
+/// with no count as one piece when it is held, so it scores and grants as it did when written.
+pub const VERSION: u16 = 4;
+
+/// The oldest revision this build still reads.
+const VERSION_MIN: u16 = 2;
+
+/// Bytes of one earned entry in a revision: achievement u16, valid_from u64, then from
+/// version 3 a standing byte, and from version 4 a u16 of pieces held.
+const fn earned_len(version: u16) -> usize {
+    match version {
+        2 => 10,
+        3 => 11,
+        _ => 13,
+    }
+}
 
 /// Bytes before the first section.
 const HEADER: usize = 80;
@@ -118,6 +136,28 @@ pub struct Earned {
     pub achievement: u16,
     /// The chain height it was first true at, or the height of the reading that saw it.
     pub valid_from: Slot,
+    /// For a holding, whether it was still held at the reading.
+    pub standing: Standing,
+    /// For a holding held now, how many pieces satisfy it. Zero otherwise.
+    pub held: u16,
+}
+
+fn standing_byte(standing: Standing) -> u8 {
+    match standing {
+        Standing::Record => 0,
+        Standing::Now => 1,
+        Standing::Past => 2,
+        Standing::Listed => 3,
+    }
+}
+
+fn standing_of(byte: u8) -> Standing {
+    match byte {
+        1 => Standing::Now,
+        2 => Standing::Past,
+        3 => Standing::Listed,
+        _ => Standing::Record,
+    }
 }
 
 /// One acquisition, as the snapshot recorded it.
@@ -216,6 +256,12 @@ pub fn catalogue_digest<'a>(ids: impl IntoIterator<Item = &'a str>) -> u64 {
 /// Encodes a snapshot. The output is deterministic: the same snapshot always writes the
 /// same bytes, which is what makes a sealed bundle reproducible.
 pub fn write(snapshot: &Snapshot) -> Vec<u8> {
+    write_as(snapshot, VERSION)
+}
+
+/// Encodes a snapshot in one revision's layout. Only the current one is published; the tests
+/// write the older one to prove it still reads.
+fn write_as(snapshot: &Snapshot, version: u16) -> Vec<u8> {
     let mut subjects = snapshot.subjects.clone();
     subjects.sort_by(|a, b| a.key.as_bytes().cmp(b.key.as_bytes()));
     subjects.dedup_by(|a, b| a.key == b.key);
@@ -224,7 +270,7 @@ pub fn write(snapshot: &Snapshot) -> Vec<u8> {
     let mut offsets: Vec<u32> = Vec::with_capacity(subjects.len() + 1);
     for record in &subjects {
         offsets.push(records.len() as u32);
-        encode_record(record, &mut records);
+        encode_record(record, &mut records, version);
     }
     offsets.push(records.len() as u32);
 
@@ -235,7 +281,7 @@ pub fn write(snapshot: &Snapshot) -> Vec<u8> {
     let mut out =
         Vec::with_capacity(HEADER + collection.len() + offsets_len + rarity_len + records.len());
     out.extend_from_slice(&MAGIC);
-    out.extend_from_slice(&VERSION.to_le_bytes());
+    out.extend_from_slice(&version.to_le_bytes());
     out.extend_from_slice(&snapshot.achievement_count.to_le_bytes());
     out.extend_from_slice(&(subjects.len() as u32).to_le_bytes());
     out.extend_from_slice(&snapshot.built_at.to_le_bytes());
@@ -259,7 +305,7 @@ pub fn write(snapshot: &Snapshot) -> Vec<u8> {
     out
 }
 
-fn encode_record(record: &SubjectRecord, out: &mut Vec<u8>) {
+fn encode_record(record: &SubjectRecord, out: &mut Vec<u8>, version: u16) {
     let key = record.key.as_bytes();
     out.push(u8::try_from(key.len()).expect("an account key is shorter than 256 bytes"));
     out.extend_from_slice(key);
@@ -270,6 +316,12 @@ fn encode_record(record: &SubjectRecord, out: &mut Vec<u8>) {
     for entry in &earned {
         out.extend_from_slice(&entry.achievement.to_le_bytes());
         out.extend_from_slice(&entry.valid_from.to_le_bytes());
+        if earned_len(version) > 10 {
+            out.push(standing_byte(entry.standing));
+        }
+        if earned_len(version) > 11 {
+            out.extend_from_slice(&entry.held.to_le_bytes());
+        }
     }
     out.extend_from_slice(&(record.lots.len() as u16).to_le_bytes());
     for lot in &record.lots {
@@ -299,6 +351,7 @@ fn coverage_byte(coverage: Coverage) -> u8 {
 #[derive(Debug, Clone)]
 pub struct Bundle<'a> {
     bytes: &'a [u8],
+    version: u16,
     achievement_count: u16,
     subject_count: u32,
     built_at: u64,
@@ -323,7 +376,7 @@ impl<'a> Bundle<'a> {
             return Err(BundleError::BadMagic);
         }
         let version = u16::from_le_bytes([bytes[8], bytes[9]]);
-        if version != VERSION {
+        if !(VERSION_MIN..=VERSION).contains(&version) {
             return Err(BundleError::UnsupportedVersion(version));
         }
         let achievement_count = u16::from_le_bytes([bytes[10], bytes[11]]);
@@ -365,6 +418,7 @@ impl<'a> Bundle<'a> {
 
         let bundle = Self {
             bytes,
+            version,
             achievement_count,
             subject_count,
             built_at,
@@ -466,7 +520,11 @@ impl<'a> Bundle<'a> {
             .ok_or(BundleError::Truncated)?;
         let key = key_of(record)?;
         let body = record.get(1 + key.len()..).ok_or(BundleError::Truncated)?;
-        Ok(SubjectView { key, record: body })
+        Ok(SubjectView {
+            key,
+            record: body,
+            entry: earned_len(self.version),
+        })
     }
 
     /// The subject whose account key is `key`, or `None`.
@@ -529,6 +587,8 @@ fn key_of(record: &[u8]) -> Result<&[u8], BundleError> {
 pub struct SubjectView<'a> {
     key: &'a [u8],
     record: &'a [u8],
+    /// Bytes per earned entry in this file's revision.
+    entry: usize,
 }
 
 impl<'a> SubjectView<'a> {
@@ -553,12 +613,23 @@ impl<'a> SubjectView<'a> {
             .map(|slice| u16::from_le_bytes([slice[0], slice[1]]))
             .unwrap_or(0) as usize;
         let record = self.record;
+        let entry = self.entry;
         (0..count).filter_map(move |index| {
-            let at = 2 + index * 10;
-            let slice = record.get(at..at + 10)?;
+            let at = 2 + index * entry;
+            let slice = record.get(at..at + entry)?;
             Some(Earned {
                 achievement: u16::from_le_bytes([slice[0], slice[1]]),
                 valid_from: u64::from_le_bytes(octet(slice, 2)),
+                standing: slice
+                    .get(10)
+                    .map_or(Standing::Record, |byte| standing_of(*byte)),
+                // A file with no count read one piece for anything held, which is what it scored.
+                held: match slice.get(11..13) {
+                    Some(pair) => u16::from_le_bytes([pair[0], pair[1]]),
+                    None => {
+                        u16::from(slice.get(10).map(|b| standing_of(*b)) == Some(Standing::Now))
+                    }
+                },
             })
         })
     }
@@ -570,7 +641,7 @@ impl<'a> SubjectView<'a> {
             .get(0..2)
             .map(|slice| u16::from_le_bytes([slice[0], slice[1]]))
             .unwrap_or(0) as usize;
-        let at = 2 + earned * 10;
+        let at = 2 + earned * self.entry;
         let count = self
             .record
             .get(at..at + 2)
@@ -822,6 +893,8 @@ mod tests {
                     earned: vec![Earned {
                         achievement: 0,
                         valid_from: 170_960_000,
+                        standing: Standing::Now,
+                        held: 3,
                     }],
                     lots: vec![Lot {
                         unit: 7,
@@ -882,6 +955,8 @@ mod tests {
         let found = bundle.find(&credential(0xbb)).unwrap().expect("present");
         assert_eq!(found.earned().count(), 1);
         assert_eq!(found.earned().next().unwrap().valid_from, 170_960_000);
+        assert_eq!(found.earned().next().unwrap().standing, Standing::Now);
+        assert_eq!(found.earned().next().unwrap().held, 3);
         let lot = found.lots().next().unwrap();
         assert_eq!(lot.unit, 7);
         assert_eq!(lot.acquired_unix, 170_960_000);
@@ -890,6 +965,40 @@ mod tests {
 
         let missing = bundle.find(&credential(0xcc)).unwrap();
         assert!(missing.is_none(), "an absent credential is not a hit");
+    }
+
+    #[test]
+    fn a_version_two_file_still_reads_with_every_entry_a_record() {
+        // Written before standings existed: ten bytes an entry, and the lots straight after.
+        let bytes = write_as(&snapshot(), 2);
+        let bundle = Bundle::open(&bytes).expect("the previous revision opens");
+        let found = bundle.find(&credential(0xbb)).unwrap().expect("present");
+        let earned: Vec<Earned> = found.earned().collect();
+        assert_eq!(earned.len(), 1);
+        assert_eq!(earned[0].valid_from, 170_960_000);
+        assert_eq!(
+            earned[0].standing,
+            Standing::Record,
+            "a file with no standing scores as it did"
+        );
+        assert_eq!(
+            found.lots().next().unwrap().unit,
+            7,
+            "the lots are found past the narrower entries"
+        );
+    }
+
+    #[test]
+    fn a_version_three_file_reads_one_piece_for_a_holding_held() {
+        // Standings but no counts: eleven bytes an entry. A holding held reads as one piece, which
+        // is what it granted when it was written.
+        let bytes = write_as(&snapshot(), 3);
+        let bundle = Bundle::open(&bytes).expect("version 3 opens");
+        let found = bundle.find(&credential(0xbb)).unwrap().expect("present");
+        let earned: Vec<Earned> = found.earned().collect();
+        assert_eq!(earned[0].standing, Standing::Now);
+        assert_eq!(earned[0].held, 1);
+        assert_eq!(found.lots().next().unwrap().unit, 7);
     }
 
     #[test]

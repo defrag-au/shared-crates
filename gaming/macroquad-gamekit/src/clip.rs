@@ -21,6 +21,7 @@
 use std::cell::RefCell;
 
 use macroquad::prelude::*;
+use macroquad_text::report;
 
 /// A scissor: x and y from the top-left, then width and height, in pixels.
 type Scissor = (i32, i32, i32, i32);
@@ -34,6 +35,10 @@ thread_local! {
 /// Run `f` with drawing clipped to `rect`, in the current camera's units,
 /// and to every clip already in force around it. Returns what `f` returns.
 pub fn with_clip<T>(rect: Rect, f: impl FnOnce() -> T) -> T {
+    // The reporter records text as it is drawn, before the scissor applies, so
+    // it has to know the clip too: text wholly outside it is not visible and
+    // must not be reported as off its surface.
+    report::push_clip(rect);
     let scissor = {
         // SAFETY: macroquad's own escape hatch to its GL state; used and
         // dropped here on the drawing thread, between draws.
@@ -66,6 +71,7 @@ pub fn with_clip<T>(rect: Rect, f: impl FnOnce() -> T) -> T {
     // SAFETY: as above.
     let gl = unsafe { get_internal_gl() };
     gl.quad_gl.scissor(outer);
+    report::pop_clip();
     out
 }
 

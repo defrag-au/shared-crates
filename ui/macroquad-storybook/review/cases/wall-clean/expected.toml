@@ -1,0 +1,4 @@
+# Scorer-facing. Never put this file in a model prompt.
+
+expected = "clean"
+note = "Tiles are loaded; the plain dark tiles are the simulated failed loads, which are expected."

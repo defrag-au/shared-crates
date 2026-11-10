@@ -398,101 +398,47 @@ nix develop -c cargo clippy --fix --allow-dirty --all-targets --all-features -- 
 
 **Before writing any widget, read the catalogue.**
 
-- `ui/egui-widgets/CATALOG.md` in the `shared-crates` repository — ~100 widgets, one line each
-- `ui/macroquad-widgets/CATALOG.md` in `shared-crates` — the macroquad set
+- `ui/egui-widgets/CATALOG.md` in `shared-crates` — ~100 widgets, one line each.
+- `ui/macroquad-widgets/CATALOG.md` — the macroquad set.
 
-Read the whole file. **Do not grep instead.**
+Read the whole file. Do not grep instead.
 
-- About to hand-build something widget-shaped — a chip, an id display, a label-value grid, a card,
-  a chart, a stat strip → scan first. It probably exists.
-- New widget genuinely warranted → build it in `egui-widgets` with a `//!` header, add a storybook
-  story, regenerate the catalogue. The three-step checklist is at the bottom of `WIDGETS.md`.
-- Both catalogues are generated from each module's own `//!` header by `tests/catalog.rs`, and a
-  test asserts the committed copy matches. A module without a
-  `//! \`Name\` — one-line purpose.` header **fails** the test. Keep the first sentence a summary:
-  it is cut at the first full stop, so detail belongs in the paragraphs below.
-
-```sh
-UPDATE_CATALOG=1 nix develop -c cargo test -p egui-widgets --test catalog
-```
+- Hand-building something widget-shaped — a chip, an id display, a label-value grid, a card, a
+  chart, a stat strip → scan first. It probably exists.
+- A new widget → build it in `egui-widgets` with a `//!` header, add a storybook story, and run
+  `UPDATE_CATALOG=1 nix develop -c cargo test -p egui-widgets --test catalog`. A module without
+  the header fails that test.
 
 
 ## Read code and history with the agent tools, not with the shell
 <!-- rule: rules/org/defrag/agent-tools -->
 
-- Reading code with `rg`, `grep`, `sed`, `cat`, `head` or `wc` → use `at-peek`. Reading installed
-  crate source or build-script output with `grep`, `sed` or `find` under `~/.cargo` or
-  `target/…/build` → use `at-crate`. Reading history or working-tree state with `git status`,
-  `git diff` or `git log` → use `at-recall`. Asking the chain a question with `curl` → use
-  `at-cardano`. All four are read-only, bounded by construction, and say what they did not show.
-  `git show` and `git blame` have no `at-recall` verb yet — say so rather than reaching for them
-  silently.
+- Reading code with `rg`, `grep`, `sed`, `cat`, `head` or `wc` → `at-peek`. Installed crate source or
+  build-script output → `at-crate`. History or working-tree state → `at-recall`. A Cardano chain
+  question → `at-cardano`. All four are read-only and say what they did not show.
+- `git show` and `git blame` have no `at-recall` verb yet — say so rather than reaching for them.
 
 | Instead of | Use |
 | --- | --- |
 | `rg`, `grep` | `at-peek search <pattern> [path…]` |
 | `sed -n '40,60p' <file>`, `head`, `cat` | `at-peek slice <file>:40-60` |
 | `wc -l`, `ls -l`, `stat` | `at-peek stat <path>…` |
-| `grep -rn … ~/.cargo/registry/src`, `sed -n … <crate>/src/…`, `find ~/.cargo/registry` | `at-crate search <pattern> <crate>` · `at-crate slice <crate>/<path>:40-60` · `at-crate where <crate>` |
-| `cargo info <crate>`, `ls ~/.cargo/registry/src/…` | `at-crate where <crate>` · `at-crate installed [<crate>]` |
-| `head target/…/build/<crate>-*/out/…`, `grep … target/…/build/…/out/…` | `at-crate out <crate>` · `at-crate slice <crate>/<path> --build` · `at-crate search <pattern> <crate> --build` |
-| `git status`, `git status --porcelain` | `at-recall state` |
-| `git diff`, `git diff --stat` | `at-recall diff [<rev>] [<path>…]` — add `--patch` for the hunks |
-| `git log`, `git log --oneline` | `at-recall log [<rev>] [<path>…]` |
-| the archaeology before a PR description: branch, base, `merge-base`, `log --oneline base..HEAD`, `diff --stat` | `at-recall pr [--base <rev>]` — the branch, its commits and its diffstat in one read |
-| `curl https://api.koios.rest/…`, a retyped JSON body, a key in the command line | `at-cardano <noun> [<aspect>]` · `at-cardano query <endpoint>` · `at-cardano endpoints` · `at-cardano run --scenario <file.dsl>` for several in order |
+| `grep -rn … ~/.cargo/…` | `at-crate search <pattern> <crate>` · `slice` · `where` |
+| `git status` | `at-recall state` |
+| `git diff` | `at-recall diff [<rev>] [<path>…]` — `--patch` for hunks |
+| `git log` | `at-recall log [<rev>] [<path>…]` |
+| PR archaeology | `at-recall pr [--base <rev>]` |
+| `curl …koios…` | `at-cardano <noun> [<aspect>]` · `query` · `run --scenario` |
 | anything not listed | `at-describe` — the catalogue, one screen |
 
-- The exact lines · every mention · how many · which files → `at-peek slice <file>:40-60` ·
-  `at-peek search <pat>` · `at-peek search <pat> --count` · `at-peek search <pat> --files-only`.
-  For installed crate source the same three are `at-crate slice <crate>/<path>:40-60`,
-  `at-crate search <pat> <crate>` and `--count`.
-- `which at-peek` empty → `direnv exec . at-peek <verb>` (and the same for `at-recall`, `at-crate`
-  and `at-describe`). An agent's spawned shell does not inherit the devshell environment; an
-  interactive one does.
-- **Never wrap an `at-*` call in `nix develop`.** It works, which is what makes it the expensive
-  mistake: the nix evaluation is paid before the read starts, and the read itself is milliseconds.
-  Measured 2026-10-26: `at-peek stat` bare, 5 ms; `nix develop path:. --command at-peek stat`,
-  7.5 s. If the binary is not on `PATH`, the answers are `direnv exec .` (~140 ms, reads the
-  realised `.direnv/`, needs no daemon) or installing it — never a devshell wrapper.
-- `at-crate` resolves a crate through the nearest `Cargo.lock`, not through memory or "latest". A
-  crate named twice in the lock, or a file present in more than one build-script `out`, is an error
-  naming the flag that chooses — never a guess. `--version` and `--build-dir` are those flags.
-- Output that was cut says so, and so does anything that would make it wrong. Repeat both when
-  you report the finding: `# 50 of 143` is the difference between a fact and a guess.
-- A `# next:` line is the next question, already spelled as a command. Run it as printed rather
-  than composing your own — it is the read you just made, widened or deepened.
-- Several questions in one turn → ask for the frame (`--summary`: the counts, bounds and exits,
-  without the rows) and put several targets in one invocation (`diff <path> <path>`, `slice
-  <path>:40-60 <path>:1-20`) rather than a loop. Never `| tail -3`: a tail is a bound you did not
-  read, and the bound is the part that makes the answer reportable.
-- The tools are for understanding, not for preparing an edit. Read the file with the editor tools
-  before editing it.
-- `at-peek` and `at-crate` run nothing at all; `at-recall` runs `git` and nothing else. That
-  difference is why they are separate binaries, and why they are separate approvals if I have
-  tiered them. `at-cardano` makes HTTPS requests to Koios and nothing else: the host is fixed by
-  `--network`, the key is read from `~/.config/koios/api_key` (never printed), and `/submittx` is
-  refused. Never curl a Koios endpoint to avoid it; the curl is the generic executor this tool
-  replaces.
-- A **recipe** is one verb that composes the reads its sibling verbs use, so a count cannot disagree
-  with the listing beside it: `at-recall pr` answers "write me a PR description" with the base, the
-  branch's commits and the diffstat by kind, and a caveat naming tracked files that have changed
-  since HEAD — those are in no commit, and a description written from the branch alone leaves them
-  out. Ask for the recipe rather than composing the sequence — `pr --with commits,diffstat,areas`
-  selects sections, and its `# next:` lines name the primitives (`log`, `diff`) when you want the
-  detail behind it. It prints the facts a description is written from and does not write the
-  description: why a change exists is not in the repository.
-- `at-recall` answers `state`, `log`, `diff` and the `pr` recipe. `blame`, `show` and `churn`, and the
-  `review` and `release` recipes, are designed and not written — ask for the one you want rather than
-  reaching for `git`, and name the question, because that is what turns it into a verb. `at-crate`
-  answers `where`, `installed`, `files`, `slice`, `search` and `out`. `at-cardano` is noun + aspect —
-  `at-cardano pool delegators <pool>`, `at-cardano tx utxos <hash>`,
-  `at-cardano account rewards <stake>` — and `at-cardano --help` lists the nouns while
-  `at-cardano help <noun>` lists that noun's aspects. Every read endpoint in the published Koios
-  spec has a verb; `at-cardano endpoints` proves it, and `query` is the long tail rather than the
-  way in. A question that takes two answers — the tip's height into `block`, a block's first
-  transaction into `tx` — is `at-cardano run --scenario <file.dsl>`, where a `save` binds one value
-  out of an answer and the next step uses it; `at-cardano run --help` names the five actions.
+- `which at-peek` empty → `direnv exec . at-peek <verb>`. Never wrap an `at-*` call in
+  `nix develop`: the evaluation is paid before the read starts (7.5 s vs 5 ms).
+- Output that was cut says so, and a `# next:` line is the next read — run it as printed.
+  Never `| tail -3`: the bound is the part that makes the answer reportable.
+- These tools are for understanding, not for preparing an edit. Read the file with the editor
+  tools before changing it.
+- The `inspect-code` skill has the flags, exit semantics, recipes and traps; the `at-cardano`
+  skill has the chain verbs. Invoke one when a read is not a plain `search` or `slice`.
 
 
 ## Toggle local [patch] blocks as a unit
@@ -645,122 +591,53 @@ re-derives a rule — not damage, not which card was drawn, not where a stripped
 ## macroquad's silent traps — each fails with no error and a wrong picture
 <!-- rule: rules/org/defrag/macroquad-traps -->
 
-Before drawing with macroquad directly, check the pieces of `macroquad-gamekit` that already handle
-these (`shared-crates/gaming/macroquad-gamekit/CATALOG.md`). Each trap compiles, runs, and shows a wrong
-picture with no error.
+Before drawing with macroquad directly, check `shared-crates/gaming/macroquad-gamekit/CATALOG.md`.
+Each trap below compiles, runs, and shows a wrong picture with no error.
 
-- **The window is upside down under `Camera2D::from_display_rect`.** It runs y down into a render
-  target and up on the window. Use `harness::window_camera` for the window and
-  `harness::target_camera` for a target. A capture draws into a target, so **a capture that looks
-  right says nothing about the window.**
-- **Dropping a `RenderTarget` frees its texture**, and the next texture reuses the id, so a kept
-  `Texture2D` silently becomes something else. Hold the `RenderTarget` (`Baked` does).
-- **A render target's texture is upside down** when drawn: draw it with `flip_y: true`.
-- **Translucent layers wear down a target's alpha**, because the default pipeline blends alpha like
-  colour. A layered face comes out see-through. Bake layered art with `Baker`, which seals it. A
-  whole-frame capture wears down the same way and looks washed out against a viewer's white while
-  the window is fine; `Capture::save` writes the PNG opaque, so capture through it.
-- **A capture is only the size you asked for if the window is.** A tiling window manager
-  (AeroSpace) retiles the window, so `Viewport::current` and every `--shot` follow the tile, not
-  `--size`. Take the viewport from `harness::Args::viewport`, which uses `--size` when capturing.
-- **Every new glyph re-uploads the whole font atlas.** Caching a glyph marks the atlas dirty and
-  the next `draw_text_ex` uploads all of it; draws batch to the end of the frame but uploads do
-  not. A text-heavy first frame uploaded a 2048² atlas 166 times, and macOS's OpenGL kept each
-  16 MB staging copy: gigabytes of graphics memory, 43 GB and a Metal out-of-memory in release.
-  Run the screen through `macroquad_gamekit::app::run`, which turns on the kit's glyph gate (text
-  waits a frame for its glyphs, cached in one batch after the last draw), and load fonts with the
-  kit's `load_font` so the gate can warm them.
-- **Text queued before the glyph atlas grows vanishes.** The atlas doubles and deletes its old
-  texture mid-batch, typically on the first large text at a new size. Under the glyph gate it grows
-  only between frames. A bake runs ungated (a face missing its text would be missing it for good,
-  not for a frame), so `Baker` still draws twice for this.
-- **Bake text that must never wait a frame.** Under the gate, text at a size or character not seen
-  before appears one frame late; large text (over 64 device pixels) warms its digits as a set and
-  every other character one at a time, so a title's letters each pop in once. A countdown or a
-  banner that must be whole on its first frame belongs in a `Baker` face, scaled through a `Pose`.
-- **A capture can outrun the glyph gate and photograph an empty line.** `capture_due` is asked
-  BEFORE the frame is drawn, so a sentence that first appears on that frame — a live quote's
-  failure reason, a wallet's error — is held back and never recorded: the PNG has an empty panel
-  and the report's Problems list is empty too. Wait until the state has been unchanged for two
-  drawn frames, not just until `--at`. The same gate makes a truncated string at a size above 64
-  device pixels change length while it is measured (letters cache one at a time), so the `fit`
-  that cut it re-cuts differently each frame and never settles; draw a sentence at a body size,
-  where the whole ASCII set warms at once.
-- **macroquad 0.4.16 doubles a glyph atlas at random.** A glyph landing within 2 px of a row's end
-  fails the bounds check and doubles the whole atlas instead of wrapping, so one run in twelve
-  ended at 8192² (256 MB). Upstream fixed it after 0.4.16 (`8d602d3`), so every workspace
-  building the kit carries `[patch.crates-io] macroquad = { git =
-  "https://github.com/not-fl3/macroquad", rev = "8d602d3f8ebb8a3a582ee15d92983bbb81ee3ef6" }`
-  until a release has it: a `[patch]` only applies in the workspace that builds.
-- **Never animate a font size.** Each distinct pixel size rasterises a new glyph set into the
-  atlas, so text that pops or grows by drawing at `size × scale` rasterises every frame: a 96-point
-  countdown pop stalled the game 2.2 s (a macOS beachball), in release as in debug. Draw it with
-  `TextLayout::draw_scaled`, which rasterises once and scales the quads, or bake it once with
-  `Baker` and scale the texture through a `Pose`. Captures run on a fixed clock and never show the
-  stall; play with `--frame-log` to see it.
-- **Fractional text sizes must measure and draw at the same size.** Use the kit's `RichText` with
-  `MeasureAt(pixel_scale)`, which measures the glyphs the draw will use, rather than `draw_text_ex`
-  with a rounded `font_size`, or words overlap and spaces disappear.
-- **Text centred by its size or its line box sits high.** UI labels are mostly capitals and digits,
-  and the eye centres their ink: the band from the baseline to the top of a capital. The point size
-  is much taller than that band (VT323's capitals are about half of it), and `text_top`'s line box
-  hangs a descender below it, so `top = box.y + (box.h - size) / 2` or a hand-tuned `+4` leaves a
-  stamp's word high, a legend's square low beside its word, and a different error in every face.
-  Place text by a midline instead: `Painter::text_in(s, rect, size, color, Align)` for one line
-  against a box's start, centre or end (a chip, a button, a figure right against a tile's edge),
-  `Painter::stack_in(&[Line], rect, align, gap)` for a block such as a list row's title over its
-  subtitle, and `text_mid` / `mono_mid` on a row's midline with the icon beside it centred on the
-  same `y`. The widgets catalogue's "Text placement" section lists every one. Lay a card out as
-  named midlines (`title_mid`, `legend_mid`) and derive its height from the last one, rather than
-  fixed offsets from its top.
-- **Images decode from PNG and TGA only.** Convert art to PNG at build time, not JPEG.
-- **With `high_dpi`, touches arrive in device pixels and the mouse in points.** For one pointer,
-  read the mouse (macroquad turns touches into mouse events) and convert once, through
-  `Viewport::to_design`. For several fingers (a stick and a button at once), read
-  `macroquad_widgets::touch_points()`, never `touches()`: it returns them in points. On a 3x phone a
-  raw touch lands three times too far out, so a stick is three times too sensitive and a button
-  cannot be hit where it is drawn, while a desktop browser's device emulation, driven by the mouse,
-  looks fine. Island Funk's first touch controls shipped like that.
-- **A touch has one phase a frame, its last event's.** macroquad stores touches in a map, so a
-  finger that lands and moves before the next frame arrives as `Moved`, never `Started`, and one
-  that lands and lifts arrives only as `Ended`. On a phone a landing thumb nearly always moves a
-  little, so code that waits for `Started` drops touches at random: touch-and-hold works one time in
-  a few. Treat a finger seen for the first time as landing, whatever its phase. The kit's `Thumbs`
-  and the widgets' `Gestures` and `FloatingStick` do.
-- **`get_screen_data` returns black on macOS** when the window is unfocused or not yet composited,
-  and works when it is: so it passes at the desk and fails in a background run. Capture through a
-  render target: `harness::Capture`, or `harness::save_texture_png` for a game that already
-  composes its frame in a target of its own.
-- **`draw_arc` thickness grows outward from the radius**, not centred on it.
-- **miniquad's log macros print a lone literal verbatim.** `macroquad::logging::info!("refused:
-  {why}")` logs the braces, not the reason: with nothing after the string the macro passes it
-  through unformatted, and it still compiles. Pass the value positionally (`"refused: {}", why`)
-  whenever the string is the only argument. The `log` and `tracing` macros do not have this trap.
+- **The window is upside down under `Camera2D::from_display_rect`.** Use `harness::window_camera`
+  for the window and `harness::target_camera` for a target. A capture that looks right says
+  nothing about the window.
+- **Dropping a `RenderTarget` frees its texture**, and the next texture reuses the id. Hold it.
+- **A render target's texture is upside down** when drawn: `flip_y: true`.
+- **Translucent layers wear down a target's alpha.** Bake layered art with `Baker`; capture
+  through `Capture::save`, which writes opaque.
+- **A capture is only the size you asked for if the window is.** Take the viewport from
+  `harness::Args::viewport`.
+- **Every new glyph re-uploads the whole font atlas.** Run the screen through
+  `macroquad_gamekit::app::run` (the glyph gate) and load fonts with `load_font`.
+- **Text queued before the atlas grows vanishes.** The gate grows it between frames; `Baker`
+  draws twice for the same reason.
+- **Bake text that must never wait a frame.** Large text warms one character at a time; use a
+  `Baker` face scaled through a `Pose`.
+- **A capture can outrun the glyph gate and photograph an empty line.** Wait for two drawn frames
+  of unchanged state; draw long sentences at a body size.
+- **macroquad 0.4.16 doubles a glyph atlas at random.** Carry the workspace `[patch.crates-io]`
+  pinned to `8d602d3f8ebb8a3a582ee15d92983bbb81ee3ef6`.
+- **Never animate a font size.** Use `TextLayout::draw_scaled`, or bake once and scale through a
+  `Pose`; `--frame-log` shows the stall.
+- **Fractional text sizes must measure and draw at the same size.** Use `RichText` with
+  `MeasureAt(pixel_scale)`.
+- **Text centred by its size or line box sits high.** Place by midlines: `Painter::text_in`,
+  `Painter::stack_in`, `text_mid`/`mono_mid`. The catalogue's "Text placement" section lists them.
+- **Images decode from PNG and TGA only.** Convert art to PNG at build time.
+- **With `high_dpi`, touches are device pixels and the mouse is points.** Convert once through
+  `Viewport::to_design`; for several fingers use `macroquad_widgets::touch_points()`.
+- **A touch has one phase a frame, its last event's.** Treat a first-seen finger as landing,
+  whatever its phase; `Thumbs`, `Gestures` and `FloatingStick` do.
+- **`get_screen_data` returns black on macOS** when unfocused or uncomposited. Capture through a
+  render target: `harness::Capture` or `harness::save_texture_png`.
+- **`draw_arc` thickness grows outward from the radius**, not centred.
+- **miniquad's log macros print a lone literal verbatim.** Pass the value positionally
+  (`"refused: {}", why`) when the string is the only argument.
 
 These pass every native run and capture, and fail only in the browser:
 
-- **`render_target()` kills the web build.** In macroquad 0.4 it defaults to `sample_count: 1`,
-  which `render_target_ex` treats as multisampled, so every pass ends in a `glReadBuffer` blit.
-  WebGL 1, miniquad's default in the browser, lacks it: "gl.readBuffer is not a function" on the
-  first frame, then a panic at miniquad's `wasm.rs:34` on every later event. Use
-  `harness::plain_target` (sample count 0). The kit's `tests/plain_targets.rs` scan fails on a
-  bare call.
-- **A missing miniquad plugin never stops the page loading.** `gl.js` stubs each import nothing
-  provides and logs "No <name> function in gl.js" when it is called: no quad-snd `audio.js` is a
-  silent game, no gamepads plugin is deaf pads, no `quad-net.js` a dead socket. Take audio and
-  gamepads from the kit's `audio` and `gamepads` features, and stamp their JS from `build.rs` with
-  `macroquad_gamekit::web::stamp` — never a CDN copy.
-- **A copied `gl.js` drifts from the miniquad it runs beside**, and a mismatch is a blank canvas
-  with no error (cnft.dev-workers committed 0.4.10's beside a 0.4.11 wasm). Never commit or
-  hand-copy miniquad's JS, or write a bundle's `index.html` by hand. Bundle with shared-crates'
-  `macroquad-bundle`, run in each repo as `cargo run -p mq-bundle` (`tools/mq-bundle`): it takes
-  the JS from the versions the package links, renders the shared shell, and fails the build if the
-  wasm imports a function no staged script provides. `--base /path/` for a page served at a bare
-  path.
-- **`set_cursor_grab(true)` at load breaks the page.** A browser grants pointer lock only after a
-  user gesture. Refused, miniquad keeps asking until Chrome rate-limits it, and the shared shell
-  reports the rejection as a boot error over a black canvas. Grab the pointer on the first click,
-  natively too or behind `cfg!(target_arch = "wasm32")`.
+- **`render_target()` kills the web build.** Use `harness::plain_target` (sample count 0).
+- **A missing miniquad plugin never stops the page loading.** Take audio and gamepads from the
+  kit's features, and stamp their JS from `build.rs` with `macroquad_gamekit::web::stamp`.
+- **A copied `gl.js` drifts from the miniquad beside it.** Bundle with `mq-bundle`; never copy
+  the JS or write `index.html` by hand.
+- **`set_cursor_grab(true)` at load breaks the page.** Grab the pointer on the first click.
 
 
 ## Never drive a terminal UI with tmux — use tui-shot or the crate's harness
@@ -777,31 +654,12 @@ into any pane and `attach` to sessions it did not start, so it cannot be granted
 
 ```sh
 tui-shot run --scenario .tmp/factotum.dsl
-tui-shot check --scenario .tmp/factotum.dsl      # parse only, launch nothing
-./target/release/<tui> --state fixtures/x.json --plan examples/x.dsl
+tui-shot check --scenario .tmp/factotum.dsl
 ```
 
-- One plan file drives both: `tui-shot` through the PTY, the harness against a captured view. The
-  grammar is `tools/tui-shot/SCENARIO.md` in `agent-playbook`.
-- A harness-only field (`at=`, `status=`) is refused by `tui-shot` by name — omit it in a plan
-  that is meant to run under both.
 - Wait for content, never sleep: `wait … contains=`, `absent=`, `idle=`, `exit=true`.
-- Not: a hand-started tmux session, `send-keys`, `capture-pane`, or a fixed `sleep` between a key
-  and a screen read.
-
-### Why
-
-The factotum agent thread drove `factotum-tui` with `tmux new-session`, `send-keys`, a sleep, then
-`capture-pane` for every state. The loop's speed was the sleeps, and every approval covered an
-executor that can type into any pane on the machine.
-
-Measured on 2026-10-26 against the same TUI: a `tui-shot` run is 650–1100 ms depending on how many
-waits it has; five captures through the crate's `TestBackend` harness are 2 ms in total, at
-180–280 µs a frame. The harness needs no daemon, so a renderer can be reviewed before the service
-it talks to exists.
-
-`tui-shot` refuses a path and a shell command by construction; the harness refuses to write
-outside the repository. That is why either can be approved where tmux cannot.
+- Not: a hand-started tmux session, `send-keys`, `capture-pane`, or a fixed `sleep`.
+- The `tui-shot` skill has the grammar, fields and failures.
 
 
 ## Capture the exact moment, read its report, then check the real window
@@ -846,20 +704,18 @@ be rendered and looked at before it is reported as done.
 <!-- rule: rules/org/defrag/bulk-uploads-run-on-the-arm-box -->
 
 **Build and verify on the workstation; run the transfer on the arm box.** The workstation's
-uplink sets the ceiling for a GB-scale write to R2, so a large upload from here is a validation
-step and never the production one.
+uplink sets the ceiling for a GB-scale write to R2.
 
 | step | where |
 | --- | --- |
 | build the artifact · dry-run the publish · check the bytes | workstation |
 | the `rclone`/`publish` run that moves GB to R2 | arm box |
 
-- `--run`-gated publishers (`mithril-snapshot publish`, `tx-index publish`) print their exact
-  `rclone` invocation without `--run` · copy that line to the box rather than re-running it here.
-- The box already holds the chunk store, so an artifact derived from chunks is **rebuilt** there,
-  never copied to it — copying it spends the same uplink twice.
-- Native build on the box, not `aarch64-unknown-linux-musl`: the musl build measured 2.2× slower
-  on one thread and *slower with eight than with one*.
+- `--run`-gated publishers print their exact `rclone` invocation without `--run`; copy that line
+  to the box rather than re-running it here.
+- The box already holds the chunk store, so an artifact derived from chunks is rebuilt there,
+  never copied to it.
+- Native build on the box, not `aarch64-unknown-linux-musl`: the musl build is slower.
 
 
 ## egui layout traps that cost an afternoon
@@ -867,50 +723,18 @@ step and never the production one.
 
 Read before laying out a panel, sizing a `Ui`, or wiring an async result into a widget.
 
-#### A detail pane beside content → `detail_split`, not a right-hand `Panel`
-
-A right `Panel` reserves its strip by shrinking the parent's `cursor.max.x`, and a **top-down**
-`Ui` never reads `cursor.max.x`. The reservation is dropped, the following `CentralPanel` takes
-full width, and the pane floats over the content's right edge — hiding exactly the column a reader
-came for.
-
-Panels want a `Ui` that is arbitrating a whole region, not one you are laying out yourself
-mid-column.
-
-#### `Color32` stores PREMULTIPLIED channels
-
-Each channel must be `<= alpha`. `from_rgba_premultiplied` with larger channels blends additively
-and renders far lighter than intended.
-
-#### Images load when the widget is BUILT, not when it is drawn
-
-`ui.add(Image::new(url))` in a long list starts a fetch for every row, including those below the
-fold. Reserve the space, then gate on `ui.is_rect_visible` — `activity_feed` is the shape to copy.
-
-#### `Ui::set_max_width` WIDENS a `Ui` that has less room
-
-It assigns `max_rect.max.x` outright rather than taking a minimum, so `set_max_width(520.0)` inside
-a 342pt phone lays out at 520 and overflows off both edges. Use `viewport::fit(ui, 520.0)`.
-
-#### An overflowing `ui.horizontal` widens the parent
-
-It does not just clip: everything drawn *after* it inherits the inflated width. When a row might
-not fit, it is `horizontal_wrapped`.
-
-#### egui repaints ON DEMAND — an async result can sit unread indefinitely
-
-A fetch that completes on a JS callback and pushes to an `mpsc` wakes nothing; the channel is only
-drained on the next frame. Either wake the `Context` at the point of send, or tick
-`request_repaint_after` while work is outstanding — and key that tick off an explicit *pending*
-flag, **never** off `data.is_none()`, which is also what failure looks like and will spin forever
-on battery.
-
-#### Compact-breakpoint touch sizing inflates non-interactive content too
-
-`spacing.interact_size.y = 44` is a floor on allocated space *and* sets row height in
-`horizontal`/`horizontal_wrapped`. Opt a dense region out with
-`ui.spacing_mut().interact_size = Vec2::ZERO` — on the region, not inside the chip, because by then
-the row height is already decided.
+- **A detail pane beside content → `detail_split`, not a right-hand `Panel`.** A top-down `Ui`
+  never reads the reservation, so the following `CentralPanel` takes full width and the pane
+  floats over the content.
+- **`Color32` stores PREMULTIPLIED channels.** Each channel must be `<= alpha`.
+- **Images load when the widget is BUILT, not drawn.** Reserve the space, then gate on
+  `ui.is_rect_visible` — `activity_feed` is the shape.
+- **`Ui::set_max_width` WIDENS a `Ui` with less room.** Use `viewport::fit(ui, 520.0)`.
+- **An overflowing `ui.horizontal` widens the parent.** Use `horizontal_wrapped`.
+- **egui repaints ON DEMAND — an async result can sit unread.** Wake the `Context` on send, or
+  tick `request_repaint_after` off an explicit pending flag, never off `data.is_none()`.
+- **Compact-breakpoint touch sizing inflates non-interactive rows.** Opt out with
+  `ui.spacing_mut().interact_size = Vec2::ZERO` on the region.
 
 
 ## Never use raw Unicode symbols in egui
@@ -946,14 +770,12 @@ Blocks of text are the wrong tool in egui — reach for an encoding instead:
 | Instead of | Use |
 | --- | --- |
 | state described in a sentence | a pip track or progress marks |
-| composition spelled out | shaped or coloured marks — see `PartyBadge`'s filled/half/hollow basis language, reused as support pips on `ClaimCard` |
+| composition spelled out | shaped or coloured marks — `PartyBadge`'s filled/half/hollow language, reused as support pips on `ClaimCard` |
 | a number the reader must compare by eye | bar height or width |
 | long-form detail | behind an expand, on hover, or in a side panel |
 
-- A list of twenty should be **scannable** — if reading twenty means reading twenty paragraphs,
-  redesign.
-- Keep at most one line of irreducible text (a title, a statement); put the rest on demand.
-- Storybook captions to the same standard: one or two short lines, not an essay.
+- A list of twenty should be scannable; keep at most one line of irreducible text.
+- Storybook captions: one or two short lines, not an essay.
 
 
 ## Commit and PR conventions for this ecosystem

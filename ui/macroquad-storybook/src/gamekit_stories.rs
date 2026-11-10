@@ -199,6 +199,27 @@ impl KitStory {
     }
 
     /// Draw the story in `area`. `dt` and `t` come from the storybook clock.
+    /// The size this view is drawn for. The art finishes row is 736 wide and
+    /// the wall's help line is 607, so those two need their own canvas; every
+    /// other view fits the kit's default.
+    pub fn canvas(&self) -> Vec2 {
+        match self.view {
+            KitView::Art => vec2(736.0, 360.0),
+            KitView::Wall => vec2(620.0, 760.0),
+            _ => vec2(600.0, 760.0),
+        }
+    }
+
+    /// The wall simulates image latency (up to 1.75 s), so a capture at the
+    /// default moment shows an empty wall. Ask for a moment after the last
+    /// tile has loaded.
+    pub fn capture_at(&self) -> Option<f64> {
+        match self.view {
+            KitView::Wall => Some(2.0),
+            _ => None,
+        }
+    }
+
     pub fn draw(&mut self, p: &Painter, area: Rect, g: &Gesture, dt: f32, t: f64) {
         match self.view {
             KitView::Easing => easing(p, area, t),

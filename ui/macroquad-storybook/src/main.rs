@@ -24,7 +24,7 @@ use cart_stories::{CartStory, CartView};
 use chain_fixture::{ChainSim, Scenario};
 use gamekit_stories::{KitStory, KitView};
 use macroquad::prelude::*;
-use macroquad_gamekit::wallet_modal::ChainFamily;
+use macroquad_gamekit::{harness, wallet_modal::ChainFamily};
 use macroquad_widgets::{
     BlockPulseVm, BlockTrainVm, Button, ButtonVariant, CalloutTone, CalloutVm, CheckoutAction,
     CheckoutState, Eligibility, FloatingStick, FulfilmentAction, FulfilmentStatus, FulfilmentTx,
@@ -43,6 +43,12 @@ use ui_theme::{TextSize, Token};
 use wallet_modal_stories::{ModalView, Preset, WalletModalStory};
 
 const SIDEBAR_W: f32 = 210.0;
+/// Where a story begins, left of the sidebar.
+const CONTENT_X: f32 = SIDEBAR_W + 28.0;
+/// Where a story begins when the storybook's header is drawn.
+const CONTENT_TOP: f32 = 94.0;
+/// Where it begins with `--no-chrome`, which leaves the header out.
+const CONTENT_TOP_BARE: f32 = 24.0;
 /// The sidebar's fixed title band; the story list scrolls beneath it.
 const SIDEBAR_TITLE_H: f32 = 58.0;
 /// The stick story's well radius: roughly a thumb's reach at desktop scale.
@@ -225,6 +231,29 @@ struct Story {
 }
 
 impl Story {
+    /// The name a test uses: `category/name`, lowercased, every run of other
+    /// characters collapsed to one `-`. Stable across restyles, and unique
+    /// because the category is part of it.
+    fn slug(&self) -> String {
+        fn part(text: &str) -> String {
+            let mut out = String::new();
+            let mut gap = false;
+            for c in text.chars() {
+                if c.is_ascii_alphanumeric() {
+                    out.push(c.to_ascii_lowercase());
+                    gap = false;
+                } else if !out.is_empty() && !gap {
+                    out.push('-');
+                    gap = true;
+                }
+            }
+            out.trim_end_matches('-').to_string()
+        }
+        format!("{}/{}", part(self.category), part(self.name))
+    }
+}
+
+impl Story {
     fn fulfilment(
         category: &'static str,
         name: &'static str,
@@ -344,6 +373,52 @@ impl Story {
             Body::Cart(_) => Kind::Cart,
             Body::App(_) => Kind::App,
             Body::Page(_) => Kind::Page,
+        }
+    }
+
+    /// The size this story is drawn for, in points. A `--no-chrome` capture is
+    /// exactly this: the story at the size its own code assumes, rather than
+    /// the storybook window.
+    fn canvas(&self) -> Vec2 {
+        match self.kind() {
+            Kind::Buttons => vec2(420.0, 300.0),
+            Kind::Segmented => vec2(420.0, 100.0),
+            Kind::Callout => vec2(420.0, 300.0),
+            Kind::Stepper => vec2(420.0, 140.0),
+            Kind::Stick => vec2(480.0, 300.0),
+            Kind::Kit => match &self.body {
+                Body::Kit(story) => story.canvas(),
+                _ => vec2(600.0, 760.0),
+            },
+            Kind::Page => vec2(390.0, 844.0),
+            Kind::App => match &self.body {
+                Body::App(story) => story.canvas(),
+                _ => vec2(390.0, 844.0),
+            },
+            Kind::Admin => match &self.body {
+                Body::Admin(story) => vec2(if story.wide { 720.0 } else { 360.0 }, story.height),
+                _ => vec2(360.0, 430.0),
+            },
+            // Not in the golden corpus yet; a phone page is the safe default.
+            Kind::Chain
+            | Kind::Wallet
+            | Kind::WalletList
+            | Kind::Checkout
+            | Kind::Fulfilment
+            | Kind::SquadPicker
+            | Kind::Route
+            | Kind::Trading
+            | Kind::WalletModal
+            | Kind::Cart => vec2(390.0, 844.0),
+        }
+    }
+
+    /// The moment this story must be captured at, when its content arrives
+    /// over time: the wall simulates image latency and is empty before it.
+    fn capture_at(&self) -> Option<f64> {
+        match &self.body {
+            Body::Kit(story) => story.capture_at(),
+            _ => None,
         }
     }
 
@@ -1039,9 +1114,14 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::app("app · chips", AppView::Chips),
         Story::app("app · toasts", AppView::Toasts),
         Story::app("app · grid", AppView::Grid),
+        Story::app("shell · phone", AppView::ShellPhone),
+        Story::app("shell · desk", AppView::ShellDesk),
         // "page · …" so `--story` finds these rather than another category's.
         Story::page("page · message", PageView::Message),
         Story::page("page · message with action", PageView::MessageAction),
+        Story::page("page · message busy", PageView::MessageBusy),
+        Story::page("page · message progress", PageView::MessageProgress),
+        Story::page("page · spinner", PageView::Spinner),
         Story::page("page · surface", PageView::Surface),
         Story::page("page · wrap", PageView::Wrap),
         Story::page("page · holder profile", PageView::HolderProfile),
@@ -1123,6 +1203,9 @@ fn next_status(s: OrderStatus) -> OrderStatus {
 fn button_gallery(p: &Painter, x: f32, mut y: f32, _w: f32) -> Option<String> {
     let mut clicked = None;
     let (bw, bh, gap) = (130.0, 38.0, 12.0);
+    // `Painter::text` places a baseline: the first label's glyphs sit above it,
+    // so the gallery starts a line below the story's top edge.
+    y += 12.0;
     for (name, variant) in [
         ("filled", ButtonVariant::Filled),
         ("tonal", ButtonVariant::Tonal),
@@ -1190,6 +1273,9 @@ struct Storybook {
     /// Scroll the selected story into view on the next sidebar draw: set when
     /// a story is chosen by key or `--story`, which may be off-screen.
     reveal: bool,
+    /// `--no-chrome`: draw the story alone, without the header and help line.
+    /// A golden is the story, not the storybook page that displays it.
+    no_chrome: bool,
 }
 
 impl Storybook {
@@ -1209,6 +1295,7 @@ impl Storybook {
             dt: 0.0,
             scroll: Scroll::new(),
             reveal: false,
+            no_chrome: false,
         }
     }
 
@@ -1218,7 +1305,22 @@ impl Storybook {
 
     fn frame(&mut self, p: &Painter) {
         self.handle_keys();
-        self.draw_sidebar(p);
+        if harness::report::on() {
+            // A capture's report measures against the surface the capture is
+            // of: the story's canvas with `--no-chrome`, the window otherwise.
+            let canvas = self.stories[self.selected].canvas();
+            let (origin, size) = match self.no_chrome {
+                true => (vec2(CONTENT_X, CONTENT_TOP_BARE), canvas),
+                false => (Vec2::ZERO, vec2(screen_width(), screen_height())),
+            };
+            harness::report::begin_screen_at(origin, size);
+        }
+        // `--no-chrome` captures the story alone, so the sidebar is not drawn
+        // at all. Its row labels would otherwise show through the capture's
+        // margin wherever a long name overflowed the sidebar.
+        if !self.no_chrome {
+            self.draw_sidebar(p);
+        }
         self.advance_sim(self.selected);
         self.draw_main(p);
     }
@@ -1358,17 +1460,21 @@ impl Storybook {
             }
             let label = format!("{}. {}", i + 1, s.name);
             let baseline = p.centre_baseline(row.y, row.h, 13.0);
-            p.text(
-                &label,
-                18.0,
-                baseline,
-                13.0,
-                if selected {
-                    p.theme.color.accent
-                } else {
-                    p.theme.color.text_primary
-                },
-            );
+            // A name longer than the sidebar is cut at the row, not drawn over
+            // the divider and into whatever sits beside it.
+            macroquad_gamekit::with_clip(row, || {
+                p.text(
+                    &label,
+                    18.0,
+                    baseline,
+                    13.0,
+                    if selected {
+                        p.theme.color.accent
+                    } else {
+                        p.theme.color.text_primary
+                    },
+                );
+            });
             if row.y >= list_top - 1.0 && p.tapped(row) {
                 clicked = Some(i);
             }
@@ -1412,36 +1518,59 @@ impl Storybook {
 
     fn draw_main(&mut self, p: &Painter) {
         let sel = self.selected;
-        let x0 = SIDEBAR_W + 28.0;
-        let col_w = (screen_width() - x0 - 28.0).clamp(280.0, 460.0);
-        let mut y = 44.0;
+        let x0 = CONTENT_X;
+        let canvas = self.stories[sel].canvas();
 
-        p.text(
-            &format!(
-                "{}  >  {}",
-                self.stories[sel].category, self.stories[sel].name
-            ),
-            x0,
-            y,
-            19.0,
-            p.theme.color.text_primary,
-        );
-        y += 20.0;
-        let help = match self.stories[sel].kind() {
-            Kind::Kit
-            | Kind::Route
-            | Kind::Trading
-            | Kind::WalletModal
-            | Kind::Cart
-            | Kind::App => format!(
-                "arrows / click to switch  ·  t = theme: {}  ·  p pause · . step · s slow  ·  {}",
-                p.theme.name,
-                self.clock.label()
-            ),
-            _ => format!("arrows / click to switch  ·  t = theme: {}", p.theme.name),
+        // A golden is the story, not the page it is shown on: with `--no-chrome`
+        // the header and help line are not drawn, and the story is laid out for
+        // its own canvas rather than the storybook window.
+        let mut y = if self.no_chrome {
+            CONTENT_TOP_BARE
+        } else {
+            44.0
         };
-        p.text(&help, x0, y, 12.0, p.theme.color.text_muted);
-        y += 30.0;
+        if !self.no_chrome {
+            p.text(
+                &format!(
+                    "{}  >  {}",
+                    self.stories[sel].category, self.stories[sel].name
+                ),
+                x0,
+                y,
+                19.0,
+                p.theme.color.text_primary,
+            );
+            y += 20.0;
+            let help = match self.stories[sel].kind() {
+                Kind::Kit
+                | Kind::Route
+                | Kind::Trading
+                | Kind::WalletModal
+                | Kind::Cart
+                | Kind::App => format!(
+                    "arrows / click to switch  ·  t = theme: {}  ·  p pause · . step · s slow  ·  {}",
+                    p.theme.name,
+                    self.clock.label()
+                ),
+                _ => format!("arrows / click to switch  ·  t = theme: {}", p.theme.name),
+            };
+            p.text(&help, x0, y, 12.0, p.theme.color.text_muted);
+            y += 30.0;
+        }
+        debug_assert!(
+            self.no_chrome || (y - CONTENT_TOP).abs() < f32::EPSILON,
+            "the header moved; update CONTENT_TOP"
+        );
+        let (avail_w, avail_h) = if self.no_chrome {
+            (canvas.x, canvas.y)
+        } else {
+            (screen_width() - x0 - 20.0, screen_height() - y - 20.0)
+        };
+        let col_w = if self.no_chrome {
+            canvas.x.clamp(280.0, 460.0)
+        } else {
+            (screen_width() - x0 - 28.0).clamp(280.0, 460.0)
+        };
 
         match self.stories[sel].kind() {
             Kind::Buttons => {
@@ -1529,7 +1658,7 @@ impl Storybook {
             Kind::Checkout => self.draw_checkout(p, sel, x0, y, col_w),
             Kind::Fulfilment => self.draw_fulfilment(p, sel, x0, y, col_w),
             Kind::SquadPicker => self.draw_squad_picker(p, sel, x0, y, col_w),
-            Kind::Stick => self.draw_stick(p, sel, x0, y),
+            Kind::Stick => self.draw_stick(p, sel, Rect::new(x0, y, avail_w, avail_h)),
             Kind::Route => {
                 let t = self.clock.t as f32;
                 if let Body::Route(story) = &self.stories[sel].body {
@@ -1539,71 +1668,41 @@ impl Storybook {
             Kind::Kit => {
                 let (dt, t, g) = (self.dt, self.clock.t, self.gesture);
                 if let Body::Kit(story) = &mut self.stories[sel].body {
-                    let area = Rect::new(
-                        x0,
-                        y,
-                        screen_width() - x0 - 20.0,
-                        screen_height() - y - 20.0,
-                    );
+                    let area = Rect::new(x0, y, avail_w, avail_h);
                     story.draw(p, area, &g, dt, t);
                 }
             }
             Kind::Trading => {
                 let (t, g) = (self.clock.t, self.gesture);
                 if let Body::Trading(story) = &mut self.stories[sel].body {
-                    let area = Rect::new(
-                        x0,
-                        y,
-                        screen_width() - x0 - 20.0,
-                        screen_height() - y - 20.0,
-                    );
+                    let area = Rect::new(x0, y, avail_w, avail_h);
                     story.draw(p, area, &g, t);
                 }
             }
             Kind::Page => {
                 if let Body::Page(story) = &mut self.stories[sel].body {
-                    let area = Rect::new(
-                        x0,
-                        y,
-                        screen_width() - x0 - 20.0,
-                        screen_height() - y - 20.0,
-                    );
+                    let area = Rect::new(x0, y, avail_w, avail_h);
                     story.draw(p, area);
                 }
             }
             Kind::App => {
                 let (dt, g) = (self.dt, self.gesture);
                 if let Body::App(story) = &mut self.stories[sel].body {
-                    let area = Rect::new(
-                        x0,
-                        y,
-                        screen_width() - x0 - 20.0,
-                        screen_height() - y - 20.0,
-                    );
+                    let area = Rect::new(x0, y, avail_w, avail_h);
                     story.draw(p, area, &g, dt);
                 }
             }
             Kind::Cart => {
                 let (dt, g) = (self.dt, self.gesture);
                 if let Body::Cart(story) = &mut self.stories[sel].body {
-                    let area = Rect::new(
-                        x0,
-                        y,
-                        screen_width() - x0 - 20.0,
-                        screen_height() - y - 44.0,
-                    );
+                    let area = Rect::new(x0, y, avail_w, (avail_h - 24.0).max(0.0));
                     story.draw(p, area, &g, dt);
                 }
             }
             Kind::WalletModal => {
                 let dt = self.dt;
                 if let Body::WalletModal(story) = &mut self.stories[sel].body {
-                    let area = Rect::new(
-                        x0,
-                        y,
-                        screen_width() - x0 - 20.0,
-                        screen_height() - y - 44.0,
-                    );
+                    let area = Rect::new(x0, y, avail_w, (avail_h - 24.0).max(0.0));
                     story.draw(p, area, dt);
                 }
             }
@@ -1612,11 +1711,7 @@ impl Storybook {
                     Body::Admin(story) => (story.height, story.wide),
                     _ => (430.0, false),
                 };
-                let width = if wide {
-                    screen_width() - x0 - 20.0
-                } else {
-                    col_w.min(360.0)
-                };
+                let width = if wide { avail_w } else { col_w.min(360.0) };
                 let area = Rect::new(x0, y, width, story_height);
                 if let Body::Admin(story) = &mut self.stories[sel].body {
                     let trends = arcade_admin_quad::Trends {
@@ -1655,10 +1750,11 @@ impl Storybook {
 
     /// Three fixed samples — at rest, half a push, a full diagonal — then the
     /// live stick, which appears wherever the mouse is pressed in the stage.
-    fn draw_stick(&mut self, p: &Painter, sel: usize, x0: f32, y: f32) {
+    fn draw_stick(&mut self, p: &Painter, sel: usize, area: Rect) {
         let Body::Stick(story) = &mut self.stories[sel].body else {
             return;
         };
+        let (x0, y) = (area.x, area.y);
         let r = STICK_RADIUS;
         let samples = [
             ("at rest", vec2(0.0, 0.0)),
@@ -1689,8 +1785,8 @@ impl Storybook {
         let stage = Rect::new(
             x0,
             stage_top,
-            screen_width() - x0 - 28.0,
-            screen_height() - stage_top - 48.0,
+            area.w,
+            (area.bottom() - stage_top - 24.0).max(0.0),
         );
         draw_rectangle_lines(
             stage.x,
@@ -2158,31 +2254,64 @@ impl Storybook {
 }
 
 fn window_conf() -> Conf {
-    // Fully qualified: this file has its own `Args` for `--story`/`--shot`.
-    let args = macroquad_gamekit::harness::Args::read();
-    Conf {
-        window_title: args.window_title("macroquad-widgets storybook"),
+    let args = harness::Args::read();
+    let mut conf = args.window_conf(Conf {
+        window_title: "macroquad-widgets storybook".to_owned(),
         window_width: 1000,
         window_height: 760,
         window_resizable: true,
         ..Default::default()
+    });
+    // `--list` prints and exits before anything is drawn; headless keeps the
+    // window out of the way. The stories' placeholder art is textures, so the
+    // list itself cannot move ahead of the context.
+    if std::env::args().any(|a| a == "--list") {
+        conf.headless = true;
     }
+    conf
 }
 
-/// Command line: `--story <substring>` and `--shot <path>`; in a browser,
-/// `?story=<substring>`.
+/// Command line: `--story <slug>` (or a word or two, as a person types it),
+/// `--shot <path>`, `--list`; in a browser, `?story=<substring>`.
 ///
 /// Both exist for the same reason: the sidebar doesn't scroll and the number
 /// keys stop at 9, so a story added late in the list is otherwise unreachable —
 /// and a widget you can't get on screen is a widget you stop checking. `--shot`
 /// additionally makes the storybook the place a UI change gets *reviewed*,
 /// rather than deploying to Discord to find out.
+///
+/// `--check <dir>` turns that review into a test: the capture is compared with
+/// `<dir>/<platform>.png` and the process exits 2 on a difference, or with
+/// `UPDATE_GOLDENS=1` the golden is written instead. `--stage` leaves the
+/// sidebar out of a capture, for a golden whose story numbers should not count;
+/// `--no-chrome` also leaves the storybook's own header and help line out, so
+/// the golden is the story rather than the page displaying it. `--list` prints
+/// every story's slug for `tests/visual.rs`, which runs the whole selected
+/// corpus. `--fail-on-problems` turns the capture's text report into an
+/// assertion: text off the story's canvas, cut short, below 8 pt or overlapping
+/// exits 2, and a golden bless cannot hide it.
 struct Args {
     story: Option<String>,
     shot: Option<String>,
     /// With `--shot`: capture once story time reaches this many seconds. The
     /// clock is fixed at 1/60 s per frame in shot mode, so it is exact.
     at: Option<f64>,
+    /// With `--shot`: compare the capture with `<dir>/<platform>.png`.
+    check: Option<String>,
+    /// With `--check`: the per-channel difference a pixel may have.
+    tolerance: u8,
+    /// With `--shot`: capture the stage only, without the sidebar.
+    stage: bool,
+    /// With `--shot`: draw the story alone, without the storybook's header.
+    no_chrome: bool,
+    /// With `--shot`: exit 2 when the capture's text report finds a problem.
+    fail_on_problems: bool,
+    /// With `--fail-on-problems`: problem kinds to ignore, comma-separated
+    /// (`off`, `cut`, `small`, `overlap`). A story that exists to show a cut
+    /// passes `cut` and still fails on everything else.
+    allow: Vec<String>,
+    /// Print every story's slug and exit, before anything is drawn.
+    list: bool,
 }
 
 fn args() -> Args {
@@ -2198,28 +2327,89 @@ fn args() -> Args {
         story: value("--story").or_else(|| miniquad_platform::launch_query("story")),
         shot: value("--shot"),
         at: value("--at").and_then(|s| s.parse().ok()),
+        check: value("--check"),
+        tolerance: value("--tolerance")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(2),
+        stage: argv.iter().any(|a| a == "--stage"),
+        no_chrome: argv.iter().any(|a| a == "--no-chrome"),
+        fail_on_problems: argv.iter().any(|a| a == "--fail-on-problems"),
+        allow: value("--allow")
+            .map(|s| s.split(',').map(str::to_owned).collect())
+            .unwrap_or_default(),
+        list: argv.iter().any(|a| a == "--list"),
     }
+}
+
+fn allowed(allow: &[String], problem: &harness::report::Problem) -> bool {
+    let kind = match problem {
+        harness::report::Problem::Off { .. } => "off",
+        harness::report::Problem::Cut { .. } => "cut",
+        harness::report::Problem::Small { .. } => "small",
+        harness::report::Problem::Overlap { .. } => "overlap",
+    };
+    allow.iter().any(|a| a == kind)
 }
 
 #[macroquad::main(window_conf)]
 async fn main() {
+    let args = args();
+    if args.list {
+        // The stories' placeholder art is textures, so the context has to
+        // exist before the list can be built; `window_conf` keeps it headless.
+        for story in stories(None) {
+            // A third column: the moment the story is captured at, or `-`. A
+            // story whose content arrives over time says so here, and
+            // `tests/visual.rs` passes `--at` for it.
+            match story.capture_at() {
+                Some(at) => println!(
+                    "{}\t{} · {}\tat={at}",
+                    story.slug(),
+                    story.category,
+                    story.name
+                ),
+                None => println!("{}\t{} · {}\t-", story.slug(), story.category, story.name),
+            }
+        }
+        std::process::exit(0);
+    }
+    if args.check.is_some() && args.shot.is_none() {
+        eprintln!("--check needs --shot");
+        std::process::exit(2);
+    }
+
     // Proportional sans for chrome, monospace for hashes/data.
     let font = load_ttf_font_from_bytes(include_bytes!("../assets/NotoSans-Bold.ttf")).ok();
     let mono = load_ttf_font_from_bytes(include_bytes!("../assets/JetBrainsMono-Regular.ttf")).ok();
     let mut book = Storybook::new();
+    book.no_chrome = args.no_chrome;
+    if args.shot.is_some() {
+        // A capture includes its text report: every line the painter draws is
+        // recorded, so `--fail-on-problems` and the review `.txt` can see what
+        // a glance at the PNG misses.
+        harness::report::enable();
+    }
     // Gesture recognition rather than `frame_tap`, so a mouse *drag* exercises
     // the swipe path on desktop — otherwise page-turning could only be tested
     // on a phone, which is where it would then be discovered broken.
     let mut gestures = Gestures::new();
 
-    let args = args();
     if let Some(want) = &args.story {
         let want = want.to_lowercase();
-        match book.stories.iter().position(|s| {
-            format!("{} {}", s.category, s.name)
-                .to_lowercase()
-                .contains(&want)
-        }) {
+        // A slug selects exactly; a word or two still selects the first
+        // matching story, so `--story wallet` keeps working by hand.
+        let found = book
+            .stories
+            .iter()
+            .position(|s| s.slug() == want)
+            .or_else(|| {
+                book.stories.iter().position(|s| {
+                    format!("{} {}", s.category, s.name)
+                        .to_lowercase()
+                        .contains(&want)
+                })
+            });
+        match found {
             Some(i) => book.select(i),
             // Loud, because silently showing story 0 would look like the
             // widget rendered wrong rather than never rendered at all.
@@ -2256,12 +2446,28 @@ async fn main() {
         let due = frames >= SETTLE_FRAMES && args.at.is_none_or(|at| book.clock.t >= at);
         let shot = args.shot.as_ref().filter(|_| due);
         let target = shot.map(|_| {
-            let t = render_target(screen_width() as u32, screen_height() as u32);
+            let canvas = book.stories[book.selected].canvas();
+            // A specimen's canvas plus a margin: the stories draw their first
+            // label at `area.x`/`area.y`, and a glyph's bearing at a hard edge
+            // clips. The margin is background, not content.
+            let margin = 16.0;
+            let (left, top, width, height) = if args.no_chrome {
+                (
+                    CONTENT_X - margin,
+                    CONTENT_TOP_BARE - margin,
+                    canvas.x + margin * 2.0,
+                    canvas.y + margin * 2.0,
+                )
+            } else if args.stage {
+                (SIDEBAR_W, 0.0, screen_width() - SIDEBAR_W, screen_height())
+            } else {
+                (0.0, 0.0, screen_width(), screen_height())
+            };
+            let t = render_target(width as u32, height as u32);
             t.texture.set_filter(FilterMode::Linear);
             // `from_display_rect` already yields a top-left origin that matches
             // the screen; the render target needs no extra y-flip on top of it.
-            let mut cam =
-                Camera2D::from_display_rect(Rect::new(0.0, 0.0, screen_width(), screen_height()));
+            let mut cam = Camera2D::from_display_rect(Rect::new(left, top, width, height));
             cam.render_target = Some(t.clone());
             set_camera(&cam);
             t
@@ -2272,8 +2478,55 @@ async fn main() {
 
         if let (Some(path), Some(target)) = (shot, target) {
             set_default_camera();
-            target.texture.get_texture_data().export_png(path);
+            let canvas = book.stories[book.selected].canvas();
+            let note = format!(
+                "{} · {:.0}×{:.0}",
+                book.stories[book.selected].slug(),
+                canvas.x,
+                canvas.y
+            );
+            // The same normalisation the golden uses (alpha forced opaque), so
+            // the review PNG and the golden are the same picture; the report
+            // beside it lists what a glance misses.
+            let report = harness::write_capture(&target.texture, path, &note)
+                .expect("write the capture and its report");
+            let capture = target.texture.get_texture_data();
             println!("wrote {path}");
+
+            if args.fail_on_problems {
+                let (screen, bakes) = harness::report::surfaces();
+                let mut problems = harness::report::problems(&screen);
+                for face in &bakes {
+                    problems.extend(harness::report::problems(face));
+                }
+                problems.retain(|p| !allowed(&args.allow, p));
+                if !problems.is_empty() {
+                    eprintln!(
+                        "{} text problem(s) in the capture; see {}",
+                        problems.len(),
+                        report.display()
+                    );
+                    std::process::exit(2);
+                }
+            }
+
+            if let Some(golden) = &args.check {
+                let check = if harness::update_goldens() {
+                    let blessed = harness::bless_capture(&capture, golden);
+                    println!("blessed {}", blessed.display());
+                    harness::GoldenCheck::Match
+                } else {
+                    let diff = std::path::Path::new(path).with_extension("diff.png");
+                    harness::check_capture(
+                        &capture,
+                        golden,
+                        args.tolerance,
+                        Some(diff.to_str().expect("shot path is not UTF-8")),
+                    )
+                };
+                println!("{check}");
+                std::process::exit(if check.is_match() { 0 } else { 2 });
+            }
             std::process::exit(0);
         }
 

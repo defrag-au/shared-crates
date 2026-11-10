@@ -35,7 +35,7 @@
 
 use chain_events::{Coverage, Currency, PartyRole, TxRef};
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::predicate::Predicate;
 use crate::state::{
@@ -218,6 +218,61 @@ pub struct Outcome<'a> {
     pub progress: Progress,
     /// What proves it. Empty for a pending or unavailable outcome.
     pub evidence: Vec<Evidence>,
+    /// For an earned holding, whether it is still held. [`Standing::Record`] for everything
+    /// else.
+    pub standing: Standing,
+    /// For a holding held now, how many pieces satisfy it: each Leader held, each Perp carrying
+    /// the trait. Zero for anything not held now. A grant can be per piece.
+    pub held: u16,
+}
+
+/// Whether an earned achievement is a record of an act or a holding, and if a holding, whether
+/// the subject still has it.
+///
+/// A score reads this: "holds a faction head" is worth more than "once held one", while "minted
+/// in the first hour" has no present tense to lose. See [`Predicate::is_standing`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Standing {
+    /// Something that happened, or anything not earned. Has no "now".
+    #[default]
+    Record,
+    /// A holding, and the open lots still satisfy it.
+    Now,
+    /// A holding the subject once satisfied and no longer does.
+    Past,
+    /// A holding the subject still owns, but only through units it has listed for sale. It
+    /// scores as [`Standing::Past`] — a Perp for sale is not a Perp kept — and unlisting is
+    /// what turns it back into [`Standing::Now`], which is what a page can tell the holder.
+    Listed,
+}
+
+impl Standing {
+    /// The tightest of two readings of one achievement: an identity that holds it through any
+    /// wallet holds it now, and one that has it only for sale is closer to holding it than one
+    /// that sold it.
+    pub fn union(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Now, _) | (_, Self::Now) => Self::Now,
+            (Self::Listed, _) | (_, Self::Listed) => Self::Listed,
+            (Self::Past, _) | (_, Self::Past) => Self::Past,
+            _ => Self::Record,
+        }
+    }
+
+    /// Whether it is a holding not held now: sold, or for sale. Neither grants, and both score
+    /// at the past share.
+    pub fn is_lapsed_holding(self) -> bool {
+        matches!(self, Self::Past | Self::Listed)
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Record => "record",
+            Self::Now => "now",
+            Self::Past => "past",
+            Self::Listed => "listed",
+        }
+    }
 }
 
 /// Evaluates every definition for one subject.
@@ -231,6 +286,9 @@ pub fn evaluate<'a, S: Store>(
     definitions: &[Definition<'a>],
 ) -> Result<Vec<Outcome<'a>>, S::Error> {
     let lots = store.lots(subject)?;
+    // What is held now, and which of it is for sale: read once for every standing predicate.
+    let open: Vec<Holding> = lots.iter().filter(|lot| lot.is_open()).cloned().collect();
+    let listed: Vec<UnitId> = store.listed_units(subject)?;
     // One read per held unit, not one per definition — the metadata join is the expensive
     // part, and nineteen curation predicates must not pay for it nineteen times.
     let traits = if definitions
@@ -386,13 +444,95 @@ pub fn evaluate<'a, S: Store>(
             Predicate::AllMintsRetained => all_mints_retained(&lots, at),
             Predicate::NeverBought => never_bought(&lots, at),
         };
+        let (standing, held) = match (definition.predicate.is_standing(), progress) {
+            (true, Progress::Earned { .. }) => {
+                // Held and not for sale first; then held at all, which is a listing away.
+                let kept: Vec<Holding> = open
+                    .iter()
+                    .filter(|lot| !listed.contains(&lot.unit))
+                    .cloned()
+                    .collect();
+                if held_now(&definition.predicate, &traits, &kept, at) {
+                    (
+                        Standing::Now,
+                        pieces_held(&definition.predicate, &traits, &kept),
+                    )
+                } else if kept.len() < open.len()
+                    && held_now(&definition.predicate, &traits, &open, at)
+                {
+                    (Standing::Listed, 0)
+                } else {
+                    (Standing::Past, 0)
+                }
+            }
+            _ => (Standing::Record, 0),
+        };
         outcomes.push(Outcome {
             id: definition.id,
             progress,
             evidence,
+            standing,
+            held,
         });
     }
     Ok(outcomes)
+}
+
+/// Whether a standing predicate still holds over the open lots alone.
+///
+/// The same functions the full answer uses, given only what is held: "ever held" over the open
+/// lots is "holds now", and a peak over lots that are all open at once is the count held now.
+fn held_now(predicate: &Predicate, traits: &TraitMap, open: &[Holding], at: &Assessment) -> bool {
+    let (progress, _) = match predicate {
+        Predicate::HasAllTraits { category, values } => {
+            has_all_traits(traits, open, at, category, values)
+        }
+        Predicate::HasTrait { category, value } => has_trait(traits, open, at, category, value),
+        Predicate::HasTraitValues {
+            category,
+            values,
+            at_least,
+        } => has_trait_values(traits, open, at, category, values, *at_least),
+        Predicate::HeldWithTraitAtOnce {
+            category,
+            value,
+            at_least,
+        } => held_with_trait_at_once(traits, open, at, category, value.as_deref(), *at_least),
+        Predicate::HoldsAtLeast { at_least } => holds_at_least(open, at, *at_least),
+        Predicate::SameValueAcrossAssets { category, assets } => {
+            same_value_across_assets(traits, open, at, category, *assets)
+        }
+        _ => return false,
+    };
+    matches!(progress, Progress::Earned { .. })
+}
+
+/// How many pieces satisfy a holding held now: the distinct kept units carrying the trait, for a
+/// one-trait marker (each Leader held is its own piece), and one for any other holding, which is
+/// met as a whole rather than piece by piece.
+fn pieces_held(predicate: &Predicate, traits: &TraitMap, kept: &[Holding]) -> u16 {
+    let count = match predicate {
+        Predicate::HasTrait { category, value } => kept
+            .iter()
+            .filter(|lot| matches_value(traits, lot.unit, category, Some(value.as_str())))
+            .map(|lot| lot.unit)
+            .collect::<BTreeSet<UnitId>>()
+            .len(),
+        Predicate::HasTraitValues {
+            category, values, ..
+        } => kept
+            .iter()
+            .filter(|lot| {
+                values
+                    .iter()
+                    .any(|value| matches_value(traits, lot.unit, category, Some(value.as_str())))
+            })
+            .map(|lot| lot.unit)
+            .collect::<BTreeSet<UnitId>>()
+            .len(),
+        _ => 1,
+    };
+    u16::try_from(count.max(1)).unwrap_or(u16::MAX)
 }
 
 /// Reads every unit's trait rows once.
@@ -4633,6 +4773,75 @@ mod tests {
             Progress::Earned {
                 since: EarnedSince::Exact(150)
             }
+        );
+    }
+
+    #[test]
+    fn a_holding_only_kept_through_a_listing_reads_listed() {
+        // Alice minted two and listed one: she owns two, but keeps one.
+        use crate::memory::fixtures::{account, mint, perp, placed};
+        use chain_events::{PartyRole, Side};
+        let mut store = MemoryStore::default();
+        apply(&mut store, &mint(&perp("5065727031"), "addr1alice", 100)).unwrap();
+        apply(&mut store, &mint(&perp("5065727032"), "addr1alice", 150)).unwrap();
+        // The fixture's placement is for 5065727031.
+        apply(
+            &mut store,
+            &placed(
+                "ask-1",
+                Side::Ask,
+                &[("addr1alice", PartyRole::Seller)],
+                200,
+            ),
+        )
+        .unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[
+                definition("two-perps", Predicate::HoldsAtLeast { at_least: 2 }),
+                definition("one-perp", Predicate::HoldsAtLeast { at_least: 1 }),
+            ],
+        )
+        .unwrap();
+        assert_eq!(find(&outcomes, "two-perps").standing, Standing::Listed);
+        assert_eq!(find(&outcomes, "one-perp").standing, Standing::Now);
+    }
+
+    #[test]
+    fn a_holding_reads_now_or_past_and_a_record_has_no_tense() {
+        // Alice minted two and sold one: she held two once and holds one now.
+        use crate::memory::fixtures::{account, mint, perp, transfer};
+        let mut store = MemoryStore::default();
+        let one = perp("5065727031");
+        let two = perp("5065727032");
+        apply(&mut store, &mint(&one, "addr1alice", 100)).unwrap();
+        apply(&mut store, &mint(&two, "addr1alice", 150)).unwrap();
+        apply(&mut store, &transfer(&one, "addr1alice", "addr1bob", 200)).unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[
+                definition("two-perps", Predicate::HoldsAtLeast { at_least: 2 }),
+                definition("one-perp", Predicate::HoldsAtLeast { at_least: 1 }),
+                definition("minted", Predicate::MintedCount { at_least: 1 }),
+                definition("three-perps", Predicate::HoldsAtLeast { at_least: 3 }),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(find(&outcomes, "two-perps").standing, Standing::Past);
+        assert_eq!(find(&outcomes, "one-perp").standing, Standing::Now);
+        assert_eq!(find(&outcomes, "minted").standing, Standing::Record);
+        assert_eq!(
+            find(&outcomes, "three-perps").standing,
+            Standing::Record,
+            "unearned has no tense either"
         );
     }
 

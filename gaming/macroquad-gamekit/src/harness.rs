@@ -47,12 +47,15 @@
 //! sized from the window ignores `--size`. [`Args::viewport`] sizes a
 //! capture from `--size` when one is given.
 //!
-//! ## A capture or soak's window says so in its title
+//! ## A capture's window is never shown
 //!
-//! Both still open a window. [`Args::window_title`] appends
-//! [`CAPTURE_TITLE_MARKER`] while capturing, or [`SOAK_TITLE_MARKER`] for a
-//! soak, so a window manager can move the window out of the way; AeroSpace
-//! matches both with `test %{window-title} ~= '\[(capture|soak)\]'`.
+//! A capture draws into its own target, so nothing needs the window: with
+//! [`Args::window_conf`] it is not created at all where miniquad has an
+//! offscreen backend (macOS and Linux), and gets a surface it never shows
+//! elsewhere — not mapped, not ordered front, given no focus. A soak still
+//! shows its window — it is a run to watch — and [`SOAK_TITLE_MARKER`] lets a
+//! window manager move it out of the way; AeroSpace matches both markers with
+//! `test %{window-title} ~= '\[(capture|soak)\]'`.
 //!
 //! ## The report checks what a glance misses
 //!
@@ -61,6 +64,20 @@
 //! and inside each baked face, with its box and size, and leads with the
 //! problems that are easy to miss by eye: text off its surface, cut short with
 //! an ellipsis, smaller than legible, or on top of other text.
+//!
+//! ## A golden turns a capture into a test
+//!
+//! [`check_capture`] compares a capture with `<dir>/<platform>.png` and says
+//! how many pixels differ, by how much and where, writing a review image when
+//! asked. [`bless_capture`] writes the golden; a caller that should bless
+//! instead of check on request reads [`update_goldens`] (`UPDATE_GOLDENS=1`).
+//!
+//! One golden per platform, and per architecture where the renderer differs:
+//! Metal, llvmpipe on arm64 and llvmpipe on x86_64 do not round identically.
+//! The file name is the platform, so a caller that needs the architecture in
+//! the path puts it in `dir` — the storybook's root is `tests/goldens-<arch>`.
+//! The PNG is the renderer's contract; the text report above is the portable
+//! one.
 //!
 //! ## A capture is not the window
 //!
@@ -455,9 +472,12 @@ pub fn key_named(name: &str) -> Option<KeyCode> {
 /// printing under `--frame-log`: three frames at 60 Hz.
 pub const SLOW_FRAME: f32 = 0.05;
 
-/// Appended to a game's window title while it is capturing, so a window
-/// manager can move the window out of the tiling tree. AeroSpace matches it
-/// with `test %{window-title} ~= '\[(capture|soak)\]'`.
+/// Appended to a game's window title while it is capturing. A capture has no
+/// window where the platform has an offscreen backend, and one it never shows
+/// elsewhere (see [`Args::window_conf`]); this matters only for a game that
+/// shows one anyway, where a window manager can move it out of the tiling
+/// tree. AeroSpace matches it with
+/// `test %{window-title} ~= '\[(capture|soak)\]'`.
 pub const CAPTURE_TITLE_MARKER: &str = "[capture]";
 
 /// Appended to a game's window title while its soak runs, for the same reason
@@ -578,10 +598,10 @@ impl Args {
     /// [`CAPTURE_TITLE_MARKER`] appended while capturing or
     /// [`SOAK_TITLE_MARKER`] while a soak runs.
     ///
-    /// Set it from `window_conf`, where the title is part of the window as it
-    /// is created. A title set after the first frame is too late for an
-    /// `on-window-detected` rule, and a debug binary shares its bundle id with
-    /// every other unbundled `cargo` binary.
+    /// [`Args::window_conf`] calls this for a game, where the title is part of
+    /// the window as it is created. A title set after the first frame is too
+    /// late for an `on-window-detected` rule, and a debug binary shares its
+    /// bundle id with every other unbundled `cargo` binary.
     pub fn window_title(&self, base: &str) -> String {
         if self.capturing() {
             format!("{base} {CAPTURE_TITLE_MARKER}")
@@ -590,6 +610,35 @@ impl Args {
         } else {
             base.to_owned()
         }
+    }
+
+    /// `conf` prepared for this run: its title from [`Args::window_title`],
+    /// and its window offscreen while capturing — not created at all where the
+    /// platform has an offscreen backend (macOS and Linux), a surface it never
+    /// shows where it does not.
+    ///
+    /// Call it from a game's `window_conf`, which `#[macroquad::main]` calls
+    /// before the window exists:
+    ///
+    /// ```ignore
+    /// fn window_conf() -> Conf {
+    ///     Args::read().window_conf(Conf {
+    ///         window_width: 390,
+    ///         window_height: 844,
+    ///         ..Default::default()
+    ///     })
+    /// }
+    /// ```
+    ///
+    /// A capture draws into its own render target, so nothing needs the window.
+    /// On macOS and Linux it is not created (`Conf::headless`); elsewhere
+    /// miniquad creates one it never shows, so a review run never flashes a
+    /// window up or takes focus. A soak still shows its window — it is a run to
+    /// watch.
+    pub fn window_conf(&self, mut conf: Conf) -> Conf {
+        conf.window_title = self.window_title(&conf.window_title);
+        conf.headless = self.capturing();
+        conf
     }
 }
 
@@ -868,9 +917,271 @@ pub fn write_capture(texture: &Texture2D, path: &str, note: &str) -> std::io::Re
 /// `Camera2D::from_display_rect` camera ([`target_camera`]), and opaque for
 /// the reason [`Capture::save`] gives.
 pub fn save_texture_png(texture: &Texture2D, path: &str) {
+    // A plan names its captures under a scratch directory a clean checkout does not have yet;
+    // `export_png` panics on a missing parent rather than making it.
+    if let Some(parent) = Path::new(path)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+    {
+        let _ = std::fs::create_dir_all(parent);
+    }
     let mut image = texture.get_texture_data();
     opaque(&mut image.bytes);
     image.export_png(path);
+}
+
+// ---------------------------------------------------------------------------
+// Goldens
+// ---------------------------------------------------------------------------
+
+/// Where a golden lives: `<dir>/<platform>.png`.
+///
+/// One file per platform, not one shared file. The same scene draws to the same
+/// pixels on the same renderer, but Metal, llvmpipe on arm64 and llvmpipe on
+/// x86_64 round differently: a macOS and a Linux capture of one scene measured
+/// ten differing pixels, all glyph antialiasing. A caller that needs the
+/// architecture in the path puts it in `dir`; the storybook's root is
+/// `tests/goldens-<arch>`. The PNG is the renderer's contract; the frame report
+/// is the portable one.
+pub fn golden_path(dir: &str) -> PathBuf {
+    Path::new(dir).join(format!("{}.png", std::env::consts::OS))
+}
+
+/// `UPDATE_GOLDENS=1`: write the golden instead of comparing against it.
+pub fn update_goldens() -> bool {
+    std::env::var_os("UPDATE_GOLDENS").is_some()
+}
+
+/// How a capture compares with its golden.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GoldenCheck {
+    /// The capture is the golden, within tolerance.
+    Match,
+    /// No golden exists at the path yet.
+    Missing(PathBuf),
+    /// Golden and capture differ in size, so no pixel comparison is possible.
+    Shape {
+        golden: (u16, u16),
+        capture: (u16, u16),
+    },
+    /// Pixels differ beyond the tolerance.
+    Mismatch {
+        changed: usize,
+        total: usize,
+        max_delta: u8,
+        bbox: DiffBox,
+    },
+}
+
+/// An inclusive pixel box, top-left origin.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DiffBox {
+    pub x0: u16,
+    pub y0: u16,
+    pub x1: u16,
+    pub y1: u16,
+}
+
+impl GoldenCheck {
+    /// Whether the capture is the golden.
+    pub fn is_match(&self) -> bool {
+        matches!(self, Self::Match)
+    }
+}
+
+impl std::fmt::Display for GoldenCheck {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Match => write!(f, "matches the golden"),
+            Self::Missing(path) => write!(
+                f,
+                "no golden at {}; run with UPDATE_GOLDENS=1 to write it",
+                path.display()
+            ),
+            Self::Shape { golden, capture } => write!(
+                f,
+                "golden is {}x{}, capture is {}x{}",
+                golden.0, golden.1, capture.0, capture.1
+            ),
+            Self::Mismatch {
+                changed,
+                total,
+                max_delta,
+                bbox,
+            } => {
+                let pct = 100.0 * *changed as f32 / (*total).max(1) as f32;
+                write!(
+                    f,
+                    "{changed} px ({pct:.2}%), max Δ {max_delta}, bbox {},{}–{},{}",
+                    bbox.x0, bbox.y0, bbox.x1, bbox.y1
+                )
+            }
+        }
+    }
+}
+
+/// Compare `capture` with the golden in `dir`, writing a review image to
+/// `diff` when the pixels differ.
+///
+/// `capture` is in render-target order — bottom row first, exactly what
+/// [`save_texture_png`] takes — and is flipped to PNG order for the comparison,
+/// so the bounding box names what a reader sees. Alpha is forced opaque, as
+/// every gamekit capture is. `tolerance` is the largest per-channel difference
+/// that still counts as the same pixel.
+pub fn check_capture(capture: &Image, dir: &str, tolerance: u8, diff: Option<&str>) -> GoldenCheck {
+    let path = golden_path(dir);
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return GoldenCheck::Missing(path);
+        }
+        Err(err) => panic!("cannot read {}: {err}", path.display()),
+    };
+    let golden = Image::from_file_with_format(&bytes, None)
+        .unwrap_or_else(|err| panic!("cannot decode {}: {err:?}", path.display()));
+
+    if golden.width != capture.width || golden.height != capture.height {
+        return GoldenCheck::Shape {
+            golden: (golden.width, golden.height),
+            capture: (capture.width, capture.height),
+        };
+    }
+
+    let mut actual = capture.clone();
+    opaque(&mut actual.bytes);
+    flip_rows(&mut actual);
+
+    let total = actual.width as usize * actual.height as usize;
+    let (changed, max_delta, bbox) = compare(&actual, &golden, tolerance);
+    if changed == 0 {
+        return GoldenCheck::Match;
+    }
+    if let Some(path) = diff {
+        write_diff(&actual, &golden, tolerance, path);
+    }
+    GoldenCheck::Mismatch {
+        changed,
+        total,
+        max_delta,
+        bbox: bbox.expect("a changed pixel has a box"),
+    }
+}
+
+/// Write `capture` as the golden in `dir`, creating the directory.
+///
+/// The golden is `<dir>/<platform>.png`, opaque and upright, like every other
+/// capture the kit writes. Returns its path for the caller to print.
+pub fn bless_capture(capture: &Image, dir: &str) -> PathBuf {
+    let path = golden_path(dir);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .unwrap_or_else(|err| panic!("cannot create {}: {err}", parent.display()));
+    }
+    let mut image = capture.clone();
+    opaque(&mut image.bytes);
+    image.export_png(path.to_str().expect("golden path is not valid UTF-8"));
+    path
+}
+
+/// A capture already on disk — a plan's or a `--shot`'s, upright like every
+/// PNG the kit writes — in the render-target order [`check_capture`] and
+/// [`bless_capture`] take.
+fn read_capture(path: &str) -> Image {
+    let bytes = std::fs::read(path).unwrap_or_else(|err| panic!("cannot read {path}: {err}"));
+    let mut image = Image::from_file_with_format(&bytes, None)
+        .unwrap_or_else(|err| panic!("cannot decode {path}: {err:?}"));
+    flip_rows(&mut image);
+    image
+}
+
+/// [`check_capture`] for a capture written to `path`: how a test checks a
+/// plan's captures after the plan has run, in a process with no GL context.
+pub fn check_capture_file(path: &str, dir: &str, tolerance: u8, diff: Option<&str>) -> GoldenCheck {
+    check_capture(&read_capture(path), dir, tolerance, diff)
+}
+
+/// [`bless_capture`] for a capture written to `path`.
+pub fn bless_capture_file(path: &str, dir: &str) -> PathBuf {
+    bless_capture(&read_capture(path), dir)
+}
+
+/// Compare two upright RGBA images, pixel by pixel.
+fn compare(actual: &Image, golden: &Image, tolerance: u8) -> (usize, u8, Option<DiffBox>) {
+    let width = actual.width as usize;
+    let mut changed = 0;
+    let mut max_delta = 0;
+    let mut bbox: Option<DiffBox> = None;
+    for (i, (a, g)) in actual
+        .bytes
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(golden.bytes.as_chunks::<4>().0.iter())
+        .enumerate()
+    {
+        let delta = (0..4).map(|c| a[c].abs_diff(g[c])).max().unwrap_or(0);
+        max_delta = max_delta.max(delta);
+        if delta <= tolerance {
+            continue;
+        }
+        changed += 1;
+        let x = (i % width) as u16;
+        let y = (i / width) as u16;
+        bbox = Some(match bbox {
+            None => DiffBox {
+                x0: x,
+                y0: y,
+                x1: x,
+                y1: y,
+            },
+            Some(b) => DiffBox {
+                x0: b.x0.min(x),
+                y0: b.y0.min(y),
+                x1: b.x1.max(x),
+                y1: b.y1.max(y),
+            },
+        });
+    }
+    (changed, max_delta, bbox)
+}
+
+/// A review image: the capture dimmed, every pixel beyond `tolerance` in red.
+fn write_diff(actual: &Image, golden: &Image, tolerance: u8, path: &str) {
+    let mut bytes = actual.bytes.clone();
+    for (px, (a, g)) in bytes.as_chunks_mut::<4>().0.iter_mut().zip(
+        actual
+            .bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(golden.bytes.as_chunks::<4>().0.iter()),
+    ) {
+        if (0..4).any(|c| a[c].abs_diff(g[c]) > tolerance) {
+            px.copy_from_slice(&[255, 40, 40, 255]);
+        } else {
+            let dim = [px[0] / 3, px[1] / 3, px[2] / 3, 255];
+            px.copy_from_slice(&dim);
+        }
+    }
+    let mut image = Image {
+        bytes,
+        width: actual.width,
+        height: actual.height,
+    };
+    // Back to render-target order: `export_png` flips once more on the way out.
+    flip_rows(&mut image);
+    image.export_png(path);
+}
+
+/// Reverse the row order in place.
+fn flip_rows(image: &mut Image) {
+    let row = image.width as usize * 4;
+    let height = image.height as usize;
+    for y in 0..height / 2 {
+        for x in 0..row {
+            image.bytes.swap(y * row + x, (height - 1 - y) * row + x);
+        }
+    }
 }
 
 /// One sprite on a [`sprite_sheet`]: what a game lists in
@@ -1470,6 +1781,31 @@ mod tests {
         assert_eq!(play.window_title("game"), "game");
     }
 
+    #[test]
+    fn a_capture_conf_is_offscreen_and_a_play_conf_is_not() {
+        let conf = |args: &Args| {
+            args.window_conf(Conf {
+                window_title: "game".into(),
+                ..Default::default()
+            })
+        };
+
+        let capture = Args::parse(&["game".into(), "--shot".into(), "a.png".into()]);
+        let capture = conf(&capture);
+        assert!(capture.headless, "a capture renders offscreen");
+        assert_eq!(capture.window_title, "game [capture]");
+
+        let soak = Args::parse(&["game".into(), "--soak".into(), "20".into()]);
+        let soak = conf(&soak);
+        assert!(!soak.headless, "a soak is a run to watch");
+        assert_eq!(soak.window_title, "game [soak]");
+
+        let play = Args::parse(&["game".into()]);
+        let play = conf(&play);
+        assert!(!play.headless);
+        assert_eq!(play.window_title, "game");
+    }
+
     /// `--px` only sets the scale of a capture, and only a sane one.
     #[test]
     fn px_sets_a_captures_scale_only() {
@@ -1626,5 +1962,168 @@ mod tests {
         assert!(text.contains("## Problems (0)"), "{text}");
         assert!(text.contains("\"Shredder\""), "{text}");
         report::reset();
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("gamekit-golden-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// RGBA pixels in render-target order: bottom row first.
+    fn picture(width: u16, height: u16, pixels: &[[u8; 4]]) -> Image {
+        Image {
+            bytes: pixels.iter().flatten().copied().collect(),
+            width,
+            height,
+        }
+    }
+
+    #[test]
+    fn a_blessed_capture_matches_itself() {
+        let dir = scratch("self");
+        let capture = picture(
+            2,
+            2,
+            &[
+                [10, 20, 30, 255],
+                [40, 50, 60, 255],
+                [70, 80, 90, 255],
+                [100, 110, 120, 255],
+            ],
+        );
+        let path = bless_capture(&capture, dir.to_str().unwrap());
+        assert_eq!(
+            path.file_name().unwrap().to_str().unwrap(),
+            format!("{}.png", std::env::consts::OS)
+        );
+        assert_eq!(
+            check_capture(&capture, dir.to_str().unwrap(), 0, None),
+            GoldenCheck::Match
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_changed_pixel_names_where_it_is() {
+        let dir = scratch("mismatch");
+        let capture = picture(
+            2,
+            2,
+            &[
+                [10, 20, 30, 255],
+                [40, 50, 60, 255],
+                [70, 80, 90, 255],
+                [100, 110, 120, 255],
+            ],
+        );
+        bless_capture(&capture, dir.to_str().unwrap());
+
+        let mut changed = capture.clone();
+        // Index 3 is the second row in memory, which is the top row on screen.
+        changed.bytes[4 * 3] = 200;
+        assert_eq!(
+            check_capture(&changed, dir.to_str().unwrap(), 0, None),
+            GoldenCheck::Mismatch {
+                changed: 1,
+                total: 4,
+                max_delta: 100,
+                bbox: DiffBox {
+                    x0: 1,
+                    y0: 0,
+                    x1: 1,
+                    y1: 0,
+                },
+            }
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_difference_within_tolerance_still_matches() {
+        let dir = scratch("tolerance");
+        let capture = picture(1, 1, &[[10, 20, 30, 255]]);
+        bless_capture(&capture, dir.to_str().unwrap());
+
+        let mut close = capture.clone();
+        close.bytes[0] += 2;
+        assert_eq!(
+            check_capture(&close, dir.to_str().unwrap(), 2, None),
+            GoldenCheck::Match
+        );
+        assert!(matches!(
+            check_capture(&close, dir.to_str().unwrap(), 1, None),
+            GoldenCheck::Mismatch { .. }
+        ));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_missing_golden_says_how_to_write_it() {
+        let dir = scratch("missing");
+        let capture = picture(1, 1, &[[0, 0, 0, 255]]);
+        let check = check_capture(&capture, dir.to_str().unwrap(), 0, None);
+        assert!(matches!(check, GoldenCheck::Missing(_)));
+        assert!(check.to_string().contains("UPDATE_GOLDENS=1"), "{check}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_size_change_is_not_a_pixel_difference() {
+        let dir = scratch("shape");
+        bless_capture(&picture(1, 1, &[[0, 0, 0, 255]]), dir.to_str().unwrap());
+        let wider = picture(2, 1, &[[0, 0, 0, 255], [0, 0, 0, 255]]);
+        assert_eq!(
+            check_capture(&wider, dir.to_str().unwrap(), 0, None),
+            GoldenCheck::Shape {
+                golden: (1, 1),
+                capture: (2, 1),
+            }
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_mismatch_writes_the_diff_it_was_asked_for() {
+        let dir = scratch("diff");
+        let capture = picture(1, 1, &[[10, 20, 30, 255]]);
+        bless_capture(&capture, dir.to_str().unwrap());
+
+        let mut changed = capture.clone();
+        changed.bytes[1] = 200;
+        let diff = dir.join("out.diff.png");
+        let check = check_capture(
+            &changed,
+            dir.to_str().unwrap(),
+            0,
+            Some(diff.to_str().unwrap()),
+        );
+        assert!(matches!(check, GoldenCheck::Mismatch { .. }));
+        let bytes = std::fs::read(&diff).unwrap();
+        assert!(Image::from_file_with_format(&bytes, None).is_ok());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_golden_is_written_upright_from_a_bottom_up_capture() {
+        let dir = scratch("upright");
+        // Render-target order: red is the bottom row, blue the top.
+        let capture = picture(1, 2, &[[255, 0, 0, 255], [0, 0, 255, 255]]);
+        bless_capture(&capture, dir.to_str().unwrap());
+
+        let bytes = std::fs::read(golden_path(dir.to_str().unwrap())).unwrap();
+        let golden = Image::from_file_with_format(&bytes, None).unwrap();
+        assert_eq!(
+            &golden.bytes[..4],
+            &[0, 0, 255, 255],
+            "the PNG's top row is the capture's last row"
+        );
+        assert_eq!(
+            check_capture(&capture, dir.to_str().unwrap(), 0, None),
+            GoldenCheck::Match
+        );
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

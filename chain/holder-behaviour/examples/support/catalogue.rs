@@ -51,6 +51,18 @@ pub struct Status {
     pub predicate: StatusPredicate,
 }
 
+/// How one purchase could earn an achievement. See [`LoadedCatalogue::purchase_hint`]. The
+/// serialisation is the wire shape a consumer's `Buyable` reads.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "kind")]
+pub enum PurchaseHint {
+    Trait {
+        category: String,
+        values: Vec<String>,
+    },
+    Purchase,
+}
+
 /// The policy a campaign runs: the thresholds, and the statuses that decide who is in.
 ///
 /// Kept apart from [`Allocation`] because that type is `Copy` and swept over every field, while
@@ -66,6 +78,10 @@ pub struct Plan {
     pub promotes: Vec<String>,
     /// Extra mints a promoted identity may take, on top of `allocation.per_identity`.
     pub promote_bonus: u32,
+    /// The achievement whose holders keep a first-come door when they hold none now.
+    pub lapsed: Option<String>,
+    /// Statuses that read a partner holding: the crossover bonus, and the partner-only door.
+    pub partners: Vec<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -97,6 +113,41 @@ struct AllocationFile {
     /// Mints a promoted identity may take beyond `per_identity`.
     #[serde(default)]
     promote_bonus: u32,
+    /// Mints by units held now. See [`Allocation::holding`].
+    #[serde(default)]
+    holding: Vec<holder_behaviour::Rung>,
+    /// The steady climb past the holding ladder's last rung. See [`Allocation::holding_tail`].
+    #[serde(default)]
+    holding_tail: Option<holder_behaviour::Tail>,
+    /// Mints the score adds, rung by rung. See [`Allocation::bonus`].
+    #[serde(default)]
+    bonus: Vec<holder_behaviour::Rung>,
+    #[serde(default)]
+    partner_bonus: u32,
+    /// The achievement id whose earners keep a first-come door after selling.
+    #[serde(default)]
+    lapsed: Option<String>,
+    #[serde(default)]
+    lapsed_mints: u32,
+    /// Status ids that read a partner holding.
+    #[serde(default)]
+    partners: Vec<String>,
+    #[serde(default)]
+    partner_mints: u32,
+    #[serde(default)]
+    max_per_identity: u32,
+    /// The share a holding keeps once sold. See [`Allocation::past_share`].
+    #[serde(default)]
+    past_share: Option<f64>,
+    /// How the holding ladder weighs a unit by tenure. See [`Allocation::seasoning`].
+    #[serde(default)]
+    seasoning: Option<holder_behaviour::Seasoning>,
+    /// Guaranteed slots for holding the token. See [`Allocation::token`].
+    #[serde(default)]
+    token: Option<holder_behaviour::TokenRule>,
+    /// Units held now that the guaranteed phase needs. See [`Allocation::gtd_min_held`].
+    #[serde(default)]
+    gtd_min_held: u32,
 }
 
 #[derive(serde::Deserialize)]
@@ -132,16 +183,57 @@ fn default_rarest() -> u32 {
     3
 }
 
-impl From<&AllocationFile> for Allocation {
-    fn from(file: &AllocationFile) -> Self {
-        Self {
+impl TryFrom<&AllocationFile> for Allocation {
+    type Error = String;
+
+    fn try_from(file: &AllocationFile) -> Result<Self, String> {
+        Ok(Self {
             gtd_score: file.gtd.score_at_least,
             fcfs_score: file.fcfs.score_at_least,
             fcfs_rarest: file.fcfs.or_rarest_at_least,
             per_identity: file.per_identity,
             rarity_floor: file.rarity_floor,
             count_rarest: file.count_rarest,
-        }
+            holding: holder_behaviour::Rungs::new(&file.holding)
+                .map_err(|e| format!("[allocation] holding: {e}"))?,
+            holding_tail: match file.holding_tail {
+                Some(tail) if tail.every == 0 => {
+                    return Err("[allocation] holding_tail.every must be at least 1".to_string());
+                }
+                tail => tail,
+            },
+            bonus: holder_behaviour::Rungs::new(&file.bonus)
+                .map_err(|e| format!("[allocation] bonus: {e}"))?,
+            promote_bonus: file.promote_bonus,
+            partner_bonus: file.partner_bonus,
+            lapsed_mints: file.lapsed_mints,
+            partner_mints: file.partner_mints,
+            max_per_identity: file.max_per_identity,
+            past_share: match file.past_share {
+                Some(share) if !(0.0..=1.0).contains(&share) => {
+                    return Err(format!(
+                        "[allocation] past_share is a share in 0..=1, not {share}"
+                    ));
+                }
+                share => share,
+            },
+            gtd_min_held: file.gtd_min_held,
+            seasoning: match file.seasoning {
+                Some(seasoning) if !(0.0..=1.0).contains(&seasoning.share) => {
+                    return Err(format!(
+                        "[allocation] seasoning.share is a share in 0..=1, not {}",
+                        seasoning.share
+                    ));
+                }
+                seasoning => seasoning,
+            },
+            token: match file.token {
+                Some(rule) if rule.per == 0 => {
+                    return Err("[allocation] token.per must be at least 1".to_string());
+                }
+                rule => rule,
+            },
+        })
     }
 }
 
@@ -190,6 +282,9 @@ struct CatalogueEntry {
     /// without a weight cannot be scored, and a default would silently price it at nothing.
     #[serde(default)]
     points: Option<u32>,
+    /// Slots earning it grants outright, beside its points. See [`holder_behaviour::Grant`].
+    #[serde(default)]
+    grant: Option<holder_behaviour::Grant>,
     /// The source cannot answer; the catalogue says why. Never scores.
     #[serde(default)]
     unavailable: Option<String>,
@@ -230,17 +325,39 @@ impl LoadedCatalogue {
         let plan = match file.allocation {
             Some(allocation) => {
                 let plan = Plan {
-                    allocation: Allocation::from(&allocation),
+                    allocation: Allocation::try_from(&allocation)
+                        .map_err(|e| format!("{path}: {e}"))?,
                     requires: allocation.requires.clone(),
                     promotes: allocation.promotes.clone(),
                     promote_bonus: allocation.promote_bonus,
+                    lapsed: allocation.lapsed.clone(),
+                    partners: allocation.partners.clone(),
                 };
-                for id in plan.requires.iter().chain(&plan.promotes) {
+                for id in plan
+                    .requires
+                    .iter()
+                    .chain(&plan.promotes)
+                    .chain(&plan.partners)
+                {
                     if !status_ids.contains(id.as_str()) {
                         return Err(format!(
                             "{path}: `{id}` is named by [allocation] but no [[status]] declares it"
                         ));
                     }
+                }
+                // A door keyed on an achievement that does not exist would open for nobody and
+                // look like a policy decision.
+                if let Some(id) = &plan.lapsed
+                    && !seen.contains(id.as_str())
+                {
+                    return Err(format!(
+                        "{path}: [allocation] lapsed names `{id}`, which is not an achievement"
+                    ));
+                }
+                if plan.allocation.lapsed_mints > 0 && plan.lapsed.is_none() {
+                    return Err(format!(
+                        "{path}: [allocation] lapsed_mints needs a `lapsed` achievement to key on"
+                    ));
                 }
                 Some(plan)
             }
@@ -293,6 +410,14 @@ impl LoadedCatalogue {
     /// priced the achievement, which the scorer refuses rather than counting as nothing.
     pub fn points_at(&self, index: usize) -> Option<u32> {
         self.entries.get(index).and_then(|entry| entry.points)
+    }
+
+    /// The slots an entry grants outright, if any.
+    pub fn grant_at(&self, index: usize) -> Option<holder_behaviour::Grant> {
+        self.entries
+            .get(index)
+            .and_then(|entry| entry.grant)
+            .filter(|grant| !grant.is_empty())
     }
 
     /// Every id, in catalogue order — the input to the bundle's digest.
@@ -348,6 +473,41 @@ impl LoadedCatalogue {
             .get("days")?
             .as_integer()
             .and_then(|days| u32::try_from(days).ok())
+    }
+
+    /// How one purchase could earn the achievement, when its predicate is one a single asset
+    /// settles: a trait (`has_trait` with a named value, or `has_trait_values` needing one), or
+    /// any marketplace purchase. Everything else — spans, counts, several assets — is `None`.
+    pub fn purchase_hint(&self, index: usize) -> Option<PurchaseHint> {
+        let predicate = self.entries.get(index)?.predicate.as_ref()?;
+        let text = |key: &str| predicate.get(key)?.as_str().map(str::to_string);
+        match predicate.get("kind")?.as_str()? {
+            "market_purchase" => Some(PurchaseHint::Purchase),
+            "has_trait" => {
+                let value = text("value")?;
+                (value != "*").then(|| PurchaseHint::Trait {
+                    category: text("category").unwrap_or_else(|| "*".into()),
+                    values: vec![value],
+                })
+            }
+            "has_trait_values" => {
+                let at_least = predicate.get("at_least")?.as_integer()?;
+                if at_least != 1 {
+                    return None;
+                }
+                let values = predicate
+                    .get("values")?
+                    .as_array()?
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect();
+                Some(PurchaseHint::Trait {
+                    category: text("category").unwrap_or_else(|| "*".into()),
+                    values,
+                })
+            }
+            _ => None,
+        }
     }
 
     pub fn statement_at(&self, index: usize) -> Option<&str> {

@@ -1,0 +1,4 @@
+# Scorer-facing. Never put this file in a model prompt.
+
+expected = "clean"
+note = "The left gutter is empty; the same page after the sidebar was kept out of the capture."

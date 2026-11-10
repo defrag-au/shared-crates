@@ -1,0 +1,9 @@
+# Model-facing. The scorer's answer is in expected.toml.
+
+story = "app-shell/shell-desk"
+platform = "macos"
+intent = """
+A desk app shell: an app bar across the top, a left navigation rail, and a wide
+art grid. No phone insets.
+"""
+image = "full.png"

@@ -1,0 +1,9 @@
+# Scorer-facing. Never put this file in a model prompt.
+
+expected = "defect"
+
+[[defect]]
+kind = "missing"
+box = [540, 236, 92, 100]
+severity = "must"
+note = "The seventh finish ('warm') and its label are absent; the row ends at 'dim 0.7'."

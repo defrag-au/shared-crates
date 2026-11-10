@@ -1,0 +1,31 @@
+version = 1
+name = "shared-crates-linux-check"
+
+# Builds the Linux side of the headless work and captures with no display
+# server.
+#
+# A one-shot job, not a service. `restart = "no"` is what lets `up -d` return,
+# and the container's own log is the result: the runtime records no exit code,
+# so the artefact the script writes under the repo's `.tmp/` is the evidence to
+# read, not `up`'s.
+#
+# One mount: the root that holds the sibling checkouts, reached with `..` so no
+# home directory is baked in. It must be that root rather than this repository
+# alone, because every consumer pins the fork with a relative `[patch]` path —
+# `../miniquad` from shared-crates, `../../defrag/miniquad` from
+# tile5-macroquad — and a repository mounted away from its siblings does not
+# resolve them. The script works the repository back out of its own path.
+#
+# Four levels up from `.stacks/linux-check` is `~/code`; one level short is
+# `defrag`, which still exists, so `plan` will not catch the mistake. If the
+# container reports that its command is missing, count the levels again.
+[services.check]
+image = "docker.io/library/rust:1.99-bookworm"
+pull = "missing"
+command = ["/bin/sh", "/work/code/defrag/shared-crates/.stacks/linux-check/check-linux.sh"]
+workdir = "/work/code/defrag/shared-crates"
+env = { CARGO_TERM_COLOR = "never", LIBGL_ALWAYS_SOFTWARE = "1" }
+volumes = ["../../../..:/work/code"]
+cpus = 4
+memory = "8G"
+restart = "no"

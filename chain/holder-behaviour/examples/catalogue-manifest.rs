@@ -40,6 +40,13 @@ struct Manifest<'a> {
     bundle_built_at: Option<u64>,
     /// The thresholds the consumer must score with, so it cannot be configured with its own.
     allocation: Allocation,
+    /// The achievement whose earners keep a first-come door after selling, when the
+    /// allocation opens one. The consumer needs the id; the policy carries only the mints.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lapsed: Option<&'a str>,
+    /// When the mint opens, unix seconds, for a page's clock. From `--opens-at`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    opens_at: Option<i64>,
     achievements: Vec<Entry<'a>>,
 }
 
@@ -51,6 +58,24 @@ struct Entry<'a> {
     /// What the achievement is worth. Required: a consumer that meets an unpriced achievement
     /// cannot score it, and a default here would publish a manifest that looks complete.
     points: u32,
+    /// Slots earning it grants outright. Absent for the many that only score.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    grant: Option<holder_behaviour::Grant>,
+    /// What a reader is shown: the name, what earns it, and the axis it sits on. A page that
+    /// draws the whole catalogue (the Clone Registry's strands) needs these, and the catalogue
+    /// file is the only place they are written down.
+    title: &'a str,
+    statement: &'a str,
+    axis: &'a str,
+    /// Subjects in the bundle that earned it, and how many subjects there are. Present only when
+    /// `--bundle` was given: a count read from somewhere else would not be this bundle's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    holders: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    population: Option<u32>,
+    /// How one purchase earns it, for a page that ranks listings by what they would add.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    buy: Option<support::catalogue::PurchaseHint>,
 }
 
 struct Args {
@@ -62,6 +87,8 @@ struct Args {
     /// Overrides where the bundle is expected, independently of `prefix`.
     key: Option<String>,
     out: Option<String>,
+    /// When the mint opens, unix seconds.
+    opens_at: Option<i64>,
 }
 
 fn main() -> ExitCode {
@@ -95,6 +122,7 @@ fn run() -> Result<(), String> {
         .unwrap_or_else(|| format!("{}/{}/current.bundle", args.prefix, args.campaign));
 
     let mut built_at = None;
+    let mut rarity = Vec::new();
     if let Some(path) = &args.bundle {
         let bytes = std::fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
         let bundle = Bundle::open(&bytes).map_err(|error| format!("open {path}: {error}"))?;
@@ -115,6 +143,9 @@ fn run() -> Result<(), String> {
             ));
         }
         built_at = Some(bundle.built_at());
+        rarity = (0..bundle.achievement_count())
+            .map(|index| bundle.rarity(index))
+            .collect();
     }
 
     let achievements: Vec<Entry<'_>> = (0..catalogue.len())
@@ -130,6 +161,13 @@ fn run() -> Result<(), String> {
                         catalogue.id_at(index).unwrap_or("an unnamed entry")
                     )
                 })?,
+                grant: catalogue.grant_at(index),
+                title: catalogue.title_at(index).unwrap_or_default(),
+                statement: catalogue.statement_at(index).unwrap_or_default(),
+                axis: catalogue.axis_at(index).unwrap_or_default(),
+                holders: rarity.get(index).copied().flatten().map(|r| r.holders_with),
+                population: rarity.get(index).copied().flatten().map(|r| r.population),
+                buy: catalogue.purchase_hint(index),
             })
         })
         .collect::<Result<_, String>>()?;
@@ -140,6 +178,8 @@ fn run() -> Result<(), String> {
         catalogue_digest: format!("{digest:016x}"),
         bundle_built_at: built_at,
         allocation,
+        lapsed: catalogue.plan().and_then(|plan| plan.lapsed.as_deref()),
+        opens_at: args.opens_at,
         achievements,
     };
 
@@ -168,6 +208,7 @@ fn parse_args() -> Result<Args, String> {
         prefix: "bundles".to_string(),
         key: None,
         out: None,
+        opens_at: None,
     };
     while let Some(flag) = args.next() {
         match flag.as_str() {
@@ -177,6 +218,14 @@ fn parse_args() -> Result<Args, String> {
             "--prefix" => parsed.prefix = next(&mut args, "--prefix")?,
             "--key" => parsed.key = Some(next(&mut args, "--key")?),
             "--out" => parsed.out = Some(next(&mut args, "--out")?),
+            "--opens-at" => {
+                let value = next(&mut args, "--opens-at")?;
+                parsed.opens_at = Some(
+                    value
+                        .parse()
+                        .map_err(|_| format!("--opens-at takes unix seconds, not {value}"))?,
+                );
+            }
             "-h" | "--help" => {
                 print_help();
                 std::process::exit(0);

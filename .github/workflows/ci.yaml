@@ -41,12 +41,75 @@ jobs:
           shared-key: "test"
           cache-on-failure: true
 
-      - run: cargo check --workspace --exclude storybook-egui --all-targets
-      - run: cargo test --workspace --exclude storybook-egui --all-targets
+      # The macroquad storybook's golden suite is its own job (`visual`): it
+      # needs a headless GL runtime, and a changed picture should fail under its
+      # own name rather than inside the functional suite. Excluded here so this
+      # job does not build or run it.
+      - run: cargo check --workspace --exclude storybook-egui --exclude macroquad-storybook --all-targets
+      - run: cargo test --workspace --exclude storybook-egui --exclude macroquad-storybook --all-targets
       # The workspace runs default features, which leave out scenegraph's glTF
       # importer: models, rigs, clips and the Khronos fixtures that test them.
       - name: scenegraph with glTF
         run: cargo test -p scenegraph --features gltf
+
+  # A capture is a review, and a golden makes it a test. The storybook's
+  # `tests/visual.rs` runs every stable story in `admin`, `app-shell`, `atoms`,
+  # `gamekit`, `input` and `page`, and checks the x86_64 Linux PNG, the text
+  # report and that no golden outlives its story. It is kept out of
+  # `check-and-test` so a picture change is not buried in the functional suite,
+  # and so the one platform-specific dependency is explicit.
+  #
+  # miniquad's headless backend on Linux dlopen()s libEGL and needs a Mesa
+  # driver for the surfaceless pbuffer. Without them the storybook panics on
+  # `--list`, before it can print the stories: `miniquad: headless rendering
+  # needs libEGL: DlOpenError("libEGL.so.1")`. `.stacks/linux-check` installs
+  # the same set; keep the two in step.
+  visual:
+    name: Visual Goldens
+    # Pinned to the release the x86_64 goldens were blessed on: the renderer
+    # (Mesa) is part of the contract, and `ubuntu-latest` moves.
+    runs-on: ubuntu-24.04
+    # The suite launches the storybook once per story per check on software
+    # rendering; a hang must not hold the run.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "visual"
+          cache-on-failure: true
+
+      - name: Install headless GL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-6 libgl1 libglx-mesa0 libegl1 libgl1-mesa-dri
+
+      # One golden per story per platform and architecture: this checks
+      # `tests/goldens-x86_64/<slug>/linux.png`; the `macos.png` and aarch64
+      # Linux sets are checked locally by the same test. Two threads run the two
+      # per-story sweeps together without putting four llvmpipe contexts on four
+      # cores.
+      - name: Check the Linux goldens
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: cargo test -p macroquad-storybook --test visual -- --test-threads=2
+
+      # A mismatch prints its pixel count and box, but the diff image is the
+      # review. Keep the captures and `.diff.png` files when the job fails so a
+      # contributor can see what moved without reproducing the runner locally.
+      - name: Upload the visual captures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-captures
+          path: target/tmp/visual
+          if-no-files-found: ignore
 
   ocfl-fixtures:
     name: OCFL Fixtures

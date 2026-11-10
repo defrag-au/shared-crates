@@ -77,11 +77,11 @@
     "container-compose": {
       "flake": false,
       "locked": {
-        "lastModified": 1792830352,
-        "narHash": "sha256-h7b8LDmxgWd4z8rabT4F4ST192OHd3jao/tWoFFWIF4=",
+        "lastModified": 1793506117,
+        "narHash": "sha256-hv4Lz511wQoT8fDOq3UkNcCEGZ9F0wbTI+j9KkhW3ZU=",
         "owner": "defrag-au",
         "repo": "container-compose",
-        "rev": "da456210b5ce714901b8a5814c35a9e9913462bd",
+        "rev": "337b647ee42217ddfd303e1b917611f7ecacbcac",
         "type": "github"
       },
       "original": {
@@ -99,11 +99,11 @@
         "nixpkgs": "nixpkgs_18"
       },
       "locked": {
-        "lastModified": 1793417564,
-        "narHash": "sha256-Z99MHgBs/kGdy8Opyjgw+hTM4OoMNhiP7/BYvNP5XCo=",
+        "lastModified": 1793541897,
+        "narHash": "sha256-PkTZi9wLz1Oqaq1X9Ah62fMe7jbDHqqGG5Gn35BYAqc=",
         "owner": "defrag-au",
         "repo": "defrag-nix",
-        "rev": "6165c0881fbed79fd2c68a4ff67aa64a06498d69",
+        "rev": "ecb94f7e42b3b8d3a36578504729a0f98e9762c3",
         "type": "github"
       },
       "original": {

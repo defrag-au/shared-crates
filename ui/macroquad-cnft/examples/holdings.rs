@@ -128,13 +128,13 @@ impl Game for Screen {
 
 fn window_conf() -> Conf {
     let args = Args::read();
-    Conf {
-        window_title: args.window_title("macroquad-cnft holdings"),
+    args.window_conf(Conf {
+        window_title: "macroquad-cnft holdings".to_owned(),
         window_width: DESIGN.x as i32,
         window_height: DESIGN.y as i32,
         high_dpi: true,
         ..Default::default()
-    }
+    })
 }
 
 #[macroquad::main(window_conf)]
