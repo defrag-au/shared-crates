@@ -1,9 +1,0 @@
-# Scorer-facing. Never put this file in a model prompt.
-
-expected = "defect"
-
-[[defect]]
-kind = "missing"
-box = [16, 60, 600, 700]
-severity = "must"
-note = "The wall's field is empty: the header says 120 tiles in 6 columns, but no tiles are drawn."

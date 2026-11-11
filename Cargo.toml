@@ -36,12 +36,12 @@ members = [
     "worker-stack",
     "worker-utils",
     "asset-rarity",
-    # Games: replay verification, lockstep rooms, and the macroquad game
-    # layer. Kept together so the game crates read as one family.
+    # Games: replay verification and lockstep rooms. The macroquad game layer
+    # now lives in `macroquad-kit`; the pure game crates stay here.
     "gaming/*",
     # The scenegraph: a 3D document as text dumps, scored without a render.
     # Kept apart from `gaming/*` because galleries and viewers use it too.
-    # The pure crates, then their two renderer edge crates and the gamekit pane.
+    # `scene-pane` is now the kit's edge; the renderers stay here.
     "graphics/*",
     # Realtime media-plane crates: the parts of WebRTC a browser will not do
     # for us. Kept apart from `gaming/*` because a relay's credentials are not
@@ -71,25 +71,9 @@ members = [
     "ui/wallet-pallas",
     "ui/wallet-leptos",
     "ui/wallet-miniquad",
-    "ui/macroquad-tui",
-    "ui/macroquad-wallet-flow",
-    "ui/macroquad-wallet-link",
-    "ui/macroquad-cnft",
-    "ui/macroquad-text",
-    "ui/macroquad-widgets",
-    "ui/macroquad-app",
-    "ui/macroquad-bundle",
-    # Its runner: cargo runs only this workspace's binaries.
-    "tools/mq-bundle",
-    # The APK twin of the web bundle: the packager and its runner.
-    "ui/macroquad-apk",
-    "tools/mq-apk",
-    "ui/macroquad-storybook",
     "ui/miniquad-platform",
     "ui/canvas-bridge",
     "ui/image-core",
-    "ui/image-miniquad",
-    "ui/mq-flow-probe",
     "ui/egui-widgets",
     "ui/portal-pane",
     "ui/_storybook",
@@ -106,9 +90,8 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-# Inherited by the macroquad kit (gamekit, widgets, text) so a consumer on an
-# older rustc gets cargo's clear "requires rustc 1.88" rather than an error deep
-# in a dependency: let-chains and `as_chunks` are 1.88, fontdue 0.9 needs 1.87.
+# The workspace's crates inherit this so a consumer on an older rustc gets
+# cargo's clear "requires rustc 1.88" rather than an error deep in a dependency.
 rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/defrag-au/shared-crates"
@@ -217,7 +200,7 @@ asset-intents = { path = "asset-intents" }
 authorizations = { path = "authorizations" }
 cardano-assets = { path = "cardano-assets" }
 # What a player holds of a CNFT collection, as a game sees it. Pure: the
-# macroquad edge is `ui/macroquad-cnft`.
+# macroquad edge is `macroquad-kit`'s `macroquad-cnft`.
 cnft-holdings = { path = "cnft-holdings" }
 # Chain identity — which chain, and which network on it, as a CAIP-2 string on
 # the wire. Pure serde, no runtime, so a widget, a worker and a macroquad game
@@ -262,16 +245,9 @@ arcade-room = { path = "gaming/arcade-room" }
 # The Durable Object that hosts an arcade-room world, for a game's worker to
 # compose. Not deployed from here.
 arcade-room-worker = { path = "gaming/arcade-room-worker" }
-# A room client's connection for macroquad games: the client over quad-net,
-# with quad-net's traps handled once.
-arcade-room-quad = { path = "gaming/arcade-room-quad" }
 # The peer plane beside a room: the signalling protocol between players, who
 # offers, and the browser half that owns RTCPeerConnection.
 arcade-peer = { path = "gaming/arcade-peer" }
-# The operator panel a game shows itself through: the client's cost, the peer
-# plane, the world, and the game's own commands. Renders with macroquad; decides
-# nothing. The `-quad` suffix is the convention `arcade-room-quad` set.
-arcade-admin-quad = { path = "gaming/arcade-admin-quad" }
 # TURN credentials for that peer plane: the `id:token` pair a mint is signed
 # with, the shape Cloudflare Realtime answers, and when a mint goes stale. Pure
 # shapes, no transport — the Worker that mints composes its own fetch.
@@ -280,11 +256,6 @@ turn-credentials = { path = "realtime/turn-credentials" }
 # canonical, cheap to clone, its own wire format.
 arcade-state = { path = "gaming/arcade-state" }
 arcade-tech = { path = "gaming/arcade-tech" }
-arcade-harness = { path = "gaming/arcade-harness" }
-macroquad-wallet-flow = { path = "ui/macroquad-wallet-flow" }
-macroquad-cnft = { path = "ui/macroquad-cnft" }
-macroquad-widgets = { path = "ui/macroquad-widgets" }
-macroquad-app = { path = "ui/macroquad-app" }
 wallet-miniquad = { path = "ui/wallet-miniquad" }
 tx_insights = { path = "tx-insights" }
 # The transaction grammar: primitives, derived readings, and the renderer-neutral
@@ -307,20 +278,23 @@ wasm_safe_serde = { path = "wasm-safe-serde" }
 # a row's end doubled the whole atlas, at random: one solada board run in twelve
 # reached an 8192² atlas (256 MB). The rev is 0.4.16 plus a docs change plus the
 # fix, nothing else. A [patch] only applies in the workspace that builds, so
-# every consumer of macroquad-gamekit carries this line too.
-# Drop it, here and in each consumer, once a release after 0.4.16 is out.
+# `macroquad-kit` carries the canonical line and every consumer of the kit
+# carries the same one. This workspace still needs it for `scenegraph-mq`.
+# Drop it, here, in the kit and in each consumer, once a release after 0.4.16
+# is out.
 [patch.crates-io]
 macroquad = { git = "https://github.com/not-fl3/macroquad", rev = "8d602d3f8ebb8a3a582ee15d92983bbb81ee3ef6" }
 # miniquad's `Conf::headless` (fork `defrag-au/miniquad`, branch
 # `damon-headless-rendering`): a capture runs with no window at all. macOS
 # (NSOpenGLContext) and Linux (an EGL pbuffer on the surfaceless platform) are
 # true offscreen paths; the other desktop backends fall back to a window they
-# never show. The local `shared-crates` gamekit sets it on a capture, so this
-# workspace has to link the same miniquad.
+# never show. The kit sets it on a capture, so this workspace has to link the
+# same miniquad while `scenegraph-mq` builds macroquad.
 #
-# A [patch] only applies in the workspace that builds, so every consumer of
-# macroquad-gamekit carries the same line. The consumers today are this
-# workspace, tile5-macroquad, factotum and cnft.dev-workers — grep
+# A [patch] only applies in the workspace that builds. `macroquad-kit` carries
+# the canonical lines and every consumer of it — cnft.dev-workers,
+# augminted-bots and tile5-macroquad — carries the same two. This workspace
+# carries them too while `scenegraph-mq` remains here. Grep
 # `defrag-au/miniquad` in each when this line changes. Drop the line, here and
 # in every consumer, once a miniquad release after 0.4.11 carries
 # `Conf::headless`.

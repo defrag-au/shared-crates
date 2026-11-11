@@ -1,4 +1,0 @@
-# Scorer-facing. Never put this file in a model prompt.
-
-expected = "clean"
-note = "The band below the bottom bar is the home-indicator inset named in the intent, not padding."

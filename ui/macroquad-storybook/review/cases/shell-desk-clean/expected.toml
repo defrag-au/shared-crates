@@ -1,4 +1,0 @@
-# Scorer-facing. Never put this file in a model prompt.
-
-expected = "clean"
-note = "The rail and grid are the whole composition; there are no phone insets at this width."

@@ -1,9 +1,0 @@
-# Model-facing. The scorer's answer is in expected.toml.
-
-story = "app-shell/shell-phone"
-platform = "macos"
-intent = """
-A phone app shell: a 47-point status inset, an app bar, a scrolling grid, a
-bottom navigation bar, and a 34-point home-indicator inset below it.
-"""
-image = "full.png"
