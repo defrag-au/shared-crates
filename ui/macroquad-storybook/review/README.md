@@ -8,7 +8,7 @@ the harness owns the model call, the prompt and the scoring.
 
 ```
 cases/<slug>/
-  case.toml      model-facing: the story, its intent, and the images
+  case.toml      case metadata: story, arch, os, intent, and the images
   expected.toml  scorer-facing: defect or clean, boxes, severity
   full.png       the 1:1 capture
   crop.png       optional, a 3–6x view of the region in question
@@ -34,9 +34,18 @@ The `*-clean` cases are those stories after the fix. `app-grid-clean`,
 `shell-phone-clean` and `shell-desk-clean` are clean compositions with no
 before/after pair.
 
-The images are macOS captures from `--shot --no-chrome`. The before images are
-the captures that showed the bug; they are not regenerated from the current
-tree, because the fix removed them. Do not “correct” a before image.
+The images are aarch64 macOS captures from `--shot --no-chrome`. Their clean
+controls are byte-identical to `tests/goldens-aarch64/<slug>/macos.png` at the
+time of writing; both the before and clean images are frozen, so a later golden
+re-bless does not rewrite a case.
+
+The before images are the captures that showed the bug and are not regenerated
+from the current tree. Do not “correct” a before image.
+
+The corpus is one architecture and one OS. The storybook keeps
+`tests/goldens-<arch>/<slug>/<os>.png` because the renderer differs by
+architecture and OS; a cross-architecture or cross-OS review would need its own
+before-images and is a separate corpus.
 
 ## Running
 
@@ -72,10 +81,11 @@ localisation and false positives separately.
 
 ## Adding a case
 
-1. Capture the story at its `--no-chrome` canvas. Keep the failing image; that
-   is the case.
-2. Write `case.toml` with `story`, `intent`, `image` and, if useful, `crop` and
-   `crop_box` (full-image pixels, top-left origin).
+1. Capture the story at its `--no-chrome` canvas on the architecture you are
+   recording, and record `arch` and `os` in `case.toml`. Keep the failing image;
+   that is the case.
+2. Write `case.toml` with `story`, `arch`, `os`, `intent`, `image` and, if
+   useful, `crop` and `crop_box` (full-image pixels, top-left origin).
 3. Generate the crop; do not hand-make it. A crop must not cut through content
    except at the screen edge under test: a crop edge is not a screen edge, and
    the first run mistook a crop edge for a clipped sample.

@@ -1,7 +1,8 @@
 # Model-facing. The scorer's answer is in expected.toml.
 
 story = "atoms/buttons"
-platform = "macos"
+arch = "aarch64"
+os = "macos"
 intent = """
 A button gallery: three variants — filled, tonal and ghost — each paired with a
 disabled copy, then three accent buttons. Every row is labelled above it, with

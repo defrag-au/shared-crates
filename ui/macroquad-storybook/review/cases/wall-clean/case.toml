@@ -1,7 +1,8 @@
 # Model-facing. The scorer's answer is in expected.toml.
 
 story = "gamekit/wall"
-platform = "macos"
+arch = "aarch64"
+os = "macos"
 intent = """
 A wall of 120 image tiles in six columns, with a header naming the tile and
 column counts. Tiles arrive with simulated latency; one in thirteen is a

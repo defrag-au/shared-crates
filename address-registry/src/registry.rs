@@ -1634,13 +1634,17 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
     //
     // The $PERP staking site: one position per UTxO, each datum naming its owner
     // (`mitos-vesting-decode::perps_staking`), all under the site's own stake key.
-    // Staking, not a lock platform: one project's contract, kept here because
-    // mitos reads it like a lock and `registry_drift` keeps the two in step.
+    // Staking, not a lock platform: built by cnft.tools, but deployed per project
+    // (it holds no $NIKEPIG, and carries its own `perpstaking` reference token).
+    // Kept here because mitos reads it like a lock and `registry_drift` keeps the
+    // two in step. A sibling for another token is another entry under its project.
     (
         "05d231799bdec5acab13e670b4107d81a5725814c2de7900d422fdb6",
         CredentialEntry {
+            // The label names the site, as "The Vault" does above: the category's
+            // Display already says "staking for".
             category: AC::Script(SC::Staking {
-                label: "$PERP staking",
+                label: "cnft.tools",
                 project: "Perps",
             }),
             derived_from: CredentialSource::Address(

@@ -1,7 +1,8 @@
 # Model-facing. The scorer's answer is in expected.toml.
 
 story = "input/floating-stick"
-platform = "macos"
+arch = "aarch64"
+os = "macos"
 intent = """
 Three floating-stick samples — at rest, half push and full diagonal — above a
 stage where a live stick appears on press. Each sample is centred under its own
