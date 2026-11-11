@@ -1,9 +1,0 @@
-# Scorer-facing. Never put this file in a model prompt.
-
-expected = "defect"
-
-[[defect]]
-kind = "clipped"
-box = [0, 545, 16, 250]
-severity = "must"
-note = "Two glyph fragments bleed in at the left edge, outside the page content."

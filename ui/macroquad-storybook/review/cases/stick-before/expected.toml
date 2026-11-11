@@ -1,9 +1,0 @@
-# Scorer-facing. Never put this file in a model prompt.
-
-expected = "defect"
-
-[[defect]]
-kind = "clipped"
-box = [330, 145, 92, 50]
-severity = "must"
-note = "The third sample and its 'full diagonal' label are cut off at the right edge."

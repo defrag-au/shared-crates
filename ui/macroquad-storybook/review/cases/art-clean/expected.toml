@@ -1,4 +1,0 @@
-# Scorer-facing. Never put this file in a model prompt.
-
-expected = "clean"
-note = "All seven finishes and their labels are inside the canvas."

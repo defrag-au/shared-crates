@@ -1,9 +1,0 @@
-# Scorer-facing. Never put this file in a model prompt.
-
-expected = "defect"
-
-[[defect]]
-kind = "spacing"
-box = [10, 0, 80, 22]
-severity = "should"
-note = "The 'filled' label sits on the top edge; every other row label has breathing room above it."
