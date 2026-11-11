@@ -33,6 +33,10 @@
 //! ⚠️ A NATIVE check is blind to this. The wasm-bindgen crates are behind
 //! `cfg(target_arch = "wasm32")`, so `cargo tree` without `--target` reports a
 //! clean graph for a crate that is anything but.
+//!
+//! The macroquad widget guard (`macroquad-widgets --all-features`) moved to
+//! `macroquad-kit` with the crate; that repo's `miniquad_linkable` test is its
+//! home now.
 
 use std::process::Command;
 
@@ -53,12 +57,6 @@ const INVARIANTS: &[Invariant] = &[
         why: "transaction BUILDING is pure arithmetic over protocol parameters; \
               a macroquad host takes this crate with no features and must get \
               no HTTP stack with it",
-    },
-    Invariant {
-        package: "macroquad-widgets",
-        features: &["--all-features"],
-        why: "these widgets render INSIDE miniquad, so every feature they ship \
-              (including `chain`) has to stay clear of wasm-bindgen",
     },
 ];
 

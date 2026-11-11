@@ -116,11 +116,12 @@ jobs:
           shared-key: "wasm-check"
           cache-on-failure: true
 
-      # The miniquad-linkability guard, named here on purpose.
+      # The `cardano-tx` miniquad-linkability guard, named here on purpose. The
+      # macroquad widget guard moved to `macroquad-kit` with the crates.
       #
       # It also runs inside `cargo test --workspace` in the other job, so this
       # is not the only thing executing it — but a reader scanning this file for
-      # "what stops wasm-bindgen reaching the macroquad path" should find it,
+      # "what stops wasm-bindgen reaching the miniquad path" should find it,
       # and an `--exclude` added to that job later must not be able to kill it
       # silently. The test itself explains what it checks and why.
       - name: Guard — cardano-tx stays linkable under miniquad
