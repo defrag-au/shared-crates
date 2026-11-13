@@ -30,6 +30,25 @@
 //! `has_all_traits` reports `unavailable` here. That is the honest answer for this input,
 //! not a zero, and it is the same answer the evaluator gives a collection whose metadata
 //! pass has not run.
+//!
+//! The companion token and the staking ledger are not in it either. `--token` takes the token
+//! archive's held intervals, one holder per line:
+//!
+//! ```text
+//! {"key":"<stake hex>","held":[{"from":<slot>,"from_unix":<s>,"to_unix":<s>|null}]}
+//! ```
+//!
+//! and `--staking` the staking ledger, one fact per line:
+//!
+//! ```text
+//! {"campaign":{"id":"perps-season-1","starts_unix":<s>,"ends_unix":<s>,"automatic":true}}
+//! {"enrolment":{"key":"<stake hex>","campaign":"perps-season-1","at_unix":<s>}}
+//! {"payout":{"key":"<stake hex>","campaign":"perps-season-1","tx":"<hash>","paid_unix":<s>|null}}
+//! ```
+//!
+//! A staking key may also be the ledger's own `stake1…` address; it is joined by its credential.
+//!
+//! Without them the Coin predicates report `unavailable` and stay unread in the bundle.
 
 mod support;
 
@@ -40,9 +59,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chain_events::{ChainEvent, Coverage, Family};
 use holder_behaviour::{
-    AcquiredBy, Anomaly, Assessment, Bundle, Definition, Earned, EarnedSince, Evidence, Lot,
-    MemoryStore, Outcome, Predicate, Progress, Rarity, SECONDS_PER_DAY, Slot, Snapshot, Store,
-    SubjectId, SubjectRecord, UnitId, apply, catalogue_digest, evaluate, write_bundle,
+    AcquiredBy, Anomaly, Assessment, Bundle, Campaign, Definition, Earned, EarnedSince, Evidence,
+    Interval, Lot, MemoryStore, Outcome, Payout, Predicate, Progress, Rarity, SECONDS_PER_DAY,
+    Slot, Snapshot, StakingHistory, Store, SubjectId, SubjectRecord, TokenHistory, UnitId, apply,
+    catalogue_digest, evaluate, write_bundle,
 };
 use support::catalogue::LoadedCatalogue;
 
@@ -94,6 +114,10 @@ struct Args {
     bundle: Option<String>,
     built_at: Option<u64>,
     traits: Option<String>,
+    /// The companion token's held intervals, one subject per line. See [`TokenRow`].
+    token: Option<String>,
+    /// The staking ledger's campaigns, enrolments and payouts. See [`StakingRow`].
+    staking: Option<String>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -108,6 +132,8 @@ fn parse_args() -> Result<Args, String> {
     let mut bundle = None;
     let mut built_at = None;
     let mut traits = None;
+    let mut token = None;
+    let mut staking = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--collection" => collection = Some(next(&mut args, "--collection")?),
@@ -134,6 +160,8 @@ fn parse_args() -> Result<Args, String> {
             "--catalogue" => catalogue = Some(next(&mut args, "--catalogue")?),
             "--bundle" => bundle = Some(next(&mut args, "--bundle")?),
             "--traits" => traits = Some(next(&mut args, "--traits")?),
+            "--token" => token = Some(next(&mut args, "--token")?),
+            "--staking" => staking = Some(next(&mut args, "--staking")?),
             "--built-at" => {
                 built_at = Some(
                     next(&mut args, "--built-at")?
@@ -156,6 +184,8 @@ fn parse_args() -> Result<Args, String> {
         bundle,
         built_at,
         traits,
+        token,
+        staking,
     })
 }
 
@@ -261,6 +291,16 @@ fn run() -> Result<(), String> {
         Some(path) => Some(seed_traits(&mut store, path)?),
         None => None,
     };
+    // The companion token and the staking ledger, joined on the subject's key. Without them
+    // every Coin predicate stays unread (population 0), never a zero.
+    let token_seeded = match &args.token {
+        Some(path) => Some(seed_token(&mut store, path)?),
+        None => None,
+    };
+    let staking_seeded = match &args.staking {
+        Some(path) => Some(seed_staking(&mut store, path)?),
+        None => None,
+    };
 
     let now = args.now.unwrap_or(latest);
     // The two axes of one reading. The unix clock defaults to the latest event the file
@@ -287,6 +327,18 @@ fn run() -> Result<(), String> {
     println!("subjects    {}", subjects.len());
     if let Some((rows, matched, unmatched)) = seeded {
         println!("traits      {matched}/{rows} seeded · {unmatched} not in this stream");
+    }
+    if let Some((rows, matched)) = token_seeded {
+        println!(
+            "token       {matched}/{rows} holders joined · {} never held a Perp",
+            rows - matched
+        );
+    }
+    if let Some(seen) = staking_seeded {
+        println!(
+            "staking     {} campaigns · {} enrolments and {} payouts joined · {} not in this stream",
+            seen.campaigns, seen.enrolments, seen.payouts, seen.unmatched
+        );
     }
 
     if anomalies.is_empty() {
@@ -578,6 +630,210 @@ fn seed_traits(store: &mut MemoryStore, path: &str) -> Result<(usize, usize, usi
     Ok((rows, matched, unmatched))
 }
 
+/// Every subject the stream interned, by the key a bundle row and the other sources name it by.
+fn subjects_by_key(store: &MemoryStore) -> Result<BTreeMap<String, SubjectId>, String> {
+    let mut keys = BTreeMap::new();
+    for subject in store.subjects().map_err(|error| format!("{error:?}"))? {
+        if let Some(account) = store
+            .account_of(subject)
+            .map_err(|error| format!("{error:?}"))?
+        {
+            keys.insert(account.address, subject);
+        }
+    }
+    Ok(keys)
+}
+
+/// One holder's companion-token history, as the token archive's span export writes it: every
+/// interval its balance (wallet, staked or locked) was above zero.
+#[derive(serde::Deserialize)]
+struct TokenRow {
+    /// The stake credential hex — the key the bundle uses.
+    key: String,
+    held: Vec<TokenSpan>,
+}
+
+#[derive(serde::Deserialize)]
+struct TokenSpan {
+    /// The slot it began at.
+    from: Slot,
+    from_unix: u64,
+    #[serde(default)]
+    to_unix: Option<u64>,
+}
+
+/// Seeds the token archive. A token holder who never held a Perp is not in the stream and is
+/// skipped: the bundle scores Perp holders. Returns `(rows, matched)`.
+fn seed_token(store: &mut MemoryStore, path: &str) -> Result<(usize, usize), String> {
+    let keys = subjects_by_key(store)?;
+    store.observe_token();
+    let file = std::fs::File::open(path).map_err(|error| format!("open {path}: {error}"))?;
+    let (mut rows, mut matched) = (0usize, 0usize);
+    for line in BufReader::new(file).lines() {
+        let line = line.map_err(|error| format!("read {path}: {error}"))?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        rows += 1;
+        let row: TokenRow = serde_json::from_str(&line)
+            .map_err(|error| format!("parse {path} line {rows}: {error}"))?;
+        let Some(subject) = keys.get(&row.key).copied() else {
+            continue;
+        };
+        matched += 1;
+        let mut held: Vec<Interval> = row
+            .held
+            .into_iter()
+            .map(|span| Interval {
+                from: span.from,
+                from_unix: span.from_unix,
+                to_unix: span.to_unix,
+            })
+            .collect();
+        held.sort_by_key(|interval| interval.from_unix);
+        store.seed_token(subject, TokenHistory { held });
+    }
+    Ok((rows, matched))
+}
+
+/// One line of the staking ledger export: a campaign, an enrolment or a payout.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum StakingRow {
+    Campaign {
+        id: String,
+        starts_unix: u64,
+        ends_unix: u64,
+        /// Every holder is enrolled at the start, with no registration.
+        #[serde(default)]
+        automatic: bool,
+    },
+    Enrolment {
+        key: String,
+        campaign: String,
+        at_unix: u64,
+    },
+    Payout {
+        key: String,
+        campaign: String,
+        tx: String,
+        #[serde(default)]
+        paid_unix: Option<u64>,
+    },
+}
+
+/// What the staking export joined.
+struct StakingSeen {
+    campaigns: usize,
+    enrolments: usize,
+    payouts: usize,
+    /// Enrolment and payout lines for a key the stream never saw.
+    unmatched: usize,
+}
+
+/// The fold's key for a staking-ledger stake: a `stake1…` address becomes its credential hex (the
+/// 28 bytes after the header), the key the stream interned. Anything else is taken as given.
+fn stake_key(stake: &str) -> Result<String, String> {
+    if !stake.starts_with("stake") {
+        return Ok(stake.to_string());
+    }
+    let (_, bytes) = bech32::decode(stake).map_err(|error| format!("stake {stake}: {error}"))?;
+    let credential = bytes
+        .get(1..)
+        .filter(|credential| credential.len() == 28)
+        .ok_or_else(|| format!("stake {stake}: not a 29-byte reward address"))?;
+    Ok(credential.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+/// Seeds the staking ledger. An automatic campaign enrols every subject at its start; an
+/// explicit enrolment row for the same campaign is kept when it is earlier.
+fn seed_staking(store: &mut MemoryStore, path: &str) -> Result<StakingSeen, String> {
+    let keys = subjects_by_key(store)?;
+    let file = std::fs::File::open(path).map_err(|error| format!("open {path}: {error}"))?;
+    let mut campaigns: Vec<Campaign> = Vec::new();
+    let mut automatic: Vec<(String, u64)> = Vec::new();
+    let mut records: BTreeMap<SubjectId, StakingHistory> = BTreeMap::new();
+    let mut seen = StakingSeen {
+        campaigns: 0,
+        enrolments: 0,
+        payouts: 0,
+        unmatched: 0,
+    };
+    for (index, line) in BufReader::new(file).lines().enumerate() {
+        let line = line.map_err(|error| format!("read {path}: {error}"))?;
+        let line_no = index + 1;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let row: StakingRow = serde_json::from_str(&line)
+            .map_err(|error| format!("parse {path} line {line_no}: {error}"))?;
+        match row {
+            StakingRow::Campaign {
+                id,
+                starts_unix,
+                ends_unix,
+                automatic: is_automatic,
+            } => {
+                seen.campaigns += 1;
+                if is_automatic {
+                    automatic.push((id.clone(), starts_unix));
+                }
+                campaigns.push(Campaign {
+                    id,
+                    starts_unix,
+                    ends_unix,
+                });
+            }
+            StakingRow::Enrolment {
+                key,
+                campaign,
+                at_unix,
+            } => match keys.get(&stake_key(&key)?) {
+                Some(subject) => {
+                    seen.enrolments += 1;
+                    records
+                        .entry(*subject)
+                        .or_default()
+                        .enrolled
+                        .push((campaign, at_unix));
+                }
+                None => seen.unmatched += 1,
+            },
+            StakingRow::Payout {
+                key,
+                campaign,
+                tx,
+                paid_unix,
+            } => match keys.get(&stake_key(&key)?) {
+                Some(subject) => {
+                    seen.payouts += 1;
+                    records.entry(*subject).or_default().payouts.push(Payout {
+                        campaign,
+                        tx,
+                        paid_unix,
+                    });
+                }
+                None => seen.unmatched += 1,
+            },
+        }
+    }
+    store.observe_staking(campaigns);
+    for subject in keys.values() {
+        let record = records.entry(*subject).or_default();
+        for (campaign, starts) in &automatic {
+            match record.enrolled.iter_mut().find(|(id, _)| id == campaign) {
+                Some((_, at)) => *at = (*at).min(*starts),
+                None => record.enrolled.push((campaign.clone(), *starts)),
+            }
+        }
+    }
+    for (subject, mut record) in records {
+        record.payouts.sort_by_key(|payout| payout.paid_unix);
+        store.seed_staking(subject, record);
+    }
+    Ok(seen)
+}
+
 /// Turns the folded store into a snapshot, evaluating every subject against what this build
 /// can answer.
 ///
@@ -840,6 +1096,11 @@ fn describe(outcome: &Outcome<'_>, store: &MemoryStore) -> Result<String, String
             Evidence::Movements { movements, units } => {
                 format!("{movements} movements across {units} assets")
             }
+            Evidence::TokenHeld { from_unix, to_unix } => match to_unix {
+                Some(to) => format!("token held {from_unix}..{to}"),
+                None => format!("token held from {from_unix}"),
+            },
+            Evidence::Payout { campaign, tx } => format!("paid by {campaign} in {tx}"),
         })
         .collect();
     if cited.is_empty() {

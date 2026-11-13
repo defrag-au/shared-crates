@@ -2834,6 +2834,7 @@ dependencies = [
 name = "holder-behaviour"
 version = "0.1.0"
 dependencies = [
+ "bech32",
  "chain-events",
  "chains",
  "serde",

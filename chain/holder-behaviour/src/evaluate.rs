@@ -35,12 +35,13 @@
 
 use chain_events::{Coverage, Currency, PartyRole, TxRef};
 
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::predicate::Predicate;
 use crate::state::{
-    AcquiredBy, Fill, FloorSeries, Holding, LotId, MarketHistory, MarketSide, MintFact,
-    MintSummary, Placement, Slot, Store, SubjectId, UnitId,
+    AcquiredBy, Fill, FloorSeries, Holding, Interval, LotId, MarketHistory, MarketSide, MintFact,
+    MintSummary, Placement, Slot, StakingHistory, Store, SubjectId, TokenHistory, UnitId,
 };
 
 /// One subject's trait rows, read once per evaluation.
@@ -116,6 +117,10 @@ pub enum Gap {
     MovementFacts,
     /// The collection's floor is not known at the moment the predicate reads.
     FloorFacts,
+    /// The store was not given the companion token's archive.
+    TokenFacts,
+    /// The store was not given the staking ledger, or the ledger does not know the campaign.
+    StakingFacts,
 }
 
 /// What a predicate currently says about a subject.
@@ -206,6 +211,20 @@ pub enum Evidence {
         movements: u64,
         /// How many distinct units it ever held.
         units: u64,
+    },
+    /// An interval the companion token was held, from the token archive.
+    TokenHeld {
+        /// Unix seconds it began.
+        from_unix: u64,
+        /// Unix seconds it ended, or `None` while still held.
+        to_unix: Option<u64>,
+    },
+    /// A staking reward paid to the subject.
+    Payout {
+        /// The campaign that paid it.
+        campaign: String,
+        /// The transaction that paid it.
+        tx: String,
     },
 }
 
@@ -338,6 +357,24 @@ pub fn evaluate<'a, S: Store>(
     } else {
         None
     };
+    // The companion token and the staking ledger, each read once. `None` is "this store was not
+    // given the source", which the predicates report as a gap.
+    let token = if definitions
+        .iter()
+        .any(|definition| definition.predicate.needs_token_facts())
+    {
+        store.token_history(subject)?
+    } else {
+        None
+    };
+    let staking = if definitions
+        .iter()
+        .any(|definition| definition.predicate.needs_staking_facts())
+    {
+        store.staking_history(subject)?
+    } else {
+        None
+    };
     let mut outcomes = Vec::with_capacity(definitions.len());
     for definition in definitions {
         let (progress, evidence) = match &definition.predicate {
@@ -443,6 +480,20 @@ pub fn evaluate<'a, S: Store>(
             }
             Predicate::AllMintsRetained => all_mints_retained(&lots, at),
             Predicate::NeverBought => never_bought(&lots, at),
+            Predicate::TokenAcquired => token_acquired(token.as_ref()),
+            Predicate::TokenSpanAtLeast { days } => {
+                token_span_at_least(token.as_ref(), at, u64::from(*days) * SECONDS_PER_DAY)
+            }
+            Predicate::CampaignSpanAtLeast { campaign, days } => campaign_span_at_least(
+                &lots,
+                staking.as_ref(),
+                at,
+                campaign,
+                u64::from(*days) * SECONDS_PER_DAY,
+            ),
+            Predicate::CampaignClaimed { at_least } => {
+                campaign_claimed(staking.as_ref(), at, u64::from(*at_least))
+            }
         };
         let (standing, held) = match (definition.predicate.is_standing(), progress) {
             (true, Progress::Earned { .. }) => {
@@ -581,6 +632,193 @@ fn any_unknown(traits: &TraitMap, units: &[UnitId]) -> bool {
     units
         .iter()
         .any(|unit| traits.get(unit).is_none_or(Vec::is_empty))
+}
+
+fn token_evidence(interval: &Interval) -> Evidence {
+    Evidence::TokenHeld {
+        from_unix: interval.from_unix,
+        to_unix: interval.to_unix,
+    }
+}
+
+/// Held the companion token at all: earned at the first interval's start.
+fn token_acquired(token: Option<&TokenHistory>) -> (Progress, Vec<Evidence>) {
+    let Some(token) = token else {
+        return (Progress::Unavailable(Gap::TokenFacts), Vec::new());
+    };
+    match token.held.iter().min_by_key(|interval| interval.from_unix) {
+        Some(first) => (
+            Progress::Earned {
+                since: EarnedSince::Exact(first.from),
+            },
+            vec![token_evidence(first)],
+        ),
+        None => (
+            Progress::Pending {
+                have: 0,
+                need: 1,
+                eta_unix: None,
+            },
+            Vec::new(),
+        ),
+    }
+}
+
+/// One continuous interval of the companion token reached `need` seconds.
+fn token_span_at_least(
+    token: Option<&TokenHistory>,
+    at: &Assessment,
+    need: u64,
+) -> (Progress, Vec<Evidence>) {
+    let Some(token) = token else {
+        return (Progress::Unavailable(Gap::TokenFacts), Vec::new());
+    };
+    let need = need.max(1);
+    let best = token
+        .held
+        .iter()
+        .max_by_key(|interval| (interval.length_at(at.now_unix), Reverse(interval.from_unix)));
+    let have = best.map_or(0, |interval| interval.length_at(at.now_unix));
+    if have >= need
+        && let Some(interval) = best
+    {
+        return (
+            Progress::Earned {
+                since: EarnedSince::AsAt {
+                    slot: at.now,
+                    unix: at.now_unix,
+                },
+            },
+            vec![token_evidence(interval)],
+        );
+    }
+    let eta_unix = token
+        .held
+        .iter()
+        .filter(|interval| interval.to_unix.is_none())
+        .map(|interval| interval.from_unix.saturating_add(need))
+        .min();
+    (
+        Progress::Pending {
+            have,
+            need,
+            eta_unix,
+        },
+        Vec::new(),
+    )
+}
+
+/// One lot held for `need` seconds inside the campaign's window, counted from the later of the
+/// window's start and the subject's enrolment.
+fn campaign_span_at_least(
+    lots: &[Holding],
+    staking: Option<&StakingHistory>,
+    at: &Assessment,
+    campaign: &str,
+    need: u64,
+) -> (Progress, Vec<Evidence>) {
+    if at.holder_coverage != Coverage::Complete {
+        return (Progress::Unavailable(Gap::HolderCoverage), Vec::new());
+    }
+    let Some(staking) = staking else {
+        return (Progress::Unavailable(Gap::StakingFacts), Vec::new());
+    };
+    // A campaign the ledger does not know is a gap in the source, not a season nobody staked.
+    let Some(window) = staking.campaigns.iter().find(|known| known.id == campaign) else {
+        return (Progress::Unavailable(Gap::StakingFacts), Vec::new());
+    };
+    let need = need.max(1);
+    let pending = |have, eta_unix| {
+        (
+            Progress::Pending {
+                have,
+                need,
+                eta_unix,
+            },
+            Vec::new(),
+        )
+    };
+    let Some(enrolled) = staking
+        .enrolled
+        .iter()
+        .find(|(id, _)| id == campaign)
+        .map(|(_, unix)| *unix)
+    else {
+        return pending(0, None);
+    };
+    let opens = window.starts_unix.max(enrolled);
+    let closes = window.ends_unix.min(at.now_unix);
+    let inside = |lot: &Holding| {
+        let from = lot.acquired_unix.max(opens);
+        let to = lot.disposed_unix.unwrap_or(at.now_unix).min(closes);
+        to.saturating_sub(from)
+    };
+    let best = lots
+        .iter()
+        .map(|lot| (lot, inside(lot)))
+        .max_by_key(|(lot, span)| (*span, Reverse((lot.acquired_at, lot.lot))));
+    let have = best.map_or(0, |(_, span)| span);
+    if have >= need
+        && let Some((lot, _)) = best
+    {
+        return (
+            Progress::Earned {
+                since: EarnedSince::AsAt {
+                    slot: at.now,
+                    unix: at.now_unix,
+                },
+            },
+            vec![evidence_of(lot)],
+        );
+    }
+    // An open lot gets there if the window is still open when it does.
+    let eta_unix = lots
+        .iter()
+        .filter(|lot| lot.is_open())
+        .map(|lot| lot.acquired_unix.max(opens).saturating_add(need))
+        .filter(|eta| *eta <= window.ends_unix)
+        .min();
+    pending(have, eta_unix)
+}
+
+/// Paid out by a staking campaign `need` times.
+fn campaign_claimed(
+    staking: Option<&StakingHistory>,
+    at: &Assessment,
+    need: u64,
+) -> (Progress, Vec<Evidence>) {
+    let Some(staking) = staking else {
+        return (Progress::Unavailable(Gap::StakingFacts), Vec::new());
+    };
+    let need = need.max(1);
+    let have = staking.payouts.len() as u64;
+    if have < need {
+        return (
+            Progress::Pending {
+                have,
+                need,
+                eta_unix: None,
+            },
+            Vec::new(),
+        );
+    }
+    (
+        Progress::Earned {
+            since: EarnedSince::AsAt {
+                slot: at.now,
+                unix: at.now_unix,
+            },
+        },
+        staking
+            .payouts
+            .iter()
+            .take(need as usize)
+            .map(|payout| Evidence::Payout {
+                campaign: payout.campaign.clone(),
+                tx: payout.tx.clone(),
+            })
+            .collect(),
+    )
 }
 
 fn evidence_of(lot: &Holding) -> Evidence {
@@ -2393,7 +2631,7 @@ mod tests {
     use super::*;
     use crate::fold::{apply, rebuild};
     use crate::memory::MemoryStore;
-    use crate::state::AcquiredBy;
+    use crate::state::{AcquiredBy, Campaign, Payout};
     use chain_events::Coverage;
 
     fn definition(id: &'static str, predicate: Predicate) -> Definition<'static> {
@@ -5191,6 +5429,208 @@ mod tests {
         assert_eq!(
             progress_of(&store, bob, Predicate::NeverBought),
             Progress::Missed
+        );
+    }
+
+    fn coin_definitions() -> Vec<Definition<'static>> {
+        vec![
+            definition("acquired", Predicate::TokenAcquired),
+            definition("tenure", Predicate::TokenSpanAtLeast { days: 180 }),
+            definition(
+                "season",
+                Predicate::CampaignSpanAtLeast {
+                    campaign: "season-1".into(),
+                    days: 90,
+                },
+            ),
+            definition("paid", Predicate::CampaignClaimed { at_least: 1 }),
+        ]
+    }
+
+    #[test]
+    fn a_store_without_the_token_or_staking_source_reports_the_gap() {
+        let (store, subject) = crate::memory::fixtures::alice_mints_one();
+        let outcomes = evaluate(&store, subject, &at(1_000), &coin_definitions()).unwrap();
+        assert_eq!(
+            find(&outcomes, "acquired").progress,
+            Progress::Unavailable(Gap::TokenFacts)
+        );
+        assert_eq!(
+            find(&outcomes, "tenure").progress,
+            Progress::Unavailable(Gap::TokenFacts)
+        );
+        assert_eq!(
+            find(&outcomes, "season").progress,
+            Progress::Unavailable(Gap::StakingFacts)
+        );
+        assert_eq!(
+            find(&outcomes, "paid").progress,
+            Progress::Unavailable(Gap::StakingFacts)
+        );
+    }
+
+    #[test]
+    fn a_subject_the_token_archive_does_not_list_never_held_it() {
+        let (mut store, subject) = crate::memory::fixtures::alice_mints_one();
+        store.observe_token();
+        store.observe_staking(Vec::new());
+        let outcomes = evaluate(&store, subject, &at(1_000), &coin_definitions()).unwrap();
+        let none = Progress::Pending {
+            have: 0,
+            need: 1,
+            eta_unix: None,
+        };
+        assert_eq!(find(&outcomes, "acquired").progress, none);
+        assert_eq!(find(&outcomes, "paid").progress, none);
+        assert_eq!(
+            find(&outcomes, "season").progress,
+            Progress::Unavailable(Gap::StakingFacts),
+            "a campaign the ledger does not know is a gap, not a season nobody staked"
+        );
+    }
+
+    #[test]
+    fn a_token_span_is_continuous_and_reports_when_the_open_one_gets_there() {
+        let (mut store, subject) = crate::memory::fixtures::alice_mints_one();
+        let day = SECONDS_PER_DAY;
+        let start = FIXTURE_ORIGIN;
+        store.seed_token(
+            subject,
+            TokenHistory {
+                held: vec![
+                    // 100 days, then a break, then 50 days and still holding.
+                    Interval {
+                        from: 10,
+                        from_unix: start,
+                        to_unix: Some(start + 100 * day),
+                    },
+                    Interval {
+                        from: 20,
+                        from_unix: start + 110 * day,
+                        to_unix: None,
+                    },
+                ],
+            },
+        );
+        let now = start + 160 * day;
+        let reading = Assessment::complete(160 * day, now);
+        let outcomes = evaluate(&store, subject, &reading, &coin_definitions()).unwrap();
+        let acquired = find(&outcomes, "acquired");
+        assert_eq!(
+            acquired.progress,
+            Progress::Earned {
+                since: EarnedSince::Exact(10)
+            }
+        );
+        assert_eq!(
+            find(&outcomes, "tenure").progress,
+            Progress::Pending {
+                have: 100 * day,
+                need: 180 * day,
+                eta_unix: Some(start + 290 * day),
+            },
+            "two spans adding to 150 days are not a 180-day span"
+        );
+
+        let later = Assessment::complete(300 * day, start + 300 * day);
+        let outcomes = evaluate(&store, subject, &later, &coin_definitions()).unwrap();
+        let tenure = find(&outcomes, "tenure");
+        assert!(matches!(tenure.progress, Progress::Earned { .. }));
+        assert_eq!(
+            tenure.evidence,
+            vec![Evidence::TokenHeld {
+                from_unix: start + 110 * day,
+                to_unix: None
+            }]
+        );
+    }
+
+    #[test]
+    fn a_campaign_span_counts_only_inside_the_window_and_after_enrolment() {
+        use crate::memory::fixtures::{account, mint, perp, transfer};
+        let day = SECONDS_PER_DAY;
+        let mut store = MemoryStore::default();
+        let asset = perp("5065727031");
+        // Minted 30 days before the season opens; sold 80 days into it.
+        apply(&mut store, &mint(&asset, "addr1alice", 100)).unwrap();
+        apply(
+            &mut store,
+            &transfer(&asset, "addr1alice", "addr1bob", 100 + 110 * day),
+        )
+        .unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let bob = store.subject(&account("addr1bob")).unwrap();
+        let opens = FIXTURE_ORIGIN + 100 + 30 * day;
+        store.observe_staking(vec![Campaign {
+            id: "season-1".into(),
+            starts_unix: opens,
+            ends_unix: opens + 180 * day,
+        }]);
+        let enrolled = |at| StakingHistory {
+            enrolled: vec![("season-1".into(), at)],
+            ..StakingHistory::default()
+        };
+        store.seed_staking(alice, enrolled(opens));
+        // Bob enrols 20 days after he receives the Perp.
+        store.seed_staking(bob, enrolled(opens + 100 * day));
+
+        let now = 100 + 200 * day;
+        let outcomes = evaluate(&store, alice, &at(now), &coin_definitions()).unwrap();
+        assert_eq!(
+            find(&outcomes, "season").progress,
+            Progress::Pending {
+                have: 80 * day,
+                need: 90 * day,
+                eta_unix: None,
+            },
+            "the 30 days before the season do not count, and the sold lot will not grow"
+        );
+
+        // Bob has held since day 80 of the season but enrolled at day 100: 70 days by day 170,
+        // and the window closes at day 180, before his 90 can arrive.
+        let outcomes = evaluate(&store, bob, &at(now), &coin_definitions()).unwrap();
+        assert_eq!(
+            find(&outcomes, "season").progress,
+            Progress::Pending {
+                have: 70 * day,
+                need: 90 * day,
+                eta_unix: None,
+            },
+            "counted from enrolment, and no date the window will not reach"
+        );
+
+        // Enrolled the day he received it: 90 days by day 170.
+        store.seed_staking(bob, enrolled(opens + 80 * day));
+        let outcomes = evaluate(&store, bob, &at(now), &coin_definitions()).unwrap();
+        let season = find(&outcomes, "season");
+        assert!(matches!(season.progress, Progress::Earned { .. }));
+        assert!(matches!(season.evidence.as_slice(), [Evidence::Lot { .. }]));
+    }
+
+    #[test]
+    fn a_payout_is_counted_and_cited() {
+        let (mut store, subject) = crate::memory::fixtures::alice_mints_one();
+        store.observe_staking(Vec::new());
+        store.seed_staking(
+            subject,
+            StakingHistory {
+                payouts: vec![Payout {
+                    campaign: "season-1".into(),
+                    tx: "ab12".into(),
+                    paid_unix: Some(FIXTURE_ORIGIN + 500),
+                }],
+                ..StakingHistory::default()
+            },
+        );
+        let outcomes = evaluate(&store, subject, &at(1_000), &coin_definitions()).unwrap();
+        let paid = find(&outcomes, "paid");
+        assert!(matches!(paid.progress, Progress::Earned { .. }));
+        assert_eq!(
+            paid.evidence,
+            vec![Evidence::Payout {
+                campaign: "season-1".into(),
+                tx: "ab12".into()
+            }]
         );
     }
 }
