@@ -742,7 +742,10 @@ fn stake_key(stake: &str) -> Result<String, String> {
         .get(1..)
         .filter(|credential| credential.len() == 28)
         .ok_or_else(|| format!("stake {stake}: not a 29-byte reward address"))?;
-    Ok(credential.iter().map(|byte| format!("{byte:02x}")).collect())
+    Ok(credential
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 /// Seeds the staking ledger. An automatic campaign enrols every subject at its start; an

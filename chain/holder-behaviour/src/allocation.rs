@@ -244,6 +244,16 @@ pub struct Allocation {
     /// First-come mints for an identity whose only standing is a partner holding. Zero disables.
     #[serde(default)]
     pub partner_mints: u32,
+    /// First-come mints for an identity holding at least one unit now and fewer than
+    /// [`Allocation::gtd_min_held`]: a small holder's way in (settled 2026-11-14). At the minimum
+    /// the holding ladder's guaranteed rungs take over and this no longer applies. Read on the
+    /// identity's units across its wallets, never per wallet, so splitting a holding gains
+    /// nothing. Zero disables, the rule before this field.
+    #[serde(default)]
+    pub holder_fcfs: u32,
+    /// How an identity's wallets are scored together. See [`Grouping`].
+    #[serde(default, skip_serializing_if = "Grouping::is_default")]
+    pub grouping: Grouping,
     /// The most any identity takes, whatever adds up. Zero: no ceiling beyond the rungs.
     #[serde(default)]
     pub max_per_identity: u32,
@@ -428,10 +438,10 @@ impl Seasoning {
     /// throughout the last [`Self::mature_days`]. Each stage counts at its share, one floor over
     /// the partial stages together, as the holding ladder counts Perps.
     ///
-    /// Settled 2026-11-11 for $PERP: the same schedule as a Perp, so units moved into a fresh
-    /// wallet, or staked from one, the week before a snapshot are new. The held-throughout figures
-    /// are a wallet's lowest balance across each window (`token-ledger held-through`); they are
-    /// clamped here so a reading out of order never counts more than is held.
+    /// The held-throughout figures are a wallet's lowest balance across each window
+    /// (`token-ledger held-through`); they are clamped here so a reading out of order never counts
+    /// more than is held. Perplings used this for $PERP from 2026-11-11 and dropped it on
+    /// 2026-11-15: the token counts in full as held, and only the Perps season.
     pub fn weigh_held(&self, now: u64, held_maturing: u64, held_mature: u64) -> u64 {
         let mature = held_mature.min(now);
         let maturing = held_maturing.clamp(mature, now) - mature;
@@ -688,8 +698,11 @@ impl Counts {
         self.matured.within(self.current)
     }
 
-    /// The units the holding ladder reads: every unit held now at its maturity's share. A holder
-    /// is never below the first rung: one living unit, however new, counts as one.
+    /// The units the holding ladder reads: every unit held now at its maturity's share, the
+    /// pieces a per-piece grant pays for (a Leader, a Multiverse Leader) among them — a Leader is
+    /// a Perp held, and earns its grant as well (settled 2026-11-15, reversing a day of taking
+    /// them off). A holder is never below the first rung: one living unit, however new, counts
+    /// as one.
     pub fn ladder_units(&self, policy: Allocation) -> u32 {
         match policy.seasoning {
             None => self.current,
@@ -702,7 +715,7 @@ impl Counts {
                     .map(|stage| f64::from(held.at(stage)) * seasoning.share(stage))
                     .sum::<f64>();
                 let units = held.mature + partial.floor() as u32;
-                units.max(u32::from(self.current > 0))
+                units.max(u32::from(held.total() > 0))
             }
         }
     }
@@ -791,10 +804,19 @@ pub struct Grant {
     /// identity however many pieces earn it.
     #[serde(default, skip_serializing_if = "is_false")]
     pub per_piece: bool,
+    /// How many pieces held now a [`Grant::per_piece`] grant paid for, summed by [`grants`]: what
+    /// a page says the grant is for. The pieces climb the holding ladder too, as any unit held
+    /// does (settled 2026-11-15). A catalogue's own grant leaves it at zero.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub pieces: u32,
 }
 
 fn is_false(value: &bool) -> bool {
     !*value
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }
 
 impl Grant {
@@ -850,6 +872,11 @@ pub fn grants(
                 fcfs: sum.fcfs + grant.fcfs * times,
                 promotes: sum.promotes || grant.promotes,
                 per_piece: false,
+                pieces: sum.pieces
+                    + match grant.per_piece {
+                        true => times,
+                        false => 0,
+                    },
             }
         })
 }
@@ -872,13 +899,33 @@ pub struct TokenTail {
     pub mints: u32,
 }
 
+/// An earlier first step for a token holder who also holds the collection: with `perps` held now,
+/// a balance from `at_least` is worth `mints`, where the ladder would give less.
+///
+/// $PERP's (settled 2026-11-14): 20 Perps bring the first slot down from 5M to 3M. It only ever
+/// raises a balance the ladder pays less for, so above the ladder's own first step it changes
+/// nothing — a holder of 20 Perps and 5M gets the 5M slot, not that and this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TokenEarly {
+    pub at_least: u64,
+    #[serde(default = "one")]
+    pub mints: u32,
+    /// The collection's units held now that qualify for it.
+    pub perps: u32,
+}
+
+fn one() -> u32 {
+    1
+}
+
 /// What holding a token is worth, in guaranteed slots: the highest step a balance reaches, and the
 /// tail past the last. It needs no Perp — a token holder is a member of the collection's economy in
 /// their own right — and no stake, because the token is the stake.
 ///
-/// Settled 2026-11-11 for $PERP: 3M → 1, 10M → 2, 20M → 3, 40M → 4, 60M → 5, then one more for
-/// every 20M. The older flat `{ per, gtd }` reads as one step and a tail of the same pace, which is
-/// exactly what it meant.
+/// Settled 2026-11-14 for $PERP: flat, 1 for every 5M, because any ladder that pays a better rate
+/// lower down pays a holder to split a balance across wallets; and [`TokenEarly`] brings the first
+/// slot to 3M for a holder of 20 Perps. The older flat `{ per, gtd }` reads as one step and a tail
+/// of the same pace, which is exactly what it meant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(try_from = "TokenRuleFile", into = "TokenRuleFile")]
 pub struct TokenRule {
@@ -890,6 +937,8 @@ pub struct TokenRule {
     /// the other side of the pair — so a campaign may count it at a discount. `100` when unset,
     /// so a catalogue written before this counts LP as it always did.
     pub lp_percent: u8,
+    /// An earlier first step for a holder of the collection. See [`TokenRule::slots_held`].
+    pub early: Option<TokenEarly>,
 }
 
 /// [`TokenRule`] as a catalogue or manifest writes it: a `ladder` and its `tail`, or the flat
@@ -906,6 +955,8 @@ struct TokenRuleFile {
     gtd: Option<u32>,
     #[serde(default = "full_weight")]
     lp_percent: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    early: Option<TokenEarly>,
 }
 
 fn full_weight() -> u8 {
@@ -937,7 +988,11 @@ impl TryFrom<TokenRuleFile> for TokenRule {
                 );
             }
         };
-        Self::new(&ladder, tail, file.lp_percent)
+        let rule = Self::new(&ladder, tail, file.lp_percent)?;
+        match file.early {
+            Some(early) => rule.with_early(early),
+            None => Ok(rule),
+        }
     }
 }
 
@@ -949,6 +1004,7 @@ impl From<TokenRule> for TokenRuleFile {
             per: None,
             gtd: None,
             lp_percent: rule.lp_percent,
+            early: rule.early,
         }
     }
 }
@@ -989,7 +1045,23 @@ impl TokenRule {
             steps: items,
             tail,
             lp_percent,
+            early: None,
         })
+    }
+
+    /// This rule with an earlier first step for a holder of the collection. It must come before
+    /// the ladder's first step, or it would never be the better of the two.
+    pub fn with_early(mut self, early: TokenEarly) -> Result<Self, String> {
+        match self.steps().first() {
+            Some(first) if early.at_least >= first.at_least => Err(format!(
+                "token.early: {} is not before the ladder's first step at {}",
+                early.at_least, first.at_least
+            )),
+            _ => {
+                self.early = Some(early);
+                Ok(self)
+            }
+        }
     }
 
     pub fn steps(&self) -> &[TokenStep] {
@@ -1020,6 +1092,18 @@ impl TokenRule {
             _ => 0,
         };
         step.saturating_add(tail)
+    }
+
+    /// The slots a balance is worth to a holder of `perps` of the collection: [`Self::slots`],
+    /// raised to the early step's when they hold enough and the balance reaches it.
+    pub fn slots_held(&self, units: u64, perps: u32) -> u32 {
+        let slots = self.slots(units);
+        match self.early {
+            Some(early) if perps >= early.perps && units >= early.at_least => {
+                slots.max(early.mints)
+            }
+            _ => slots,
+        }
     }
 }
 
@@ -1122,6 +1206,29 @@ pub fn identity_slots(
     identity_sources(wallets, pool, merged, policy).total()
 }
 
+/// How an identity's linked wallets are scored together: the strategy [`identity_sources`] runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Grouping {
+    /// Each wallet at [`Allocation::gtd_min_held`] scored alone, the wallets under it pooled,
+    /// the sum of those, and never less than the wallets merged ([`best_of`]): linking can only
+    /// help. The rule before strategies (settled 2026-11-11). A record two wallets share counts
+    /// once in each of them.
+    #[default]
+    BestOf,
+    /// The wallets as one holder ([`as_one`]): units summed, earned sets unioned, one ladder and
+    /// one set of points, whatever the wallets would read apart. For a campaign that shows a
+    /// reader one group rather than wallets to compare (settled 2026-11-15 for the Perplings
+    /// mint): a shared record counts once, and the four rarest are the group's.
+    AsOne,
+}
+
+impl Grouping {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 /// [`identity_slots`], source by source: the same choices, so the breakdown a page shows adds up to
 /// the identity's count. See [`Sources`].
 pub fn identity_sources(
@@ -1131,14 +1238,49 @@ pub fn identity_sources(
     policy: Allocation,
 ) -> Sources {
     // A flat policy allocates per IDENTITY by definition (`per_identity`): summing its wallets
-    // would hand out one allocation per wallet. Only a holding ladder is per wallet.
-    if policy.holding.is_empty()
-        && let Some(merged) = merged
-    {
-        return sources(merged, policy);
+    // would hand out one allocation per wallet. Only a holding ladder can be scored per wallet.
+    if policy.holding.is_empty() {
+        return as_one(wallets, merged, policy);
     }
-    let token =
-        |subject: &Counts| -> u32 { policy.token.map_or(0, |rule| rule.slots(subject.token)) };
+    match policy.grouping {
+        Grouping::BestOf => best_of(wallets, pool, merged, policy),
+        Grouping::AsOne => as_one(wallets, merged, policy),
+    }
+}
+
+/// [`Grouping::AsOne`]: the identity's merged reading alone. An identity of one wallet has no
+/// merged reading, and is that wallet.
+fn as_one(wallets: &[Counts], merged: Option<&Counts>, policy: Allocation) -> Sources {
+    match (merged, wallets) {
+        (Some(merged), _) => sources(merged, policy),
+        (None, [one]) => sources(one, policy),
+        // Several wallets and no merged reading is a caller's mistake; the best the rule can do
+        // is read them as it would apart.
+        (None, _) => best_of(wallets, None, None, policy),
+    }
+}
+
+/// [`Grouping::BestOf`]: each wallet at the minimum alone, those under it pooled, the token once
+/// on the identity's balance, and never less than the merged reading.
+fn best_of(
+    wallets: &[Counts],
+    pool: Option<&Counts>,
+    merged: Option<&Counts>,
+    policy: Allocation,
+) -> Sources {
+    // The small holder's slot is the identity's, read on its units across every wallet below:
+    // per wallet, four wallets of one Perp would be four slots, and a wallet of two beside one
+    // of five would be paid it though the identity holds seven.
+    let identity_policy = policy;
+    let policy = Allocation {
+        holder_fcfs: 0,
+        ..policy
+    };
+    let token = |subject: &Counts| -> u32 {
+        policy
+            .token
+            .map_or(0, |rule| rule.slots_held(subject.token, subject.current))
+    };
     let without_token = |subject: &Counts| -> Sources {
         sources(
             &Counts {
@@ -1161,14 +1303,32 @@ pub fn identity_sources(
         Some(pool) if small.len() > 1 => apart.better(without_token(pool)),
         _ => apart,
     });
-    let mut token_gtd = wallets.iter().map(token).sum::<u32>();
+    // The token is the identity's, once, on its balance across every wallet (settled
+    // 2026-11-14): summed wallet by wallet, a ladder paying a better rate for a smaller balance —
+    // or the early step, with Perps to spare — paid for splitting one balance across wallets.
+    // The early step reads the Perps across them too. Only an identity of one wallet, which has
+    // no merged reading, is read from that wallet.
+    let token_gtd = match merged {
+        Some(merged) => token(merged),
+        None => wallets.iter().map(token).sum::<u32>(),
+    };
     if let Some(merged) = merged {
         // Merged wins a tie: its sources read against the identity's own score and clout, which
         // is what a page shows beside them.
         total = without_token(merged).better(total);
-        token_gtd = token_gtd.max(token(merged));
     }
     total.token.gtd += token_gtd;
+    let held = match merged {
+        Some(merged) => merged.current,
+        None => wallets.iter().map(|wallet| wallet.current).sum(),
+    };
+    let gated = match merged {
+        Some(merged) => merged.enabled,
+        None => wallets.iter().any(|wallet| wallet.enabled),
+    };
+    if gated && small_holder(held, identity_policy) {
+        total.holding.fcfs += identity_policy.holder_fcfs;
+    }
     total
 }
 
@@ -1255,6 +1415,12 @@ impl Sources {
     }
 }
 
+/// Whether `current` units held is a small holding: at least one, under
+/// [`Allocation::gtd_min_held`]. What [`Allocation::holder_fcfs`] pays.
+fn small_holder(current: u32, policy: Allocation) -> bool {
+    policy.holder_fcfs > 0 && current > 0 && current < policy.gtd_min_held
+}
+
 /// [`slots`], source by source. See [`Sources`].
 pub fn sources(subject: &Counts, policy: Allocation) -> Sources {
     let mut out = Sources::default();
@@ -1319,9 +1485,14 @@ pub fn sources(subject: &Counts, policy: Allocation) -> Sources {
         }
         out.grants.fcfs += subject.granted.fcfs;
     }
-    // The token is its own door: guaranteed with or without a Perp, and outside the stake.
+    // A small holder's way in: under the minimum held, holding any is first come.
+    if subject.enabled && small_holder(subject.current, policy) {
+        out.holding.fcfs += policy.holder_fcfs;
+    }
+    // The token is its own door: guaranteed with or without a Perp, and outside the stake. The
+    // Perps held now are read only for the early step.
     if let Some(rule) = policy.token {
-        out.token.gtd = rule.slots(subject.token);
+        out.token.gtd = rule.slots_held(subject.token, subject.current);
     }
     let total = out.total();
     if policy.max_per_identity > 0 && total.total() > policy.max_per_identity {
@@ -1938,6 +2109,183 @@ mod tests {
         assert_eq!(flat.slots(10_000_000), 3, "the flat form keeps its pace");
         // Out of order is refused.
         assert!(TokenRule::new(&[step(10, 2), step(3, 1)], None, 100).is_err());
+    }
+
+    /// Settled 2026-11-14 for $PERP: flat 1 per 5M, and 20 Perps bring the first slot to 3M. The
+    /// early step only raises what the ladder pays less for: 5M with 20 Perps is still 1.
+    #[test]
+    fn twenty_perps_bring_the_first_token_slot_to_three_million() {
+        let early = TokenEarly {
+            at_least: 3_000_000,
+            mints: 1,
+            perps: 20,
+        };
+        let rule = flat_token(5_000_000, 50).with_early(early).unwrap();
+        let at = |m: u64, perps: u32| rule.slots_held(m * 1_000_000 / 10, perps);
+        // In tenths of a million.
+        assert_eq!(at(29, 20), 0);
+        assert_eq!((at(30, 20), at(49, 20)), (1, 1), "3M to 5M: one, early");
+        assert_eq!(at(30, 19), 0, "19 Perps is not enough");
+        assert_eq!(
+            (at(50, 20), at(99, 20)),
+            (1, 1),
+            "the 5M slot, not that and this"
+        );
+        assert_eq!(
+            (at(100, 20), at(100, 0)),
+            (2, 2),
+            "above, the ladder as it is"
+        );
+        // It round-trips, and the catalogue form reads.
+        let again: TokenRule =
+            serde_json::from_str(&serde_json::to_string(&rule).unwrap()).unwrap();
+        assert_eq!(again, rule);
+        let file: TokenRule = serde_json::from_str(
+            r#"{"ladder":[{"at_least":5000000,"mints":1}],"tail":{"every":5000000,"mints":1},
+                "lp_percent":50,"early":{"at_least":3000000,"perps":20}}"#,
+        )
+        .unwrap();
+        assert_eq!(file, rule, "`mints` defaults to one");
+        // An early step at or past the ladder's first is refused: it could never be the better.
+        assert!(
+            flat_token(5_000_000, 50)
+                .with_early(TokenEarly {
+                    at_least: 5_000_000,
+                    ..early
+                })
+                .is_err()
+        );
+    }
+
+    /// The token is scored once on a chamber ID's whole balance, and the early step on its Perps
+    /// across every wallet: splitting a balance across wallets gains nothing.
+    #[test]
+    fn grouping_as_one_reads_the_wallets_as_one_holder_and_best_of_as_before() {
+        let rung = |at_least, mints| Rung { at_least, mints };
+        let best_of = Allocation {
+            holding: Rungs::new(&[rung(5, 1)]).unwrap(),
+            holding_tail: Some(Tail { every: 5, mints: 1 }),
+            gtd_min_held: 5,
+            max_per_identity: 0,
+            ..ladder()
+        };
+        let as_one = Allocation {
+            grouping: Grouping::AsOne,
+            ..best_of
+        };
+        // Two wallets of 7: apart, one rung each (2); together 14 is two rungs too, and best-of
+        // takes whichever is more. One holder reads the 14 alone.
+        let wallets = [holding(0, 7), holding(0, 7)];
+        let merged = holding(0, 14);
+        assert_eq!(
+            identity_sources(&wallets, None, Some(&merged), best_of).total(),
+            identity_sources(&wallets, None, Some(&merged), as_one).total(),
+        );
+        // A record both wallets carry: best-of scores each wallet's copy, so the sum beats the
+        // union; one holder counts it once.
+        let rich = Allocation {
+            bonus_fcfs: true,
+            ..best_of
+        };
+        let rich_one = Allocation {
+            grouping: Grouping::AsOne,
+            ..rich
+        };
+        let a = holding(6_000, 7);
+        let b = holding(6_000, 7);
+        let union = holding(6_000, 14);
+        let apart = identity_sources(&[a.clone(), b.clone()], None, Some(&union), rich).total();
+        let one = identity_sources(&[a, b], None, Some(&union), rich_one).total();
+        assert!(apart.fcfs > one.fcfs, "{apart:?} against {one:?}");
+        assert_eq!(one, sources(&union, rich_one).total());
+        // One wallet: it is the group, whichever the strategy.
+        let solo = holding(6_000, 7);
+        assert_eq!(
+            identity_sources(std::slice::from_ref(&solo), None, None, rich_one).total(),
+            sources(&solo, rich_one).total()
+        );
+    }
+
+    #[test]
+    fn a_small_holder_is_first_come_until_five_make_it_guaranteed() {
+        let rung = |at_least, mints| Rung { at_least, mints };
+        let policy = Allocation {
+            holding: Rungs::new(&[rung(5, 1)]).unwrap(),
+            holding_tail: Some(Tail { every: 5, mints: 1 }),
+            gtd_min_held: 5,
+            holder_fcfs: 1,
+            max_per_identity: 0,
+            ..ladder()
+        };
+        let slots = |held: u32| sources(&holding(0, held), policy).holding;
+        assert_eq!(slots(0), Slots::default(), "holding none is no way in");
+        assert_eq!(
+            slots(1),
+            Slots { gtd: 0, fcfs: 1 },
+            "one Perp is a first-come slot"
+        );
+        assert_eq!(
+            slots(4),
+            Slots { gtd: 0, fcfs: 1 },
+            "and so are four: one slot, not four"
+        );
+        assert_eq!(
+            slots(5),
+            Slots { gtd: 1, fcfs: 0 },
+            "five is guaranteed instead"
+        );
+        // The identity's units decide, not each wallet's: four wallets of one are one slot, and
+        // a wallet of two beside a wallet of five is the five's guarantee alone.
+        let ones = [holding(0, 1), holding(0, 1), holding(0, 1), holding(0, 1)];
+        let merged = holding(0, 4);
+        assert_eq!(
+            identity_sources(&ones, Some(&merged), Some(&merged), policy).holding,
+            Slots { gtd: 0, fcfs: 1 }
+        );
+        let mixed = [holding(0, 2), holding(0, 5)];
+        let merged = holding(0, 7);
+        assert_eq!(
+            identity_sources(&mixed, None, Some(&merged), policy).holding,
+            Slots { gtd: 1, fcfs: 0 }
+        );
+        // Off, the rule before it: under five holds nothing.
+        let off = Allocation {
+            holder_fcfs: 0,
+            ..policy
+        };
+        assert_eq!(sources(&holding(0, 3), off).holding, Slots::default());
+    }
+
+    #[test]
+    fn a_split_token_balance_is_scored_as_one() {
+        let rule = flat_token(5_000_000, 100)
+            .with_early(TokenEarly {
+                at_least: 3_000_000,
+                mints: 1,
+                perps: 20,
+            })
+            .unwrap();
+        let policy = Allocation {
+            token: Some(rule),
+            ..ladder()
+        };
+        // 9M split as 3M + 3M + 3M, each wallet with 20 Perps: one wallet's ladder each would be
+        // three early slots; the chamber ID's 9M is one.
+        let wallet = holding(0, 20).token(3_000_000);
+        let wallets = [wallet.clone(), wallet.clone(), wallet];
+        let merged = holding(0, 60).token(9_000_000);
+        let sources = identity_sources(&wallets, None, Some(&merged), policy);
+        assert_eq!(sources.token.gtd, 1);
+        // The early step reads the Perps across the wallets: 4M held in one wallet with 10 Perps,
+        // and 10 more Perps in another.
+        let split_perps = [holding(0, 10).token(4_000_000), holding(0, 10)];
+        let merged = holding(0, 20).token(4_000_000);
+        assert_eq!(
+            identity_sources(&split_perps, None, Some(&merged), policy)
+                .token
+                .gtd,
+            1
+        );
     }
 
     #[test]
@@ -2848,6 +3196,46 @@ mod tests {
         assert_eq!(past_worth(15, 0.1), 2, "1.5 rounds up");
         assert_eq!(past_worth(1_000, 3.0), 1_000, "a share is clamped to one");
         assert_eq!(past_worth(1_000, -1.0), 0, "and to zero");
+    }
+
+    /// A Leader is its grant's five guaranteed slots, and a Perp held on the 1-per-5 ladder too
+    /// (settled 2026-11-15): the pieces a per-piece grant pays for are counted like any other.
+    #[test]
+    fn a_leader_is_paid_by_its_grant_and_counts_on_the_ladder() {
+        let rung = |at_least, mints| Rung { at_least, mints };
+        let flat = Allocation {
+            holding: Rungs::new(&[rung(5, 1)]).unwrap(),
+            holding_tail: Some(Tail { every: 5, mints: 1 }),
+            seasoning: Some(Seasoning::single(90, 0.5)),
+            max_per_identity: 0,
+            ..ladder()
+        };
+        let leader = Grant {
+            gtd: 5,
+            promotes: true,
+            per_piece: true,
+            ..Grant::default()
+        };
+        // 470 held, three of them Leaders: the grant pays 15, and the ladder reads all 470.
+        let granted = grants([(0, Standing::Now, 3)], |_| Some(leader));
+        assert_eq!((granted.gtd, granted.pieces), (15, 3));
+        let whale = holding(0, 470).matured(matured(470, 0)).granted(granted);
+        assert_eq!(whale.ladder_units(flat), 470);
+        assert_eq!(
+            slots(&whale, flat).gtd,
+            94 + 15,
+            "470 is 94 steps, and 15 from the three"
+        );
+
+        // A Leader alone: one Perp on the ladder (under its first rung), its grant guaranteed,
+        // and the gate held.
+        let lone = holding(0, 1).matured(matured(1, 0)).granted(Grant {
+            pieces: 1,
+            ..leader
+        });
+        assert_eq!(lone.ladder_units(flat), 1);
+        assert_eq!(slots(&lone, flat).gtd, 5);
+        assert_eq!(qualifies(&lone, flat), Phase::Gtd);
     }
 
     #[test]

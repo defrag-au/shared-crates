@@ -119,8 +119,8 @@ struct Args {
     /// `segmentation.lp.providers`): counted at the token rule's `lp_percent`, on top of
     /// `token_balances`.
     token_lp: Option<String>,
-    /// `token-ledger held-through`'s table: held token balances, each weighed by how long it was
-    /// held (the policy's seasoning). Instead of `token_balances`.
+    /// `token-ledger held-through`'s table: each holder's token balance now, staking folded in,
+    /// counted in full. Instead of `token_balances`.
     token_held: Option<String>,
     /// Identities as holders would link them, `<name> <stake key hex>…` per line: reported under
     /// the linking rule against every wallet apart and every wallet merged.
@@ -893,7 +893,7 @@ enum TokenHeld<'a> {
     None,
     /// `<key> <units>` lines, counted in full.
     Balances(&'a str),
-    /// `token-ledger held-through`'s table, weighed by how long each balance was held.
+    /// `token-ledger held-through`'s table, each balance now counted in full.
     Aged(&'a str),
 }
 
@@ -918,9 +918,9 @@ fn read_units(path: &str, exclude: &[String]) -> Result<BTreeMap<String, u64>, S
 }
 
 /// `token-ledger held-through`'s table — `<key> <now> <held through maturing_days> <held through
-/// mature_days>` — each balance weighed by the policy's seasoning, so a balance moved or staked
-/// inside the window counts at its stage's share. The header must name the seasoning's own
-/// windows: a table read against the wrong schedule would age the wrong units.
+/// mature_days>` — read for each balance now, in full: `$PERP` does not mature (settled
+/// 2026-11-15; from 2026-11-11 each balance was weighed by the seasoning). The header must still
+/// name the seasoning's own windows, so a table built for another schedule is refused.
 fn read_held(
     path: &str,
     exclude: &[String],
@@ -960,10 +960,11 @@ fn read_held(
                 .map(|n| n.max(0) as u64)
                 .map_err(|_| format!("{path}: `{line}` has a field that is not a number"))
         };
-        out.insert(
-            key.to_string(),
-            seasoning.weigh_held(number(now)?, number(maturing)?, number(mature)?),
-        );
+        // The balance now, in full: `$PERP` does not mature (settled 2026-11-15). The windows are
+        // still read and checked, so a file of the wrong shape is refused rather than misread.
+        number(maturing)?;
+        number(mature)?;
+        out.insert(key.to_string(), number(now)?);
     }
     Ok(out)
 }
@@ -1016,7 +1017,7 @@ fn apply_token(
         policy.token.map_or((0, 0), |rule| {
             let slotted: Vec<u32> = counts
                 .iter()
-                .map(|subject| rule.slots(subject.token))
+                .map(|subject| rule.slots_held(subject.token, subject.current))
                 .filter(|slots| *slots > 0)
                 .collect();
             (slotted.len(), slotted.iter().sum())

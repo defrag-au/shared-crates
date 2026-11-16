@@ -186,6 +186,12 @@ struct AllocationFile {
     partners: Vec<String>,
     #[serde(default)]
     partner_mints: u32,
+    /// First come for a holder under `gtd_min_held`. See [`Allocation::holder_fcfs`].
+    #[serde(default)]
+    holder_fcfs: u32,
+    /// How an identity's wallets are scored together. See [`holder_behaviour::Grouping`].
+    #[serde(default)]
+    grouping: holder_behaviour::Grouping,
     #[serde(default)]
     max_per_identity: u32,
     /// The share a holding keeps once sold. See [`Allocation::past_share`].
@@ -282,6 +288,16 @@ impl TryFrom<&AllocationFile> for Allocation {
             partner_bonus: file.partner_bonus,
             lapsed_mints: file.lapsed_mints,
             partner_mints: file.partner_mints,
+            grouping: file.grouping,
+            holder_fcfs: match (file.holder_fcfs, file.gtd_min_held) {
+                (n, 0) if n > 0 => {
+                    return Err(
+                        "[allocation] holder_fcfs pays a holding under gtd_min_held, which is 0"
+                            .to_string(),
+                    );
+                }
+                (n, _) => n,
+            },
             max_per_identity: file.max_per_identity,
             past_share: match file.past_share {
                 Some(share) if !(0.0..=1.0).contains(&share) => {

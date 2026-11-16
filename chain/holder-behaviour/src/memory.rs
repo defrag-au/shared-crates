@@ -55,7 +55,10 @@ pub struct MemoryStore {
     /// store that was not given one; a subject absent from `Some` never held the token.
     token: Option<HashMap<SubjectId, TokenHistory>>,
     /// The staking ledger, once one was given: the campaigns, and each subject's record in them.
-    staking: Option<(Vec<crate::state::Campaign>, HashMap<SubjectId, StakingHistory>)>,
+    staking: Option<(
+        Vec<crate::state::Campaign>,
+        HashMap<SubjectId, StakingHistory>,
+    )>,
     next_lot: u32,
     /// How many times `open_lots_of` has been asked. Used by the test that pins "one lot
     /// read per subject per evaluation" rather than trusting the comment.
