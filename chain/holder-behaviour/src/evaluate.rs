@@ -2349,10 +2349,23 @@ fn matches_value(traits: &TraitMap, unit: UnitId, category: &str, value: Option<
     traits.get(&unit).is_some_and(|rows| {
         rows.iter().any(|(found_category, found_value)| {
             (category == "*" || found_category == category)
-                && value.is_none_or(|want| want == "*" || found_value == want)
+                && match value {
+                    // Any value: a trait the unit actually carries. A metadata `"None"` is the
+                    // trait's absence, written out — 5,580 of 6,000 Perps say `Post It: None` —
+                    // and counting it made "30 Perps carrying a Post It" mean "30 Perps"
+                    // (found 2026-11-16: 69 holders had Post It Overload; one held 30 Post Its).
+                    // `status` reads it the same way.
+                    None | Some("*") => found_value != ABSENT,
+                    // Named: exactly that value, `"None"` included — the Naked Perp marker
+                    // asks for `Clothes: None` on purpose.
+                    Some(want) => found_value == want,
+                }
         })
     })
 }
+
+/// The value metadata writes for a trait a unit does not carry.
+const ABSENT: &str = "None";
 
 // ============================================================================
 // Provenance — what the subject did at the primary mint
@@ -4895,6 +4908,84 @@ mod tests {
                 since: EarnedSince::Exact(150)
             }
         );
+    }
+
+    /// "Any value in the category" is a trait the unit carries: `Post It: None` is a Perp with no
+    /// Post It. Thirty plain Perps once earned Post It Overload (2026-11-16).
+    #[test]
+    fn at_once_with_any_value_does_not_count_a_none() {
+        use crate::memory::fixtures::{account, mint, perp};
+        let mut store = MemoryStore::default();
+        let carded = perp("5065727031");
+        let plain = perp("5065727032");
+        apply(&mut store, &mint(&carded, "addr1alice", 100)).unwrap();
+        apply(&mut store, &mint(&plain, "addr1alice", 100)).unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let unit = store.unit(&carded).unwrap();
+        store.seed_traits(unit, &[("Post It", "KEK")]);
+        let unit = store.unit(&plain).unwrap();
+        store.seed_traits(unit, &[("Post It", "None")]);
+
+        let overload = |value: Option<&str>| {
+            definition(
+                "post-it-overload",
+                Predicate::HeldWithTraitAtOnce {
+                    category: "Post It".into(),
+                    value: value.map(str::to_string),
+                    at_least: 2,
+                },
+            )
+        };
+        for value in [None, Some("*")] {
+            let outcomes = evaluate(&store, alice, &at(5_000), &[overload(value)]).unwrap();
+            assert_eq!(
+                find(&outcomes, "post-it-overload").progress,
+                Progress::Pending {
+                    have: 1,
+                    need: 2,
+                    eta_unix: None,
+                },
+                "{value:?}: the plain Perp is not a Post It"
+            );
+        }
+    }
+
+    /// A named `"None"` is asked for on purpose — the Naked Perp marker is `Clothes: None` — and
+    /// still matches; only "any value" reads it as absence.
+    #[test]
+    fn a_named_none_still_matches_and_any_value_does_not() {
+        use crate::memory::fixtures::{account, mint, perp};
+        let mut store = MemoryStore::default();
+        let naked = perp("5065727031");
+        apply(&mut store, &mint(&naked, "addr1alice", 100)).unwrap();
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let unit = store.unit(&naked).unwrap();
+        store.seed_traits(unit, &[("Clothes", "None")]);
+
+        let has = |id: &'static str, value: &str| {
+            definition(
+                id,
+                Predicate::HasTrait {
+                    category: "Clothes".into(),
+                    value: value.into(),
+                },
+            )
+        };
+        let outcomes = evaluate(
+            &store,
+            alice,
+            &at(5_000),
+            &[has("naked", "None"), has("dressed", "*")],
+        )
+        .unwrap();
+        assert!(matches!(
+            find(&outcomes, "naked").progress,
+            Progress::Earned { .. }
+        ));
+        assert!(!matches!(
+            find(&outcomes, "dressed").progress,
+            Progress::Earned { .. }
+        ));
     }
 
     #[test]
