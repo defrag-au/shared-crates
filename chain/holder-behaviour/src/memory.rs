@@ -11,9 +11,9 @@ use chain_events::{AccountRef, Currency, Price};
 use chains::TokenRef;
 
 use crate::state::{
-    BookChange, BookOutcome, Fill, FloorPoint, FloorSeries, Holding, LotId, MarketHistory,
-    MarketSide, MintFact, MintSummary, NewFill, NewLot, Placement, Slot, StakingHistory, Store,
-    SubjectId, TokenHistory, UnitId,
+    BookChange, BookOutcome, Campaign, Fill, FloorPoint, FloorSeries, Holding, LotId,
+    MarketHistory, MarketSide, MintFact, MintSummary, NewFill, NewLot, Placement, Slot,
+    StakingHistory, Store, SubjectId, TokenHistory, UnitId,
 };
 
 /// A live ask, kept in the shape the floor and a fill's age read it.
@@ -55,10 +55,7 @@ pub struct MemoryStore {
     /// store that was not given one; a subject absent from `Some` never held the token.
     token: Option<HashMap<SubjectId, TokenHistory>>,
     /// The staking ledger, once one was given: the campaigns, and each subject's record in them.
-    staking: Option<(
-        Vec<crate::state::Campaign>,
-        HashMap<SubjectId, StakingHistory>,
-    )>,
+    staking: Option<(Vec<Campaign>, HashMap<SubjectId, StakingHistory>)>,
     next_lot: u32,
     /// How many times `open_lots_of` has been asked. Used by the test that pins "one lot
     /// read per subject per evaluation" rather than trusting the comment.
@@ -97,7 +94,7 @@ impl MemoryStore {
 
     /// Records the staking ledger's campaigns. Subjects with no record are not enrolled and were
     /// never paid. Replaces any campaigns given before.
-    pub fn observe_staking(&mut self, campaigns: Vec<crate::state::Campaign>) {
+    pub fn observe_staking(&mut self, campaigns: Vec<Campaign>) {
         match &mut self.staking {
             Some((known, _)) => *known = campaigns,
             None => self.staking = Some((campaigns, HashMap::new())),

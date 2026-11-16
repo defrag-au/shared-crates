@@ -1211,12 +1211,12 @@ pub fn identity_slots(
 #[serde(rename_all = "snake_case")]
 pub enum Grouping {
     /// Each wallet at [`Allocation::gtd_min_held`] scored alone, the wallets under it pooled,
-    /// the sum of those, and never less than the wallets merged ([`best_of`]): linking can only
+    /// the sum of those, and never less than the wallets merged (`best_of`): linking can only
     /// help. The rule before strategies (settled 2026-11-11). A record two wallets share counts
     /// once in each of them.
     #[default]
     BestOf,
-    /// The wallets as one holder ([`as_one`]): units summed, earned sets unioned, one ladder and
+    /// The wallets as one holder (`as_one`): units summed, earned sets unioned, one ladder and
     /// one set of points, whatever the wallets would read apart. For a campaign that shows a
     /// reader one group rather than wallets to compare (settled 2026-11-15 for the Perplings
     /// mint): a shared record counts once, and the four rarest are the group's.

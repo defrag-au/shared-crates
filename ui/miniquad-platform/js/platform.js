@@ -403,8 +403,9 @@
 
     // v2 added the storage calls, v3 the page's host and path, v4 fullscreen,
     // v5 the text clipboard, v6 the focus count, v7 link zones, v8 the image
-    // clipboard, v9 typed links (a kind beside the address). A consumer whose committed `platform.js` predates it fails
-    // the handshake at instantiate rather than calling a stubbed function —
-    // which is why the Rust export and this number move together.
+    // clipboard, v9 typed links (a kind beside the address). A consumer whose
+    // committed `platform.js` predates it fails the handshake at instantiate
+    // rather than calling a stubbed function — which is why the Rust export and
+    // this number move together.
     miniquad_add_plugin({ register_plugin, version: 9, name: 'platform' });
 })();

@@ -1,10 +1,10 @@
 //! The frozen achievement catalogue, as far as this build can read it.
 //!
 //! The `predicate` table is kept as a [`toml::Value`] rather than a [`Predicate`] on
-//! purpose: the catalogue names 42 predicate kinds and this build implements five, so a
-//! strict parse would refuse the whole file. An entry is **evaluable** when its table
-//! deserialises. Everything else is a gap in this build, reported by kind so a missing
-//! answer cannot be mistaken for a zero.
+//! purpose: a catalogue may name a kind this build does not implement, and a strict parse
+//! would refuse the whole file. An entry is **evaluable** when its table deserialises.
+//! Everything else is a gap in this build, reported by kind so a missing answer cannot be
+//! mistaken for a zero.
 
 use std::collections::BTreeMap;
 

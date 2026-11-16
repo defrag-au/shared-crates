@@ -1,15 +1,39 @@
-//! Custom `getrandom` backend for the miniquad WASM runtime.
+//! The miniquad browser platform: a CSPRNG, and the page services a canvas
+//! cannot reach.
+//!
+//! miniquad's `gl.js` runtime carries no wasm-bindgen glue, so a Rust crate
+//! that needs a browser API has exactly one route: a miniquad plugin. This
+//! crate is that plugin for the platform services a game or wallet uses.
+//!
+//! # Randomness
 //!
 //! `getrandom 0.2` errors at compile time on `wasm32-unknown-unknown`
 //! unless one of `js`, `custom`, or 0.3's `wasm_js` is on. The `js`
 //! feature pulls `wasm-bindgen`, which miniquad's plugin-based bridge
 //! doesn't satisfy. The `custom` feature lets us register our own
-//! backend — which we route through a miniquad plugin (`js/platform.js`)
+//! backend — which we route through the same plugin (`js/platform.js`)
 //! that calls `crypto.getRandomValues()`.
 //!
 //! The browser's `crypto.getRandomValues()` is a CSPRNG seeded from
 //! OS entropy. Functionally equivalent to the wasm-bindgen path; same
 //! security guarantees, different ABI.
+//!
+//! # The page
+//!
+//! Alongside the CSPRNG, `platform.js` exposes:
+//!
+//! - the page's query parameter, hostname and path ([`launch_query`], [`launch_host`],
+//!   [`launch_path`]), for a bundle served under several names;
+//! - `localStorage` ([`storage_get`], [`storage_set`]), for preference-shaped values;
+//! - a reload ([`reload_page`]), for a transport that cannot reconnect in place;
+//! - how many times the page has come back to the visitor ([`FocusWatch`]);
+//! - the text and image clipboards ([`clipboard_write`], [`clipboard_image_copy`]);
+//! - a fullscreen zone the page answers itself ([`fullscreen_zone`]);
+//! - a link zone for a [`Link`], opened from the tap's own handler ([`link_zone`]).
+//!
+//! The browser grants fullscreen and a new tab only from inside a user gesture, and a frame loop
+//! is not one. So each of those is a zone the game names every frame, which the page watches for
+//! a tap itself. Rust checks the link's shape and the page checks it again.
 //!
 //! ## Wiring it into a consumer
 //!
@@ -28,8 +52,8 @@
 //!    fs::write("web/platform.js", miniquad_platform::PLUGIN_JS)?;
 //!    ```
 //!
-//! Native builds skip all this — `getrandom`'s native backends work
-//! out of the box and the register_custom_getrandom macro is a no-op.
+//! Native builds skip the plugin — every function has a native stand-in that returns
+//! nothing — and `getrandom`'s native backends work out of the box.
 
 /// JavaScript source for the miniquad plugin. Consumers materialise
 /// this into their HTML shell directory (typically via `build.rs`).

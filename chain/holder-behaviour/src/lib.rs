@@ -37,8 +37,8 @@
 //! collection's mint order, and the marketplace placements and fills a subject was party
 //! to), and not a catalogue loader (the TOML is read by the caller — the predicate type
 //! deserialises from the same `{ kind = … }` table the published rules use). It does own
-//! [`allocation`], the threshold policy that turns an earned set into a phase, because the
-//! tool that models a mint and the site that shows an estimate must not each carry a copy.
+//! the allocation rule — [`score`] and [`phase`] over an [`Allocation`] — because the tool that
+//! models a mint and the site that shows an estimate must not each carry a copy.
 //! The design is `cnft.dev-workers/docs/design/HOLDER_BEHAVIOUR.md`; the first client is
 //! the frozen Perps catalogue.
 
@@ -55,10 +55,10 @@ mod status;
 pub use allocation::{
     Allocation, Counts, Grant, Grouping, Launch, LaunchPhase, Matured, Maturity,
     Outcome as ScoreOutcome, Phase, PhaseKind, RUNGS_MAX, Role, Rung, Rungs, Score, ScoreError,
-    Seasoning, Slots, Sources, Tail, TokenEarly, TokenRule, TokenStep, TokenTail, Trace, TraceRow,
-    Track, Tracked, explain, explain_tracks, grants, held_at, holding_mints, identity_slots,
-    identity_sources, matures_at, maturity_at, mints, peak_concurrent, phase, score, score_earned,
-    score_tracks, slots, sources,
+    Seasoning, Slots, Sources, TOKEN_STEPS_MAX, Tail, TokenEarly, TokenRule, TokenStep, TokenTail,
+    Trace, TraceRow, Track, Tracked, explain, explain_tracks, grants, held_at, holding_mints,
+    identity_slots, identity_sources, matures_at, maturity_at, mints, peak_concurrent, phase,
+    score, score_earned, score_tracks, slots, sources,
 };
 pub use bundle::{
     Bundle, BundleError, BundleStore, Earned, Lot, Rarity, Snapshot, SubjectRecord, SubjectView,

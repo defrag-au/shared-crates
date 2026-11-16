@@ -10,7 +10,9 @@
 //!     --out .tmp/premint-info.html
 //! ```
 //!
-//! The bundle is optional and only adds how many holders have each achievement. The claimed
+//! The bundle is optional and only adds how many holders have each achievement. The timeline,
+//! prices and dates come from the catalogue's `[launch]`, and the allowances and points tables
+//! from `[allocation]` and the entries — nothing on the page is transcribed by hand. The claimed
 //! figures are the modelling tool's (`allocate`), passed in rather than recomputed: they need the
 //! listings and the token reads that tool owns.
 
@@ -19,7 +21,10 @@ mod support;
 use std::fmt::Write as _;
 use std::process::ExitCode;
 
-use holder_behaviour::{Allocation, Bundle, Maturity, Track, catalogue_digest, holding_mints};
+use holder_behaviour::{
+    Allocation, Bundle, Grouping, Launch, LaunchPhase, Maturity, PhaseKind, Track,
+    catalogue_digest, holding_mints,
+};
 use support::catalogue::LoadedCatalogue;
 
 /// The loci in reading order, as the page names them.
@@ -35,13 +40,6 @@ struct Args {
     catalogue: String,
     bundle: Option<String>,
     out: String,
-    og_gtd: u32,
-    community_gtd: u32,
-    fcfs: u32,
-    og_fcfs: u32,
-    price: String,
-    snapshot: String,
-    mature_by: String,
     gtd_claimed: Option<u32>,
     fcfs_claimed: Option<u32>,
 }
@@ -127,8 +125,14 @@ fn run() -> Result<(), String> {
                 })
         })
         .collect();
+    let launch = catalogue
+        .launch()
+        .ok_or_else(|| format!("{} has no [launch] block", args.catalogue))?;
+    if launch.phases.is_empty() {
+        return Err(format!("{}: [launch] carries no phases", args.catalogue));
+    }
 
-    let html = render(&args, policy, &tables, &leaders);
+    let html = render(&args, policy, launch, &tables, &leaders);
     std::fs::write(&args.out, html).map_err(|error| format!("write {}: {error}", args.out))?;
     eprintln!("premint-info: wrote {}", args.out);
     Ok(())
@@ -137,11 +141,13 @@ fn run() -> Result<(), String> {
 fn render(
     args: &Args,
     policy: Allocation,
+    launch: &Launch,
     tables: &[(Track, Vec<Row>); 2],
     leaders: &[(String, holder_behaviour::Grant)],
 ) -> String {
     let mut html = String::new();
-    let total = args.og_gtd + args.community_gtd + args.fcfs;
+    let total: u32 = launch.phases.iter().map(|phase| phase.mints).sum();
+    let snapshot = date(launch.snapshot_at);
     let _ = write!(
         html,
         r#"<!doctype html>
@@ -153,49 +159,48 @@ fn render(
 <header>
   <p class="kicker">Perplings · premint</p>
   <h1>How the allocation works</h1>
-  <p class="lede">Holding Perps earns <b>GTD</b> free mints; what you've collected and done earns
-  <b>FCFS</b> access. The snapshot is on <b>{snapshot}</b>.</p>
+  <p class="lede">{lede} The snapshot is on <b>{snapshot}</b>.</p>
 </header>
 "#,
-        snapshot = esc(&args.snapshot),
+        lede = match policy.bonus_fcfs {
+            true =>
+                "Holding Perps earns <b>GTD</b> free mints; the two points tables earn <b>FCFS</b> access.",
+            false =>
+                "Holding Perps earns <b>GTD</b> free mints; <b>Bloodline</b> adds to it and <b>Clout</b> earns <b>FCFS</b> access.",
+        },
     );
 
-    // ── The timeline: three phases, then public ──────────────────────────────────────────────
+    // ── The timeline: the catalogue's phases, then public ───────────────────────────────────
+    let tiers: String = launch
+        .phases
+        .iter()
+        .enumerate()
+        .map(|(index, phase)| phase_tier(index, phase, launch.og_fcfs_target, policy.bonus_fcfs))
+        .collect();
+    let phases = launch.phases.len();
+    let public = match launch.public_price_cents {
+        Some(cents) => format!(
+            " When the last phase ends, public access opens for whatever remains, at {}.",
+            money(cents)
+        ),
+        None => " When the last phase ends, public access opens for whatever remains.".to_string(),
+    };
     let _ = write!(
         html,
-        r#"<section><h2>The mint, in three phases</h2><div class="tiers">
-{og}{community}{fcfs}</div>
-<p class="note">{total} mints across the three phases. GTD that OG Perps holders don't use goes to the community phase. When the FCFS phase ends, public access opens for whatever remains, at {price}.</p></section>
+        r#"<section><h2>The mint, in {phases} phases</h2><div class="tiers">
+{tiers}</div>
+<p class="note">{total} mints across the {phases} phases.{public}</p></section>
 "#,
-        og = tier(
-            "Phase 1",
-            "GTD · OG Perps",
-            &format!("{} free mints", thousands(args.og_gtd)),
-            "For Perps and $PERP holders, earned by what you hold and your Bloodline.",
-            "bloodline",
-        ),
-        community = tier(
-            "Phase 2",
-            "GTD · Community",
-            &format!("{} free mints", thousands(args.community_gtd)),
-            "For the Robinhood partner communities.",
-            "neutral",
-        ),
-        fcfs = tier(
-            "Phase 3",
-            "FCFS",
-            &format!("{} at {}", thousands(args.fcfs), esc(&args.price)),
-            &format!(
-                "While it lasts. About {} for OG holders, earned by Clout.",
-                thousands(args.og_fcfs)
-            ),
-            "clout",
-        ),
         total = thousands(total),
-        price = esc(&args.price),
     );
 
     // ── Where the OG allocation stands ───────────────────────────────────────────────────────
+    let og_gtd = launch
+        .phases
+        .iter()
+        .find(|phase| phase.kind == PhaseKind::Gtd && phase.audience.is_none())
+        .map_or(0, |phase| phase.mints);
+    let og_fcfs = launch.og_fcfs_target.unwrap_or(0);
     if args.gtd_claimed.is_some() || args.fcfs_claimed.is_some() {
         let bar = |claimed: Option<u32>, of: u32, class: &str, label: &str| -> String {
             match claimed {
@@ -215,8 +220,8 @@ fn render(
             r#"<section><h2>Where OG allocation stands</h2>{}{}
 <p class="note">An estimate from today's holdings, if every eligible holder takes everything they've earned. It moves as people buy, list, link wallets and earn.</p></section>
 "#,
-            bar(args.gtd_claimed, args.og_gtd, "bloodline", "GTD"),
-            bar(args.fcfs_claimed, args.og_fcfs, "clout", "FCFS"),
+            bar(args.gtd_claimed, og_gtd, "bloodline", "GTD"),
+            bar(args.fcfs_claimed, og_fcfs, "clout", "FCFS"),
         );
     }
 
@@ -246,6 +251,20 @@ fn render(
         })
         .unwrap_or_default();
     let lp = policy.token.map_or(100, |rule| rule.lp_percent);
+    let early = policy
+        .token
+        .and_then(|rule| rule.early)
+        .map_or(String::new(), |early| match early.at_least % 1_000_000 {
+            0 => format!(
+                " Holding {} Perps brings the first slot down to {}M.",
+                early.perps,
+                early.at_least / 1_000_000
+            ),
+            _ => format!(
+                " Holding {} Perps brings the first slot down to {} units.",
+                early.perps, early.at_least
+            ),
+        });
     let leader_rows: String = leaders
         .iter()
         .map(|(title, grant)| {
@@ -257,65 +276,113 @@ fn render(
         })
         .collect();
     let maturity = match policy.seasoning {
+        Some(s) if s.maturing_days == s.mature_days => format!(
+            "A Perp counts in full once it has been in your wallet for <b>{} days</b>; before that it counts {:.0}%. Buy by <b>{}</b> to count in full at the snapshot. Moving Perps to another wallet starts the clock again.",
+            s.mature_days,
+            s.share(Maturity::New) * 100.0,
+            date(launch.mature_by(Some(s)))
+        ),
         Some(s) => format!(
             "A Perp counts in full once it has been in your wallet for <b>{} days</b>; from {} days it counts {:.0}%, before that {:.0}%. Buy by <b>{}</b> to count in full at the snapshot. Moving Perps to another wallet starts the clock again.",
             s.mature_days,
             s.maturing_days,
             s.share(Maturity::Maturing) * 100.0,
             s.share(Maturity::New) * 100.0,
-            esc(&args.mature_by)
+            date(launch.mature_by(Some(s)))
         ),
         None => "Every Perp held at the snapshot counts.".to_string(),
     };
+    let bloodline_table = points_table(
+        "Bloodline",
+        "Made in the lab, and never left. Where you came from, and how long you stayed.",
+        "bloodline",
+        if policy.bonus_fcfs { "FCFS" } else { "GTD" },
+        &policy.bonus,
+        policy.bonus_tail,
+        &tables[0].1,
+    );
     let _ = write!(
         html,
-        r#"<section class="track-section"><h2><span class="chip bloodline"></span>GTD — free mints</h2>
-<p>GTD mints come from what can't be bought the night before: the Perps you hold, your Leaders, your $PERP, and your <b>Bloodline</b>. You need <b>{min} Perps</b> for GTD (a Leader or $PERP qualifies on its own).</p>
+        r#"<section class="track-section"><h2>GTD — free mints</h2>
+<p>{sources} You need <b>{min} Perps</b> for GTD (a Leader or $PERP qualifies on its own).</p>
 <div class="cols">
 <div class="card"><h3>Holding Perps</h3><table><thead><tr><th>Perps held</th><th class="num">GTD</th></tr></thead><tbody>{ladder}</tbody></table>
-<p class="note">One for every 5 Perps up to 50, one for every 10 up to 150, then one for every 25. Listed Perps don't count — unlist them before the snapshot.</p></div>
+<p class="note">Every rung is the Perps held now; the table reads the published ladder. Listed Perps don't count — unlist them before the snapshot.</p></div>
 <div class="card"><h3>Holding $PERP</h3><table><thead><tr><th>$PERP held</th><th class="num">GTD</th></tr></thead><tbody>{token}</tbody></table>
-<p class="note">Wallet, staked and locked $PERP count in full; $PERP in a liquidity pool counts at {lp}%. $PERP matures like a Perp. No Perp needed.</p></div>
+<p class="note">Wallet, staked and locked $PERP count in full; $PERP in a liquidity pool counts at {lp}%. No Perp needed.{early}</p></div>
 </div>
 <div class="card"><h3>Leaders</h3><ul>{leader_rows}</ul><p class="note">A Leader earns GTD whatever else you hold.</p></div>
 <div class="card"><h3>Maturity</h3><p>{maturity}</p></div>
 "#,
         min = policy.gtd_min_held,
+        sources = match policy.bonus_fcfs {
+            true =>
+                "GTD mints come from what you hold now: the Perps in your wallet, your Leaders, and your $PERP.",
+            false =>
+                "GTD mints come from what can't be bought the night before: the Perps you hold, your Leaders, your $PERP, and your Bloodline.",
+        },
     );
-    html.push_str(&points_table(
-        "Bloodline",
-        "Made in the lab, and never left. Where you came from, and how long you stayed.",
-        "bloodline",
-        "GTD",
-        &policy.bonus,
-        &tables[0].1,
-    ));
-    let _ = writeln!(
-        html,
-        r#"<p class="note">Under {} Perps held, Bloodline earns FCFS mints instead.</p></section>"#,
-        policy.gtd_min_held
-    );
+    if policy.bonus_fcfs {
+        html.push_str("</section>\n");
+    } else {
+        html.push_str(&bloodline_table);
+        let _ = writeln!(
+            html,
+            r#"<p class="note">Under {} Perps held, Bloodline earns FCFS mints instead.</p></section>"#,
+            policy.gtd_min_held
+        );
+    }
 
     // ── FCFS ─────────────────────────────────────────────────────────────────────────────────
-    html.push_str(
-        r#"<section class="track-section"><h2><span class="chip clout"></span>FCFS — early access</h2>
-<p>FCFS mints come from <b>Clout</b>: what you've collected and done — the sets, the rare finds, the factions, the market. It's the part you can still chase before the snapshot. Holders with fewer than 5 Perps also get FCFS access from what they hold.</p>
+    let small_holder = match (policy.holder_fcfs, policy.gtd_min_held) {
+        (0, _) | (_, 0) => String::new(),
+        (mints, min) => format!(
+            " Holders with fewer than {min} Perps also get {mints} FCFS from what they hold."
+        ),
+    };
+    let fcfs_intro = match policy.bonus_fcfs {
+        true => {
+            "FCFS mints come from the two points tables, each on its own: <b>Bloodline</b> — the mint and time held — and <b>Clout</b> — what you've collected and done. The guarantee is what you hold; both tables are a chase."
+        }
+        false => {
+            "FCFS mints come from <b>Clout</b>: what you've collected and done — the sets, the rare finds, the factions, the market. It's the part you can still chase before the snapshot."
+        }
+    };
+    let _ = write!(
+        html,
+        r#"<section class="track-section"><h2><span class="chip bloodline"></span><span class="chip clout"></span>FCFS — early access</h2>
+<p>{fcfs_intro}{small_holder}</p>
 "#,
     );
+    if policy.bonus_fcfs {
+        html.push_str(&bloodline_table);
+    }
     html.push_str(&points_table(
         "Clout",
         "What you did with them. The collection, the factions, the market, the Coin hunt.",
         "clout",
         "FCFS",
         &policy.clout,
+        policy.clout_tail,
         &tables[1].1,
     ));
     html.push_str("</section>\n");
 
     // ── Wallets ──────────────────────────────────────────────────────────────────────────────
-    html.push_str(
+    let wallets = match (policy.grouping, policy.gtd_min_held) {
+        (Grouping::AsOne, min) if min > 0 => format!(
+            "All your linked wallets are read as one holder — their Perps are summed, so wallets that each hold fewer than {min} Perps can reach GTD together, and a shared achievement counts once. Your mints go to that Robinhood wallet."
+        ),
+        (Grouping::AsOne, _) => "All your linked wallets are read as one holder — their Perps are summed and a shared achievement counts once. Your mints go to that Robinhood wallet.".to_string(),
+        (Grouping::BestOf, min) if min > 0 => format!(
+            "Each wallet earns on its own and the best reading of the group wins, so linking never costs you anything — and wallets that each hold fewer than {min} Perps can combine to reach GTD. Your mints go to that Robinhood wallet."
+        ),
+        (Grouping::BestOf, _) => "Each wallet earns on its own and the best reading of the group wins, so linking never costs you anything. Your mints go to that Robinhood wallet.".to_string(),
+    };
+    let _ = write!(
+        html,
         r#"<section><h2>Your wallets</h2>
-<div class="card"><p><b>Link all your Cardano wallets to one Robinhood wallet.</b> Each wallet earns on its own and they add up, so linking never costs you anything — and wallets with fewer than 5 Perps can combine to reach GTD. Your mints go to that Robinhood wallet.</p></div>
+<div class="card"><p><b>Link all your Cardano wallets to one Robinhood wallet.</b> {wallets}</p></div>
 </section>
 </main></body></html>
 "#,
@@ -331,12 +398,78 @@ fn tier(number: &str, name: &str, size: &str, who: &str, class: &str) -> String 
     )
 }
 
+/// One phase of the catalogue's launch, as a tier card.
+fn phase_tier(index: usize, phase: &LaunchPhase, og_fcfs: Option<u32>, bonus_fcfs: bool) -> String {
+    let class = match (phase.kind, phase.audience.is_some()) {
+        (PhaseKind::Gtd, false) => "bloodline",
+        (PhaseKind::Gtd, true) => "neutral",
+        (PhaseKind::Fcfs, _) => "clout",
+    };
+    let size = match phase.price_cents.filter(|cents| *cents > 0) {
+        Some(cents) => format!("{} at {}", thousands(phase.mints), money(cents)),
+        None => format!("{} free mints", thousands(phase.mints)),
+    };
+    let who = match (phase.kind, &phase.audience) {
+        (PhaseKind::Gtd, Some(audience)) => format!("For {audience}."),
+        (PhaseKind::Gtd, None) => match bonus_fcfs {
+            true => "For Perps and $PERP holders, earned by what you hold.".to_string(),
+            false => "For Perps and $PERP holders, earned by what you hold and your Bloodline."
+                .to_string(),
+        },
+        (PhaseKind::Fcfs, _) => {
+            let tables = match bonus_fcfs {
+                true => "Bloodline and Clout",
+                false => "Clout",
+            };
+            match og_fcfs.filter(|target| *target > 0) {
+                Some(target) => format!(
+                    "While it lasts. About {} for OG holders, earned by {tables}.",
+                    thousands(target)
+                ),
+                None => format!("While it lasts, earned by {tables}."),
+            }
+        }
+    };
+    tier(
+        &format!("Phase {}", index + 1),
+        &phase.name,
+        &size,
+        &who,
+        class,
+    )
+}
+
+/// US cents as a price: `$8`, `$8.50`.
+fn money(cents: u32) -> String {
+    match cents % 100 {
+        0 => format!("${}", cents / 100),
+        rest => format!("${}.{rest:02}", cents / 100),
+    }
+}
+
+/// A unix second as a calendar date, UTC.
+fn date(unix: u64) -> String {
+    let days = (unix / 86_400) as i64;
+    // Civil-from-days (Howard Hinnant).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
 fn points_table(
     name: &str,
     gist: &str,
     class: &str,
     earns: &str,
     rungs: &holder_behaviour::Rungs,
+    tail: Option<holder_behaviour::Tail>,
     rows: &[Row],
 ) -> String {
     let mut html = String::new();
@@ -351,14 +484,20 @@ fn points_table(
             )
         })
         .collect();
+    let beyond = tail.map_or(String::new(), |tail| {
+        format!(
+            "<p class=\"note\">One more {earns} for every {} points beyond the last step.</p>",
+            thousands(tail.every)
+        )
+    });
     let max = rows.iter().map(|row| row.points).max().unwrap_or(1).max(1);
     let _ = write!(
         html,
         r#"<div class="card"><h3>{name} points</h3><p class="gist">{gist}</p>
-<ol class="steps {class}">{}</ol>
+<ol class="steps {class}">{steps}</ol>{beyond}
 <table class="points"><thead><tr><th>Achievement</th><th class="num">Points</th><th class="num">Holders</th></tr></thead><tbody>
 "#,
-        steps.join("")
+        steps = steps.join(""),
     );
     for (axis, locus) in LOCI {
         let mut group: Vec<&Row> = rows.iter().filter(|row| row.axis == axis).collect();
@@ -456,13 +595,6 @@ fn parse_args() -> Result<Args, String> {
         catalogue: String::new(),
         bundle: None,
         out: String::new(),
-        og_gtd: 2_000,
-        community_gtd: 2_000,
-        fcfs: 2_000,
-        og_fcfs: 1_000,
-        price: "$8".to_string(),
-        snapshot: "30 November 2026".to_string(),
-        mature_by: "22 November 2026".to_string(),
         gtd_claimed: None,
         fcfs_claimed: None,
     };
@@ -476,15 +608,6 @@ fn parse_args() -> Result<Args, String> {
             "--catalogue" => parsed.catalogue = value("--catalogue")?,
             "--bundle" => parsed.bundle = Some(value("--bundle")?),
             "--out" => parsed.out = value("--out")?,
-            "--og-gtd" => parsed.og_gtd = number(value("--og-gtd")?, "--og-gtd")?,
-            "--community-gtd" => {
-                parsed.community_gtd = number(value("--community-gtd")?, "--community-gtd")?;
-            }
-            "--fcfs" => parsed.fcfs = number(value("--fcfs")?, "--fcfs")?,
-            "--og-fcfs" => parsed.og_fcfs = number(value("--og-fcfs")?, "--og-fcfs")?,
-            "--price" => parsed.price = value("--price")?,
-            "--snapshot" => parsed.snapshot = value("--snapshot")?,
-            "--mature-by" => parsed.mature_by = value("--mature-by")?,
             "--gtd-claimed" => {
                 parsed.gtd_claimed = Some(number(value("--gtd-claimed")?, "--gtd-claimed")?);
             }
@@ -494,7 +617,7 @@ fn parse_args() -> Result<Args, String> {
             "-h" | "--help" => {
                 println!(
                     "premint-info --catalogue <toml> [--bundle <bundle>] --out <html> \
-                     [--gtd-claimed N] [--fcfs-claimed N] [--snapshot TEXT] [--mature-by TEXT]"
+                     [--gtd-claimed N] [--fcfs-claimed N]"
                 );
                 std::process::exit(0);
             }

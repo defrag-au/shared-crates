@@ -328,7 +328,7 @@ fn run() -> Result<(), String> {
             (Some(_), Some(_)) => {
                 return Err("give --token-held or --token-balances, not both".to_string());
             }
-            (Some(path), None) => TokenHeld::Aged(path),
+            (Some(path), None) => TokenHeld::HeldThrough(path),
             (None, Some(path)) => TokenHeld::Balances(path),
             (None, None) => TokenHeld::None,
         };
@@ -894,7 +894,7 @@ enum TokenHeld<'a> {
     /// `<key> <units>` lines, counted in full.
     Balances(&'a str),
     /// `token-ledger held-through`'s table, each balance now counted in full.
-    Aged(&'a str),
+    HeldThrough(&'a str),
 }
 
 /// `<key> <units>` lines, summed by key, without the excluded keys.
@@ -926,8 +926,8 @@ fn read_held(
     exclude: &[String],
     seasoning: Option<holder_behaviour::Seasoning>,
 ) -> Result<BTreeMap<String, u64>, String> {
-    let seasoning =
-        seasoning.ok_or("--token-held needs the policy's seasoning to weigh the windows by")?;
+    let seasoning = seasoning
+        .ok_or("--token-held needs the policy's seasoning to check the table's windows against")?;
     let text = std::fs::read_to_string(path).map_err(|error| format!("read {path}: {error}"))?;
     let expected = format!(
         "held_{}d held_{}d",
@@ -980,7 +980,7 @@ fn apply_token(
     let held = match held {
         TokenHeld::None => BTreeMap::new(),
         TokenHeld::Balances(path) => read_units(path, exclude)?,
-        TokenHeld::Aged(path) => read_held(path, exclude, policy.seasoning)?,
+        TokenHeld::HeldThrough(path) => read_held(path, exclude, policy.seasoning)?,
     };
     let pooled = pooled.map_or(Ok(BTreeMap::new()), |path| read_units(path, exclude))?;
     // What counts: held in full, pooled at the rule's share. Without a rule nothing is worth a

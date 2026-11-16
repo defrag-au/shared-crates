@@ -216,6 +216,18 @@ fn render(
         ),
         None => format!("catalogue {digest:016x} · no bundle, so no holder counts"),
     };
+    let bloodline_earns = match policy.bonus_fcfs {
+        true => "first come",
+        false => "the guarantee",
+    };
+    let lede = match policy.bonus_fcfs {
+        true => {
+            "<span class=\"chip bloodline\"></span><b>Bloodline</b> — the mint and time held. <span class=\"chip clout\"></span><b>Clout</b> — the collection, the factions, the market. Both climb <b>first come</b>; the guarantee is what is held."
+        }
+        false => {
+            "<span class=\"chip bloodline\"></span><b>Bloodline</b> — the mint and time held; climbs <b>the guarantee</b>. <span class=\"chip clout\"></span><b>Clout</b> — the collection, the factions, the market; climbs <b>first come</b>."
+        }
+    };
     let _ = write!(
         html,
         r#"<!doctype html>
@@ -227,18 +239,18 @@ fn render(
 <header>
   <h1>Points tables</h1>
   <p class="sub">{catalogue} · {source}</p>
-  <p class="lede"><span class="chip bloodline"></span><b>Bloodline</b> — the mint and time held; climbs the <b>guarantee</b>.
-  <span class="chip clout"></span><b>Clout</b> — the collection, the factions, the market; climbs <b>first come</b>.</p>
+  <p class="lede">{lede}</p>
 </header>
 "#,
         catalogue = esc(&args.catalogue),
     );
 
     for (position, (track, rows)) in tables.iter().enumerate() {
-        let (name, earns, rungs) = match track {
-            Track::Bloodline => ("Bloodline", "guaranteed", &policy.bonus),
-            Track::Clout => ("Clout", "first come", &policy.clout),
+        let (name, earns) = match track {
+            Track::Bloodline => ("Bloodline", bloodline_earns),
+            Track::Clout => ("Clout", "first come"),
         };
+        let (rungs, tail) = policy.track_ladder(*track);
         let class = track.as_str();
         let total: u32 = rows.iter().map(|row| row.points).sum();
         let max = rows.iter().map(|row| row.points).max().unwrap_or(1).max(1);
@@ -279,15 +291,37 @@ fn render(
         }
         let of = reached.map_or(0, |r| r.holders);
         let under = match track {
+            Track::Bloodline if policy.bonus_fcfs => {
+                " Bloodline's slots are first come for every holder; the guarantee is what is held."
+                    .to_string()
+            }
             Track::Bloodline => format!(
                 " Under {} Perps held, bloodline's slots are first come instead.",
                 policy.gtd_min_held
             ),
             Track::Clout => String::new(),
         };
+        let tail_note = match tail {
+            Some(tail) => format!(
+                " One more {earns} for every {} points beyond the last step.",
+                thousands(tail.every)
+            ),
+            None => String::new(),
+        };
+        let population = match reached {
+            Some(_) if args.everyone => {
+                format!(
+                    "of the {of} subjects read.{under} A wallet, not an identity: linked wallets only add.{tail_note}"
+                )
+            }
+            Some(_) => format!(
+                "of the {of} holding a Perp at the snapshot.{under} A wallet, not an identity: linked wallets only add.{tail_note}"
+            ),
+            None => format!("no bundle, so no holder counts.{under}{tail_note}"),
+        };
         let _ = write!(
             html,
-            r#"</ol><p class="note">Wallets reaching each threshold, of the {of} holding a Perp at the snapshot.{under} A wallet, not an identity: linked wallets only add.</p></div>
+            r#"</ol><p class="note">Wallets reaching each threshold, {population}</p></div>
 <table><thead><tr><th>Achievement</th><th>Earned by</th><th>Role</th><th class="num">Points</th><th class="num">Earned by (of all subjects)</th><th>Note</th></tr></thead><tbody>
 "#
         );

@@ -36,6 +36,15 @@
 //! and the order's age where both ends were seen). Everything else about an order's
 //! lifecycle — a re-price, a reopening, a withdrawal — changes state no predicate reads, so
 //! the fold ignores it.
+//!
+//! # The sources the fold does not walk
+//!
+//! The companion token and a staking programme are not part of the collection's transfer log: a
+//! token balance moves without an NFT event, and a payout is a transaction of its own. They are
+//! stored as what a predicate reads — [`TokenHistory`]'s intervals, and [`StakingHistory`]'s
+//! campaigns, enrolments and [`Payout`]s. A [`Store`] returns `None` from `token_history` or
+//! `staking_history` when a backend was not given them, which an evaluator reports as a gap and
+//! never as "never held".
 
 use chain_events::{AccountRef, PartyRole, Price, TxRef};
 use chains::TokenRef;

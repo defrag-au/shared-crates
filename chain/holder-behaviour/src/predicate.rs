@@ -1,8 +1,9 @@
 //! The typed predicate vocabulary this fold can answer today.
 //!
-//! The frozen Perps catalogue carries 42 kinds across five axes. This crate implements the
-//! kinds the fold's own facts can answer — the subject's lots, the collection's mint order
-//! and the metadata join — and refuses the rest, so a kind is never silently false:
+//! The frozen Perps catalogue uses the kinds the fold's own facts can answer — the subject's
+//! lots, the collection's mint order, the metadata join, the token archive and the staking
+//! ledger. This crate implements those and refuses any other, so a kind is never silently
+//! false:
 //!
 //! | kind | what it proves | reads |
 //! | --- | --- | --- |
