@@ -31,6 +31,37 @@
 //! `Pending` answer carry the slot it will complete at: the open interval is already the
 //! clock, so nothing needs refreshing and no nightly job can fall behind.
 //!
+//! # Reusing it for another collection
+//!
+//! The fold, the evaluator and the bundle name no collection: a store is scoped to one
+//! collection's chain events, and a subject key is the text the producer interns (a stake
+//! credential or an EVM address). What the first campaign shaped is worth knowing before
+//! pointing the crate at a second:
+//!
+//! - **One collection per store, bundle and evaluation.** [`Definition`] carries no collection,
+//!   and a cross-collection fact is a live [`StatusPredicate`] (a partner collection read at the
+//!   claim), never folded history. A campaign over several collections is one fold each, joined
+//!   by the caller.
+//! - **Two points tables by design.** [`Track`] is [`Track::Bloodline`] and [`Track::Clout`] and
+//!   [`Tracked`] is a pair. The names are the first campaign's; the mechanic — what cannot be
+//!   bought before the snapshot versus what a holder can still chase — is general. A third axis
+//!   is a different model, not a third variant.
+//! - **The companion token and the staking programme are optional.** A store not given them
+//!   answers `None`, and the predicates that read them report [`Gap::TokenFacts`] or
+//!   [`Gap::StakingFacts`] rather than "never held". A collection with neither omits those
+//!   definitions.
+//! - **Identity linking belongs to the caller.** [`identity_sources`] is handed each wallet's
+//!   counts, the pool they form and the merged reading; the crate stores no link.
+//! - **The catalogue's TOML is authored, not read here.** `examples/support/catalogue.rs` is the
+//!   loader the modelling tools share, and a consumer reads the published manifest
+//!   (`examples/catalogue-manifest.rs`) instead. The crate parses the predicate table and the
+//!   policy, not the file around them.
+//!
+//! A second collection therefore needs a catalogue, a producer that translates its chain and
+//! marketplace facts into [`chain_events::ChainEvent`], a [`Store`], and a surface that reads
+//! the bundle. A campaign with three points axes, a different staking mechanism, or a score that
+//! spans collections' histories is an extension of this crate, not a configuration of it.
+//!
 //! # What this crate is not
 //!
 //! Not a ledger (it stores only what an achievement reads — the subject's lots, the
