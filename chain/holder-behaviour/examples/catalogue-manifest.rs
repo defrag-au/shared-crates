@@ -47,6 +47,9 @@ struct Manifest<'a> {
     /// When the mint opens, unix seconds, for a page's clock. From `--opens-at`.
     #[serde(skip_serializing_if = "Option::is_none")]
     opens_at: Option<i64>,
+    /// How the mint runs: phases and the snapshot, from the catalogue's `[launch]`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    launch: Option<&'a holder_behaviour::Launch>,
     achievements: Vec<Entry<'a>>,
 }
 
@@ -58,6 +61,8 @@ struct Entry<'a> {
     /// What the achievement is worth. Required: a consumer that meets an unpriced achievement
     /// cannot score it, and a default here would publish a manifest that looks complete.
     points: u32,
+    /// The points table it scores in: bloodline earns the guarantee, clout first come.
+    track: holder_behaviour::Track,
     /// Slots earning it grants outright. Absent for the many that only score.
     #[serde(skip_serializing_if = "Option::is_none")]
     grant: Option<holder_behaviour::Grant>,
@@ -161,6 +166,7 @@ fn run() -> Result<(), String> {
                         catalogue.id_at(index).unwrap_or("an unnamed entry")
                     )
                 })?,
+                track: catalogue.track_at(index),
                 grant: catalogue.grant_at(index),
                 title: catalogue.title_at(index).unwrap_or_default(),
                 statement: catalogue.statement_at(index).unwrap_or_default(),
@@ -180,6 +186,7 @@ fn run() -> Result<(), String> {
         allocation,
         lapsed: catalogue.plan().and_then(|plan| plan.lapsed.as_deref()),
         opens_at: args.opens_at,
+        launch: catalogue.launch(),
         achievements,
     };
 

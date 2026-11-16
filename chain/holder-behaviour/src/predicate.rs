@@ -1,8 +1,9 @@
 //! The typed predicate vocabulary this fold can answer today.
 //!
-//! The frozen Perps catalogue carries 42 kinds across five axes. This crate implements the
-//! kinds the fold's own facts can answer — the subject's lots, the collection's mint order
-//! and the metadata join — and refuses the rest, so a kind is never silently false:
+//! The frozen Perps catalogue uses the kinds the fold's own facts can answer — the subject's
+//! lots, the collection's mint order, the metadata join, the token archive and the staking
+//! ledger. This crate implements those and refuses any other, so a kind is never silently
+//! false:
 //!
 //! | kind | what it proves | reads |
 //! | --- | --- | --- |
@@ -21,6 +22,9 @@
 //! | [`Predicate::MintedCount`] … [`Predicate::NeverBought`] | what the subject did at the mint | lots |
 //! | [`Predicate::NoSaleBelowMint`] | a sale below a declared mint price | market |
 //! | [`Predicate::MovementRatioAtLeast`] | movements per asset ever held | lots + movement count |
+//! | [`Predicate::TokenAcquired`] / [`Predicate::TokenSpanAtLeast`] | the companion token, held | token archive |
+//! | [`Predicate::CampaignSpanAtLeast`] | a unit held inside a staking campaign | lots + staking ledger |
+//! | [`Predicate::CampaignClaimed`] | a staking reward paid out | staking ledger |
 //!
 //! A kind that is not here is **not silently false**: the catalogue loader is expected to
 //! refuse a definition it cannot build, which is the same rule the design doc states for
@@ -368,6 +372,42 @@ pub enum Predicate {
     /// A gift and a purchase are both an arrival from another party, and the fold cannot
     /// tell them apart — so "bought" here means "did not mint it".
     NeverBought,
+
+    /// The subject has held the companion token at some point.
+    ///
+    /// Read from the token archive, not the fold: a store that was not given it reports
+    /// `Unavailable(Gap::TokenFacts)`, never "did not".
+    TokenAcquired,
+
+    /// The subject held the companion token, balance above zero, for `days` without a break.
+    ///
+    /// A continuous interval, the token's equivalent of [`Predicate::AnySpanAtLeast`]: staked
+    /// or locked units still count as held, so moving into the staking site does not reset it.
+    TokenSpanAtLeast {
+        /// The threshold, in days of chain time.
+        days: u32,
+    },
+
+    /// One unit was held for `days` continuously inside a staking campaign's window, while the
+    /// subject was enrolled in it.
+    ///
+    /// Each lot is clipped to the window and to the enrolment, so a Perp bought before the
+    /// season counts from the season's start and one held past its end stops at the end.
+    CampaignSpanAtLeast {
+        /// The campaign id, as the staking ledger names it.
+        campaign: String,
+        /// The threshold, in days of chain time.
+        days: u32,
+    },
+
+    /// The subject was paid out by a staking campaign at least `at_least` times.
+    ///
+    /// A payout is money moved — a confirmed claim or an imported historical payment — not a
+    /// request still in flight.
+    CampaignClaimed {
+        /// The threshold, in payouts.
+        at_least: u32,
+    },
 }
 
 impl Predicate {
@@ -412,6 +452,10 @@ impl Predicate {
             Self::MintedAndStillHeld { .. } => "minted_and_still_held",
             Self::AllMintsRetained => "all_mints_retained",
             Self::NeverBought => "never_bought",
+            Self::TokenAcquired => "token_acquired",
+            Self::TokenSpanAtLeast { .. } => "token_span_at_least",
+            Self::CampaignSpanAtLeast { .. } => "campaign_span_at_least",
+            Self::CampaignClaimed { .. } => "campaign_claimed",
         }
     }
 
@@ -439,6 +483,23 @@ impl Predicate {
                 | Self::SoldAtOrBelowFloor
                 | Self::SoldAboveFloor
                 | Self::SoldIntoStrength
+                // Read from the token archive and the staking ledger, not the holder walk.
+                | Self::TokenAcquired
+                | Self::TokenSpanAtLeast { .. }
+                | Self::CampaignClaimed { .. }
+        )
+    }
+
+    /// Whether the answer needs the companion token's history.
+    pub fn needs_token_facts(&self) -> bool {
+        matches!(self, Self::TokenAcquired | Self::TokenSpanAtLeast { .. })
+    }
+
+    /// Whether the answer needs the staking ledger.
+    pub fn needs_staking_facts(&self) -> bool {
+        matches!(
+            self,
+            Self::CampaignSpanAtLeast { .. } | Self::CampaignClaimed { .. }
         )
     }
 

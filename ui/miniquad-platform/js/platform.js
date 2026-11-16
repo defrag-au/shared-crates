@@ -162,10 +162,28 @@
     // Opening a new tab is a popup to the browser, allowed only from inside a
     // gesture's handler, like fullscreen. So the game names where a link is
     // drawn and where it goes (`platform_link_zone`), and a tap that ends in
-    // the zone opens it from this handler. Only `https:` links: the zone is
-    // the game's, the address may have come from anywhere.
+    // the zone opens it from this handler.
+    //
+    // The address arrives already built and checked by the crate's `Link`
+    // (src/link.rs), with its kind: 1 a web page, opened in a new tab; 2 a
+    // CIP-158 wallet link, followed in place so the phone hands it to the
+    // Cardano wallet app (a new tab for an app's scheme is a blank tab left
+    // behind). Each kind is checked again here against the exact shape the
+    // crate builds, and anything else clears the zone: the page never opens
+    // `javascript:`, `data:` or a look-alike on the game's say-so.
 
     let linkZone = null;
+
+    const LINK_PAGE = 1;
+    const LINK_CARDANO_WALLET = 2;
+    const PAGE_SHAPE = /^https:\/\/[a-z0-9.-]+(:[0-9]{1,5})?([/?#][!#-[\]-~]*)?$/;
+    const CARDANO_WALLET_SHAPE = /^web\+cardano:\/\/browse\/v1\?uri=[A-Za-z0-9%._~-]+$/;
+
+    function linkAllowed(kind, url) {
+        if (kind === LINK_PAGE) return PAGE_SHAPE.test(url);
+        if (kind === LINK_CARDANO_WALLET) return CARDANO_WALLET_SHAPE.test(url);
+        return false;
+    }
 
     document.addEventListener('pointerup', function (e) {
         if (!linkZone) return;
@@ -176,16 +194,21 @@
         const fy = (e.clientY - r.top) / r.height;
         const z = linkZone.box;
         if (fx >= z[0] && fx <= z[2] && fy >= z[1] && fy <= z[3]) {
-            window.open(linkZone.url, '_blank', 'noopener,noreferrer');
+            if (linkZone.kind === LINK_CARDANO_WALLET) {
+                window.location.href = linkZone.url;
+            } else {
+                window.open(linkZone.url, '_blank', 'noopener,noreferrer');
+            }
         }
     }, { capture: true, passive: true });
 
-    // The link's box as fractions of the canvas and its address; a right edge
-    // not past the left, or an address that is not `https:`, clears it.
-    function platform_link_zone(x0, y0, x1, y1, url_js) {
+    // The link's box as fractions of the canvas, its kind and its address; a
+    // right edge not past the left, kind 0, or an address that is not the
+    // kind's exact shape clears it.
+    function platform_link_zone(x0, y0, x1, y1, kind, url_js) {
         const url = consume_js_object(url_js);
-        linkZone = x1 > x0 && y1 > y0 && /^https:\/\//i.test(url)
-            ? { box: [x0, y0, x1, y1], url: url }
+        linkZone = x1 > x0 && y1 > y0 && linkAllowed(kind, url)
+            ? { box: [x0, y0, x1, y1], kind: kind, url: url }
             : null;
     }
 
@@ -380,8 +403,9 @@
 
     // v2 added the storage calls, v3 the page's host and path, v4 fullscreen,
     // v5 the text clipboard, v6 the focus count, v7 link zones, v8 the image
-    // clipboard. A consumer whose committed `platform.js` predates it fails
-    // the handshake at instantiate rather than calling a stubbed function —
-    // which is why the Rust export and this number move together.
-    miniquad_add_plugin({ register_plugin, version: 8, name: 'platform' });
+    // clipboard, v9 typed links (a kind beside the address). A consumer whose
+    // committed `platform.js` predates it fails the handshake at instantiate
+    // rather than calling a stubbed function — which is why the Rust export and
+    // this number move together.
+    miniquad_add_plugin({ register_plugin, version: 9, name: 'platform' });
 })();

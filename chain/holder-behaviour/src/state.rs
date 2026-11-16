@@ -36,6 +36,15 @@
 //! and the order's age where both ends were seen). Everything else about an order's
 //! lifecycle — a re-price, a reopening, a withdrawal — changes state no predicate reads, so
 //! the fold ignores it.
+//!
+//! # The sources the fold does not walk
+//!
+//! The companion token and a staking programme are not part of the collection's transfer log: a
+//! token balance moves without an NFT event, and a payout is a transaction of its own. They are
+//! stored as what a predicate reads — [`TokenHistory`]'s intervals, and [`StakingHistory`]'s
+//! campaigns, enrolments and [`Payout`]s. A [`Store`] returns `None` from `token_history` or
+//! `staking_history` when a backend was not given them, which an evaluator reports as a gap and
+//! never as "never held".
 
 use chain_events::{AccountRef, PartyRole, Price, TxRef};
 use chains::TokenRef;
@@ -464,6 +473,73 @@ pub struct MarketHistory {
     pub fills: Vec<Fill>,
 }
 
+/// One continuous interval a subject held something the fold does not walk itself — a fungible
+/// token's balance above zero. Unix seconds, half-open `[from, to)`; `to` is `None` while it is
+/// still held.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Interval {
+    /// The chain height the interval began at, so an acquisition can be cited exactly.
+    pub from: Slot,
+    /// Unix seconds it began at — the clock a duration is measured on.
+    pub from_unix: u64,
+    /// Unix seconds it ended at, or `None` while it is still open.
+    pub to_unix: Option<u64>,
+}
+
+impl Interval {
+    /// How long the interval ran, read at `now_unix` when it is still open.
+    pub fn length_at(&self, now_unix: u64) -> u64 {
+        self.to_unix
+            .unwrap_or(now_unix)
+            .saturating_sub(self.from_unix)
+    }
+}
+
+/// A subject's history in the collection's companion token, from the token archive.
+///
+/// "Held" is any balance above zero the subject owns: in the wallet, staked or locked. What the
+/// subject put into a liquidity pool is not held — it is a share of someone else's reserve.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TokenHistory {
+    /// Every interval the balance was above zero, oldest first. Empty for a subject that never
+    /// held the token — a real answer, not a gap: the source was read.
+    pub held: Vec<Interval>,
+}
+
+/// One staking campaign's window, from the staking ledger.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Campaign {
+    /// The campaign id the catalogue names.
+    pub id: String,
+    /// Unix seconds the campaign began paying.
+    pub starts_unix: u64,
+    /// Unix seconds it stops, exclusive.
+    pub ends_unix: u64,
+}
+
+/// One payment of a campaign's reward to the subject.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Payout {
+    /// The campaign it was paid for.
+    pub campaign: String,
+    /// The transaction that paid it.
+    pub tx: String,
+    /// Unix seconds it was paid, where the source records one.
+    pub paid_unix: Option<u64>,
+}
+
+/// A subject's record in the collection's staking programme.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StakingHistory {
+    /// Every campaign the ledger knows, whether or not the subject took part.
+    pub campaigns: Vec<Campaign>,
+    /// The campaigns the subject is enrolled in, with the unix second its enrolment took effect.
+    /// An automatic campaign enrols every holder at its start.
+    pub enrolled: Vec<(String, u64)>,
+    /// Every payout the subject received, oldest first.
+    pub payouts: Vec<Payout>,
+}
+
 /// What a fold remembers, and the operations a backend has to provide.
 pub trait Store {
     /// The backend's own failure type. The fold never interprets it — it can only
@@ -603,6 +679,24 @@ pub trait Store {
     /// that only ever traded it (a bidder who never acquired). Rarity is measured over it, so
     /// it is never just the current holders.
     fn subjects(&self) -> Result<Vec<SubjectId>, Self::Error>;
+
+    /// The subject's companion-token history.
+    ///
+    /// `None` means this store was not given the token archive, which every token predicate
+    /// reports as a gap rather than as "never held". The default is a store without one.
+    fn token_history(&self, subject: SubjectId) -> Result<Option<TokenHistory>, Self::Error> {
+        let _ = subject;
+        Ok(None)
+    }
+
+    /// The subject's staking record.
+    ///
+    /// `None` means this store was not given the staking ledger; the same rule as
+    /// [`Store::token_history`].
+    fn staking_history(&self, subject: SubjectId) -> Result<Option<StakingHistory>, Self::Error> {
+        let _ = subject;
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

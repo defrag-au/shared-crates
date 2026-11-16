@@ -1,15 +1,39 @@
-//! Custom `getrandom` backend for the miniquad WASM runtime.
+//! The miniquad browser platform: a CSPRNG, and the page services a canvas
+//! cannot reach.
+//!
+//! miniquad's `gl.js` runtime carries no wasm-bindgen glue, so a Rust crate
+//! that needs a browser API has exactly one route: a miniquad plugin. This
+//! crate is that plugin for the platform services a game or wallet uses.
+//!
+//! # Randomness
 //!
 //! `getrandom 0.2` errors at compile time on `wasm32-unknown-unknown`
 //! unless one of `js`, `custom`, or 0.3's `wasm_js` is on. The `js`
 //! feature pulls `wasm-bindgen`, which miniquad's plugin-based bridge
 //! doesn't satisfy. The `custom` feature lets us register our own
-//! backend — which we route through a miniquad plugin (`js/platform.js`)
+//! backend — which we route through the same plugin (`js/platform.js`)
 //! that calls `crypto.getRandomValues()`.
 //!
 //! The browser's `crypto.getRandomValues()` is a CSPRNG seeded from
 //! OS entropy. Functionally equivalent to the wasm-bindgen path; same
 //! security guarantees, different ABI.
+//!
+//! # The page
+//!
+//! Alongside the CSPRNG, `platform.js` exposes:
+//!
+//! - the page's query parameter, hostname and path ([`launch_query`], [`launch_host`],
+//!   [`launch_path`]), for a bundle served under several names;
+//! - `localStorage` ([`storage_get`], [`storage_set`]), for preference-shaped values;
+//! - a reload ([`reload_page`]), for a transport that cannot reconnect in place;
+//! - how many times the page has come back to the visitor ([`FocusWatch`]);
+//! - the text and image clipboards ([`clipboard_write`], [`clipboard_image_copy`]);
+//! - a fullscreen zone the page answers itself ([`fullscreen_zone`]);
+//! - a link zone for a [`Link`], opened from the tap's own handler ([`link_zone`]).
+//!
+//! The browser grants fullscreen and a new tab only from inside a user gesture, and a frame loop
+//! is not one. So each of those is a zone the game names every frame, which the page watches for
+//! a tap itself. Rust checks the link's shape and the page checks it again.
 //!
 //! ## Wiring it into a consumer
 //!
@@ -28,12 +52,16 @@
 //!    fs::write("web/platform.js", miniquad_platform::PLUGIN_JS)?;
 //!    ```
 //!
-//! Native builds skip all this — `getrandom`'s native backends work
-//! out of the box and the register_custom_getrandom macro is a no-op.
+//! Native builds skip the plugin — every function has a native stand-in that returns
+//! nothing — and `getrandom`'s native backends work out of the box.
 
 /// JavaScript source for the miniquad plugin. Consumers materialise
 /// this into their HTML shell directory (typically via `build.rs`).
 pub const PLUGIN_JS: &str = include_str!("../js/platform.js");
+
+pub mod link;
+
+pub use link::{HttpsUrl, Link, LinkError};
 
 #[cfg(target_arch = "wasm32")]
 use sapp_jsutils::JsObject;
@@ -64,7 +92,7 @@ unsafe extern "C" {
     fn platform_clipboard_copy_image(url: JsObject) -> u32;
     fn platform_clipboard_image_poll(id: u32) -> u32;
     fn platform_focus_returns() -> u32;
-    fn platform_link_zone(x0: f32, y0: f32, x1: f32, y1: f32, url: JsObject);
+    fn platform_link_zone(x0: f32, y0: f32, x1: f32, y1: f32, kind: u32, url: JsObject);
 }
 
 /// How many times the page has come back to the visitor: the tab shown again,
@@ -235,23 +263,35 @@ pub fn fullscreen_zone(zone: Option<[f32; 4]>) {
 pub fn fullscreen_zone(_zone: Option<[f32; 4]>) {}
 
 /// Where a link is drawn, as `[left, top, right, bottom]` fractions of the
-/// canvas, and the `https:` address it opens in a new tab; `None` while no
-/// link is drawn. Call it every frame the link is shown, and with `None` on
-/// the frames it is not: a stale zone would open the link from a tap meant
-/// for something else.
+/// canvas, and the [`Link`] a tap on it opens; `None` while no link is drawn.
+/// Call it every frame the link is shown, and with `None` on the frames it is
+/// not: a stale zone would open the link from a tap meant for something else.
 ///
-/// A browser opens a new tab only from inside a gesture's handler, so, as
-/// with [`fullscreen_zone`], `platform.js` listens for the tap itself. The
-/// game sees the same tap and should do nothing more with it. Natively there
-/// is no browser: nothing happens, and the host shows the address instead.
+/// A browser opens a page or hands one to an app only from inside a gesture's
+/// handler, so, as with [`fullscreen_zone`], `platform.js` listens for the tap
+/// itself: a [`Link::Page`] opens in a new tab, a [`Link::CardanoWallet`] is
+/// followed in place. The game sees the same tap and should do nothing more
+/// with it. Natively there is no browser: nothing happens, and the host shows
+/// the address instead.
 #[cfg(target_arch = "wasm32")]
-pub fn link_zone(zone: Option<([f32; 4], &str)>) {
-    let ([x0, y0, x1, y1], url) = zone.unwrap_or(([0.0; 4], ""));
-    unsafe { platform_link_zone(x0, y0, x1, y1, JsObject::string(url)) }
+pub fn link_zone(zone: Option<([f32; 4], &Link)>) {
+    match zone {
+        Some(([x0, y0, x1, y1], link)) => unsafe {
+            platform_link_zone(
+                x0,
+                y0,
+                x1,
+                y1,
+                link.kind_code(),
+                JsObject::string(&link.href()),
+            )
+        },
+        None => unsafe { platform_link_zone(0.0, 0.0, 0.0, 0.0, 0, JsObject::string("")) },
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn link_zone(_zone: Option<([f32; 4], &str)>) {}
+pub fn link_zone(_zone: Option<([f32; 4], &Link)>) {}
 
 /// Reload the page: the way back for a game whose connection died while the
 /// phone was locked or the tab was hidden, when its transport cannot
@@ -391,17 +431,18 @@ getrandom::register_custom_getrandom!(webcrypto_getrandom);
 
 /// Plugin handshake for `gl.js` — silences the
 /// `Plugin platform is present in JS bundle, but is not used in the
-/// rust code` warning. JS-side `version: 8`, must match.
+/// rust code` warning. JS-side `version: 9`, must match.
 ///
 /// Bumped 1 → 2 with the `localStorage` calls, 2 → 3 with the page's host
 /// and path, 3 → 4 with fullscreen, 4 → 5 with the clipboard, 5 → 6 with the
-/// focus count, 6 → 7 with link zones, and 7 → 8 with the image clipboard: a
-/// consumer carrying an older `platform.js` then fails the handshake at
-/// instantiate rather than calling a function gl.js would stub out.
+/// focus count, 6 → 7 with link zones, 7 → 8 with the image clipboard, and
+/// 8 → 9 with typed links: a consumer carrying an older `platform.js` then
+/// fails the handshake at instantiate rather than calling a function gl.js
+/// would stub out.
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 extern "C" fn platform_crate_version() -> u32 {
-    8
+    9
 }
 
 #[cfg(test)]

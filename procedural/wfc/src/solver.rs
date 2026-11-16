@@ -86,9 +86,7 @@ impl WfcSolver {
         let idx = row * self.width + col;
         let cell = &mut self.cells[idx];
 
-        for i in 0..self.num_tiles {
-            cell.candidates[i] = false;
-        }
+        cell.candidates.fill(false);
         for &tile in allowed {
             cell.candidates[tile.0 as usize] = true;
         }
@@ -169,12 +167,10 @@ impl WfcSolver {
             .cells
             .iter()
             .map(|cell| {
-                for i in 0..self.num_tiles {
-                    if cell.candidates[i] {
-                        return TileId(i as u16);
-                    }
-                }
-                TileId(0) // shouldn't happen
+                cell.candidates
+                    .iter()
+                    .position(|&candidate| candidate)
+                    .map_or(TileId(0), |i| TileId(i as u16))
             })
             .collect();
 
@@ -221,11 +217,12 @@ impl WfcSolver {
         let mut total_weight = 0.0f32;
         let mut options: Vec<(TileId, f32)> = Vec::new();
 
-        for i in 0..self.num_tiles {
-            if cell.candidates[i] {
-                let w = tileset.weight(TileId(i as u16));
+        for (i, &candidate) in cell.candidates.iter().enumerate() {
+            if candidate {
+                let tile = TileId(i as u16);
+                let w = tileset.weight(tile);
                 total_weight += w;
-                options.push((TileId(i as u16), w));
+                options.push((tile, w));
             }
         }
 
@@ -248,8 +245,8 @@ impl WfcSolver {
     /// Collapse a cell to a single tile.
     fn collapse_cell(&mut self, idx: usize, tile: TileId) {
         let cell = &mut self.cells[idx];
-        for i in 0..self.num_tiles {
-            cell.candidates[i] = i == tile.0 as usize;
+        for (i, candidate) in cell.candidates.iter_mut().enumerate() {
+            *candidate = i == tile.0 as usize;
         }
         cell.count = 1;
         cell.collapsed = true;

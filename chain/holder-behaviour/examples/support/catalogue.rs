@@ -1,10 +1,10 @@
 //! The frozen achievement catalogue, as far as this build can read it.
 //!
 //! The `predicate` table is kept as a [`toml::Value`] rather than a [`Predicate`] on
-//! purpose: the catalogue names 42 predicate kinds and this build implements five, so a
-//! strict parse would refuse the whole file. An entry is **evaluable** when its table
-//! deserialises. Everything else is a gap in this build, reported by kind so a missing
-//! answer cannot be mistaken for a zero.
+//! purpose: a catalogue may name a kind this build does not implement, and a strict parse
+//! would refuse the whole file. An entry is **evaluable** when its table deserialises.
+//! Everything else is a gap in this build, reported by kind so a missing answer cannot be
+//! mistaken for a zero.
 
 use std::collections::BTreeMap;
 
@@ -25,6 +25,8 @@ pub struct LoadedCatalogue {
     predicates: Vec<Option<Predicate>>,
     /// The policy the catalogue proposes, when it carries an `[allocation]` block.
     plan: Option<Plan>,
+    /// The mint's phases and snapshot, when the catalogue carries a `[launch]` block.
+    launch: Option<holder_behaviour::Launch>,
     /// Every declared status, by id.
     statuses: Vec<Status>,
 }
@@ -92,6 +94,45 @@ struct CatalogueFile {
     status: Vec<StatusFile>,
     #[serde(default)]
     allocation: Option<AllocationFile>,
+    /// How the mint runs: phases and the snapshot. See [`holder_behaviour::Launch`].
+    #[serde(default)]
+    launch: Option<holder_behaviour::Launch>,
+}
+
+/// What an achievement is worth, and in which points table: `points = { bloodline = 2000 }`.
+/// A bare number is the single score of a catalogue written before tables, read as bloodline.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum PointsFile {
+    Single(u32),
+    Table {
+        #[serde(default)]
+        bloodline: Option<u32>,
+        #[serde(default)]
+        clout: Option<u32>,
+    },
+}
+
+impl PointsFile {
+    /// The weight and its table. Exactly one table: an achievement scored in both would be paid
+    /// twice, and one in neither would look priced and score nowhere.
+    fn resolve(&self, id: &str) -> Result<(u32, holder_behaviour::Track), String> {
+        use holder_behaviour::Track;
+        match *self {
+            Self::Single(points) => Ok((points, Track::Bloodline)),
+            Self::Table {
+                bloodline: Some(points),
+                clout: None,
+            } => Ok((points, Track::Bloodline)),
+            Self::Table {
+                bloodline: None,
+                clout: Some(points),
+            } => Ok((points, Track::Clout)),
+            Self::Table { .. } => Err(format!(
+                "achievement {id}: points name exactly one table, `bloodline` or `clout`"
+            )),
+        }
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -122,6 +163,17 @@ struct AllocationFile {
     /// Mints the score adds, rung by rung. See [`Allocation::bonus`].
     #[serde(default)]
     bonus: Vec<holder_behaviour::Rung>,
+    /// First-come mints the clout points add, rung by rung. See [`Allocation::clout`].
+    #[serde(default)]
+    clout: Vec<holder_behaviour::Rung>,
+    /// The steady climb past each points ladder's last rung. See [`Allocation::bonus_tail`].
+    #[serde(default)]
+    bonus_tail: Option<holder_behaviour::Tail>,
+    #[serde(default)]
+    clout_tail: Option<holder_behaviour::Tail>,
+    /// The bonus ladder pays first come. See [`Allocation::bonus_fcfs`].
+    #[serde(default)]
+    bonus_fcfs: bool,
     #[serde(default)]
     partner_bonus: u32,
     /// The achievement id whose earners keep a first-come door after selling.
@@ -134,6 +186,12 @@ struct AllocationFile {
     partners: Vec<String>,
     #[serde(default)]
     partner_mints: u32,
+    /// First come for a holder under `gtd_min_held`. See [`Allocation::holder_fcfs`].
+    #[serde(default)]
+    holder_fcfs: u32,
+    /// How an identity's wallets are scored together. See [`holder_behaviour::Grouping`].
+    #[serde(default)]
+    grouping: holder_behaviour::Grouping,
     #[serde(default)]
     max_per_identity: u32,
     /// The share a holding keeps once sold. See [`Allocation::past_share`].
@@ -179,6 +237,23 @@ fn default_floor() -> f64 {
     0.02
 }
 
+/// A points ladder's tail: it needs a step, and a last rung to climb from.
+fn points_tail(
+    tail: Option<holder_behaviour::Tail>,
+    rungs: &[holder_behaviour::Rung],
+    name: &str,
+) -> Result<Option<holder_behaviour::Tail>, String> {
+    match tail {
+        Some(tail) if tail.every == 0 => {
+            Err(format!("[allocation] {name}_tail.every must be at least 1"))
+        }
+        Some(_) if rungs.is_empty() => Err(format!(
+            "[allocation] {name}_tail climbs from the {name} ladder's last rung, and it has none"
+        )),
+        tail => Ok(tail),
+    }
+}
+
 fn default_rarest() -> u32 {
     3
 }
@@ -204,10 +279,25 @@ impl TryFrom<&AllocationFile> for Allocation {
             },
             bonus: holder_behaviour::Rungs::new(&file.bonus)
                 .map_err(|e| format!("[allocation] bonus: {e}"))?,
+            clout: holder_behaviour::Rungs::new(&file.clout)
+                .map_err(|e| format!("[allocation] clout: {e}"))?,
+            bonus_tail: points_tail(file.bonus_tail, &file.bonus, "bonus")?,
+            clout_tail: points_tail(file.clout_tail, &file.clout, "clout")?,
+            bonus_fcfs: file.bonus_fcfs,
             promote_bonus: file.promote_bonus,
             partner_bonus: file.partner_bonus,
             lapsed_mints: file.lapsed_mints,
             partner_mints: file.partner_mints,
+            grouping: file.grouping,
+            holder_fcfs: match (file.holder_fcfs, file.gtd_min_held) {
+                (n, 0) if n > 0 => {
+                    return Err(
+                        "[allocation] holder_fcfs pays a holding under gtd_min_held, which is 0"
+                            .to_string(),
+                    );
+                }
+                (n, _) => n,
+            },
             max_per_identity: file.max_per_identity,
             past_share: match file.past_share {
                 Some(share) if !(0.0..=1.0).contains(&share) => {
@@ -219,20 +309,19 @@ impl TryFrom<&AllocationFile> for Allocation {
             },
             gtd_min_held: file.gtd_min_held,
             seasoning: match file.seasoning {
-                Some(seasoning) if !(0.0..=1.0).contains(&seasoning.share) => {
+                Some(seasoning)
+                    if !(0.0..=1.0).contains(&seasoning.new_share)
+                        || !(0.0..=1.0).contains(&seasoning.maturing_share) =>
+                {
                     return Err(format!(
-                        "[allocation] seasoning.share is a share in 0..=1, not {}",
-                        seasoning.share
+                        "[allocation] seasoning shares are in 0..=1, not new {} and maturing {}",
+                        seasoning.new_share, seasoning.maturing_share
                     ));
                 }
                 seasoning => seasoning,
             },
-            token: match file.token {
-                Some(rule) if rule.per == 0 => {
-                    return Err("[allocation] token.per must be at least 1".to_string());
-                }
-                rule => rule,
-            },
+            // The rule validates itself as it parses: ascending steps, a non-zero tail.
+            token: file.token,
         })
     }
 }
@@ -278,10 +367,16 @@ struct CatalogueEntry {
     axis: String,
     #[serde(default)]
     role: String,
-    /// What the achievement is worth. Required for every entry that can count: a catalogue
-    /// without a weight cannot be scored, and a default would silently price it at nothing.
-    #[serde(default)]
+    /// What the achievement is worth, and in which table. Required for every entry that can
+    /// count: a catalogue without a weight cannot be scored, and a default would silently price it
+    /// at nothing.
+    #[serde(default, rename = "points")]
+    points_file: Option<PointsFile>,
+    /// `points_file` resolved at load.
+    #[serde(skip)]
     points: Option<u32>,
+    #[serde(skip)]
+    track: holder_behaviour::Track,
     /// Slots earning it grants outright, beside its points. See [`holder_behaviour::Grant`].
     #[serde(default)]
     grant: Option<holder_behaviour::Grant>,
@@ -296,8 +391,17 @@ impl LoadedCatalogue {
     pub fn load(path: &str) -> Result<Self, String> {
         let text =
             std::fs::read_to_string(path).map_err(|error| format!("read {path}: {error}"))?;
-        let file: CatalogueFile =
+        let mut file: CatalogueFile =
             toml::from_str(&text).map_err(|error| format!("parse {path}: {error}"))?;
+        for entry in &mut file.achievements {
+            if let Some(points) = &entry.points_file {
+                let (points, track) = points
+                    .resolve(&entry.id)
+                    .map_err(|e| format!("{path}: {e}"))?;
+                entry.points = Some(points);
+                entry.track = track;
+            }
+        }
         if file.achievements.is_empty() {
             return Err(format!("{path} carries no achievements"));
         }
@@ -368,8 +472,14 @@ impl LoadedCatalogue {
             entries: file.achievements,
             predicates,
             plan,
+            launch: file.launch,
             statuses,
         })
+    }
+
+    /// The mint's phases and snapshot, if the catalogue carries a `[launch]` block.
+    pub fn launch(&self) -> Option<&holder_behaviour::Launch> {
+        self.launch.as_ref()
     }
 
     /// The policy the catalogue proposes, if it carries an `[allocation]` block.
@@ -410,6 +520,14 @@ impl LoadedCatalogue {
     /// priced the achievement, which the scorer refuses rather than counting as nothing.
     pub fn points_at(&self, index: usize) -> Option<u32> {
         self.entries.get(index).and_then(|entry| entry.points)
+    }
+
+    /// The points table an entry scores in.
+    pub fn track_at(&self, index: usize) -> holder_behaviour::Track {
+        self.entries
+            .get(index)
+            .map(|entry| entry.track)
+            .unwrap_or_default()
     }
 
     /// The slots an entry grants outright, if any.

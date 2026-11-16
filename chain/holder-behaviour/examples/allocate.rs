@@ -38,8 +38,8 @@ use std::fmt::Write as _;
 use std::process::ExitCode;
 
 use holder_behaviour::{
-    Allocation, Bundle, Counts, Lot, Phase, Rung, Seasoning, StatusPredicate, StatusView,
-    catalogue_digest, grants, held_at, peak_concurrent, phase, score, seasoned_at, slots,
+    Allocation, Bundle, Counts, Lot, Maturity, Phase, Rung, Seasoning, StatusPredicate, StatusView,
+    Track, catalogue_digest, grants, held_at, maturity_at, peak_concurrent, phase, slots,
     status_holds,
 };
 use support::catalogue::{LoadedCatalogue, Plan, Status};
@@ -115,6 +115,16 @@ struct Args {
     top_up: u32,
     /// Token balances now, as `<stake credential hex> <units>` lines (the holder map's `top`).
     token_balances: Option<String>,
+    /// Token provided as liquidity, as `<stake credential hex> <units>` lines (the holder map's
+    /// `segmentation.lp.providers`): counted at the token rule's `lp_percent`, on top of
+    /// `token_balances`.
+    token_lp: Option<String>,
+    /// `token-ledger held-through`'s table: each holder's token balance now, staking folded in,
+    /// counted in full. Instead of `token_balances`.
+    token_held: Option<String>,
+    /// Identities as holders would link them, `<name> <stake key hex>…` per line: reported under
+    /// the linking rule against every wallet apart and every wallet merged.
+    identities: Option<String>,
     /// Keys whose token balance is not a holder's: a staking contract, a treasury.
     token_exclude: Vec<String>,
     /// What the ladder economics are priced at.
@@ -312,8 +322,27 @@ fn run() -> Result<(), String> {
     if let Some(path) = &args.listings {
         apply_listings(&bundle, &mut counts, path)?;
     }
-    if let Some(path) = &args.token_balances {
-        apply_token(&bundle, &mut counts, path, &args.token_exclude, policy)?;
+    let mut token_by_key = BTreeMap::new();
+    if args.token_balances.is_some() || args.token_held.is_some() || args.token_lp.is_some() {
+        let held = match (&args.token_held, &args.token_balances) {
+            (Some(_), Some(_)) => {
+                return Err("give --token-held or --token-balances, not both".to_string());
+            }
+            (Some(path), None) => TokenHeld::HeldThrough(path),
+            (None, Some(path)) => TokenHeld::Balances(path),
+            (None, None) => TokenHeld::None,
+        };
+        token_by_key = apply_token(
+            &bundle,
+            &mut counts,
+            held,
+            args.token_lp.as_deref(),
+            &args.token_exclude,
+            policy,
+        )?;
+    }
+    if let Some(path) = &args.identities {
+        print_identities(&bundle, &catalogue, policy, &counts, &token_by_key, path)?;
     }
     if args.top_up > 0 {
         // Fresh units: the live count rises, the seasoned count does not.
@@ -440,6 +469,9 @@ fn parse_args() -> Result<Args, String> {
     let mut listings = None;
     let mut top_up = 0;
     let mut token_balances = None;
+    let mut token_lp = None;
+    let mut token_held = None;
+    let mut identities = None;
     let mut token_exclude = Vec::new();
     let mut perpling_usd = 100.0;
     let mut floor_ada = 60.0;
@@ -480,6 +512,9 @@ fn parse_args() -> Result<Args, String> {
             "--listings" => listings = Some(next(&mut args, "--listings")?),
             "--top-up" => top_up = number(&mut args, "--top-up")?,
             "--token-balances" => token_balances = Some(next(&mut args, "--token-balances")?),
+            "--token-lp" => token_lp = Some(next(&mut args, "--token-lp")?),
+            "--token-held" => token_held = Some(next(&mut args, "--token-held")?),
+            "--identities" => identities = Some(next(&mut args, "--identities")?),
             "--token-exclude" => token_exclude.push(next(&mut args, "--token-exclude")?),
             "--perpling-usd" => perpling_usd = decimal(&mut args, "--perpling-usd")?,
             "--floor-ada" => floor_ada = decimal(&mut args, "--floor-ada")?,
@@ -519,6 +554,9 @@ fn parse_args() -> Result<Args, String> {
         listings,
         top_up,
         token_balances,
+        token_lp,
+        token_held,
+        identities,
         token_exclude,
         perpling_usd,
         floor_ada,
@@ -599,10 +637,18 @@ fn resolve_policy(args: &Args, from_catalogue: Option<Allocation>) -> Allocation
         seasoning: match (args.season_days, args.season_share, base.seasoning) {
             (None, None, base) => base,
             (Some(0), _, _) => None,
-            (days, share, base) => Some(Seasoning {
-                days: days.or(base.map(|s| s.days)).unwrap_or(90),
-                share: share.or(base.map(|s| s.share)).unwrap_or(0.5),
-            }),
+            // A flag sweeps the days to mature and the new share; the catalogue's maturing stage
+            // stays, inside the swept span.
+            (days, share, base) => {
+                let base = base.unwrap_or(Seasoning::single(90, 0.5));
+                let mature_days = days.unwrap_or(base.mature_days);
+                Some(Seasoning {
+                    maturing_days: base.maturing_days.min(mature_days),
+                    mature_days,
+                    new_share: share.unwrap_or(base.new_share),
+                    maturing_share: base.maturing_share,
+                })
+            }
         },
         // The ladders, bonuses and first-come doors are the catalogue's: a flag sweeps the
         // thresholds, not the shape of the allocation.
@@ -778,14 +824,7 @@ fn counts_for(
     let no_traits: [(String, String); 0] = [];
     for subject in bundle.subjects() {
         let subject = subject.map_err(|error| format!("read subject: {error}"))?;
-        let scored = score(
-            bundle,
-            &subject,
-            |index| catalogue.role_at(usize::from(index)),
-            |index| catalogue.points_at(usize::from(index)),
-            policy,
-        )
-        .map_err(|error| error.to_string())?;
+        let scored = score_both(bundle, &subject, catalogue, policy)?;
         let lots: Vec<Lot> = subject.lots().collect();
         let current = held_at(&lots, cursor);
         let view = StatusView {
@@ -832,7 +871,7 @@ fn apply_holdings(
         );
         if let Some(seasoning) = policy.seasoning {
             let lots: Vec<Lot> = subject.lots().collect();
-            counts.seasoned = seasoned_at(&lots, now, seasoning.days);
+            counts.matured = maturity_at(&lots, now, seasoning);
         }
         if counts.enabled
             && subject.earned().any(|earned| {
@@ -849,15 +888,19 @@ fn apply_holdings(
 /// Read token balances onto the subjects that hold them, and add a subject for every holder the
 /// Perps bundle has never seen: the token is its own door, so a token-only wallet is in the
 /// population this models.
-fn apply_token(
-    bundle: &Bundle<'_>,
-    counts: &mut Vec<Counts>,
-    path: &str,
-    exclude: &[String],
-    policy: Allocation,
-) -> Result<(), String> {
+/// Where the held token balances come from.
+enum TokenHeld<'a> {
+    None,
+    /// `<key> <units>` lines, counted in full.
+    Balances(&'a str),
+    /// `token-ledger held-through`'s table, each balance now counted in full.
+    HeldThrough(&'a str),
+}
+
+/// `<key> <units>` lines, summed by key, without the excluded keys.
+fn read_units(path: &str, exclude: &[String]) -> Result<BTreeMap<String, u64>, String> {
     let text = std::fs::read_to_string(path).map_err(|error| format!("read {path}: {error}"))?;
-    let mut balances: BTreeMap<String, u64> = BTreeMap::new();
+    let mut out: BTreeMap<String, u64> = BTreeMap::new();
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
         let (key, amount) = line
             .split_once(' ')
@@ -869,8 +912,93 @@ fn apply_token(
             .trim()
             .parse()
             .map_err(|_| format!("{path}: `{line}` has no amount"))?;
-        *balances.entry(key.to_string()).or_default() += amount;
+        *out.entry(key.to_string()).or_default() += amount;
     }
+    Ok(out)
+}
+
+/// `token-ledger held-through`'s table — `<key> <now> <held through maturing_days> <held through
+/// mature_days>` — read for each balance now, in full: `$PERP` does not mature (settled
+/// 2026-11-15; from 2026-11-11 each balance was weighed by the seasoning). The header must still
+/// name the seasoning's own windows, so a table built for another schedule is refused.
+fn read_held(
+    path: &str,
+    exclude: &[String],
+    seasoning: Option<holder_behaviour::Seasoning>,
+) -> Result<BTreeMap<String, u64>, String> {
+    let seasoning = seasoning
+        .ok_or("--token-held needs the policy's seasoning to check the table's windows against")?;
+    let text = std::fs::read_to_string(path).map_err(|error| format!("read {path}: {error}"))?;
+    let expected = format!(
+        "held_{}d held_{}d",
+        seasoning.maturing_days, seasoning.mature_days
+    );
+    match text.lines().next() {
+        Some(header) if header.contains(&expected) => {}
+        other => {
+            return Err(format!(
+                "{path}: expected windows `{expected}` (the seasoning's), found {other:?}"
+            ));
+        }
+    }
+    let mut out = BTreeMap::new();
+    for line in text
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.trim().is_empty())
+    {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        let [key, now, maturing, mature] = fields[..] else {
+            return Err(format!(
+                "{path}: `{line}` is not `<key> <now> <held> <held>`"
+            ));
+        };
+        if exclude.iter().any(|excluded| excluded == key) {
+            continue;
+        }
+        let number = |text: &str| -> Result<u64, String> {
+            text.parse::<i64>()
+                .map(|n| n.max(0) as u64)
+                .map_err(|_| format!("{path}: `{line}` has a field that is not a number"))
+        };
+        // The balance now, in full: `$PERP` does not mature (settled 2026-11-15). The windows are
+        // still read and checked, so a file of the wrong shape is refused rather than misread.
+        number(maturing)?;
+        number(mature)?;
+        out.insert(key.to_string(), number(now)?);
+    }
+    Ok(out)
+}
+
+fn apply_token(
+    bundle: &Bundle<'_>,
+    counts: &mut Vec<Counts>,
+    held: TokenHeld<'_>,
+    pooled: Option<&str>,
+    exclude: &[String],
+    policy: Allocation,
+) -> Result<BTreeMap<String, u64>, String> {
+    let held = match held {
+        TokenHeld::None => BTreeMap::new(),
+        TokenHeld::Balances(path) => read_units(path, exclude)?,
+        TokenHeld::HeldThrough(path) => read_held(path, exclude, policy.seasoning)?,
+    };
+    let pooled = pooled.map_or(Ok(BTreeMap::new()), |path| read_units(path, exclude))?;
+    // What counts: held in full, pooled at the rule's share. Without a rule nothing is worth a
+    // slot anyway, so pooled units count in full and the line below still reads true.
+    let weigh = |held: u64, pooled: u64| {
+        policy
+            .token
+            .map_or(held.saturating_add(pooled), |rule| rule.weigh(held, pooled))
+    };
+    let mut balances: BTreeMap<String, u64> = BTreeMap::new();
+    for key in held.keys().chain(pooled.keys()) {
+        let amount = weigh(
+            held.get(key).copied().unwrap_or(0),
+            pooled.get(key).copied().unwrap_or(0),
+        );
+        balances.insert(key.clone(), amount);
+    }
+    let by_key = balances.clone();
     let mut seen = 0;
     for (subject, counts) in bundle.subjects().zip(counts.iter_mut()) {
         let subject = subject.map_err(|error| format!("read subject: {error}"))?;
@@ -889,7 +1017,7 @@ fn apply_token(
         policy.token.map_or((0, 0), |rule| {
             let slotted: Vec<u32> = counts
                 .iter()
-                .map(|subject| rule.slots(subject.token))
+                .map(|subject| rule.slots_held(subject.token, subject.current))
                 .filter(|slots| *slots > 0)
                 .collect();
             (slotted.len(), slotted.iter().sum())
@@ -906,10 +1034,164 @@ fn apply_token(
         "token       {seen} Perps subjects and {token_only} token-only wallets hold it · {holders} reach a slot · {slots} guaranteed ({gated_holders} holding a Perp now · {gated_slots}) · {} excluded",
         exclude.len()
     );
+    Ok(by_key)
+}
+
+/// Identities as their holders would link them — `<name> <stake key hex>…` per line — under the
+/// rule ([`holder_behaviour::identity_slots`]) and the two it is never worse than: every wallet on
+/// its own anchor, and every wallet merged into one holder.
+///
+/// Read after listings and the token are applied, so each wallet is what the totals above count.
+fn print_identities(
+    bundle: &Bundle<'_>,
+    catalogue: &LoadedCatalogue,
+    policy: Allocation,
+    counts: &[Counts],
+    token: &BTreeMap<String, u64>,
+    path: &str,
+) -> Result<(), String> {
+    let text = std::fs::read_to_string(path).map_err(|error| format!("read {path}: {error}"))?;
+    let mut by_key: BTreeMap<String, (usize, holder_behaviour::SubjectView<'_>)> = BTreeMap::new();
+    for (index, subject) in bundle.subjects().enumerate() {
+        let subject = subject.map_err(|error| format!("read subject: {error}"))?;
+        by_key.insert(subject.key_str(), (index, subject));
+    }
+    let wallet = |key: &str| -> Counts {
+        match by_key.get(key) {
+            Some((index, _)) => counts[*index].clone(),
+            None => Counts::default().token(token.get(key).copied().unwrap_or(0)),
+        }
+    };
+    // A set of wallets as one holder: earned sets unioned and rescored, the rest summed.
+    let merge = |keys: &[&str]| -> Result<Counts, String> {
+        let rows: Vec<(u16, holder_behaviour::Standing, u16)> = keys
+            .iter()
+            .filter_map(|key| by_key.get(*key))
+            .flat_map(|(_, subject)| {
+                subject
+                    .earned()
+                    .map(|earned| (earned.achievement, earned.standing, earned.held))
+            })
+            .collect();
+        let scored = holder_behaviour::score_tracks(
+            bundle,
+            keys.first().copied().unwrap_or_default(),
+            rows.iter().map(|(index, standing, _)| (*index, *standing)),
+            |index| catalogue.role_at(usize::from(index)),
+            |index| catalogue.points_at(usize::from(index)),
+            |index| catalogue.track_at(usize::from(index)),
+            policy,
+        )
+        .map_err(|error| error.to_string())?;
+        let parts: Vec<Counts> = keys.iter().map(|key| wallet(key)).collect();
+        let current: u32 = parts.iter().map(|part| part.current).sum();
+        let matured = parts
+            .iter()
+            .fold(holder_behaviour::Matured::default(), |sum, part| {
+                sum.plus(&part.matured)
+            });
+        Ok(scored
+            .counts(0, current, parts.iter().any(|part| part.enabled), false)
+            .lapsed(parts.iter().any(|part| part.lapsed))
+            .matured(matured)
+            .granted(grants(rows.iter().copied(), |index| {
+                catalogue.grant_at(usize::from(index))
+            }))
+            .token(parts.iter().map(|part| part.token).sum()))
+    };
+
+    println!();
+    println!("identities (each line as linked to one Robinhood wallet)");
+    println!(
+        "{:<18} {:>7} {:>6} {:>13} {:>13} {:>13}",
+        "identity", "wallets", "perps", "apart", "merged", "linked (rule)"
+    );
+    let show = |slots: holder_behaviour::Slots| format!("{}+{}", slots.gtd, slots.fcfs);
+    for line in text
+        .lines()
+        .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
+    {
+        let mut fields = line.split_whitespace();
+        let Some(name) = fields.next() else { continue };
+        let keys: Vec<&str> = fields.collect();
+        let wallets: Vec<Counts> = keys.iter().map(|key| wallet(key)).collect();
+        let apart = wallets
+            .iter()
+            .fold(holder_behaviour::Slots::default(), |sum, one| {
+                let one = slots(one, policy);
+                holder_behaviour::Slots {
+                    gtd: sum.gtd + one.gtd,
+                    fcfs: sum.fcfs + one.fcfs,
+                }
+            });
+        let merged = merge(&keys)?;
+        let small: Vec<&str> = keys
+            .iter()
+            .zip(&wallets)
+            .filter(|(_, one)| one.current < policy.gtd_min_held)
+            .map(|(key, _)| *key)
+            .collect();
+        let pool = match small.len() > 1 {
+            true => Some(merge(&small)?),
+            false => None,
+        };
+        let linked =
+            holder_behaviour::identity_slots(&wallets, pool.as_ref(), Some(&merged), policy);
+        println!(
+            "{name:<18} {:>7} {:>6} {:>13} {:>13} {:>13}",
+            keys.len(),
+            merged.current,
+            show(apart),
+            show(slots(&merged, policy)),
+            show(linked)
+        );
+    }
+    println!(
+        "note        gtd+fcfs. `apart` is each wallet on its own anchor; `merged` the old rule, the\n            wallets as one holder; `linked` the rule now, never worse than either."
+    );
     Ok(())
 }
 
-/// Take each seller's listed Perps off its holding, seasoned ones last, and shut the gate on a
+/// One subject's earned set, scored in each of the catalogue's points tables.
+fn score_both(
+    bundle: &Bundle<'_>,
+    subject: &holder_behaviour::SubjectView<'_>,
+    catalogue: &LoadedCatalogue,
+    policy: Allocation,
+) -> Result<holder_behaviour::Tracked<holder_behaviour::Score>, String> {
+    holder_behaviour::score_tracks(
+        bundle,
+        &subject.key_str(),
+        subject
+            .earned()
+            .map(|earned| (earned.achievement, earned.standing)),
+        |index| catalogue.role_at(usize::from(index)),
+        |index| catalogue.points_at(usize::from(index)),
+        |index| catalogue.track_at(usize::from(index)),
+        policy,
+    )
+    .map_err(|error| error.to_string())
+}
+
+/// `held` with `taken` units gone, newest first: new, then maturing, then mature.
+fn newest_taken(held: holder_behaviour::Matured, taken: u32) -> holder_behaviour::Matured {
+    let mut left = taken;
+    let mut take = |from: u32| {
+        let gone = from.min(left);
+        left -= gone;
+        from - gone
+    };
+    let new = take(held.new);
+    let maturing = take(held.maturing);
+    let mature = take(held.mature);
+    holder_behaviour::Matured {
+        new,
+        maturing,
+        mature,
+    }
+}
+
+/// Take each seller's listed Perps off its holding, mature ones last, and shut the gate on a
 /// subject whose every Perp is for sale.
 fn apply_listings(bundle: &Bundle<'_>, counts: &mut [Counts], path: &str) -> Result<(), String> {
     let text = std::fs::read_to_string(path).map_err(|error| format!("read {path}: {error}"))?;
@@ -931,14 +1213,10 @@ fn apply_listings(bundle: &Bundle<'_>, counts: &mut [Counts], path: &str) -> Res
             continue;
         };
         let taken = (*count).min(counts.current);
+        // A seller lists its newest first as often as its oldest; taking the newest first is the
+        // reading kindest to it, and the one a rule would have to beat.
+        counts.matured = newest_taken(counts.maturity(), taken);
         counts.current -= taken;
-        // A seller lists its newest first as often as its oldest; taking the fresh ones first is
-        // the reading kindest to it, and the one a rule would have to beat.
-        let fresh = counts.current + taken - counts.seasoned.min(counts.current + taken);
-        counts.seasoned = counts
-            .seasoned
-            .min(counts.current + taken)
-            .saturating_sub(taken.saturating_sub(fresh));
         if counts.current == 0 {
             counts.enabled = false;
         }
@@ -956,9 +1234,10 @@ fn apply_listings(bundle: &Bundle<'_>, counts: &mut [Counts], path: &str) -> Res
 /// The cost is the floor paid, not the floor lost: a Perp bought for a snapshot can be sold again
 /// after it, so this is the worst case for the buyer and the best case for the rule.
 fn print_ladder_economics(policy: Allocation, perpling_usd: f64, floor_ada: f64, fcfs_usd: f64) {
+    // The night-before buy: a unit bought now is new at the snapshot.
     let share = policy
         .seasoning
-        .map_or(1.0, |seasoning| seasoning.share.clamp(0.0, 1.0));
+        .map_or(1.0, |seasoning| seasoning.share(Maturity::New));
     let rungs = policy.holding.as_slice();
     if rungs.is_empty() || share <= 0.0 {
         return;
@@ -1529,6 +1808,62 @@ fn print_partner_promotion(
     println!("            absent by construction: a partner with no Perp cannot reach GTD.");
 }
 
+/// What buying points is worth: every gated holder raised by the same points, through the real
+/// rule, in the table a purchase can move.
+///
+/// With points tables, that is clout — bloodline is the mint and time held, which no purchase
+/// before a snapshot adds — so the lift is clout's and the phase it moves is first come. Without
+/// them it is the single score, and the guarantee. A held-now trait marker counts in full from the
+/// day it is bought, so this is the jostle a trait-buying run can add, read as "if every holder
+/// bought this many points".
+fn print_score_climb(counts: &[Counts], policy: Allocation) {
+    let tables = !policy.clout.is_empty();
+    let demand = |lift: u32| -> (u32, usize, usize) {
+        let mut total = 0;
+        let mut reached = 0;
+        let mut climbed = 0;
+        let phase_slots = |subject: &Counts| {
+            let slots = slots(subject, policy);
+            if tables { slots.fcfs } else { slots.gtd }
+        };
+        for subject in counts.iter().filter(|s| s.enabled || s.token > 0) {
+            let before = phase_slots(subject);
+            let mut lifted = subject.clone();
+            if tables {
+                lifted.clout = lifted.clout.saturating_add(lift);
+            } else {
+                lifted.score = lifted.score.saturating_add(lift);
+            }
+            let after = phase_slots(&lifted);
+            total += after;
+            reached += usize::from(after > 0);
+            climbed += usize::from(after > before);
+        }
+        (total, reached, climbed)
+    };
+    let (base, base_reached, _) = demand(0);
+    let (table, phase) = match tables {
+        true => ("clout", "fcfs"),
+        false => ("score", "gtd"),
+    };
+    println!();
+    println!(
+        "{table} climb (every gated holder buys the same {table} points; held-now markers count at once)"
+    );
+    println!(
+        "{:>10} {:>11} {:>8} {:>8} {:>8}",
+        "points", "with slots", "climbed", phase, "adds"
+    );
+    println!("{:>10} {base_reached:>11} {:>8} {base:>8} {:>8}", 0, 0, "—");
+    for lift in [1_000, 2_500, 5_000, 10_000] {
+        let (total, reached, climbed) = demand(lift);
+        println!(
+            "{lift:>10} {reached:>11} {climbed:>8} {total:>8} {:>+8}",
+            i64::from(total) - i64::from(base)
+        );
+    }
+}
+
 /// A ladder policy against the reserves: who sits on which holding rung, what the score rungs
 /// add, the leaders, the ceiling, and the two first-come doors.
 ///
@@ -1552,10 +1887,17 @@ fn print_ladder_allocation(
         "ladder allocation (base by {} · score rungs add · leaders add)",
         match policy.seasoning {
             None => "units held now".to_string(),
-            Some(s) => format!(
+            Some(s) if s.maturing_days >= s.mature_days => format!(
                 "units held now, those under {} days at {:.0}%",
-                s.days,
-                s.share * 100.0
+                s.mature_days,
+                s.new_share * 100.0
+            ),
+            Some(s) => format!(
+                "units held now: new at {:.0}%, maturing from {} days at {:.0}%, mature from {} days",
+                s.new_share * 100.0,
+                s.maturing_days,
+                s.maturing_share * 100.0,
+                s.mature_days
             ),
         }
     );
@@ -1623,6 +1965,44 @@ fn print_ladder_allocation(
             reached * rung.mints
         );
     }
+    if !policy.clout.is_empty() {
+        // Clout is first come for any gated identity, guaranteed or not.
+        let gated: Vec<&Counts> = counts.iter().filter(|subject| subject.enabled).collect();
+        let mut clout: Vec<u32> = gated.iter().map(|subject| subject.clout).collect();
+        clout.sort_unstable();
+        let at = |q: f64| {
+            clout
+                .get(((clout.len() as f64 - 1.0) * q).round() as usize)
+                .copied()
+                .unwrap_or(0)
+        };
+        println!();
+        println!(
+            "clout       p25 {} · p50 {} · p75 {} · p90 {} · max {} (gated holders)",
+            at(0.25),
+            at(0.5),
+            at(0.75),
+            at(0.9),
+            at(1.0)
+        );
+        println!(
+            "{:>10} {:>11} {:>6} {:>8}",
+            "clout ≥", "identities", "fcfs", "demand"
+        );
+        for rung in policy.clout.as_slice() {
+            let reached = gated
+                .iter()
+                .filter(|subject| subject.clout >= rung.at_least)
+                .count() as u32;
+            println!(
+                "{:>10} {reached:>11} {:>6} {:>8}",
+                rung.at_least,
+                rung.mints,
+                reached * rung.mints
+            );
+        }
+    }
+    print_score_climb(counts, policy);
 
     // Every gated subject's two counts. Leaders the bundle cannot see are an assumption, bounded
     // by supply; a held Leader is already a grant.
@@ -1845,19 +2225,12 @@ fn print_cohorts(
             .iter()
             .filter(|lot| lot.acquired_at + RECENT_SLOTS > cursor)
             .count() as u32;
-        let scored = score(
-            bundle,
-            &subject,
-            |index| catalogue.role_at(usize::from(index)),
-            |index| catalogue.points_at(usize::from(index)),
-            policy,
-        )
-        .map_err(|error| error.to_string())?;
+        let scored = score_both(bundle, &subject, catalogue, policy)?;
         holders.push(Holder {
             held,
             cohort,
             recent,
-            score: scored.points,
+            score: scored.bloodline.points,
         });
     }
 
@@ -1976,15 +2349,8 @@ fn print_past_holdings(
         // What the share costs this subject: its score as if every holding were still held,
         // against its score under the policy.
         let score_with = |policy: Allocation| {
-            score(
-                bundle,
-                &subject,
-                |index| catalogue.role_at(usize::from(index)),
-                |index| catalogue.points_at(usize::from(index)),
-                policy,
-            )
-            .map(|scored| scored.points)
-            .map_err(|error| error.to_string())
+            score_both(bundle, &subject, catalogue, policy)
+                .map(|scored| scored.bloodline.points + scored.clout.points)
         };
         let as_held = score_with(Allocation {
             past_share: Some(1.0),
@@ -2043,7 +2409,7 @@ fn explain_subject(
         .find(key)
         .map_err(|error| format!("read {key}: {error}"))?
         .ok_or_else(|| format!("{key} is not a subject in this bundle"))?;
-    let trace = holder_behaviour::explain(
+    let traces = holder_behaviour::explain_tracks(
         bundle,
         key,
         subject
@@ -2051,25 +2417,47 @@ fn explain_subject(
             .map(|earned| (earned.achievement, earned.standing)),
         |index| catalogue.role_at(usize::from(index)),
         |index| catalogue.points_at(usize::from(index)),
+        |index| catalogue.track_at(usize::from(index)),
         policy,
     );
     println!();
     println!("subject     {key}");
-    println!(
-        "  {:<22} {:<8} {:<10} {:>6} {:>6}",
-        "achievement", "tense", "outcome", "points", "worth"
-    );
-    for row in &trace.rows {
+    for track in holder_behaviour::Track::ALL {
         println!(
             "  {:<22} {:<8} {:<10} {:>6} {:>6}",
-            catalogue.id_at(usize::from(row.achievement)).unwrap_or("?"),
-            row.standing.as_str(),
-            row.outcome.as_str(),
-            row.points.map_or("—".to_string(), |p| p.to_string()),
-            row.worth
+            track.as_str(),
+            "tense",
+            "outcome",
+            "points",
+            "worth"
         );
+        for row in &traces.get(track).rows {
+            println!(
+                "  {:<22} {:<8} {:<10} {:>6} {:>6}",
+                catalogue.id_at(usize::from(row.achievement)).unwrap_or("?"),
+                row.standing.as_str(),
+                row.outcome.as_str(),
+                row.points.map_or("—".to_string(), |p| p.to_string()),
+                row.worth
+            );
+        }
     }
-    let scored = trace.score.map_err(|error| error.to_string())?;
+    let scored = holder_behaviour::Tracked {
+        bloodline: traces
+            .bloodline
+            .score
+            .clone()
+            .map_err(|error| error.to_string())?,
+        clout: traces
+            .clout
+            .score
+            .clone()
+            .map_err(|error| error.to_string())?,
+    };
+    let rows: Vec<&holder_behaviour::TraceRow> = Track::ALL
+        .iter()
+        .flat_map(|track| traces.get(*track).rows.iter())
+        .collect();
     let lots: Vec<Lot> = subject.lots().collect();
     let current = held_at(&lots, bundle.holder_cursor());
     let no_traits: [(String, String); 0] = [];
@@ -2086,8 +2474,8 @@ fn explain_subject(
             .map(|earned| (earned.achievement, earned.standing, earned.held)),
         |index| catalogue.grant_at(usize::from(index)),
     );
-    let seasoned = policy.seasoning.map_or(0, |seasoning| {
-        seasoned_at(&lots, bundle.built_at(), seasoning.days)
+    let matured = policy.seasoning.map_or_else(Default::default, |seasoning| {
+        maturity_at(&lots, bundle.built_at(), seasoning)
     });
     let counts = scored
         .clone()
@@ -2099,7 +2487,7 @@ fn explain_subject(
         )
         .lapsed(once)
         .granted(granted)
-        .seasoned(seasoned);
+        .matured(matured);
     let ids = |list: &[u16]| {
         list.iter()
             .map(|index| {
@@ -2111,17 +2499,30 @@ fn explain_subject(
             .collect::<Vec<_>>()
             .join(", ")
     };
-    println!("score       {}", counts.score);
-    println!("core        {}", ids(&scored.core));
-    println!("credits     {}", ids(&scored.credits));
-    println!("held        {}", ids(&scored.held));
     println!(
-        "held now    {current} · {seasoned} seasoned · ladder reads {} · gate {}",
+        "score       bloodline {} · clout {}",
+        counts.score, counts.clout
+    );
+    for track in Track::ALL {
+        let scored = scored.get(track);
+        println!(
+            "{:<11} core {} · credits {} · held {}",
+            track.as_str(),
+            ids(&scored.core),
+            ids(&scored.credits),
+            ids(&scored.held)
+        );
+    }
+    let held = counts.maturity();
+    println!(
+        "held now    {current} · {} mature · {} maturing · {} new · ladder reads {} · gate {}",
+        held.mature,
+        held.maturing,
+        held.new,
         counts.ladder_units(policy),
         if enabled { "open" } else { "shut" }
     );
-    let granting: Vec<String> = trace
-        .rows
+    let granting: Vec<String> = rows
         .iter()
         .filter(|row| row.standing != holder_behaviour::Standing::Past)
         .filter_map(|row| {

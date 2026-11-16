@@ -11,8 +11,9 @@ use chain_events::{AccountRef, Currency, Price};
 use chains::TokenRef;
 
 use crate::state::{
-    BookChange, BookOutcome, Fill, FloorPoint, FloorSeries, Holding, LotId, MarketHistory,
-    MarketSide, MintFact, MintSummary, NewFill, NewLot, Placement, Slot, Store, SubjectId, UnitId,
+    BookChange, BookOutcome, Campaign, Fill, FloorPoint, FloorSeries, Holding, LotId,
+    MarketHistory, MarketSide, MintFact, MintSummary, NewFill, NewLot, Placement, Slot,
+    StakingHistory, Store, SubjectId, TokenHistory, UnitId,
 };
 
 /// A live ask, kept in the shape the floor and a fill's age read it.
@@ -50,6 +51,11 @@ pub struct MemoryStore {
     movements: HashMap<SubjectId, u64>,
     /// Whether the stream carried the market family at all.
     saw_market: bool,
+    /// The companion token's history by subject, once a token archive was given. `None` is a
+    /// store that was not given one; a subject absent from `Some` never held the token.
+    token: Option<HashMap<SubjectId, TokenHistory>>,
+    /// The staking ledger, once one was given: the campaigns, and each subject's record in them.
+    staking: Option<(Vec<Campaign>, HashMap<SubjectId, StakingHistory>)>,
     next_lot: u32,
     /// How many times `open_lots_of` has been asked. Used by the test that pins "one lot
     /// read per subject per evaluation" rather than trusting the comment.
@@ -71,6 +77,37 @@ impl MemoryStore {
     /// How many lot reads the store has served.
     pub fn lot_reads(&self) -> usize {
         self.lot_reads.get()
+    }
+
+    /// Notes that the token archive was read, so a subject with no history in it never held the
+    /// token rather than being unknown. Idempotent.
+    pub fn observe_token(&mut self) {
+        self.token.get_or_insert_with(HashMap::new);
+    }
+
+    /// Records the token history of one subject, as the token archive states it.
+    pub fn seed_token(&mut self, subject: SubjectId, history: TokenHistory) {
+        self.token
+            .get_or_insert_with(HashMap::new)
+            .insert(subject, history);
+    }
+
+    /// Records the staking ledger's campaigns. Subjects with no record are not enrolled and were
+    /// never paid. Replaces any campaigns given before.
+    pub fn observe_staking(&mut self, campaigns: Vec<Campaign>) {
+        match &mut self.staking {
+            Some((known, _)) => *known = campaigns,
+            None => self.staking = Some((campaigns, HashMap::new())),
+        }
+    }
+
+    /// Records one subject's enrolments and payouts. Its `campaigns` are ignored: a subject reads
+    /// the ledger's own list, given by [`MemoryStore::observe_staking`].
+    pub fn seed_staking(&mut self, subject: SubjectId, history: StakingHistory) {
+        self.staking
+            .get_or_insert_with(|| (Vec::new(), HashMap::new()))
+            .1
+            .insert(subject, history);
     }
 }
 
@@ -365,6 +402,24 @@ impl Store for MemoryStore {
         Ok((0..self.subjects_by_id.len() as u32)
             .map(SubjectId)
             .collect())
+    }
+
+    fn token_history(&self, subject: SubjectId) -> Result<Option<TokenHistory>, Self::Error> {
+        Ok(self
+            .token
+            .as_ref()
+            .map(|by_subject| by_subject.get(&subject).cloned().unwrap_or_default()))
+    }
+
+    fn staking_history(&self, subject: SubjectId) -> Result<Option<StakingHistory>, Self::Error> {
+        Ok(self.staking.as_ref().map(|(campaigns, by_subject)| {
+            let record = by_subject.get(&subject);
+            StakingHistory {
+                campaigns: campaigns.clone(),
+                enrolled: record.map(|r| r.enrolled.clone()).unwrap_or_default(),
+                payouts: record.map(|r| r.payouts.clone()).unwrap_or_default(),
+            }
+        }))
     }
 }
 

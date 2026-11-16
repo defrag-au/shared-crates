@@ -226,13 +226,7 @@ pub fn verify_actual_sale_flows(
         })
         .collect();
 
-    let ada_to_different_addresses = ada_flows.iter().any(|(amount, addr)| {
+    ada_flows.iter().any(|(amount, addr)| {
         *amount > reasonable_payment_threshold && !asset_recipients.contains(addr)
-    });
-
-    if !ada_to_different_addresses {
-        return false;
-    }
-
-    true
+    })
 }
