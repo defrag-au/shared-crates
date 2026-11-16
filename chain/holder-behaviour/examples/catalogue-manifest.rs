@@ -63,6 +63,10 @@ struct Entry<'a> {
     points: u32,
     /// The points table it scores in: bloodline earns the guarantee, clout first come.
     track: holder_behaviour::Track,
+    /// How the points are paid (`holder_behaviour::Paid`): absent for the many paid once,
+    /// `"per_piece"` for one paid for every piece held now.
+    #[serde(skip_serializing_if = "holder_behaviour::Paid::is_once")]
+    paid: holder_behaviour::Paid,
     /// Slots earning it grants outright. Absent for the many that only score.
     #[serde(skip_serializing_if = "Option::is_none")]
     grant: Option<holder_behaviour::Grant>,
@@ -167,6 +171,7 @@ fn run() -> Result<(), String> {
                     )
                 })?,
                 track: catalogue.track_at(index),
+                paid: catalogue.paid_at(index),
                 grant: catalogue.grant_at(index),
                 title: catalogue.title_at(index).unwrap_or_default(),
                 statement: catalogue.statement_at(index).unwrap_or_default(),

@@ -85,11 +85,11 @@ mod status;
 
 pub use allocation::{
     Allocation, Counts, Grant, Grouping, Launch, LaunchPhase, Matured, Maturity,
-    Outcome as ScoreOutcome, Phase, PhaseKind, RUNGS_MAX, Role, Rung, Rungs, Score, ScoreError,
-    Seasoning, Slots, Sources, TOKEN_STEPS_MAX, Tail, TokenEarly, TokenRule, TokenStep, TokenTail,
-    Trace, TraceRow, Track, Tracked, explain, explain_tracks, grants, held_at, holding_mints,
-    identity_slots, identity_sources, matures_at, maturity_at, mints, peak_concurrent, phase,
-    score, score_earned, score_tracks, slots, sources,
+    Outcome as ScoreOutcome, Paid, Phase, PhaseKind, RUNGS_MAX, Role, Rung, Rungs, Score,
+    ScoreError, Seasoning, Slots, Sources, TOKEN_STEPS_MAX, Tail, TokenEarly, TokenRule, TokenStep,
+    TokenTail, Trace, TraceRow, Track, Tracked, explain, explain_tracks, grants, held_at,
+    holding_mints, identity_slots, identity_sources, matures_at, maturity_at, mints,
+    peak_concurrent, phase, pieces_now, score, score_earned, score_tracks, slots, sources,
 };
 pub use bundle::{
     Bundle, BundleError, BundleStore, Earned, Lot, Rarity, Snapshot, SubjectRecord, SubjectView,
@@ -102,7 +102,7 @@ pub use evaluate::{
 pub use fold::{Anomaly, Applied, Report, apply, rebuild};
 pub use memory::MemoryStore;
 pub use moves::{HOLD_SEARCH, Horizon, Linked, Move, Step, moves};
-pub use predicate::Predicate;
+pub use predicate::{Pieces, Predicate};
 pub use status::{StatusError, StatusPredicate, StatusView, status_holds};
 // The chain-qualified asset id, so a gate config can name a collection without also taking
 // `chains` as a dependency — the same reason `chain-events` re-exports it.

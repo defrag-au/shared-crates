@@ -37,6 +37,46 @@ use serde::{Deserialize, Serialize};
 /// Tagged on `kind` so the TOML `predicate = { kind = "…", … }` table deserialises
 /// directly, with no hand-written adapter between the published rules and the enforced
 /// ones.
+/// How the pieces of a holding over several values are counted: what one "piece held now" is,
+/// for a marker paid or granted per piece.
+///
+/// The predicate says what is held; this says how much of it. It owns the count, so a new way of
+/// counting is a variant here, never a flag threaded through the evaluator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Pieces {
+    /// Each unit held that carries one of the values: every tight hoodie is a piece.
+    #[default]
+    Units,
+    /// Each **complete set** held, one unit of every value: every gang of four colours is a
+    /// piece. As many as the scarcest value's units — 3 red, 1 pink, 5 white and 9 yellow is
+    /// one gang.
+    Sets,
+}
+
+impl Pieces {
+    /// For serde: the default is left out of a written predicate.
+    pub fn is_units(&self) -> bool {
+        *self == Self::Units
+    }
+
+    /// The pieces in a holding, given the units held for each value in turn (`held[i]` is the
+    /// distinct units carrying value `i`). Generic over the unit's id so it is tested without
+    /// a store.
+    pub fn count<U: Ord + Copy>(self, held: &[std::collections::BTreeSet<U>]) -> usize {
+        match self {
+            // A unit carrying two of the values is still one unit.
+            Self::Units => held
+                .iter()
+                .flatten()
+                .copied()
+                .collect::<std::collections::BTreeSet<U>>()
+                .len(),
+            Self::Sets => held.iter().map(|units| units.len()).min().unwrap_or(0),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Predicate {
@@ -277,6 +317,9 @@ pub enum Predicate {
         values: Vec<String>,
         /// How many distinct values must have been seen.
         at_least: u32,
+        /// What a piece held now is, for a marker that pays per piece: see [`Pieces`].
+        #[serde(default, skip_serializing_if = "Pieces::is_units")]
+        pieces: Pieces,
     },
 
     /// `at_least` distinct units carrying `category` were held at one instant.

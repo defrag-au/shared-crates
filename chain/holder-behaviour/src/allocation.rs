@@ -881,6 +881,57 @@ pub fn grants(
         })
 }
 
+/// The pieces of each achievement an earned set holds now, summed across its rows: an identity's
+/// wallets hold different Perps, so three tight hoodies in one and two in another are five.
+///
+/// What a per-piece marker is paid for ([`Paid::worth`]), counted the way [`grants`] counts a
+/// per-piece grant's: only a row held now carries pieces, and one held now carries at least one.
+/// Each earned row is `(achievement, standing, pieces held)`.
+pub fn pieces_now(earned: impl IntoIterator<Item = (u16, Standing, u16)>) -> BTreeMap<u16, u32> {
+    let mut pieces: BTreeMap<u16, u32> = BTreeMap::new();
+    for (index, standing, held) in earned {
+        if standing == Standing::Now {
+            *pieces.entry(index).or_insert(0) += u32::from(held.max(1));
+        }
+    }
+    pieces
+}
+
+/// How a marker's points are paid: the catalogue's `points = { clout = 100, paid = "per_piece" }`.
+///
+/// What a piece *is* belongs to the marker's predicate ([`crate::predicate::Pieces`]: a unit, or
+/// a complete set); this says what holding several is worth. It owns the sum, so a new way of
+/// paying — a cap, a taper — is a variant here, and the scorer's callers do not change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Paid {
+    /// Once, however many pieces are held: every marker before 2026-11-16.
+    #[default]
+    Once,
+    /// Once for every piece held now: 100 a tight hoodie, 1,200 a gang.
+    PerPiece,
+}
+
+impl Paid {
+    /// For serde: the default is left out of a written manifest.
+    pub fn is_once(&self) -> bool {
+        *self == Self::Once
+    }
+
+    /// What `points` come to for a holder with `pieces` held now ([`pieces_now`]): the scorer's
+    /// `points_of` for one identity.
+    ///
+    /// A per-piece marker with no piece held now is priced at one piece, which is what its past
+    /// share is then taken of: a hoodie sold is worth a tenth of one hoodie, as any holding no
+    /// longer held is.
+    pub fn worth(self, points: u32, pieces: u32) -> u32 {
+        match self {
+            Self::Once => points,
+            Self::PerPiece => points.saturating_mul(pieces.max(1)),
+        }
+    }
+}
+
 /// The most steps a token ladder may have. Fixed so [`TokenRule`] stays `Copy` for the sweeps.
 pub const TOKEN_STEPS_MAX: usize = 12;
 
@@ -2051,6 +2102,49 @@ mod tests {
         // A Leader only listed is not held: no slots, and no promotion.
         let listed = grants([(0, Standing::Listed, 0)], grant_of);
         assert_eq!(listed, Grant::default());
+    }
+
+    /// A per-piece marker's points are paid for every piece held now, the pieces summed across
+    /// an identity's wallets; a marker that is not per piece is paid once however many are held.
+    #[test]
+    fn per_piece_points_are_paid_for_every_piece_held_now() {
+        // Hoodies (#0): three in one wallet, two in another, one more only listed. Gangs (#1):
+        // one. A once-only marker (#2) held four times over.
+        let pieces = pieces_now([
+            (0, Standing::Now, 3),
+            (0, Standing::Now, 2),
+            (0, Standing::Listed, 0),
+            (1, Standing::Now, 1),
+            (2, Standing::Now, 4),
+            (3, Standing::Past, 0),
+        ]);
+        let of = |index: u16| pieces.get(&index).copied().unwrap_or(0);
+        assert_eq!(Paid::PerPiece.worth(100, of(0)), 500);
+        assert_eq!(Paid::PerPiece.worth(1_200, of(1)), 1_200);
+        assert_eq!(
+            Paid::Once.worth(600, of(2)),
+            600,
+            "paid once, not per piece"
+        );
+        // Held once and gone: priced at one piece, of which the scorer takes the past share.
+        assert_eq!(of(3), 0);
+        assert_eq!(Paid::PerPiece.worth(100, of(3)), 100);
+        assert_eq!(past_worth(Paid::PerPiece.worth(100, of(3)), 0.10), 10);
+    }
+
+    /// The catalogue's word for it, and a catalogue that says nothing pays once.
+    #[test]
+    fn paid_reads_from_the_catalogues_word() {
+        assert_eq!(
+            serde_json::from_str::<Paid>("\"per_piece\"").unwrap(),
+            Paid::PerPiece
+        );
+        assert_eq!(
+            serde_json::from_str::<Paid>("\"once\"").unwrap(),
+            Paid::Once
+        );
+        assert_eq!(Paid::default(), Paid::Once);
+        assert!(serde_json::from_str::<Paid>("\"per_set\"").is_err());
     }
 
     /// The flat rule as the older catalogue wrote it: one slot for every `per`.

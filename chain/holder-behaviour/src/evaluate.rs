@@ -38,7 +38,7 @@ use chain_events::{Coverage, Currency, PartyRole, TxRef};
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::predicate::Predicate;
+use crate::predicate::{Pieces, Predicate};
 use crate::state::{
     AcquiredBy, Fill, FloorSeries, Holding, Interval, LotId, MarketHistory, MarketSide, MintFact,
     MintSummary, Placement, Slot, StakingHistory, Store, SubjectId, TokenHistory, UnitId,
@@ -446,6 +446,7 @@ pub fn evaluate<'a, S: Store>(
                 category,
                 values,
                 at_least,
+                ..
             } => has_trait_values(&traits, &lots, at, category, values, *at_least),
             Predicate::HeldWithTraitAtOnce {
                 category,
@@ -543,6 +544,7 @@ fn held_now(predicate: &Predicate, traits: &TraitMap, open: &[Holding], at: &Ass
             category,
             values,
             at_least,
+            ..
         } => has_trait_values(traits, open, at, category, values, *at_least),
         Predicate::HeldWithTraitAtOnce {
             category,
@@ -558,29 +560,34 @@ fn held_now(predicate: &Predicate, traits: &TraitMap, open: &[Holding], at: &Ass
     matches!(progress, Progress::Earned { .. })
 }
 
-/// How many pieces satisfy a holding held now: the distinct kept units carrying the trait, for a
-/// one-trait marker (each Leader held is its own piece), and one for any other holding, which is
-/// met as a whole rather than piece by piece.
+/// How many pieces satisfy a holding held now. A trait marker is counted by its [`Pieces`]
+/// over the kept units carrying each of its values — a one-trait marker has one value and
+/// counts units (each Leader held is its own piece); a marker over several says which way (each
+/// tight hoodie, or each complete gang). Any other holding is one piece: it is met as a whole.
 fn pieces_held(predicate: &Predicate, traits: &TraitMap, kept: &[Holding]) -> u16 {
+    // The distinct kept units carrying `value`.
+    let carrying = |category: &str, value: &str| -> BTreeSet<UnitId> {
+        kept.iter()
+            .filter(|lot| matches_value(traits, lot.unit, category, Some(value)))
+            .map(|lot| lot.unit)
+            .collect()
+    };
     let count = match predicate {
-        Predicate::HasTrait { category, value } => kept
-            .iter()
-            .filter(|lot| matches_value(traits, lot.unit, category, Some(value.as_str())))
-            .map(|lot| lot.unit)
-            .collect::<BTreeSet<UnitId>>()
-            .len(),
+        Predicate::HasTrait { category, value } => {
+            Pieces::Units.count(&[carrying(category, value)])
+        }
         Predicate::HasTraitValues {
-            category, values, ..
-        } => kept
-            .iter()
-            .filter(|lot| {
-                values
-                    .iter()
-                    .any(|value| matches_value(traits, lot.unit, category, Some(value.as_str())))
-            })
-            .map(|lot| lot.unit)
-            .collect::<BTreeSet<UnitId>>()
-            .len(),
+            category,
+            values,
+            pieces,
+            ..
+        } => {
+            let held: Vec<BTreeSet<UnitId>> = values
+                .iter()
+                .map(|value| carrying(category, value))
+                .collect();
+            pieces.count(&held)
+        }
         _ => 1,
     };
     u16::try_from(count.max(1)).unwrap_or(u16::MAX)
@@ -4822,6 +4829,7 @@ mod tests {
                         "Elemental Ice Mutation".into(),
                     ],
                     at_least: 2,
+                    pieces: Pieces::Units,
                 },
             )],
         )
@@ -4834,6 +4842,121 @@ mod tests {
             }
         );
         assert_eq!(find(&outcomes, "elementalist").evidence.len(), 2);
+    }
+
+    /// The tight hoodies (2026-11-16): each one held is a piece of the hoodie marker, and each
+    /// complete gang, one of every colour, a piece of the gang marker. Three red, one pink and
+    /// two white is six hoodies and one gang: the pink is the scarcest colour.
+    #[test]
+    fn pieces_held_are_units_for_a_values_marker_and_complete_sets_for_a_sets_marker() {
+        use crate::memory::fixtures::{account, mint, perp, transfer};
+        let mut store = MemoryStore::default();
+        let colours = ["Red", "Red", "Red", "Pink", "White", "White"];
+        let assets: Vec<_> = (0..colours.len())
+            .map(|i| perp(&format!("50657270{:02}", 30 + i)))
+            .collect();
+        for (asset, colour) in assets.iter().zip(colours) {
+            apply(&mut store, &mint(asset, "addr1alice", 100)).unwrap();
+            let unit = store.unit(asset).unwrap();
+            store.seed_traits(unit, &[("Clothes", &format!("{colour} Tight Hoodie"))]);
+        }
+        let alice = store.subject(&account("addr1alice")).unwrap();
+        let values: Vec<String> = ["Red", "Pink", "White"]
+            .iter()
+            .map(|colour| format!("{colour} Tight Hoodie"))
+            .collect();
+        let markers = |values: &[String]| {
+            [
+                definition(
+                    "tight-hoodie",
+                    Predicate::HasTraitValues {
+                        category: "Clothes".into(),
+                        values: values.to_vec(),
+                        at_least: 1,
+                        pieces: Pieces::Units,
+                    },
+                ),
+                definition(
+                    "tight-hoodie-gang",
+                    Predicate::HasTraitValues {
+                        category: "Clothes".into(),
+                        values: values.to_vec(),
+                        at_least: values.len() as u32,
+                        pieces: Pieces::Sets,
+                    },
+                ),
+            ]
+        };
+        let outcomes = evaluate(&store, alice, &at(5_000), &markers(&values)).unwrap();
+        let hoodie = find(&outcomes, "tight-hoodie");
+        assert_eq!((hoodie.standing, hoodie.held), (Standing::Now, 6));
+        let gang = find(&outcomes, "tight-hoodie-gang");
+        assert_eq!((gang.standing, gang.held), (Standing::Now, 1));
+
+        // The pink goes: five hoodies, and the gang is a thing once held.
+        apply(
+            &mut store,
+            &transfer(&assets[3], "addr1alice", "addr1bob", 200),
+        )
+        .unwrap();
+        let outcomes = evaluate(&store, alice, &at(5_000), &markers(&values)).unwrap();
+        let hoodie = find(&outcomes, "tight-hoodie");
+        assert_eq!((hoodie.standing, hoodie.held), (Standing::Now, 5));
+        let gang = find(&outcomes, "tight-hoodie-gang");
+        assert_eq!((gang.standing, gang.held), (Standing::Past, 0));
+    }
+
+    /// A catalogue written before sets were counted reads as it did, units; `pieces = "sets"`
+    /// asks for sets; and the default is not written back out.
+    #[test]
+    fn a_values_marker_counts_units_unless_it_asks_for_sets() {
+        let plain =
+            r#"{"kind":"has_trait_values","category":"Clothes","values":["A","B"],"at_least":2}"#;
+        let predicate: Predicate = serde_json::from_str(plain).unwrap();
+        assert!(matches!(
+            predicate,
+            Predicate::HasTraitValues {
+                pieces: Pieces::Units,
+                ..
+            }
+        ));
+        assert_eq!(serde_json::to_string(&predicate).unwrap(), plain);
+        let sets: Predicate = serde_json::from_str(
+            r#"{"kind":"has_trait_values","category":"Clothes","values":["A","B"],"at_least":2,"pieces":"sets"}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            sets,
+            Predicate::HasTraitValues {
+                pieces: Pieces::Sets,
+                ..
+            }
+        ));
+    }
+
+    /// The count is the strategy's own: units are distinct units (one carrying two values is
+    /// one), sets are as many as the scarcest value.
+    #[test]
+    fn pieces_count_units_or_complete_sets() {
+        let held = |counts: &[&[u32]]| -> Vec<BTreeSet<u32>> {
+            counts
+                .iter()
+                .map(|units| units.iter().copied().collect())
+                .collect()
+        };
+        // Red 1,2,3 · pink 4 · white 5,6.
+        let gang = held(&[&[1, 2, 3], &[4], &[5, 6]]);
+        assert_eq!(Pieces::Units.count(&gang), 6);
+        assert_eq!(Pieces::Sets.count(&gang), 1);
+        // A colour missing: hoodies still, no gang.
+        let short = held(&[&[1, 2], &[], &[5]]);
+        assert_eq!(Pieces::Units.count(&short), 3);
+        assert_eq!(Pieces::Sets.count(&short), 0);
+        // One unit carrying two of the values is one unit.
+        assert_eq!(Pieces::Units.count(&held(&[&[1], &[1]])), 1);
+        // Nothing asked for is nothing held, either way.
+        assert_eq!(Pieces::Units.count::<u32>(&[]), 0);
+        assert_eq!(Pieces::Sets.count::<u32>(&[]), 0);
     }
 
     #[test]
@@ -4856,6 +4979,7 @@ mod tests {
                         "Elemental Ice Mutation".into(),
                     ],
                     at_least: 2,
+                    pieces: Pieces::Units,
                 },
             )],
         )

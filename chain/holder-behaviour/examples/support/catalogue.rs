@@ -101,6 +101,8 @@ struct CatalogueFile {
 
 /// What an achievement is worth, and in which points table: `points = { bloodline = 2000 }`.
 /// A bare number is the single score of a catalogue written before tables, read as bloodline.
+/// `paid` says how ([`holder_behaviour::Paid`]): once, as every marker is unless it says, or
+/// `points = { clout = 100, paid = "per_piece" }`, 100 for each tight hoodie held now.
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
 enum PointsFile {
@@ -110,24 +112,31 @@ enum PointsFile {
         bloodline: Option<u32>,
         #[serde(default)]
         clout: Option<u32>,
+        #[serde(default)]
+        paid: holder_behaviour::Paid,
     },
 }
 
 impl PointsFile {
-    /// The weight and its table. Exactly one table: an achievement scored in both would be paid
-    /// twice, and one in neither would look priced and score nowhere.
-    fn resolve(&self, id: &str) -> Result<(u32, holder_behaviour::Track), String> {
-        use holder_behaviour::Track;
+    /// The weight, its table, and how it is paid. Exactly one table: an achievement scored in
+    /// both would be paid twice, and one in neither would look priced and score nowhere.
+    fn resolve(
+        &self,
+        id: &str,
+    ) -> Result<(u32, holder_behaviour::Track, holder_behaviour::Paid), String> {
+        use holder_behaviour::{Paid, Track};
         match *self {
-            Self::Single(points) => Ok((points, Track::Bloodline)),
+            Self::Single(points) => Ok((points, Track::Bloodline, Paid::Once)),
             Self::Table {
                 bloodline: Some(points),
                 clout: None,
-            } => Ok((points, Track::Bloodline)),
+                paid,
+            } => Ok((points, Track::Bloodline, paid)),
             Self::Table {
                 bloodline: None,
                 clout: Some(points),
-            } => Ok((points, Track::Clout)),
+                paid,
+            } => Ok((points, Track::Clout, paid)),
             Self::Table { .. } => Err(format!(
                 "achievement {id}: points name exactly one table, `bloodline` or `clout`"
             )),
@@ -377,6 +386,9 @@ struct CatalogueEntry {
     points: Option<u32>,
     #[serde(skip)]
     track: holder_behaviour::Track,
+    /// How the points are paid: once, or for every piece held now. From `points_file`.
+    #[serde(skip)]
+    paid: holder_behaviour::Paid,
     /// Slots earning it grants outright, beside its points. See [`holder_behaviour::Grant`].
     #[serde(default)]
     grant: Option<holder_behaviour::Grant>,
@@ -395,11 +407,12 @@ impl LoadedCatalogue {
             toml::from_str(&text).map_err(|error| format!("parse {path}: {error}"))?;
         for entry in &mut file.achievements {
             if let Some(points) = &entry.points_file {
-                let (points, track) = points
+                let (points, track, paid) = points
                     .resolve(&entry.id)
                     .map_err(|e| format!("{path}: {e}"))?;
                 entry.points = Some(points);
                 entry.track = track;
+                entry.paid = paid;
             }
         }
         if file.achievements.is_empty() {
@@ -520,6 +533,30 @@ impl LoadedCatalogue {
     /// priced the achievement, which the scorer refuses rather than counting as nothing.
     pub fn points_at(&self, index: usize) -> Option<u32> {
         self.entries.get(index).and_then(|entry| entry.points)
+    }
+
+    /// How an entry's points are paid: once, or for every piece held now.
+    pub fn paid_at(&self, index: usize) -> holder_behaviour::Paid {
+        self.entries
+            .get(index)
+            .map(|entry| entry.paid)
+            .unwrap_or_default()
+    }
+
+    /// The scorer's `points_of` for one earned set: each entry's weight as it is paid
+    /// ([`holder_behaviour::Paid::worth`]) for the pieces of it in `pieces`
+    /// ([`holder_behaviour::pieces_now`] of that set).
+    pub fn priced<'a>(
+        &'a self,
+        pieces: &'a std::collections::BTreeMap<u16, u32>,
+    ) -> impl Fn(u16) -> Option<u32> + Copy + 'a {
+        move |index| {
+            let at = usize::from(index);
+            self.points_at(at).map(|points| {
+                self.paid_at(at)
+                    .worth(points, pieces.get(&index).copied().unwrap_or(0))
+            })
+        }
     }
 
     /// The points table an entry scores in.
