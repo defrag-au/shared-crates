@@ -23,9 +23,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # This action ships cargo-deny 0.21.0, ahead of the devshell's 0.20.2 — so
+      # every lint default this repo depends on is written down in `deny.toml`
+      # rather than left implicit. A default that moved under us is what failed
+      # this workflow the first time it ran.
+      #
       # `advisories` fails the job. `sources` fails if a dependency starts
       # resolving from somewhere `deny.toml` does not list; `bans` is advisory
-      # until its two lints are tightened (see the comments there). `licenses`
+      # until its lints are tightened (see the comments there). `licenses`
       # is deliberately absent — 111 workspace members have no licence field
       # yet, so it would fail on this repository rather than on its deps.
       - name: cargo-deny

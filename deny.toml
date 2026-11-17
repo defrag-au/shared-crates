@@ -59,6 +59,23 @@ multiple-versions = "warn"
 # sweep that would let `licenses` run.
 wildcards = "warn"
 
+# cargo-deny 0.21 (what `cargo-deny-action` ships) denies a crate that one member
+# declares directly and another inherits, and any crate two members declare with
+# no workspace entry at all. This workspace does that in ~50 places, including
+# two genuine major splits (`thiserror` 1 vs 2, `getrandom` 0.2 vs 0.3), so it
+# starts at warn.
+#
+# `unused` is warn too, because it false-positives on optional dependencies:
+# `axum` (only `worker-utils`) and `utoipa` (`cardano-assets`, `asset-intents`)
+# sit behind features no member of *this* workspace enables, but consumers do.
+#
+# Both levels are spelled out because 0.20.2 (the devshell's copy) does not deny
+# them by default — leaving them implicit is what let CI and a local run
+# disagree on the first PR.
+[bans.workspace-dependencies]
+duplicates = "warn"
+unused = "warn"
+
 [sources]
 # Everything resolves from crates.io or one of these two git repositories.
 # The macroquad pins live in `[patch.crates-io]`; `not-fl3/macroquad` is the
