@@ -99,11 +99,11 @@
         "nixpkgs": "nixpkgs_18"
       },
       "locked": {
-        "lastModified": 1794805715,
-        "narHash": "sha256-N+aPqw1c231H3z4bdjUPLONEmnYrHRHo6bdAjrpLPj4=",
+        "lastModified": 1794878817,
+        "narHash": "sha256-hhNFt1LqEL5E2e8RSc36uzLSVD3zbfQN4D10vs1hJhU=",
         "owner": "defrag-au",
         "repo": "defrag-nix",
-        "rev": "7ccc43f8f2261adc5e9d8ed966f1a215fdafa180",
+        "rev": "51961974e2c640ddd333e96d6e57b577d2d78fc2",
         "type": "github"
       },
       "original": {
@@ -627,11 +627,11 @@
     },
     "nixpkgs_18": {
       "locked": {
-        "lastModified": 1777954456,
-        "narHash": "sha256-hGdgeU2Nk87RAuZyYjyDjFL6LK7dAZN5RE9+hrDTkDU=",
-        "owner": "NixOS",
+        "lastModified": 1794537146,
+        "narHash": "sha256-Wpz/7x/YWnDIBu7yj6ixe8j6fIMsidd9Y+o1PqPF3iM=",
+        "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+        "rev": "d5cc6833999746cffdfe0598f7bc801a57b887a9",
         "type": "github"
       },
       "original": {
