@@ -13,8 +13,6 @@ dev = ["ui-core/dev"]
 web = [
     "dep:ui-core",
     "dep:maud",
-    "dep:gloo-timers",
-    "dep:futures",
     "dep:wasm-bindgen",
     "dep:web-sys",
     "dep:js-sys",
@@ -36,10 +34,6 @@ ui-core = { path = "../ui-core", optional = true }
 
 # HTML templating for loading/error screens
 maud = { workspace = true, optional = true }
-
-# Async/timing utilities
-gloo-timers = { version = "0.3", features = ["futures"], optional = true }
-futures = { workspace = true, optional = true }
 
 # WASM bindings
 wasm-bindgen = { workspace = true, optional = true }

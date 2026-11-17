@@ -9,9 +9,12 @@ publish = false
 [lib]
 crate-type = ["cdylib"]
 
-[dependencies]
-eframe = { workspace = true }
+# The app and stories are wasm-only; a native build cannot reach these, so
+# keep them under the target they actually compile for.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 egui = { workspace = true }
+image = { workspace = true, features = ["png"] }
+eframe = { workspace = true }
 egui_extras = { workspace = true }
 authorizations = { path = "../../authorizations" }
 egui-widgets = { path = "../egui-widgets", features = ["image-editor", "gateway", "chain"] }
@@ -37,7 +40,6 @@ web-sys = { workspace = true, features = [
     # loop left running).
     "NodeList",
 ] }
-image = { workspace = true, features = ["png"] }
 # The `html_stage` story parses a real CIP-25 fixture through
 # `cardano_assets::AssetEnvelope`, so the story exercises the extraction half
 # of the live-art path rather than only the mounting half.
@@ -45,3 +47,8 @@ serde_json = { workspace = true }
 gloo-timers = { workspace = true, features = ["futures"] }
 console_error_panic_hook = "0.1"
 log = { workspace = true }
+
+# The native test targets (`canvas_copy` and `registry`) use these directly.
+[dev-dependencies]
+egui = { workspace = true }
+image = { workspace = true, features = ["png"] }

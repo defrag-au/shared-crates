@@ -4,9 +4,6 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
-# `ServiceAddress` — a snapshot has to remember which plugin renders a page of
-# it, and that is the protocol's own vocabulary for "how to reach a plugin".
-augie-plugin = { path = "../augie-plugin" }
 discord-message = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 # A snapshot stores the tool arguments verbatim, and those are free-form by

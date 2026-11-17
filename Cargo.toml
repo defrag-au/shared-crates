@@ -106,14 +106,12 @@ tower-http = { version = "0.6" }
 gloo-net = "0.6.0"
 indexmap = { version = "2.0", features = ["serde"] }
 phf = { version = "0.11", features = ["macros"] }
-reqwest = { version = "0.12.12", default-features = false }
 # JSON Schema derived from the type that parses the arguments, so a tool's
 # declaration and its reader are the same definition. Already in the tree
 # transitively; taking it directly adds nothing to the build.
 schemars = { version = "1" }
 serde = { version = "1.0.217" }
 serde_json = { version = "1.0.134" }
-serde_with = { version = "3.12.0" }
 tokio = { version = "1.43.0", default-features = false }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3" }
@@ -168,12 +166,10 @@ utxorpc-spec = "0.19"
 
 thiserror = "1"
 futures = "0.3"
-futures-signals = "0.3"
 gloo-timers = { version = "0.3", features = ["futures"] }
 maud = "0.26"
 rmp-serde = "1.3"
 serde-wasm-bindgen = "0.6"
-serde_repr = "0.1"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 rand = { version = "0.9", features = ["small_rng", "std"] }
 log = "0.4"
@@ -199,29 +195,17 @@ address-registry = { path = "address-registry" }
 asset-intents = { path = "asset-intents" }
 authorizations = { path = "authorizations" }
 cardano-assets = { path = "cardano-assets" }
-# What a player holds of a CNFT collection, as a game sees it. Pure: the
-# macroquad edge is `macroquad-kit`'s `macroquad-cnft`.
-cnft-holdings = { path = "cnft-holdings" }
 # Chain identity — which chain, and which network on it, as a CAIP-2 string on
 # the wire. Pure serde, no runtime, so a widget, a worker and a macroquad game
 # can all name a chain without any of them dragging the others in.
 chains = { path = "chains" }
-image-hash = { path = "image-hash" }
-# Sign a waiting device in by approving it elsewhere (emailed link or pairing
-# code). Pure; the caller stores grants and supplies randomness.
-magic-link = { path = "magic-link" }
-# Sending email from a Worker (Resend). Moved from cnft.dev-workers'
-# services/email, which had no consumers left.
-email-service = { path = "email-service" }
 discord-auth = { path = "discord-auth" }
-# The serde-only Discord message model, and the client that sends it. Split
+# The serde-only Discord message model. Split from the client that sends it
 # because the model is consumed by things that never send (the plugin protocol)
 # and the client drags an HTTP stack.
 discord-message = { path = "discord-message" }
-discord-outbound = { path = "discord-outbound" }
 cardano-tx = { path = "cardano-tx" }
 worker_utils = { path = "worker-utils" }
-asset-rarity = { path = "asset-rarity" }
 # Frame-cost + in-flight-work counters. Pure std, no runtime — so `browser-fetch`
 # can increment a gauge without taking a dependency on any UI framework, and the
 # egui and macroquad sides can both read the same numbers.
@@ -230,33 +214,13 @@ egui-widgets = { path = "ui/egui-widgets" }
 # Renderer-free design tokens + colour science. Consumers pick the `Paint` impl
 # they need: `features = ["egui"]` or `features = ["macroquad"]`.
 ui-theme = { path = "ui/ui-theme" }
-portal-pane = { path = "ui/portal-pane" }
 gateway-wiring = { path = "services/gateway-wiring" }
-gateway-admin-protocol = { path = "services/gateway-admin-protocol" }
 wallet-core = { path = "ui/wallet-core" }
 wallet-pallas = { path = "ui/wallet-pallas" }
-# Games, all under gaming/. Replay-verified games (ported from the adacade
-# workspace): `arcade-core` is a pure serde primitive.
-arcade-core = { path = "gaming/arcade-core" }
 # Lockstep rooms: the pure room and client state machines, the sim trait a
 # game implements, and the wire format. No dependencies, so the same crate runs
 # in a Durable Object, a macroquad client and a native load test.
 arcade-room = { path = "gaming/arcade-room" }
-# The Durable Object that hosts an arcade-room world, for a game's worker to
-# compose. Not deployed from here.
-arcade-room-worker = { path = "gaming/arcade-room-worker" }
-# The peer plane beside a room: the signalling protocol between players, who
-# offers, and the browser half that owns RTCPeerConnection.
-arcade-peer = { path = "gaming/arcade-peer" }
-# TURN credentials for that peer plane: the `id:token` pair a mint is signed
-# with, the shape Cloudflare Realtime answers, and when a mint goes stale. Pure
-# shapes, no transport — the Worker that mints composes its own fetch.
-turn-credentials = { path = "realtime/turn-credentials" }
-# Enum-keyed state for deterministic sims (timed effects, capped counts):
-# canonical, cheap to clone, its own wire format.
-arcade-state = { path = "gaming/arcade-state" }
-arcade-tech = { path = "gaming/arcade-tech" }
-wallet-miniquad = { path = "ui/wallet-miniquad" }
 tx_insights = { path = "tx-insights" }
 # The transaction grammar: primitives, derived readings, and the renderer-neutral
 # Cell projection that both the visual and text surfaces draw from. Pure serde +
@@ -266,8 +230,6 @@ tx-verdict = { path = "tx-verdict" }
 test_utils = { path = "test-utils" }
 pipeline-types = { path = "pipeline/pipeline-types" }
 transactions = { path = "pipeline/transactions" }
-tx-classifier = { path = "pipeline/tx-classifier" }
-oura-decoder = { path = "pipeline/oura-decoder" }
 datum-parsing = { path = "pipeline/datum-parsing" }
 maestro = { path = "indexers/maestro" }
 http-client = { path = "http-client" }

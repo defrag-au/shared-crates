@@ -156,6 +156,11 @@ fn reach(
         if !everyone && held_at(&lots, cursor) == 0 {
             continue;
         }
+        let pieces = holder_behaviour::pieces_now(
+            subject
+                .earned()
+                .map(|earned| (earned.achievement, earned.standing, earned.held)),
+        );
         let scored = score_tracks(
             bundle,
             &subject.key_str(),
@@ -163,7 +168,7 @@ fn reach(
                 .earned()
                 .map(|earned| (earned.achievement, earned.standing)),
             |index| catalogue.role_at(usize::from(index)),
-            |index| catalogue.points_at(usize::from(index)),
+            catalogue.priced(&pieces),
             |index| catalogue.track_at(usize::from(index)),
             policy,
         )

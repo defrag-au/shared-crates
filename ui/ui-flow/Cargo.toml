@@ -53,9 +53,6 @@ gloo-timers = { workspace = true, optional = true }
 quad-net = { git = "https://github.com/not-fl3/quad-net", rev = "31796d4e", optional = true }
 miniquad = { version = "0.4", optional = true }
 
-# Async
-futures = { workspace = true }
-
 # Logging
 tracing = { workspace = true }
 

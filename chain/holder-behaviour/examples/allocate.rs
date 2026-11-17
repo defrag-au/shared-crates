@@ -1073,12 +1073,13 @@ fn print_identities(
                     .map(|earned| (earned.achievement, earned.standing, earned.held))
             })
             .collect();
+        let pieces = holder_behaviour::pieces_now(rows.iter().copied());
         let scored = holder_behaviour::score_tracks(
             bundle,
             keys.first().copied().unwrap_or_default(),
             rows.iter().map(|(index, standing, _)| (*index, *standing)),
             |index| catalogue.role_at(usize::from(index)),
-            |index| catalogue.points_at(usize::from(index)),
+            catalogue.priced(&pieces),
             |index| catalogue.track_at(usize::from(index)),
             policy,
         )
@@ -1152,6 +1153,15 @@ fn print_identities(
     Ok(())
 }
 
+/// The pieces of each achievement one subject holds now: what a per-piece marker is paid for.
+fn pieces_of(subject: &holder_behaviour::SubjectView<'_>) -> std::collections::BTreeMap<u16, u32> {
+    holder_behaviour::pieces_now(
+        subject
+            .earned()
+            .map(|earned| (earned.achievement, earned.standing, earned.held)),
+    )
+}
+
 /// One subject's earned set, scored in each of the catalogue's points tables.
 fn score_both(
     bundle: &Bundle<'_>,
@@ -1159,6 +1169,7 @@ fn score_both(
     catalogue: &LoadedCatalogue,
     policy: Allocation,
 ) -> Result<holder_behaviour::Tracked<holder_behaviour::Score>, String> {
+    let pieces = pieces_of(subject);
     holder_behaviour::score_tracks(
         bundle,
         &subject.key_str(),
@@ -1166,7 +1177,7 @@ fn score_both(
             .earned()
             .map(|earned| (earned.achievement, earned.standing)),
         |index| catalogue.role_at(usize::from(index)),
-        |index| catalogue.points_at(usize::from(index)),
+        catalogue.priced(&pieces),
         |index| catalogue.track_at(usize::from(index)),
         policy,
     )
@@ -2409,6 +2420,7 @@ fn explain_subject(
         .find(key)
         .map_err(|error| format!("read {key}: {error}"))?
         .ok_or_else(|| format!("{key} is not a subject in this bundle"))?;
+    let pieces = pieces_of(&subject);
     let traces = holder_behaviour::explain_tracks(
         bundle,
         key,
@@ -2416,7 +2428,7 @@ fn explain_subject(
             .earned()
             .map(|earned| (earned.achievement, earned.standing)),
         |index| catalogue.role_at(usize::from(index)),
-        |index| catalogue.points_at(usize::from(index)),
+        catalogue.priced(&pieces),
         |index| catalogue.track_at(usize::from(index)),
         policy,
     );
