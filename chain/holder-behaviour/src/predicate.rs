@@ -16,6 +16,7 @@
 //! | [`Predicate::HasAllTraits`] | a set carried by one held unit | lots + traits |
 //! | [`Predicate::HasTrait`] | one value ever held | lots + traits |
 //! | [`Predicate::HasTraitValues`] | a set of values ever held across assets | lots + traits |
+//! | [`Predicate::HasTraitsTogether`] | one asset meeting every condition at once, ever held | lots + traits |
 //! | [`Predicate::HeldWithTraitAtOnce`] | a count held simultaneously, as a peak | lots + traits |
 //! | [`Predicate::SameValueAcrossAssets`] | assets sharing a value, ever held | lots + traits |
 //! | [`Predicate::MintWithin`] … [`Predicate::MintAfterGap`] | the collection's mint order | lots + mint facts |
@@ -37,6 +38,16 @@ use serde::{Deserialize, Serialize};
 /// Tagged on `kind` so the TOML `predicate = { kind = "…", … }` table deserialises
 /// directly, with no hand-written adapter between the published rules and the enforced
 /// ones.
+/// One condition of [`Predicate::HasTraitsTogether`]: the unit carries one of `values` in
+/// `category`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TraitCondition {
+    /// The trait category. `*` matches across categories.
+    pub category: String,
+    /// The values, any one of which meets the condition. `*` is any value the unit carries.
+    pub values: Vec<String>,
+}
+
 /// How the pieces of a holding over several values are counted: what one "piece held now" is,
 /// for a marker paid or granted per piece.
 ///
@@ -322,6 +333,17 @@ pub enum Predicate {
         pieces: Pieces,
     },
 
+    /// One unit meeting every condition in `all` at once was ever held: the **same** Perp, where
+    /// [`Predicate::HasAllTraits`] and [`Predicate::HasTraitValues`] are spread across several.
+    ///
+    /// The hidden commander (2026-11-16) is the worked case: a True Commander wearing something
+    /// that covers its face — two categories, one Perp. Earned at the slot the first such unit
+    /// arrived, and as a holding it is held now only while one is.
+    HasTraitsTogether {
+        /// Every condition, each met by the same unit.
+        all: Vec<TraitCondition>,
+    },
+
     /// `at_least` distinct units carrying `category` were held at one instant.
     ///
     /// A **historical peak**, not the current count: the achievement is earned at the first
@@ -483,6 +505,7 @@ impl Predicate {
             Self::HasAllTraits { .. } => "has_all_traits",
             Self::HasTrait { .. } => "has_trait",
             Self::HasTraitValues { .. } => "has_trait_values",
+            Self::HasTraitsTogether { .. } => "has_traits_together",
             Self::HeldWithTraitAtOnce { .. } => "held_with_trait_at_once",
             Self::HoldsAtLeast { .. } => "holds_at_least",
             Self::SameValueAcrossAssets { .. } => "same_value_across_assets",
@@ -513,6 +536,7 @@ impl Predicate {
             Self::HasAllTraits { .. }
                 | Self::HasTrait { .. }
                 | Self::HasTraitValues { .. }
+                | Self::HasTraitsTogether { .. }
                 | Self::HeldWithTraitAtOnce { .. }
                 | Self::SameValueAcrossAssets { .. }
                 | Self::MarketPurchase
@@ -599,6 +623,7 @@ impl Predicate {
             Self::HasAllTraits { .. }
                 | Self::HasTrait { .. }
                 | Self::HasTraitValues { .. }
+                | Self::HasTraitsTogether { .. }
                 | Self::HeldWithTraitAtOnce { .. }
                 | Self::SameValueAcrossAssets { .. }
         )
@@ -616,6 +641,7 @@ impl Predicate {
             Self::HasAllTraits { .. }
                 | Self::HasTrait { .. }
                 | Self::HasTraitValues { .. }
+                | Self::HasTraitsTogether { .. }
                 | Self::HeldWithTraitAtOnce { .. }
                 | Self::HoldsAtLeast { .. }
                 | Self::SameValueAcrossAssets { .. }
