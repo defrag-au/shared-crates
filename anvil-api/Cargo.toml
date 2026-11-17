@@ -19,5 +19,5 @@ async-stream = "0.3"
 [dev-dependencies]
 test_utils = { path = "../test-utils" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-dotenv = "0.15.0"
+dotenvy = "0.15"
 tracing-subscriber = { workspace = true, features = ["fmt"] }

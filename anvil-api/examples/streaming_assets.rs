@@ -1,5 +1,5 @@
 use anvil_api::{AnvilClient, CollectionAssetsRequest, OrderBy, SaleType};
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use futures::StreamExt; // for .next(), .take(), etc.
 use std::env;
 

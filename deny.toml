@@ -1,0 +1,142 @@
+# cargo-deny — the supply-chain gate. The same command CI runs, locally:
+#
+#   direnv exec . cargo deny --all-features check advisories bans sources
+#
+# `--all-features` matters: `cargo-deny-action` passes it by default, and it is
+# what pulls in the optional paths (`ui-flow/macroquad`, `egui-widgets/puffin`)
+# that a default-features graph never sees. Auditing without it is how a local
+# run passes while CI fails.
+#
+# Advisories fail the build: an advisory names a version already in
+# `Cargo.lock`, so the condition exists whether or not a diff touched it —
+# which is why `.github/workflows/security.yaml` also runs this on a schedule.
+# An entry in `ignore` is a decision, not a silence: name the advisory, say why
+# it cannot be fixed today, and give a date to look again.
+
+[advisories]
+version = 2
+
+# A yanked version still resolves, so it is a signal the bump is overdue
+# rather than a vulnerability — and the bump is usually a one-liner. Denied:
+# the first run found two (`chacha20`, `clipboard-win`) and both moved.
+yanked = "deny"
+
+# The first run reported nine vulnerability advisories, one unsound
+# constructor and seven `unmaintained` findings. Everything with a patched
+# version was cleared by a lockfile bump — with both yanked crates — and dotenv
+# was retired by moving to dotenvy. What is left is below; each entry names the
+# path and who would have to move. Revisit 2027-05-17: an ignore is a decision
+# with a date on it, not a silence.
+ignore = [
+  # No patched version. Reached through pallas-validate, worker, jwt-compact,
+  # cnft_tools, maestro and authorizations; the replacement (jiff or time) is
+  # each of theirs to make.
+  "RUSTSEC-2026-0543",
+  # leptos/tachys, pallas-traverse and simba pull it; pastey is upstream's move.
+  "RUSTSEC-2024-0436",
+  # Only maud_macros, through maud 0.26, still uses it.
+  "RUSTSEC-2024-0370",
+  # leptos_macro, reactive_stores_macro, statig_macro and syn_derive.
+  "RUSTSEC-2026-0173",
+  # Both quick-xml advisories: reached only by wayland-scanner, a build-time
+  # proc-macro (`cargo tree -i quick-xml --target all` names nothing else).
+  # The XML it parses is a Wayland protocol description, not untrusted input.
+  "RUSTSEC-2026-0194",
+  "RUSTSEC-2026-0195",
+  # Unmaintained with no safe upgrade. fontdue pulls 0.21.1; fdsm-ttf-parser,
+  # owned_ttf_parser and scenegraph's dev-dependencies pull 0.25.1.
+  "RUSTSEC-2026-0192",
+  # Reached only with `ui-flow/macroquad`: quad-net -> qws 0.7.9 -> mio 0.6,
+  # which is where net2 lives. qws has not moved since 2019 and no mio in that
+  # line is patched.
+  "RUSTSEC-2020-0016",
+  # The same path: qws -> url 1.7.2, which pins `idna ^0.1.0`. The remedy is
+  # url >= 2.5.4, so qws (or quad-net dropping qws) is what has to move. The
+  # URL is the operator's relay, not input from a peer, and nothing here
+  # compares host names as a privilege check.
+  "RUSTSEC-2024-0421",
+  # `egui-widgets`' optional `puffin` profiler adapter brings bincode 1.3.3,
+  # which its authors consider complete; puffin has not moved to bincode 2.
+  "RUSTSEC-2025-0141",
+]
+
+[bans]
+# 900 packages, and the workspace already accepts some duplication (matchit
+# 0.7 and 0.8, r-efi 5 and 6). Warn now, ratchet to "deny" once the list is
+# short enough to read.
+multiple-versions = "warn"
+# A literal wildcard lets `cargo update` cross a semver boundary the wasm
+# glue does not tolerate; `worker-utils` carried the last two.
+#
+# A path dependency is also a `*` requirement, so this lint reports every
+# internal `{ path = ".." }` as well — and `allow-wildcard-paths` cannot
+# exempt them while the crate is still publishable. Making this "deny" needs
+# `publish = false` on the crates that are not on crates.io, which is the same
+# sweep that would let `licenses` run.
+wildcards = "warn"
+
+# cargo-deny 0.21 (what `cargo-deny-action` ships) denies a crate that one member
+# declares directly and another inherits, and any crate two members declare with
+# no workspace entry at all. This workspace does that in ~50 places, including
+# two genuine major splits (`thiserror` 1 vs 2, `getrandom` 0.2 vs 0.3), so it
+# starts at warn.
+#
+# `unused` is warn too, because it false-positives on optional dependencies:
+# `axum` (only `worker-utils`) and `utoipa` (`cardano-assets`, `asset-intents`)
+# sit behind features no member of *this* workspace enables, but consumers do.
+#
+# Both levels are spelled out because 0.20.2 (the devshell's copy) does not deny
+# them by default — leaving them implicit is what let CI and a local run
+# disagree on the first PR.
+[bans.workspace-dependencies]
+duplicates = "warn"
+unused = "warn"
+
+[sources]
+# Everything resolves from crates.io or one of these three git repositories.
+# The macroquad pins live in `[patch.crates-io]`; `not-fl3/*` are the upstream
+# URLs cargo records for the patched crates. `quad-net` is `ui-flow`'s
+# `macroquad` transport, so it appears only under `--all-features`.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = [
+  "https://github.com/defrag-au/miniquad",
+  "https://github.com/not-fl3/macroquad",
+  "https://github.com/not-fl3/quad-net",
+]
+
+# ── Licences are analysed here but deliberately NOT gated yet ───────────────
+# `cargo deny check licenses` is absent from the workflow's command: 111
+# workspace members carry no `license` field at all (the ones that do inherit
+# `license.workspace = true`), so the check fails on this repository rather
+# than on its dependencies. Fix that first — add `license.workspace = true` to
+# those manifests — then add "licenses" to the workflow command.
+#
+# The allow-list is every licence expression in the current lockfile, read
+# from the resolved manifests rather than guessed.
+
+[licenses]
+version = 2
+allow = [
+  "0BSD",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "BlueOak-1.0.0",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0", # webpki-roots: root-certificate data, not code
+  "ISC",
+  "MIT",
+  "OFL-1.1",             # epaint_default_fonts, alongside MIT/Apache-2.0
+  "Ubuntu-font-1.0",     # the same crate; its licence text ships with it
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+]
+
+exceptions = [
+  # Carries no SPDX expression; its LICENSE is BSD-3-Clause in full.
+  { name = "fuchsia-cprng", allow = ["BSD-3-Clause"] },
+]

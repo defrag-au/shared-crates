@@ -1,0 +1,46 @@
+name: Security
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  # An advisory is published against versions that are already in the
+  # lockfile, so a diff-triggered run only ever checks the day the lockfile
+  # moved. The scheduled run is what notices a crate going bad while this
+  # repository sits still.
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  supply-chain:
+    name: Supply chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # This action ships cargo-deny 0.21.0, ahead of the devshell's 0.20.2 — so
+      # every lint default this repo depends on is written down in `deny.toml`
+      # rather than left implicit. A default that moved under us is what failed
+      # this workflow the first time it ran.
+      #
+      # `advisories` fails the job. `sources` fails if a dependency starts
+      # resolving from somewhere `deny.toml` does not list; `bans` is advisory
+      # until its lints are tightened (see the comments there). `licenses`
+      # is deliberately absent — 111 workspace members have no licence field
+      # yet, so it would fail on this repository rather than on its deps.
+      #
+      # `--all-features` is the action's default, stated here so it is not
+      # something we inherit by accident: it is what reaches
+      # `ui-flow/macroquad` (quad-net, qws, net2, url 1.7) and
+      # `egui-widgets/puffin`. Drop it and the job audits a smaller graph than
+      # a consumer can build.
+      - name: cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories bans sources
+          arguments: --all-features

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::*;
-    use dotenv::dotenv;
+    use dotenvy::dotenv;
 
     use std::env;
     use test_utils::{self, test_case};

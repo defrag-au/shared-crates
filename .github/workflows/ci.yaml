@@ -41,14 +41,19 @@ jobs:
           shared-key: "test"
           cache-on-failure: true
 
+      # `--locked` throughout: the job in `security.yaml` audits the committed
+      # lockfile, so the graph built here has to be that same graph. A manifest
+      # change that forgets its lockfile update fails here instead of silently
+      # resolving a different graph on the runner.
+      #
       # `storybook-egui` is a cdylib with its own storybook build; it is
       # excluded here so this job does not try to run it.
-      - run: cargo check --workspace --exclude storybook-egui --all-targets
-      - run: cargo test --workspace --exclude storybook-egui --all-targets
+      - run: cargo check --workspace --exclude storybook-egui --all-targets --locked
+      - run: cargo test --workspace --exclude storybook-egui --all-targets --locked
       # The workspace runs default features, which leave out scenegraph's glTF
       # importer: models, rigs, clips and the Khronos fixtures that test them.
       - name: scenegraph with glTF
-        run: cargo test -p scenegraph --features gltf
+        run: cargo test -p scenegraph --features gltf --locked
 
   ocfl-fixtures:
     name: OCFL Fixtures
@@ -78,7 +83,7 @@ jobs:
       # rejected, 55 bad objects must be rejected; the test's own counts line
       # (kept visible with --nocapture) is the signal. See tests/fixtures.rs.
       - name: Run the fixture suite
-        run: OCFL_FIXTURES="${GITHUB_WORKSPACE}/.tmp/ocfl-fixtures" cargo test -p ocfl --test fixtures -- --nocapture
+        run: OCFL_FIXTURES="${GITHUB_WORKSPACE}/.tmp/ocfl-fixtures" cargo test -p ocfl --test fixtures --locked -- --nocapture
 
   clippy:
     name: Clippy
@@ -97,7 +102,7 @@ jobs:
           shared-key: "clippy"
           cache-on-failure: true
 
-      - run: cargo clippy --workspace --exclude storybook-egui --all-targets -- -D warnings
+      - run: cargo clippy --workspace --exclude storybook-egui --all-targets --locked -- -D warnings
 
   wasm-check:
     name: WASM Check
@@ -125,7 +130,7 @@ jobs:
       # and an `--exclude` added to that job later must not be able to kill it
       # silently. The test itself explains what it checks and why.
       - name: Guard — cardano-tx stays linkable under miniquad
-        run: cargo test -p cardano-tx --test miniquad_linkable
+        run: cargo test -p cardano-tx --test miniquad_linkable --locked
 
       - name: Check wasm-compatible crates
         # flow-demo and flow-demo-frontend are excluded: they're Cloudflare Workers
@@ -136,7 +141,7 @@ jobs:
         # wasm check. This job keeps the pure crates: `arcade-core` is pure serde
         # and belongs here.
         run: |
-          cargo check --target wasm32-unknown-unknown \
+          cargo check --target wasm32-unknown-unknown --locked \
             -p arcade-core \
             -p asset-intents \
             -p cardano-assets \
@@ -159,7 +164,7 @@ jobs:
           # as sceneapp enables it) and `scenegraph-mq` are checked here;
           # `scene-pane` and the gamekit moved to `macroquad-kit`.
           # `scenegraph-wgpu` is absent on purpose: no macroquad build links it.
-          cargo check --target wasm32-unknown-unknown \
+          cargo check --target wasm32-unknown-unknown --locked \
             -p scenegraph --features gltf \
             -p sceneanim \
             -p sceneinput \

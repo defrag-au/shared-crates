@@ -1,5 +1,5 @@
 use anvil_api::{AnvilClient, CollectionAssetsRequest, OrderBy};
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use std::env;
 
 #[tokio::main]

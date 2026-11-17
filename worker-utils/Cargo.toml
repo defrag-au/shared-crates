@@ -21,7 +21,7 @@ cfg-if = "1.0.0"
 console_error_panic_hook = { version = "0.1.1", optional = true }
 serde = { workspace = true, features = ["derive"] }
 worker_stack = { workspace = true }
-js-sys = "*"
+js-sys = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ['time', 'json'], optional = true }
 time = { version = "0.3", features = ['wasm-bindgen'], optional = true }
@@ -29,7 +29,7 @@ axum = { workspace = true, optional = true }
 tower-http = { workspace = true, optional = true, features = ["cors"] }
 futures-channel = { version = "0.3.31", optional = true }
 futures-util = { version = "0.3.31", optional = true }
-wasm-bindgen-futures = { version = "*", optional = true }
+wasm-bindgen-futures = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 phf = { version = "0.11", features = ["macros"], optional = true }
 thiserror = { workspace = true, optional = true }

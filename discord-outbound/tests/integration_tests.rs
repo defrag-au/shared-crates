@@ -4,7 +4,7 @@ use std::env;
 
 #[tokio::test]
 async fn test_native_json_message() {
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
 
     let bot_token = match env::var("DISCORD_BOT_TOKEN") {
         Ok(token) => token,
@@ -35,7 +35,7 @@ async fn test_native_json_message() {
 
 #[tokio::test]
 async fn test_native_message_with_embed() {
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
 
     let bot_token = match env::var("DISCORD_BOT_TOKEN") {
         Ok(token) => token,
@@ -76,7 +76,7 @@ async fn test_native_message_with_embed() {
 
 #[tokio::test]
 async fn test_native_message_with_attachment() {
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
 
     let bot_token = match env::var("DISCORD_BOT_TOKEN") {
         Ok(token) => token,

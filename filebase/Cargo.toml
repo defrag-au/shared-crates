@@ -19,4 +19,3 @@ worker = ["dep:worker_stack"]
 tokio = { workspace = true, features = ["macros"] }
 test_utils = { path = "../test-utils" }
 worker_utils = { path = "../worker-utils" }
-dotenv = "0.15.0"
