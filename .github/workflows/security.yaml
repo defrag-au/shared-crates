@@ -1,0 +1,34 @@
+name: Security
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  # An advisory is published against versions that are already in the
+  # lockfile, so a diff-triggered run only ever checks the day the lockfile
+  # moved. The scheduled run is what notices a crate going bad while this
+  # repository sits still.
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  supply-chain:
+    name: Supply chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # `advisories` fails the job. `sources` fails if a dependency starts
+      # resolving from somewhere `deny.toml` does not list; `bans` is advisory
+      # until its two lints are tightened (see the comments there). `licenses`
+      # is deliberately absent — 111 workspace members have no licence field
+      # yet, so it would fail on this repository rather than on its deps.
+      - name: cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories bans sources

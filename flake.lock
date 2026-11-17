@@ -99,11 +99,11 @@
         "nixpkgs": "nixpkgs_18"
       },
       "locked": {
-        "lastModified": 1794878817,
-        "narHash": "sha256-hhNFt1LqEL5E2e8RSc36uzLSVD3zbfQN4D10vs1hJhU=",
+        "lastModified": 1794919329,
+        "narHash": "sha256-30+IukamaMigRPwPBbruC6CDvg8JMnVZa+5CS6tnOVY=",
         "owner": "defrag-au",
         "repo": "defrag-nix",
-        "rev": "51961974e2c640ddd333e96d6e57b577d2d78fc2",
+        "rev": "f54f6f033af6746cbc5ebc51b32b18a162888c7b",
         "type": "github"
       },
       "original": {
