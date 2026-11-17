@@ -1,5 +1,5 @@
 use anvil_api::{AnvilClient, CollectionAssetsRequest, SaleType};
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use std::env;
 use tracing::info;
 

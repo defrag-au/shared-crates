@@ -195,7 +195,7 @@ version = "0.1.0"
 dependencies = [
  "async-stream",
  "cardano-assets",
- "dotenv",
+ "dotenvy",
  "futures",
  "http-client",
  "serde",
@@ -1445,7 +1445,7 @@ name = "discord-outbound"
 version = "0.1.0"
 dependencies = [
  "discord-message",
- "dotenv",
+ "dotenvy",
  "gloo-net",
  "reqwest",
  "serde",
@@ -1504,12 +1504,6 @@ checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
 dependencies = [
  "litrs",
 ]
-
-[[package]]
-name = "dotenv"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
 
 [[package]]
 name = "dotenvy"
@@ -1947,7 +1941,6 @@ checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
 name = "filebase"
 version = "0.1.0"
 dependencies = [
- "dotenv",
  "http-client",
  "serde",
  "serde_json",
@@ -5158,7 +5151,6 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 name = "pinata"
 version = "0.1.0"
 dependencies = [
- "dotenv",
  "http-client",
  "serde",
  "serde_json",
