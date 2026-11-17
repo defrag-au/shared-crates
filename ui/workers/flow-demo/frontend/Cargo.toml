@@ -10,7 +10,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # Leptos framework (CSR mode)
 leptos = { version = "0.8", features = ["csr"] }
-leptos_meta = "0.8"
 
 # Protocol types
 ui-flow-protocol = { path = "../../../ui-flow-protocol" }
@@ -53,5 +52,4 @@ tracing = "0.1"
 tracing-wasm = "0.2"
 
 # Utilities
-gloo-timers = { version = "0.3", features = ["futures"] }
 send_wrapper = "0.6"

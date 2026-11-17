@@ -8,7 +8,3 @@ license = "MIT"
 [dependencies]
 # Timing for toast expiry
 js-sys = { workspace = true }
-gloo-timers = { version = "0.3", features = ["futures"] }
-
-# Futures for async cleanup
-futures = { workspace = true }

@@ -15,9 +15,6 @@ wallet-core = { path = "../wallet-core" }
 wallet-pallas = { path = "../wallet-pallas" }
 wallet-leptos = { path = "../wallet-leptos" }
 ui-components = { path = "../ui-components", features = ["wallet"] }
-ui-loader = { path = "../ui-loader" }
-ui-toast = { path = "../ui-toast" }
-ui-core = { path = "../ui-core" }
 image-core = { path = "../image-core" }
 
 # Core WASM deps

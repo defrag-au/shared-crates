@@ -13,7 +13,6 @@ pallas-crypto = { workspace = true, optional = true }
 pallas-primitives = { workspace = true }
 pallas-traverse = { workspace = true, optional = true }
 wasm_safe_serde = { workspace = true }
-pipeline-types = { workspace = true }
 
 [features]
 default = []

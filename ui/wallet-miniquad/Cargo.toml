@@ -32,3 +32,9 @@ pallas-codec = { workspace = true }
 # transport between Rust and the wallet.js plugin.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 sapp-jsutils = "0.1"
+
+[lints.cargo]
+# Deliberate graph-side-effect dependency: `miniquad-platform` registers the
+# custom getrandom backend that pallas/rand consumers need on wasm, even though
+# this crate's own code does not name it.
+unused_dependencies = "allow"

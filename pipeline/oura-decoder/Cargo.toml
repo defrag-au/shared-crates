@@ -11,7 +11,6 @@ hex = { workspace = true }
 tracing = { workspace = true }
 thiserror = "1.0"
 base64 = "0.22"
-blake2 = "0.10"
 bytes = "1.0"
 pallas-addresses = { workspace = true }
 pallas-codec = { workspace = true }
