@@ -33,7 +33,14 @@ jobs:
       # until its lints are tightened (see the comments there). `licenses`
       # is deliberately absent — 111 workspace members have no licence field
       # yet, so it would fail on this repository rather than on its deps.
+      #
+      # `--all-features` is the action's default, stated here so it is not
+      # something we inherit by accident: it is what reaches
+      # `ui-flow/macroquad` (quad-net, qws, net2, url 1.7) and
+      # `egui-widgets/puffin`. Drop it and the job audits a smaller graph than
+      # a consumer can build.
       - name: cargo-deny
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check advisories bans sources
+          arguments: --all-features

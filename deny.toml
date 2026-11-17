@@ -1,6 +1,11 @@
 # cargo-deny — the supply-chain gate. The same command CI runs, locally:
 #
-#   direnv exec . cargo deny check advisories bans sources
+#   direnv exec . cargo deny --all-features check advisories bans sources
+#
+# `--all-features` matters: `cargo-deny-action` passes it by default, and it is
+# what pulls in the optional paths (`ui-flow/macroquad`, `egui-widgets/puffin`)
+# that a default-features graph never sees. Auditing without it is how a local
+# run passes while CI fails.
 #
 # Advisories fail the build: an advisory names a version already in
 # `Cargo.lock`, so the condition exists whether or not a diff touched it —
@@ -17,12 +22,11 @@ version = 2
 yanked = "deny"
 
 # The first run reported nine vulnerability advisories, one unsound
-# constructor and seven `unmaintained` findings (six crates). Every one with a
-# patched version was cleared by a lockfile bump — along with both yanked
-# crates — and dotenv was retired by moving to dotenvy. What remains is five
-# unmaintained crates and two quick-xml vulnerabilities that no build of ours
-# reaches. Each entry names who would have to move. Revisit 2027-05-17: an
-# ignore is a decision with a date on it, not a silence.
+# constructor and seven `unmaintained` findings. Everything with a patched
+# version was cleared by a lockfile bump — with both yanked crates — and dotenv
+# was retired by moving to dotenvy. What is left is below; each entry names the
+# path and who would have to move. Revisit 2027-05-17: an ignore is a decision
+# with a date on it, not a silence.
 ignore = [
   # No patched version. Reached through pallas-validate, worker, jwt-compact,
   # cnft_tools, maestro and authorizations; the replacement (jiff or time) is
@@ -42,6 +46,18 @@ ignore = [
   # Unmaintained with no safe upgrade. fontdue pulls 0.21.1; fdsm-ttf-parser,
   # owned_ttf_parser and scenegraph's dev-dependencies pull 0.25.1.
   "RUSTSEC-2026-0192",
+  # Reached only with `ui-flow/macroquad`: quad-net -> qws 0.7.9 -> mio 0.6,
+  # which is where net2 lives. qws has not moved since 2019 and no mio in that
+  # line is patched.
+  "RUSTSEC-2020-0016",
+  # The same path: qws -> url 1.7.2, which pins `idna ^0.1.0`. The remedy is
+  # url >= 2.5.4, so qws (or quad-net dropping qws) is what has to move. The
+  # URL is the operator's relay, not input from a peer, and nothing here
+  # compares host names as a privilege check.
+  "RUSTSEC-2024-0421",
+  # `egui-widgets`' optional `puffin` profiler adapter brings bincode 1.3.3,
+  # which its authors consider complete; puffin has not moved to bincode 2.
+  "RUSTSEC-2025-0141",
 ]
 
 [bans]
@@ -77,14 +93,16 @@ duplicates = "warn"
 unused = "warn"
 
 [sources]
-# Everything resolves from crates.io or one of these two git repositories.
-# The macroquad pins live in `[patch.crates-io]`; `not-fl3/macroquad` is the
-# upstream URL cargo records for the patched crate.
+# Everything resolves from crates.io or one of these three git repositories.
+# The macroquad pins live in `[patch.crates-io]`; `not-fl3/*` are the upstream
+# URLs cargo records for the patched crates. `quad-net` is `ui-flow`'s
+# `macroquad` transport, so it appears only under `--all-features`.
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-git = [
   "https://github.com/defrag-au/miniquad",
   "https://github.com/not-fl3/macroquad",
+  "https://github.com/not-fl3/quad-net",
 ]
 
 # ── Licences are analysed here but deliberately NOT gated yet ───────────────
