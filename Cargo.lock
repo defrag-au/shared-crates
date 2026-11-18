@@ -2812,6 +2812,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hex-wfc"
+version = "0.1.0"
+dependencies = [
+ "rand 0.9.4",
+ "serde",
+ "thiserror 1.0.69",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "hmac"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
