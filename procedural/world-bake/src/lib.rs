@@ -232,6 +232,38 @@ pub struct DetailParams {
     /// lower the land. Absent from revision-1 records, which had none.
     #[serde(default)]
     pub uplift: f32,
+    /// Craters stamped into the land before erosion, so rivers route
+    /// around their rims and into their bowls. 0 (the default, and every
+    /// record before craters) places none. With a [`Bombardment`], these are
+    /// its youngest layer: they land last and stay sharp.
+    #[serde(default)]
+    pub craters: u32,
+    /// An older history of impacts, spread over epochs with erosion between
+    /// them, so early craters come out worn. Off by default.
+    #[serde(default)]
+    pub bombardment: Bombardment,
+}
+
+/// A history of impacts before [`DetailParams::craters`]: `impacts` strikes
+/// over the whole planet (those landing at sea leave nothing), heaviest in
+/// the first epoch and tailing off, with a power-law spread of sizes: many
+/// small, few large. Erosion runs between epochs, so a crater is worn by
+/// everything after it. `impacts: 0` is no bombardment.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Bombardment {
+    pub impacts: u32,
+    /// Epochs the history is split into; the youngest craters land in one
+    /// more after them.
+    pub epochs: u32,
+}
+
+impl Default for Bombardment {
+    fn default() -> Self {
+        Self {
+            impacts: 0,
+            epochs: 4,
+        }
+    }
 }
 
 impl DetailParams {
@@ -247,6 +279,8 @@ impl DetailParams {
             area_exponent: 0.45,
             diffusion: 0.12,
             uplift: 0.08,
+            craters: 0,
+            bombardment: Bombardment::default(),
         }
     }
 }
@@ -257,6 +291,134 @@ pub struct DetailInfo {
     pub params: DetailParams,
     /// The baker's detail revision at bake time.
     pub revision: u32,
+    /// The craters the detail stage stamped (`params.craters` of them, or
+    /// fewer if the land ran out), so a reader draws the same ones.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub craters: Vec<Crater>,
+    /// With a [`Bombardment`]: the detail elevation as it stood after each
+    /// epoch, oldest first (the last is the layer itself), so a reader can
+    /// play the history back. Load one with [`load_layer`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub snapshots: Vec<LayerInfo>,
+}
+
+/// A crater in the land: a bowl, a raised rim and a low ejecta apron, its
+/// form set by its size ([`Morphology`]). Its height is [`crater_offset`];
+/// the detail stage stamps it before erosion, so the elevation it records
+/// already has it (eroded).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Crater {
+    /// Unit direction of the centre.
+    pub dir: [f32; 3],
+    /// Radians, centre to rim.
+    pub radius: f32,
+    /// Elevation units: the bowl's floor sits this far below the plain.
+    pub depth: f32,
+    /// When it landed: 0 is the oldest epoch. Craters of the highest epoch
+    /// in a bake are its youngest, the ones still sharp; older ones have
+    /// been worn by the erosion after them. Records before bombardment are
+    /// all epoch 0.
+    #[serde(default)]
+    pub epoch: u32,
+}
+
+/// Radius (radians) from which a crater is [`Morphology::Complex`].
+pub const COMPLEX_RADIUS: f32 = 0.06;
+/// Radius (radians) from which a crater is a [`Morphology::Basin`].
+pub const BASIN_RADIUS: f32 = 0.12;
+
+/// A crater's form, by size, the way impact craters change with scale on
+/// rocky bodies: small ones are plain bowls; larger ones collapse into a
+/// flat floor with a central peak and slumped, terraced walls; the largest
+/// relax into shallow basins ringed by mountains. The size thresholds are
+/// stylised for this planet's scale, not physical ones.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Morphology {
+    Simple,
+    Complex,
+    Basin,
+}
+
+impl Crater {
+    pub fn morphology(&self) -> Morphology {
+        if self.radius >= BASIN_RADIUS {
+            Morphology::Basin
+        } else if self.radius >= COMPLEX_RADIUS {
+            Morphology::Complex
+        } else {
+            Morphology::Simple
+        }
+    }
+
+    /// The crater's height profile at `t` radii from its centre, in units of
+    /// its depth (0 is the plain it landed on).
+    pub fn profile(&self, t: f32) -> f32 {
+        let gauss = |at: f32, width: f32| (-((t - at) * (t - at)) / (width * width)).exp();
+        let apron = if t > 1.0 {
+            0.12 * (-(t - 1.0) * 3.0).exp()
+        } else {
+            0.0
+        };
+        match self.morphology() {
+            // A cone: one slope from rim to centre, so a low sun lights one
+            // half of the bowl and shades the other (a parabola only tilts
+            // near its rim and reads as a thin ring).
+            Morphology::Simple => {
+                let bowl = if t < 1.0 { -(1.0 - t) } else { 0.0 };
+                let rim = (-((t - 1.0) * (t - 1.0)) / 0.03).exp() * 0.45;
+                bowl + rim + apron
+            }
+            // A flat floor out to 0.45 radii, walls rising to the rim in
+            // three slumped terraces, and a peak in the middle.
+            Morphology::Complex => {
+                const FLOOR: f32 = 0.45;
+                const TERRACES: f32 = 3.0;
+                let ground = if t < FLOOR {
+                    -0.8
+                } else if t < 1.0 {
+                    let s = (t - FLOOR) / (1.0 - FLOOR) * TERRACES;
+                    // Each terrace: a steep scarp, then a gentle tread.
+                    let step = s.floor() + smoothstep(0.0, 0.35, s.fract());
+                    -0.8 * (1.0 - step / TERRACES)
+                } else {
+                    0.0
+                };
+                ground + gauss(0.0, 0.12) * 0.5 + gauss(1.0, 0.15) * 0.35 + apron
+            }
+            // Shallow: a floor half as deep, a ring of peaks halfway out, a
+            // broad low rim and a long, low skirt.
+            Morphology::Basin => {
+                let ground = if t < 0.5 {
+                    -0.5
+                } else if t < 1.0 {
+                    -0.5 * (1.0 - smoothstep(0.5, 1.0, t))
+                } else {
+                    0.0
+                };
+                ground + gauss(0.5, 0.06) * 0.3 + gauss(1.0, 0.08) * 0.2 + apron * 0.6
+            }
+        }
+    }
+}
+
+fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// The craters' change to the ground's height at `dir`, in elevation units:
+/// each one's [`Crater::profile`] times its depth, out to 2.2 radii.
+pub fn crater_offset(craters: &[Crater], dir: [f32; 3]) -> f32 {
+    let mut offset = 0.0;
+    for crater in craters {
+        let c = crater.dir;
+        let cos = (dir[0] * c[0] + dir[1] * c[1] + dir[2] * c[2]).clamp(-1.0, 1.0);
+        let t = cos.acos() / crater.radius;
+        if t < 2.2 {
+            offset += crater.profile(t) * crater.depth;
+        }
+    }
+    offset
 }
 
 impl WorldManifest {
@@ -390,28 +552,7 @@ impl World {
         let manifest = read_manifest(dir)?;
         let mut layers = Vec::with_capacity(manifest.layers.len());
         for info in &manifest.layers {
-            let path = dir.join(&info.file);
-            let image = image::open(&path)
-                .map_err(|source| BakeError::Image {
-                    path: path.clone(),
-                    source,
-                })?
-                .into_luma16();
-            let size = info.size.unwrap_or(manifest.size);
-            if image.width() != size || image.height() != size {
-                return Err(BakeError::LayerSize {
-                    path,
-                    found: image.width(),
-                    found_h: image.height(),
-                    expected: size,
-                });
-            }
-            let values = image.pixels().map(|p| info.decode(p.0[0])).collect();
-            layers.push(Layer {
-                info: info.clone(),
-                size,
-                values,
-            });
+            layers.push(load_layer(dir, info, manifest.size)?);
         }
         Ok(Self { manifest, layers })
     }
@@ -452,6 +593,34 @@ impl World {
     pub fn height_above_sea(&self, dir: [f32; 3]) -> Result<f32, BakeError> {
         Ok(self.layer(LayerName::Elevation)?.sample(dir) - self.manifest.sea_level)
     }
+}
+
+/// Load one layer of the bake at `dir` from its record: a manifest layer, or
+/// one not loaded with the world (a detail snapshot). `default_size` is the
+/// manifest's, for a record without its own.
+pub fn load_layer(dir: &Path, info: &LayerInfo, default_size: u32) -> Result<Layer, BakeError> {
+    let path = dir.join(&info.file);
+    let image = image::open(&path)
+        .map_err(|source| BakeError::Image {
+            path: path.clone(),
+            source,
+        })?
+        .into_luma16();
+    let size = info.size.unwrap_or(default_size);
+    if image.width() != size || image.height() != size {
+        return Err(BakeError::LayerSize {
+            path,
+            found: image.width(),
+            found_h: image.height(),
+            expected: size,
+        });
+    }
+    let values = image.pixels().map(|p| info.decode(p.0[0])).collect();
+    Ok(Layer {
+        info: info.clone(),
+        size,
+        values,
+    })
 }
 
 /// One traced river: from a source down to the sea or to the river it joins
@@ -530,6 +699,74 @@ fn read_manifest(dir: &Path) -> Result<WorldManifest, BakeError> {
 mod tests {
     use super::*;
     use image::{ImageBuffer, Luma};
+
+    #[test]
+    fn a_crater_is_a_cone_bowl_with_a_rim() {
+        let craters = [Crater {
+            dir: [1.0, 0.0, 0.0],
+            radius: 0.05,
+            depth: 1.0,
+            epoch: 0,
+        }];
+        // Along a great circle from the centre, at `t` radii.
+        let at = |t: f32| {
+            let a = t * 0.05;
+            crater_offset(&craters, [a.cos(), a.sin(), 0.0])
+        };
+        assert!(at(0.0) < -0.9, "centre is the deepest");
+        // A cone: equal steps out rise by equal heights.
+        let (a, b, c) = (at(0.2), at(0.4), at(0.6));
+        assert!(((b - a) - (c - b)).abs() < 0.01, "wall {a} {b} {c}");
+        assert!(at(1.0) > 0.3, "the rim stands above the plain");
+        assert!(at(3.0).abs() < 1e-6, "no effect far away");
+    }
+
+    #[test]
+    fn crater_form_changes_with_size() {
+        let at = |radius: f32| Crater {
+            dir: [1.0, 0.0, 0.0],
+            radius,
+            depth: 1.0,
+            epoch: 0,
+        };
+        let (simple, complex, basin) = (at(0.03), at(0.08), at(0.15));
+        assert_eq!(simple.morphology(), Morphology::Simple);
+        assert_eq!(complex.morphology(), Morphology::Complex);
+        assert_eq!(basin.morphology(), Morphology::Basin);
+
+        // Complex: a central peak above a flat floor, walls in terraces.
+        let p = |t: f32| complex.profile(t);
+        assert!(p(0.0) > p(0.3) + 0.3, "central peak");
+        assert!((p(0.3) - p(0.4)).abs() < 0.02, "flat floor");
+        let wall: Vec<f32> = (0..=40).map(|k| p(0.45 + 0.55 * k as f32 / 40.0)).collect();
+        assert!(
+            wall.windows(2).all(|w| w[1] >= w[0] - 1e-4),
+            "walls only rise"
+        );
+        let slopes: Vec<f32> = wall.windows(2).map(|w| w[1] - w[0]).collect();
+        let steep = slopes.iter().filter(|&&s| s > 0.05).count();
+        let gentle = slopes.iter().filter(|&&s| s < 0.01).count();
+        assert!(steep >= 3 && gentle >= 10, "scarps and treads: {slopes:?}");
+        assert!(p(1.0) > 0.2, "a raised rim");
+
+        // Basin: shallow for its width, with a ring of peaks inside.
+        let b = |t: f32| basin.profile(t);
+        assert!(b(0.0) > simple.profile(0.0) * 0.6, "shallower than a bowl");
+        assert!(b(0.5) > b(0.3) + 0.2 && b(0.5) > b(0.7), "an inner ring");
+        assert!(b(1.0) > b(0.85), "an outer rim");
+    }
+
+    #[test]
+    fn detail_records_from_before_craters_still_read() {
+        // A revision-2 record: no `craters` in the params or the info.
+        let json = r#"{"params":{"size":2048,"seed":1,"smoothing":0.0092,
+            "amplitude":0.35,"iterations":120,"erodibility":0.05,
+            "area_exponent":0.45,"diffusion":0.12,"uplift":0.08},"revision":2}"#;
+        let info: DetailInfo = serde_json::from_str(json).expect("reads");
+        assert_eq!(info.params.craters, 0);
+        assert!(info.craters.is_empty());
+        assert_eq!(info.params, DetailParams::standard(1));
+    }
 
     fn params(seed: u64) -> GenParams {
         GenParams {
