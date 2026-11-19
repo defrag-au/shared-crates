@@ -1,0 +1,12 @@
+[package]
+name = "world-globe"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "A drawn world as a globe, renderer-free: the displaced sphere mesh and the relief's normal map from an equirectangular height sheet, in the frame the sheet's colour reads unmirrored from outside, and the timing of a crater history's playback. A renderer draws them; nothing here knows about a GPU."
+
+# Pure: no I/O, no GPU, no threads, so the same crate serves a native viewer,
+# a web build and a test.
+[dependencies]

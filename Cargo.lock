@@ -9344,6 +9344,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "world-globe"
+version = "0.1.0"
+
+[[package]]
 name = "world-hex"
 version = "0.1.0"
 dependencies = [

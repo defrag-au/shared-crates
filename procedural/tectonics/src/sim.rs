@@ -50,7 +50,7 @@ use std::collections::{BTreeMap, BinaryHeap};
 use glam::{Quat, Vec3};
 
 use crate::crust::{self, Crust, Kind, Orogeny};
-use crate::noise::{Rng, fbm};
+use crate::noise::{Rng, fbm, hash};
 use crate::sphere::{self, Index};
 
 /// How a planet's tectonics run.
@@ -76,6 +76,26 @@ pub struct Params {
     pub rift_rate: f32,
     /// Mantle hotspots under a planet made by [`Sim::new`].
     pub hotspots: usize,
+    /// What the crust is at the start (see [`Start`]).
+    pub start: Start,
+    /// The mantle's heat at the start, as a multiple of Earth's today: 1 is
+    /// a planet as cool as Earth now, and stays so; above 1 the planet cools
+    /// toward 1 over [`Params::heat_decay`]. See [`Sim::heat`].
+    pub heat: f32,
+    /// e-folding time of the excess heat, My.
+    pub heat_decay: f32,
+}
+
+/// The crust a planet made by [`Sim::new`] starts with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Start {
+    /// One supercontinent, a ~30% cap, on an ocean of mixed age: a planet
+    /// in mid-life, like Earth when Pangaea began to break up.
+    Supercontinent,
+    /// Newly crusted over: young basaltic crust everywhere, many small
+    /// plates, no continents. Continents grow from what the tectonics raises
+    /// (island arcs, collisions of arcs), as Earth's did.
+    Primordial,
 }
 
 impl Params {
@@ -99,6 +119,25 @@ impl Params {
             resample_every: 10,
             rift_rate: 0.35,
             hotspots: 12,
+            start: Start::Supercontinent,
+            heat: 1.0,
+            heat_decay: 1500.0,
+        }
+    }
+
+    /// A young, hot planet just crusted over: no continents, 24 small plates,
+    /// a mantle 3.5× as hot as Earth's today cooling toward it with an
+    /// e-folding time of 1.5 Gyr (≈1.1× by 4.5 Gyr). Earth's radiogenic heat
+    /// production was ~3–4× today's when it formed, and its Archean mantle
+    /// perhaps 150–250 °C hotter. Twenty hotspots. Meant to be run for
+    /// billions of years.
+    pub fn primordial(seed: u64) -> Self {
+        Self {
+            plates: 24,
+            hotspots: 20,
+            start: Start::Primordial,
+            heat: 3.5,
+            ..Self::earth_like(seed)
         }
     }
 }
@@ -142,11 +181,14 @@ pub struct Frame {
     /// The plate owning each grid point.
     pub owner: Vec<u16>,
     pub crust: Vec<Crust>,
-    /// The surface's elevation, km: the crust's own, with continental
-    /// shelves where sea floor meets a continent on its own plate (see
-    /// [`Sim::frame`]).
+    /// The surface's elevation against the sea, km: the crust's own, with
+    /// continental shelves where sea floor meets a continent on its own plate
+    /// (see [`Sim::frame`]), and the continents lowered by a hot planet's
+    /// flooding ([`Sim::flood`]).
     pub surface: Vec<f32>,
     pub plates: Vec<Motion>,
+    /// The mantle's heat, a multiple of Earth's today ([`Sim::heat`]).
+    pub heat: f32,
     pub stats: Stats,
 }
 
@@ -194,6 +236,7 @@ impl Sim {
             })
             .collect();
         let hotspots: Vec<Vec3> = (0..params.hotspots).map(|_| rng.direction()).collect();
+        let start = params.start;
         let sim = Self::with(params, motions, |p| {
             // Plates: Voronoi cells of the centroids, their borders warped.
             let plate = centroids
@@ -205,6 +248,13 @@ impl Sim {
                 })
                 .min_by(|a, b| a.1.total_cmp(&b.1))
                 .map_or(0, |(k, _)| k as u16);
+            if start == Start::Primordial {
+                // Basalt crusted over a magma ocean: young everywhere, 0–30 My.
+                return (
+                    plate,
+                    Crust::oceanic(15.0 + 15.0 * fbm(p, 2.5, 3, seed ^ 0x0CEA)),
+                );
+            }
             // The supercontinent: a cap with a coastline warped by noise.
             let reach = p.dot(centre).clamp(-1.0, 1.0).acos() + 0.35 * fbm(p, 1.5, 4, seed);
             let crust = if reach < cap {
@@ -264,6 +314,35 @@ impl Sim {
         sim
     }
 
+    /// The mantle's heat now, a multiple of Earth's today:
+    /// `1 + (H₀ − 1)·e^(−t/τ)`, for `H₀` = [`Params::heat`] and
+    /// `τ` = [`Params::heat_decay`]. A hotter mantle drives faster plates
+    /// ([`Sim::speed_scale`]), floods the continents ([`Sim::flood`]),
+    /// breaks plates up more ([`HOT_RIFT`]) and feeds stronger plumes.
+    pub fn heat(&self) -> f32 {
+        1.0 + (self.params.heat - 1.0) * (-self.time / self.params.heat_decay).exp()
+    }
+
+    /// How far a hot mantle has drowned the continents, km.
+    ///
+    /// A hotter mantle holds the ocean floor higher, and the oceans rise with
+    /// it: depths below the sea surface stay much as they are, while the
+    /// continents stand that much lower against the sea (their "freeboard"
+    /// shrinks). It is why the early Earth is thought to have had little dry
+    /// land. Elevations in the crust stay measured against a sea as cool as
+    /// today's; [`Frame::surface`] takes the flooding off the land.
+    pub fn flood(&self) -> f32 {
+        HOT_FLOOD * (self.heat() - 1.0)
+    }
+
+    /// How much faster than today's the plates move, `H^0.75`: ~2.6× at 3.5
+    /// times today's heat. Estimates of Archean plate speeds vary; faster,
+    /// but not by the ~12× that boundary-layer scaling (speed ∝ heat flow²)
+    /// would give, which nothing in the geological record suggests.
+    fn speed_scale(&self) -> f32 {
+        self.heat().powf(0.75)
+    }
+
     /// The grid's sample points.
     pub fn points(&self) -> &[Vec3] {
         &self.points
@@ -290,6 +369,7 @@ impl Sim {
             crust: self.crust.clone(),
             surface: self.surface(),
             plates: self.plates.iter().map(|p| p.motion).collect(),
+            heat: self.heat(),
             stats: self.stats,
         }
     }
@@ -326,15 +406,23 @@ impl Sim {
                 }
             }
         }
+        // A hot planet's continents, and the shelves fringing them, stand
+        // lower against its risen sea.
+        let flood = self.flood();
+        let shelf_depth = SHELF_DEPTH - flood;
         for j in 0..n {
-            if self.crust[j].kind == Kind::Oceanic && dist[j].is_finite() {
-                let fall = smoothstep(
-                    SHELF_WIDTH * self.spacing,
-                    SHELF_REACH * self.spacing,
-                    dist[j],
-                );
-                let shelf = SHELF_DEPTH + (surface[j] - SHELF_DEPTH) * fall;
-                surface[j] = surface[j].max(shelf);
+            match self.crust[j].kind {
+                Kind::Continental => surface[j] -= flood,
+                Kind::Oceanic if dist[j].is_finite() => {
+                    let fall = smoothstep(
+                        SHELF_WIDTH * self.spacing,
+                        SHELF_REACH * self.spacing,
+                        dist[j],
+                    );
+                    let shelf = shelf_depth + (surface[j] - shelf_depth) * fall;
+                    surface[j] = surface[j].max(shelf);
+                }
+                Kind::Oceanic => {}
             }
         }
         surface
@@ -344,8 +432,9 @@ impl Sim {
     /// the step ends with a resample.
     pub fn step(&mut self) -> Option<Frame> {
         let dt = self.params.step;
+        let speed = self.speed_scale();
         for plate in &mut self.plates {
-            let turn = Quat::from_axis_angle(plate.motion.axis, plate.motion.rate * dt);
+            let turn = Quat::from_axis_angle(plate.motion.axis, plate.motion.rate * speed * dt);
             plate.rotation = (turn * plate.rotation).normalize();
         }
         for c in &mut self.crust {
@@ -376,7 +465,7 @@ impl Sim {
     /// A plate's surface velocity at `p`, km per million years.
     fn velocity(&self, plate: u16, p: Vec3) -> Vec3 {
         let m = self.plates[plate as usize].motion;
-        m.axis.cross(p) * m.rate * self.params.radius_km
+        m.axis.cross(p) * m.rate * self.speed_scale() * self.params.radius_km
     }
 
     /// Where plates' moved samples now overlap, consume the diving plate's
@@ -448,6 +537,9 @@ impl Sim {
         // Source: (overriding sample, height factor, closing speed, fold push).
         let mut sources: BTreeMap<usize, (f32, f32, Vec3)> = BTreeMap::new();
         let mut fronts: BTreeMap<u16, Vec<Vec3>> = BTreeMap::new();
+        let recycle = (HOT_RECYCLE * (self.heat() - 1.0)).clamp(0.0, 0.9);
+        let step = (self.time / dt).round() as u32;
+        let seed = (self.params.seed ^ (self.params.seed >> 32)) as u32;
         for &(a, b) in &overlaps {
             let (ia, ib) = (live[a], live[b]);
             let Some(&diver) = self.diver.get(&pair(self.owner[ia], self.owner[ib])) else {
@@ -458,8 +550,19 @@ impl Sim {
             } else {
                 (ib, ia, moved[a])
             };
-            if self.crust[under].kind != Kind::Oceanic || !self.alive[under] {
+            if !self.alive[under] {
                 continue;
+            }
+            if self.crust[under].kind == Kind::Continental {
+                // Forced subduction (Cortial et al. §4.1): on a hot planet,
+                // young continental crust is dragged down too, with a chance
+                // rising with the heat; stabilised crust resists.
+                let c = &self.crust[under];
+                let young = c.age < CRATON_AGE;
+                let roll = hash(under as i32, step as i32, 0x5EC, seed) as f32 / u32::MAX as f32;
+                if !(young && roll < recycle) {
+                    continue;
+                }
             }
             self.alive[under] = false;
             self.subducted += 1;
@@ -506,16 +609,97 @@ impl Sim {
     fn erupt_hotspots(&mut self, live: &[usize], moved: &[Vec3], index: &Index, dt: f32) {
         let plume = PLUME_RADIUS * self.spacing;
         let hotspots = self.hotspots.clone();
+        // A hotter mantle feeds its plumes more melt.
+        let heat = self.heat();
         for &h in &hotspots {
             index.near(h, plume, |k| {
                 let d = moved[k].distance(h);
                 if d <= plume {
                     let x = d / (plume * 0.5);
-                    let dz = HOTSPOT_RATE * (-x * x).exp() * dt;
+                    let dz = HOTSPOT_RATE * heat * (-x * x).exp() * dt;
                     crust::erupt(&mut self.crust[live[k]], dz, VOLCANO_CAP);
                 }
             });
         }
+    }
+
+    /// Keep the plate list to the plates that exist. A plate whittled down to
+    /// a sliver (under [`SLIVER`] of a typical plate) joins the neighbour it
+    /// shares most border with; a plate with nothing left (consumed by
+    /// subduction, or sutured whole into another) is retired, and the rest
+    /// are renumbered in order. Without this, rifting adds plates for ever:
+    /// a hot planet run for 4 Gyr went from 24 to ~1300.
+    fn tidy_plates(&mut self) {
+        let n = self.points.len();
+        let typical = n as f32 / self.params.plates.max(1) as f32;
+        let sliver = (typical * SLIVER).ceil() as usize;
+        let mut groups: Vec<Vec<usize>> = vec![Vec::new(); self.plates.len()];
+        for j in 0..n {
+            groups[self.owner[j] as usize].push(j);
+        }
+        for plate in 0..self.plates.len() {
+            let size = groups[plate].len();
+            if size == 0 || size >= sliver {
+                continue;
+            }
+            let mut border: BTreeMap<u16, usize> = BTreeMap::new();
+            for &j in &groups[plate] {
+                for &k in &self.neighbours[j] {
+                    let other = self.owner[k as usize];
+                    if other as usize != plate {
+                        *border.entry(other).or_default() += 1;
+                    }
+                }
+            }
+            // Most shared border; ties to the lower id.
+            let Some(into) = border
+                .iter()
+                .max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0)))
+                .map(|(&p, _)| p)
+            else {
+                continue;
+            };
+            let members = std::mem::take(&mut groups[plate]);
+            for &j in &members {
+                self.owner[j] = into;
+            }
+            groups[into as usize].extend(members);
+        }
+
+        let mut renumber = vec![u16::MAX; self.plates.len()];
+        let mut kept = 0u16;
+        for (plate, group) in groups.iter().enumerate() {
+            if !group.is_empty() {
+                renumber[plate] = kept;
+                kept += 1;
+            }
+        }
+        if kept as usize == self.plates.len() {
+            return;
+        }
+        let mut plates = std::mem::take(&mut self.plates);
+        let mut index = 0;
+        plates.retain(|_| {
+            let keep = renumber[index] != u16::MAX;
+            index += 1;
+            keep
+        });
+        self.plates = plates;
+        for o in &mut self.owner {
+            *o = renumber[*o as usize];
+        }
+        // Renumbering keeps the order, so each pair's lower id stays lower.
+        self.diver = std::mem::take(&mut self.diver)
+            .into_iter()
+            .filter_map(|((a, b), d)| {
+                let (a, b, d) = (
+                    renumber[a as usize],
+                    renumber[b as usize],
+                    renumber[d as usize],
+                );
+                (a != u16::MAX && b != u16::MAX && d != u16::MAX).then_some(((a, b), d))
+            })
+            .collect();
     }
 
     /// Rifting (Cortial et al. §4.4): each plate breaks apart with chance
@@ -533,9 +717,16 @@ impl Sim {
         let n = self.points.len();
         let typical = n as f32 / self.params.plates.max(1) as f32;
         let r_km = self.params.radius_km;
+        let heat = self.heat();
+        // Each plate's grid points, in one pass: over billions of years rifts
+        // multiply plates, and a scan of the grid per plate would not keep up.
+        let mut groups: Vec<Vec<usize>> = vec![Vec::new(); self.plates.len()];
+        for j in 0..n {
+            groups[self.owner[j] as usize].push(j);
+        }
         let mut rifted = 0;
         for plate in 0..self.plates.len() as u16 {
-            let members: Vec<usize> = (0..n).filter(|&j| self.owner[j] == plate).collect();
+            let members = std::mem::take(&mut groups[plate as usize]);
             let area = members.len() as f32;
             let land = members
                 .iter()
@@ -551,7 +742,9 @@ impl Sim {
             if area < typical * MIN_RIFT_AREA {
                 continue;
             }
-            let lambda = self.params.rift_rate * (land / area) * (area / typical);
+            // A hot planet breaks up even its sea-floor plates.
+            let lambda =
+                self.params.rift_rate * (land / area + HOT_RIFT * (heat - 1.0)) * (area / typical);
             if roll >= 1.0 - (-lambda).exp() {
                 continue;
             }
@@ -647,6 +840,7 @@ impl Sim {
                 }
             }
         }
+        let flood = self.flood();
         for (i, b) in best.iter().enumerate() {
             let Some((d, src)) = *b else { continue };
             let (h, v, push) = sources[&src];
@@ -663,7 +857,8 @@ impl Sim {
                 1.0
             };
             let dz = rate * saturate * dt;
-            crust::raise(c, dz);
+            // Arc crust becomes continent once it has built past the sea.
+            crust::raise_past(c, dz, flood);
             if c.kind == Kind::Continental && dz > OROGENY_UPLIFT {
                 c.orogeny = Orogeny::Andean;
                 c.age = 0.0;
@@ -928,7 +1123,9 @@ impl Sim {
         }
         self.alive.fill(true);
         self.since_resample = 0;
-        // Rifting on the fresh grid, where a change of owner moves nothing.
+        // On the fresh grid, where a change of owner moves nothing: tidy the
+        // plates, then rift.
+        self.tidy_plates();
         let rifts = self.rift();
         self.stats = Stats {
             continental: self.continental_share(),
@@ -1014,6 +1211,29 @@ const HOTSPOT_RATE: f32 = 3.0;
 const VOLCANO_CAP: f32 = 9.0;
 /// A plate smaller than this share of a typical plate does not rift.
 const MIN_RIFT_AREA: f32 = 0.3;
+/// Chance, per unit of heat above today's, that young continental crust
+/// arriving at a trench is dragged down rather than colliding: 0.875 at
+/// 3.5×, ~0.06 by 4 Gyr. Much of the early Earth's crust is thought to have
+/// been recycled into the mantle before it could stabilise; without this,
+/// continental crust (immortal once made) reached its long-run share in a
+/// quarter of a billion years.
+const HOT_RECYCLE: f32 = 0.35;
+/// Continental crust this many My past its last mountain building counts as
+/// stabilised (a craton's core), and resists being dragged down.
+const CRATON_AGE: f32 = 300.0;
+/// A plate smaller than this share of a typical plate is a sliver, merged
+/// into its neighbour: ~200 000 km² for an Earth-sized planet of ten plates,
+/// about the size of Earth's smallest named microplates.
+const SLIVER: f32 = 0.01;
+/// How far a hot mantle floods the continents, km per unit of heat above
+/// today's: 1.25 km at 3.5× ([`Sim::flood`]). Hotter, more buoyant mantle
+/// held young oceans shallower; the figure is an estimate, not a measured
+/// relation.
+const HOT_FLOOD: f32 = 0.5;
+/// Rift chance a wholly oceanic plate gains per unit of heat above today's,
+/// as a share of a continental plate's: hot young planets are thought to
+/// have had smaller, shorter-lived plates.
+const HOT_RIFT: f32 = 0.3;
 
 /// Spacings around a trench within which the diving plate's sea floor sinks
 /// to [`TRENCH`].
@@ -1606,6 +1826,123 @@ mod tests {
             deepest_by_coast < -7.0,
             "the trench, not a shelf: {deepest_by_coast}"
         );
+    }
+
+    fn young(seed: u64) -> Params {
+        Params {
+            samples: 6000,
+            ..Params::primordial(seed)
+        }
+    }
+
+    #[test]
+    fn a_primordial_planet_starts_hot_without_continents_and_cools() {
+        let mut sim = Sim::new(young(2));
+        let start = sim.frame();
+        assert_eq!(start.stats.continental, 0.0, "no continents yet");
+        assert!((start.heat - 3.5).abs() < 1e-5);
+        // The hot mantle floods the continents by 0.5 km per unit of heat.
+        assert!((sim.flood() - 1.25).abs() < 1e-4);
+        let mut heats = Vec::new();
+        let mut last = start.clone();
+        sim.run(400.0, |f| {
+            heats.push(f.heat);
+            last = f.clone();
+        });
+        assert!(heats.windows(2).all(|w| w[1] < w[0]), "always cooling");
+        let now = *heats.last().unwrap();
+        assert!(now > 1.0 && now < 3.5, "{now}");
+        // Land stands that much lower against the sea; sea floor does not.
+        let flood = sim.flood();
+        assert!(flood > 0.0);
+        for (c, &z) in last.crust.iter().zip(&last.surface) {
+            match c.kind {
+                Kind::Continental => assert!((z - (c.elevation - flood)).abs() < 1e-5),
+                Kind::Oceanic => assert!(z >= c.elevation),
+            }
+        }
+        let cool = Sim::new(small(2));
+        assert_eq!(cool.frame().heat, 1.0, "today's Earth stays as it is");
+        assert_eq!(cool.flood(), 0.0);
+    }
+
+    #[test]
+    fn plates_are_retired_and_slivers_merged() {
+        let mut sim = Sim::new(young(5));
+        let mut counts = Vec::new();
+        sim.run(1000.0, |f| {
+            let mut sizes = vec![0usize; f.plates.len()];
+            for &o in &f.owner {
+                sizes[o as usize] += 1;
+            }
+            assert!(sizes.iter().all(|&s| s > 0), "no empty plate kept");
+            counts.push(f.plates.len());
+        });
+        // Rifting goes on, but the count stays bounded rather than climbing
+        // for ever.
+        let most = *counts.iter().max().unwrap();
+        assert!(most < 24 * 4, "plate counts {counts:?}");
+    }
+
+    #[test]
+    fn hot_plates_move_faster() {
+        let moved = |heat: f32| {
+            let params = Params {
+                samples: 8000,
+                plates: 1,
+                rift_rate: 0.0,
+                heat,
+                ..Params::earth_like(1)
+            };
+            let mut sim = Sim::with(
+                params,
+                // Far enough in 20 My (~0.2 rad cool) that the grid's
+                // spacing (~0.04 rad) does not swamp the comparison.
+                vec![Motion {
+                    axis: Vec3::Y,
+                    rate: 0.01,
+                }],
+                |p| {
+                    if p.distance(Vec3::X) < 0.4 {
+                        (0, Crust::continental(0.5, 500.0))
+                    } else {
+                        (0, Crust::oceanic(100.0))
+                    }
+                },
+            );
+            let centre = |f: &Frame, pts: &[Vec3]| -> Vec3 {
+                pts.iter()
+                    .zip(&f.crust)
+                    .filter(|(_, c)| c.kind == Kind::Continental)
+                    .map(|(p, _)| *p)
+                    .sum::<Vec3>()
+                    .normalize()
+            };
+            let before = centre(&sim.frame(), sim.points());
+            let frame = run_for(&mut sim, 20.0);
+            centre(&frame, sim.points()).angle_between(before)
+        };
+        let (cool, hot) = (moved(1.0), moved(3.5));
+        // ~3.5^0.75 ≈ 2.6× (cooling a little over the 20 My).
+        assert!(hot > cool * 2.2 && hot < cool * 2.7, "{cool} vs {hot}");
+    }
+
+    #[test]
+    fn a_hot_planet_breaks_up_its_sea_floor_plates_and_grows_continents() {
+        let mut sim = Sim::new(young(5));
+        let mut rifts = 0;
+        let mut land = Vec::new();
+        sim.run(600.0, |f| {
+            rifts += f.stats.rifts;
+            land.push(f.stats.continental);
+        });
+        assert!(
+            rifts > 0,
+            "hot oceanic plates rift though no continent does"
+        );
+        // Land grows out of nothing: island arcs, then their collisions.
+        let last = *land.last().unwrap();
+        assert!(last > 0.01, "continents emerged: {:.1}%", last * 100.0);
     }
 
     #[test]

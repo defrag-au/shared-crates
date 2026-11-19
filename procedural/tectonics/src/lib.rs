@@ -20,4 +20,4 @@ pub mod sim;
 pub mod sphere;
 
 pub use crust::{Crust, Kind};
-pub use sim::{Frame, Motion, Params, Sim, Stats};
+pub use sim::{Frame, Motion, Params, Sim, Start, Stats};

@@ -1,13 +1,18 @@
-//! Run a planet from its supercontinent and write each resampled frame as
-//! sheets the globe viewer plays as a timeline.
+//! Run a planet and write its frames as sheets the globe viewer plays as a
+//! timeline: from a supercontinent for a few hundred million years, or with
+//! `--primordial` from a hot, newly crusted planet for billions.
 //!
 //! ```sh
 //! cargo run --release -p tectonics --example drift -- --out .tmp/drift
+//! cargo run --release -p tectonics --example drift -- --primordial --out .tmp/deep
 //! cargo run --release -p globe-viewer -- --timeline .tmp/drift
 //! ```
 //!
-//! Flags: `--seed` (1), `--samples` (100000), `--plates` (10), `--until` (My,
-//! 240), `--width` (sheet width, 1600; height is half), `--out` (directory).
+//! Flags: `--primordial` (start hot and young: [`Params::primordial`]; runs
+//! 4000 My, a frame every 250 My, unless told otherwise), `--seed` (1),
+//! `--samples` (100000), `--plates` (10, or 24 primordial), `--until` (My,
+//! 240), `--every` (My between frames written, 20), `--width` (sheet width,
+//! 1600; height is half), `--out` (directory).
 //!
 //! Colour is a plain relief key, not the cel style: sea floor by depth (new
 //! crust at the ridges stands shallow and pale, old basins deep), land by
@@ -25,25 +30,43 @@ use tectonics::{Frame, Params, Sim};
 struct Args {
     params: Params,
     until: f32,
+    every: f32,
     width: u32,
     out: PathBuf,
 }
 
 fn parse() -> Result<Args> {
-    let mut args = Args {
-        params: Params::earth_like(1),
-        until: 240.0,
-        width: 1600,
-        out: PathBuf::from(".tmp/drift"),
+    // `--primordial` picks the preset the other flags then adjust.
+    let primordial = std::env::args().any(|a| a == "--primordial");
+    let mut args = if primordial {
+        Args {
+            params: Params::primordial(1),
+            until: 4000.0,
+            every: 250.0,
+            width: 1600,
+            out: PathBuf::from(".tmp/drift"),
+        }
+    } else {
+        Args {
+            params: Params::earth_like(1),
+            until: 240.0,
+            every: 20.0,
+            width: 1600,
+            out: PathBuf::from(".tmp/drift"),
+        }
     };
     let mut it = std::env::args().skip(1);
     while let Some(flag) = it.next() {
+        if flag == "--primordial" {
+            continue;
+        }
         let mut value = || it.next().with_context(|| format!("{flag} needs a value"));
         match flag.as_str() {
             "--seed" => args.params.seed = value()?.parse()?,
             "--samples" => args.params.samples = value()?.parse()?,
             "--plates" => args.params.plates = value()?.parse()?,
             "--until" => args.until = value()?.parse()?,
+            "--every" => args.every = value()?.parse()?,
             "--width" => args.width = value()?.parse()?,
             "--out" => args.out = PathBuf::from(value()?),
             other => bail!("unknown flag {other}"),
@@ -70,12 +93,21 @@ fn main() -> Result<()> {
     let lookup = pixel_lookup(sim.points(), w, h, args.params.samples);
     let mut written = 0;
     let mut failure = None;
+    let mut next = 0.0;
     sim.run(args.until, |frame| {
+        // Frames come every resample; write one every `--every` My.
+        if frame.time + 1e-3 < next {
+            return;
+        }
+        next += args.every;
         let s = frame.stats;
         println!(
-            "{:>5.0} My · land {:>4.1}% · highest {:>4.1} km · opened {:>5} · subducted {:>5} · collisions {} · rifts {} · plates {} · {:.1}s",
+            "{:>5.0} My · heat {:.2}× · continent {:>4.1}% · dry land {:>4.1}% · highest {:>4.1} km · opened {:>5} · subducted {:>5} · collisions {} · rifts {} · plates {} · {:.1}s",
             frame.time,
+            frame.heat,
             s.continental * 100.0,
+            frame.surface.iter().filter(|&&z| z > 0.0).count() as f32 / frame.surface.len() as f32
+                * 100.0,
             frame
                 .crust
                 .iter()

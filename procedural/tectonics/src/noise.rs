@@ -34,7 +34,7 @@ impl Rng {
     }
 }
 
-fn hash(x: i32, y: i32, z: i32, seed: u32) -> u32 {
+pub(crate) fn hash(x: i32, y: i32, z: i32, seed: u32) -> u32 {
     let mut h = seed ^ 0x9e37_79b9;
     for v in [x, y, z] {
         h ^= v as u32;

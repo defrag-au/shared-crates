@@ -54,6 +54,12 @@ impl Crust {
         }
     }
 
+    /// Sea floor's elevation from its parts: the depth its age gives, any
+    /// tectonic uplift, and any volcano on it.
+    pub fn sea_floor(&self) -> f32 {
+        ocean_elevation(self.age) + self.raised + self.volcanic
+    }
+
     /// Continental crust at `elevation` km, `age` million years since it
     /// last built mountains.
     pub fn continental(elevation: f32, age: f32) -> Self {
@@ -119,7 +125,7 @@ pub fn age(crust: &mut Crust, dt: f32) {
     match crust.kind {
         Kind::Oceanic => {
             crust.volcanic *= (-dt / VOLCANO_DECAY).exp();
-            crust.elevation = ocean_elevation(crust.age) + crust.raised + crust.volcanic;
+            crust.elevation = crust.sea_floor();
         }
         Kind::Continental => {
             if crust.elevation > BASE_LEVEL {
@@ -133,11 +139,19 @@ pub fn age(crust: &mut Crust, dt: f32) {
 /// Raise (or lower) crust by `dz` km. Sea floor raised above the sea becomes
 /// land: the crust of an island arc, the seed of a continent.
 pub fn raise(crust: &mut Crust, dz: f32) {
+    raise_past(crust, dz, 0.0);
+}
+
+/// [`raise`], with sea floor becoming continent only once it stands
+/// `threshold` km above today's sea level: on a hot planet whose sea has
+/// risen ([`crate::Sim::flood`]), an arc stays a chain of volcanic islands
+/// until it has built past the risen sea.
+pub fn raise_past(crust: &mut Crust, dz: f32, threshold: f32) {
     match crust.kind {
         Kind::Oceanic => {
             crust.raised += dz;
-            crust.elevation = ocean_elevation(crust.age) + crust.raised + crust.volcanic;
-            if crust.elevation > 0.0 {
+            crust.elevation = crust.sea_floor();
+            if crust.elevation > threshold {
                 crust.kind = Kind::Continental;
                 crust.age = 0.0;
                 crust.raised = 0.0;
@@ -154,7 +168,7 @@ pub fn raise(crust: &mut Crust, dz: f32) {
 pub fn erupt(crust: &mut Crust, dz: f32, cap: f32) {
     if crust.kind == Kind::Oceanic {
         crust.volcanic = (crust.volcanic + dz).min(cap);
-        crust.elevation = ocean_elevation(crust.age) + crust.raised + crust.volcanic;
+        crust.elevation = crust.sea_floor();
     }
 }
 
