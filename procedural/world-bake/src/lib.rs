@@ -20,6 +20,9 @@
 //! `asin(y)`, longitude runs from +x towards +z ([`lon_lat_to_dir`]).
 
 pub mod octahedral;
+pub mod shore;
+
+pub use shore::{Marsh, Ramp, Shore, ShoreParams};
 
 use std::path::{Path, PathBuf};
 
@@ -31,7 +34,9 @@ use serde::{Deserialize, Serialize};
 /// - 1: eight base layers, all at the manifest's `size`.
 /// - 2: a layer may carry its own `size`; optional `elevation_detail` layer
 ///   and `detail` record. Later, still 2: optional tectonic layers
-///   ([`LayerName::TECTONIC`]); a reader that predates them fails to parse
+///   ([`LayerName::TECTONIC`]), sea layers ([`LayerName::SEA`]) and shore
+///   layers ([`LayerName::SHORE`]); a
+///   reader that predates them fails to parse
 ///   a manifest listing them rather than misreading it.
 pub const FORMAT_VERSION: u32 = 2;
 
@@ -88,6 +93,27 @@ pub enum LayerName {
     /// Millions of years since the sea floor formed at a ridge; 0 on land.
     /// Optional tectonic layer.
     SeaFloorAge,
+    /// How long the swell takes to reach a sea texel from where it first
+    /// feels the bottom (the shelf edge), in radians of deep-water travel:
+    /// shallow water slows it (shallow-water speed `√(g·h)`), so its crests
+    /// (`travel time / period`, whole numbers) bend to run along the coast
+    /// and crowd together as they shoal. 0 in deep water and on land. Baked
+    /// once; a renderer animates the crests by subtracting the clock.
+    /// Optional, like the other sea layers.
+    SwellTime,
+    /// How squarely a sea texel near the shore meets the prevailing swell,
+    /// 0 (sheltered lee) to 1 (facing it): how hard the surf breaks. 0 far
+    /// from shore and on land. Optional sea layer.
+    SurfExposure,
+    /// How suited the shore here is to a beach, 0..1: gentle ground behind
+    /// it, open to the swell, with sediment to build it. Set on a band a few
+    /// texels either side of the coast, 0 elsewhere; a renderer draws the
+    /// strip itself, as wide as its scale wants. Optional shore layer.
+    Beach,
+    /// How suited the shore here is to marsh (mudflat, salt marsh,
+    /// mangrove), 0..1: very gentle and sheltered. As [`LayerName::Beach`].
+    /// Optional shore layer.
+    Marsh,
 }
 
 impl LayerName {
@@ -119,8 +145,18 @@ impl LayerName {
             LayerName::FoldNorth => "fold_north.png",
             LayerName::OrogenyAge => "orogeny_age.png",
             LayerName::SeaFloorAge => "sea_floor_age.png",
+            LayerName::SwellTime => "swell_time.png",
+            LayerName::SurfExposure => "surf_exposure.png",
+            LayerName::Beach => "beach.png",
+            LayerName::Marsh => "marsh.png",
         }
     }
+
+    /// The optional sea layers: the swell, for waves and surf.
+    pub const SEA: [LayerName; 2] = [LayerName::SwellTime, LayerName::SurfExposure];
+
+    /// The optional shore layers: what kind of coast each stretch is.
+    pub const SHORE: [LayerName; 2] = [LayerName::Beach, LayerName::Marsh];
 
     /// The optional layers a tectonic history adds.
     pub const TECTONIC: [LayerName; 4] = [
@@ -137,6 +173,7 @@ impl LayerName {
             LayerName::WaterFlow => "accumulated flow (relative)",
             LayerName::OrogenyAge | LayerName::SeaFloorAge => "million years",
             LayerName::FoldEast | LayerName::FoldNorth => "fold strength (doubled angle)",
+            LayerName::SwellTime => "radians of deep-water travel",
             _ => "relative",
         }
     }
@@ -238,6 +275,10 @@ pub struct WorldManifest {
     /// How `elevation_detail` was made, when the bake has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<DetailInfo>,
+    /// How the shore layers ([`LayerName::SHORE`]) were judged, when the
+    /// bake has them: a reader classifies shores under the same params.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shore: Option<ShoreParams>,
 }
 
 /// Parameters of the detail stage. Together with the base bake they fix the
@@ -905,6 +946,7 @@ mod tests {
             source_vertices: 0,
             layers: vec![info],
             detail: None,
+            shore: None,
         };
         write_manifest(dir, &manifest).unwrap();
         manifest
