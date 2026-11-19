@@ -7104,6 +7104,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tectonics"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "glam 0.29.3",
+ "image 0.25.10",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
