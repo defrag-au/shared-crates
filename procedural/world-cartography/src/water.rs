@@ -32,6 +32,22 @@ pub struct WaterStyle {
     /// painting). The land cliffs' dark brown made shelf water darker than
     /// the deep sea, a murky ring round every coast.
     pub rock: Tones,
+    /// The deep floor by its age ([`tone`]): young basalt, dark, where the
+    /// floor has just formed at a ridge, and the pale sediment that buries
+    /// it as it ages. Chosen by eye.
+    pub basalt: Colour,
+    pub sediment: Colour,
+    /// The floor's age, millions of years, from bare basalt to buried in
+    /// sediment, and how many flat bands that run is cut into: bands of
+    /// age lie along the ridges that made them, as on a real map of the
+    /// sea floor's age.
+    pub age: Ramp,
+    pub age_bands: f32,
+    /// The cool the bare floor's shaded slopes lean to, in place of the
+    /// land's violet ([`crate::relief::ReliefStyle::cool`]): a deep
+    /// teal-navy, the memory of the water. Violet on grey rock reads as a
+    /// stain.
+    pub floor_shadow: Colour,
     /// Depth (0..1 of the deepest sea) from all sand to all rock.
     pub sand_to_rock: Ramp,
     /// Floor slope (rise per radian, in depth units) from settled sediment
@@ -57,6 +73,11 @@ pub struct WaterStyle {
     pub region_wander: f32,
     /// Pixels a region edge is blended across, each side.
     pub region_softness: f32,
+    /// Each edge's own share of that softness, shallowest edge first (an
+    /// edge past the list's end takes 1). Hard edges come forward and soft
+    /// ones go back: the coast's regions are crisp, and the ridges' edge
+    /// against the abyss is the softest on the planet.
+    pub region_edges: Vec<f32>,
     /// How much of the floor shows is stepped into this many levels, with
     /// edges blended over this share of a level, so the shallows read as a
     /// few distinct clearer tones.
@@ -81,6 +102,13 @@ impl Default for WaterStyle {
         Self {
             sand: Tones::new(rgb(206, 190, 140), rgb(236, 222, 170), rgb(248, 240, 200)),
             rock: Tones::new(rgb(88, 82, 74), rgb(120, 112, 98), rgb(156, 146, 126)),
+            // A dark grey, not a black: young floor covers whole basins, and
+            // a fill that dark belongs to ink. The rift's scar is darker.
+            basalt: rgb(74, 72, 84),
+            sediment: rgb(150, 142, 128),
+            age: Ramp::new(5.0, 90.0),
+            age_bands: 4.0,
+            floor_shadow: rgb(30, 52, 84),
             sand_to_rock: Ramp::new(0.05, 0.35),
             steep: Ramp::new(2.0, 8.0),
             absorption: [40.0, 16.0, 7.0],
@@ -96,6 +124,7 @@ impl Default for WaterStyle {
             ],
             region_wander: 0.012,
             region_softness: 1.5,
+            region_edges: vec![0.5, 0.7, 5.0],
             clarity_steps: 3.0,
             clarity_softness: 0.15,
             // 0.45 left the shallows a pale mint the colour of the ice.
@@ -107,7 +136,8 @@ impl Default for WaterStyle {
 }
 
 /// The cel region's colour at `depth` (0..1 of the deepest sea), its edges
-/// blended over `soft` of depth either side.
+/// blended over `soft` of depth either side, each by its own share
+/// ([`WaterStyle::region_edges`]).
 pub fn region(depth: f32, soft: f32, style: &WaterStyle) -> Colour {
     let regions = &style.regions;
     // A hard edge still needs a span to divide by.
@@ -115,6 +145,7 @@ pub fn region(depth: f32, soft: f32, style: &WaterStyle) -> Colour {
     let mut colour = regions[0].1;
     for k in 0..regions.len().saturating_sub(1) {
         let limit = regions[k].0;
+        let soft = soft * style.region_edges.get(k).copied().unwrap_or(1.0);
         colour = mix(
             colour,
             regions[k + 1].1,
@@ -178,13 +209,47 @@ pub fn rock(depth: f32, slope: f32, style: &WaterStyle) -> f32 {
     style.sand_to_rock.at(depth).max(style.steep.at(slope))
 }
 
+/// Where each of the floor's materials sits on its tone ([`tone`]), 0..1:
+/// sand, sediment, rock, basalt. A renderer's shader mirrors them.
+pub const TONE_STOPS: [f32; 4] = [0.0, 0.4, 0.7, 1.0];
+
+/// What the sea floor is made of, as one number 0..1 along
+/// [`TONE_STOPS`], for a renderer that draws the floor bare: sand on the
+/// shelves; below them, by the floor's `age` in millions of years, young
+/// basalt near the ridge that made it paling to old sediment in bands; and
+/// bare rock wherever it is steep. Without an age (a bake with no tectonic
+/// history) the deep floor is rock, as [`rock`] has it.
+pub fn tone(depth: f32, slope: f32, age: Option<f32>, style: &WaterStyle) -> f32 {
+    let [sand, sediment, rock, basalt] = TONE_STOPS;
+    let deep = match age {
+        Some(age) => {
+            let bands = style.age_bands.max(1.0);
+            let old = (style.age.at(age) * bands).round() / bands;
+            basalt + (sediment - basalt) * old
+        }
+        None => rock,
+    };
+    let deep = deep + (rock - deep) * style.steep.at(slope);
+    sand + (deep - sand) * style.sand_to_rock.at(depth)
+}
+
+/// The bare floor's colour at a [`tone`], unlit.
+pub fn tone_colour(tone: f32, style: &WaterStyle) -> Colour {
+    let [_, sediment, rock, basalt] = TONE_STOPS;
+    let between = |a: f32, b: f32| ((tone - a) / (b - a)).clamp(0.0, 1.0);
+    let c = mix(style.sand.mid, style.sediment, between(0.0, sediment));
+    let c = mix(c, style.rock.mid, between(sediment, rock));
+    mix(c, style.basalt, between(rock, basalt))
+}
+
 /// One pixel of the sea floor for a renderer that draws the water itself,
 /// as RGBA8:
 ///
 /// - R: depth (0..1 of the deepest sea) as its square root, so the
 ///   shallows, where the floor shows, get most of the 8 bits. A renderer
 ///   squares it back.
-/// - G: the floor's rock share ([`rock`]).
+/// - G: what the floor is made of: its rock share ([`rock`]), or its
+///   [`tone`] for a renderer that knows [`TONE_STOPS`].
 /// - B: reserved for structures on the floor (underwater bases, wrecks),
 ///   0 for now.
 /// - A: 255 at sea, 0 on land.
@@ -219,6 +284,24 @@ mod tests {
         assert!(near(floor(0.5, 0.0, 1.0, &style), style.rock.mid));
         // Steep shallow floor is rock too.
         assert!(near(floor(0.0, 10.0, 1.0, &style), style.rock.mid));
+    }
+
+    #[test]
+    fn the_bare_floor_is_sand_on_shelves_and_pales_with_age_below_them() {
+        let style = WaterStyle::default();
+        let near = |a: Colour, b: Colour| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-6);
+        let colour = |depth, slope, age| tone_colour(tone(depth, slope, age, &style), &style);
+        // A shelf is sand whatever its age.
+        assert!(near(colour(0.0, 0.0, Some(0.0)), style.sand.mid));
+        // Deep floor: basalt where it has just formed, sediment once old.
+        assert!(near(colour(0.6, 0.0, Some(0.0)), style.basalt));
+        assert!(near(colour(0.6, 0.0, Some(200.0)), style.sediment));
+        // Steep floor is bare rock at any age, and all of it with no age.
+        assert!(near(colour(0.6, 10.0, Some(0.0)), style.rock.mid));
+        assert!(near(colour(0.6, 0.0, None), style.rock.mid));
+        // Age comes in flat bands: two ages in one band are one tone.
+        assert_eq!(tone(0.6, 0.0, Some(60.0), &style), tone(0.6, 0.0, Some(70.0), &style));
+        assert_ne!(tone(0.6, 0.0, Some(20.0), &style), tone(0.6, 0.0, Some(70.0), &style));
     }
 
     #[test]
