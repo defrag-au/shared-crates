@@ -32,6 +32,7 @@ pub mod craters;
 pub mod noise;
 pub mod palette;
 pub mod relief;
+pub mod rift;
 pub mod rivers;
 pub mod sea;
 pub mod sheet;

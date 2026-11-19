@@ -122,16 +122,9 @@ pub fn render(chart: &Chart) -> Drawn {
             let shore = coast::marks(t.coast[i], shadow_side, &style.coast);
 
             if !t.is_land[i] {
-                // The floor's slope and light, from sea neighbours only: a
-                // land neighbour's depth of 0 would make every shore a
-                // cliff.
+                // The floor's slope and light.
                 let depth = floor_depth[i];
-                let side = |j: usize| {
-                    if t.is_land[j] { depth } else { floor_depth[j] }
-                };
-                let (dx, dy) = (grid.step * lat_scale, grid.step);
-                let gx = (side(four[0]) - side(four[1])) / (2.0 * dx);
-                let gy = (side(four[2]) - side(four[3])) / (2.0 * dy);
+                let (gx, gy) = sea::floor_gradient(floor_depth, &t.is_land, grid, i, lat_scale);
                 let z = style.water.floor_z;
                 let slope = (gx * gx + gy * gy).sqrt();
                 // The regions' edges wander a little with noise, at two

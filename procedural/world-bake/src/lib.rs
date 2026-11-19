@@ -20,6 +20,7 @@
 //! `asin(y)`, longitude runs from +x towards +z ([`lon_lat_to_dir`]).
 
 pub mod octahedral;
+pub mod plates;
 pub mod shore;
 pub mod swell;
 
@@ -116,6 +117,19 @@ pub enum LayerName {
     /// mangrove), 0..1: very gentle and sheltered. As [`LayerName::Beach`].
     /// Optional shore layer.
     Marsh,
+    /// Which plate the crust here rides at the end of a tectonic history:
+    /// an index into [`WorldManifest::plates`], whose motion it moves with.
+    /// Whole numbers: read it with [`Layer::index`], as a bilinear
+    /// [`Layer::sample`] would blend two plates' indices into a third's.
+    /// Optional, like the other tectonic layers.
+    Plate,
+    /// The tectonic history's own elevation, before the generator's
+    /// erosion, in the same units as [`LayerName::Elevation`]. Erosion runs
+    /// over the whole sphere before the sea level is known, so on the sea
+    /// floor it slumps the ridges and fills the trenches with sediment; this
+    /// keeps them. Read it for the sea floor; the land and the coast are
+    /// [`LayerName::Elevation`]'s. Optional tectonic layer.
+    HistoryElevation,
 }
 
 impl LayerName {
@@ -151,6 +165,8 @@ impl LayerName {
             LayerName::SurfExposure => "surf_exposure.png",
             LayerName::Beach => "beach.png",
             LayerName::Marsh => "marsh.png",
+            LayerName::Plate => "plate.png",
+            LayerName::HistoryElevation => "history_elevation.png",
         }
     }
 
@@ -170,12 +186,15 @@ impl LayerName {
 
     pub fn units(self) -> &'static str {
         match self {
-            LayerName::Elevation | LayerName::ElevationDetail => "generator elevation units",
+            LayerName::Elevation | LayerName::ElevationDetail | LayerName::HistoryElevation => {
+                "generator elevation units"
+            }
             LayerName::Temperature => "kelvin",
             LayerName::WaterFlow => "accumulated flow (relative)",
             LayerName::OrogenyAge | LayerName::SeaFloorAge => "million years",
             LayerName::FoldEast | LayerName::FoldNorth => "fold strength (doubled angle)",
             LayerName::SwellTime => "radians of deep-water travel",
+            LayerName::Plate => "plate index",
             _ => "relative",
         }
     }
@@ -285,6 +304,31 @@ pub struct WorldManifest {
     /// has them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swell: Option<SwellParams>,
+    /// The plates at the end of a tectonic history, indexed by
+    /// [`LayerName::Plate`], each with the motion it had then: what a
+    /// reader needs to tell where plates meet and how (spreading, colliding
+    /// or sliding past), and so where the ground is still restless. Absent
+    /// from bakes made without a history, and from older ones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plates: Option<Vec<PlateMotion>>,
+}
+
+/// A plate's rigid motion: rotation about `axis` (unit, through the
+/// planet's centre) at `rate` radians per million years, right-handed.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PlateMotion {
+    pub axis: [f32; 3],
+    pub rate: f32,
+}
+
+impl PlateMotion {
+    /// The ground's velocity at unit direction `dir` on this plate, in
+    /// radians of arc per million years (times the planet's radius for a
+    /// distance): `rate · axis × dir`, along the surface.
+    pub fn velocity(&self, dir: [f32; 3]) -> [f32; 3] {
+        let v = cross(self.axis, dir);
+        [v[0] * self.rate, v[1] * self.rate, v[2] * self.rate]
+    }
 }
 
 /// Parameters of the detail stage. Together with the base bake they fix the
@@ -598,6 +642,21 @@ impl Layer {
             }
         }
         total / weight
+    }
+
+    /// The value of the texel a direction falls in, unblended: for layers of
+    /// whole numbers, such as [`LayerName::Plate`].
+    pub fn nearest(&self, dir: [f32; 3]) -> f32 {
+        let (u, v) = octahedral::dir_to_uv(dir);
+        let max = self.size as i64 - 1;
+        let at = |t: f32| ((t * self.size as f32) as i64).clamp(0, max) as usize;
+        self.values[at(v) * self.size as usize + at(u)]
+    }
+
+    /// [`Layer::nearest`] as a whole number: the 16-bit encoding decodes an
+    /// index to within a rounding error of itself, not exactly.
+    pub fn index(&self, dir: [f32; 3]) -> usize {
+        self.nearest(dir).round().max(0.0) as usize
     }
 
     /// The value in a direction, bilinear between texel centres. Edges clamp:
@@ -954,9 +1013,53 @@ mod tests {
             detail: None,
             shore: None,
             swell: None,
+            plates: None,
         };
         write_manifest(dir, &manifest).unwrap();
         manifest
+    }
+
+    #[test]
+    fn a_plate_moves_its_ground_along_the_surface() {
+        // About the pole at 0.01 rad/My: ground on the equator moves east
+        // at the full rate, ground at the pole not at all.
+        let plate = PlateMotion {
+            axis: [0.0, 1.0, 0.0],
+            rate: 0.01,
+        };
+        let v = plate.velocity([1.0, 0.0, 0.0]);
+        assert!((v[0]).abs() < 1e-7 && (v[1]).abs() < 1e-7);
+        assert!((v[2].abs() - 0.01).abs() < 1e-7, "{v:?}");
+        assert_eq!(plate.velocity([0.0, 1.0, 0.0]), [0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn an_index_layer_reads_back_whole_and_unblended() {
+        // Seven plates, one per texel column band: the 16-bit encoding and
+        // decoding must hand back each whole index, and a direction between
+        // two bands must read one of them, never a blend.
+        let size = 64u32;
+        let info = LayerInfo {
+            name: LayerName::Plate,
+            file: String::new(),
+            units: String::new(),
+            min: 0.0,
+            max: 6.0,
+            size: None,
+        };
+        let values: Vec<f32> = (0..size * size)
+            .map(|i| info.decode(info.encode(((i % size) * 7 / size) as f32)))
+            .collect();
+        let layer = Layer::from_values(info, size, values);
+        for x in 0..size {
+            let d = octahedral::uv_to_dir((x as f32 + 0.5) / size as f32, 0.5);
+            assert_eq!(layer.index(d), (x * 7 / size) as usize);
+        }
+        // On the line between columns 9 (plate 0) and 10 (plate 1).
+        let edge = octahedral::uv_to_dir(10.0 / size as f32, 0.5);
+        let k = layer.nearest(edge);
+        assert!((k - k.round()).abs() < 1e-3, "a blend: {k}");
+        assert!(matches!(layer.index(edge), 0 | 1));
     }
 
     #[test]

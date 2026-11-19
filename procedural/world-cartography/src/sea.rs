@@ -43,6 +43,28 @@ pub fn blurred_depth(cells: &[Cell], grid: &Grid, level: f32, deep: f32, radius:
     box_blur(&box_blur(&raw, grid, radius), grid, radius)
 }
 
+/// The floor's depth gradient at sea cell `i` (east, north; depth per
+/// radian), from sea neighbours only: a land neighbour's depth of 0 would
+/// make every shore a cliff, so it stands in at `i`'s own depth.
+pub fn floor_gradient(
+    floor_depth: &[f32],
+    is_land: &[bool],
+    grid: &Grid,
+    i: usize,
+    lat_scale: f32,
+) -> (f32, f32) {
+    let depth = floor_depth[i];
+    let side = |dx: i32, dy: i32| {
+        let j = grid.clamped(i, dx, dy);
+        if is_land[j] { depth } else { floor_depth[j] }
+    };
+    let (dx, dy) = (grid.step * lat_scale, grid.step);
+    (
+        (side(1, 0) - side(-1, 0)) / (2.0 * dx),
+        (side(0, 1) - side(0, -1)) / (2.0 * dy),
+    )
+}
+
 /// What inks a sea pixel besides its depth.
 pub struct Ink<'a> {
     /// The coast's marks ([`crate::coast::marks`]).
