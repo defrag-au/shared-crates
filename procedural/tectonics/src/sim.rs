@@ -1167,7 +1167,13 @@ impl Sim {
             // Arc crust becomes continent once it has built past the sea.
             let c = &mut self.crust[i];
             crust::raise_past(c, dz, flood);
-            if c.kind == Kind::Continental && dz > OROGENY_UPLIFT {
+            // Mountain building in the range's belt, where it rises as a
+            // range does. The uplift's tail beyond the belt lifts the ground
+            // but builds no mountains.
+            if c.kind == Kind::Continental
+                && profile >= OROGENY_BELT
+                && dz > OROGENY_RATE * dt
+            {
                 c.orogeny = Orogeny::Andean;
                 c.age = 0.0;
                 for (f, p) in c.fold.iter_mut().zip(push.to_array()) {
@@ -1235,6 +1241,8 @@ impl Sim {
         }
         let mut sutured = 0;
         let limit = self.mountain_limit();
+        // The time a collision's surge stands for: the resample interval.
+        let interval = self.params.step * self.params.resample_every as f32;
         for (&(a, b), &count) in &counts {
             if (count as f32) * cell_area < COLLISION_AREA {
                 continue;
@@ -1317,9 +1325,15 @@ impl Sim {
                 let falloff = (1.0 - x * x).max(0.0).powi(2);
                 let c = &mut crust[j];
                 let saturate = (1.0 - c.elevation.max(0.0) / limit).max(0.0);
-                raised += surge * falloff * saturate;
-                crust::raise(c, surge * falloff * saturate);
-                if falloff > 0.1 {
+                let dz = surge * falloff * saturate;
+                raised += dz;
+                crust::raise(c, dz);
+                // Mountain building where the collision raised the ground as
+                // fast as a range rises ([`OROGENY_RATE`]) over the interval
+                // it stands for. A fixed falloff (it was 10%) reset the clock
+                // up to ~1400 km from the suture however little the ground
+                // rose; with frequent collisions nothing grew old.
+                if dz > OROGENY_RATE * interval {
                     c.orogeny = Orogeny::Himalayan;
                     c.age = 0.0;
                     // Folds run across the push: (n × (p − q)/|p − q|) × n.
@@ -1611,9 +1625,22 @@ const HEIGHT_FLOOR: f32 = 0.5;
 /// without bound. On a hot planet the limit falls with the heat
 /// ([`Sim::mountain_limit`]).
 const MOUNTAIN_LIMIT: f32 = 6.0;
-/// Uplift in one step, km, that counts as mountain building (resets the
-/// orogeny age).
-const OROGENY_UPLIFT: f32 = 0.01;
+/// Uplift rate, km per My, that counts as mountain building (resets the
+/// orogeny age and bends the fold): about a third of a cordillera crest's
+/// ~0.14 km/My (see [`HEIGHT_FLOOR`]), which subduction keeps up out to
+/// ~500 km behind the trench, a range's width. It was 0.005 km/My (0.01 km a
+/// step), which the uplift's tail kept up ~700 km inland: on a hot planet of
+/// small continents nearly all land counted as mountain-building all the
+/// time (median orogeny age 18 My after 4 Gyr), nothing became a craton, and
+/// every continent carried a fold.
+const OROGENY_RATE: f32 = 0.05;
+/// Share of its peak the subduction uplift profile must keep for the ground
+/// to be in the range's belt (out to ~475 km behind the trench for a
+/// cordillera). A rate threshold alone was not enough: fast convergence of
+/// high crust keeps even the profile's far tail above any sensible rate,
+/// and the ground ~700 km inland kept counting as mountain-building (63% of
+/// a hot planet's land last built by subduction, median 18 My ago).
+const OROGENY_BELT: f32 = 0.5;
 /// How strongly the convergence direction bends the fold direction
 /// (Cortial et al.'s `β`).
 const FOLD_RESPONSE: f32 = 0.05;

@@ -148,6 +148,32 @@ fn main() -> Result<()> {
                 per(s.raised_by_subduction),
                 per(s.raised_by_collision)
             );
+            // What last built each piece of land, and how long ago: which
+            // source keeps the continents young.
+            use tectonics::crust::Orogeny;
+            for (name, kind) in [
+                ("subduction", Orogeny::Andean),
+                ("collision", Orogeny::Himalayan),
+                ("never folded", Orogeny::None),
+            ] {
+                let mut ages: Vec<f32> = frame
+                    .crust
+                    .iter()
+                    .filter(|c| c.kind == tectonics::Kind::Continental && c.orogeny == kind)
+                    .map(|c| c.age)
+                    .collect();
+                if ages.is_empty() {
+                    continue;
+                }
+                ages.sort_by(f32::total_cmp);
+                let q = |p: f32| ages[((ages.len() - 1) as f32 * p) as usize];
+                println!(
+                    "        last built by {name}: {:.0}% of land · age My median {:.0} · 90% {:.0}",
+                    ages.len() as f32 / land.len() as f32 * 100.0,
+                    q(0.5),
+                    q(0.9)
+                );
+            }
         }
         println!(
             "{:>5.0} My · heat {:.2}× · continent {:>4.1}% · dry land {:>4.1}% · highest {:>4.1} km · opened {:>5} · subducted {:>5} · collisions {} · rifts {} · plates {} · {:.1}s",
