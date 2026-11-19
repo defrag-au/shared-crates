@@ -5,8 +5,11 @@
 //! part fastest, and fades out either side.
 //!
 //! The seam is the plate layer's boundary ([`world_bake::plates::meeting`]),
-//! looked up through a little noise so it wanders like a crack rather than
-//! tracing the history's sample grid.
+//! looked up through a little noise so it wanders like a crack. That
+//! boundary is a staircase at the history's sample spacing, so a sheet is
+//! drawn in two steps: a broad band about it ([`glow`]), then that band
+//! blurred and cut back to a thin core ([`seams`]), which follows the
+//! staircase's average path rather than its steps.
 
 use glam::Vec3;
 use world_bake::plates::{self, Boundary};
@@ -14,6 +17,7 @@ use world_bake::{Layer, PlateMotion};
 
 use crate::colour::{Colour, rgb, smoothstep};
 use crate::noise::gradient_noise;
+use crate::sheet::{Grid, box_blur};
 
 /// How rifts are drawn. Starting values chosen by eye.
 #[derive(Clone, Debug, PartialEq)]
@@ -23,9 +27,16 @@ pub struct RiftStyle {
     pub hot: Colour,
     /// How strongly a full glow takes over what is under it.
     pub strength: f32,
-    /// Radians from the seam the glow stays full, and where it has faded.
+    /// Radians from the boundary the broad band ([`glow`]) stays full, and
+    /// where it has faded.
     pub core_width: f32,
     pub fade_width: f32,
+    /// Radians the band is blurred over before it is cut back ([`seams`]):
+    /// about the history's sample spacing, so the staircase smooths out.
+    pub smoothing: f32,
+    /// The blurred band's levels the seam's core runs between: below the
+    /// first nothing glows, above the second it glows fully.
+    pub cut: (f32, f32),
     /// Spreading rate (radians per million years) at which a rift glows
     /// fully; slower ones glow less. 0.015 is about 95 mm a year, a fast
     /// ridge; the 1g world's boundaries run 30 to 120.
@@ -34,9 +45,15 @@ pub struct RiftStyle {
     /// noise's frequency on the unit sphere.
     pub wander: f32,
     pub wander_frequency: f32,
-    /// How deep the seam's valley cuts into the drained floor, as a share of
-    /// the floor's height range.
+    /// How deep the seam's valley cuts into its ridge's crest, as a share of
+    /// the sea's depth scale: the axial rift valley a slow-spreading ridge
+    /// carries, 1 to 3 km deep on Earth. 0.15 of the abyss is about 0.9 km.
     pub valley: f32,
+    /// Under the sea, the seam shows faintly through the water: its glow
+    /// times this, fading by `exp(-water_fade · depth)` (depth 0..1 of the
+    /// abyss). Stylised: a real ridge does not glow through the sea.
+    pub through_water: f32,
+    pub water_fade: f32,
     /// The glow's slow shimmer on a live globe: periods per second and how
     /// much of the glow it takes away at its dimmest.
     pub shimmer_rate: f32,
@@ -48,13 +65,17 @@ impl Default for RiftStyle {
         Self {
             core: rgb(255, 232, 150),
             hot: rgb(232, 84, 30),
-            strength: 0.85,
-            core_width: 0.0012,
-            fade_width: 0.006,
-            full_rate: 0.015,
+            strength: 0.6,
+            core_width: 0.006,
+            fade_width: 0.02,
+            smoothing: 0.012,
+            cut: (0.28, 0.55),
+            full_rate: 0.008,
             wander: 0.004,
             wander_frequency: 40.0,
-            valley: 0.06,
+            valley: 0.15,
+            through_water: 0.45,
+            water_fade: 2.5,
             shimmer_rate: 0.25,
             shimmer: 0.35,
         }
@@ -84,9 +105,29 @@ pub fn glow(plates: &Layer, motions: &[PlateMotion], dir: Vec3, style: &RiftStyl
     heat * (1.0 - smoothstep(style.core_width, style.fade_width, m.distance))
 }
 
-/// The glow's colour: the core where it is strongest, cooling to `hot`.
+/// A sheet's seams from its broad bands (`band`, [`glow`] per pixel of
+/// `grid`): blurred over [`RiftStyle::smoothing`], then cut back to a thin
+/// core between [`RiftStyle::cut`]'s levels, so a seam follows its
+/// boundary's average path. 0..1 per pixel.
+pub fn seams(band: &[f32], grid: &Grid, style: &RiftStyle) -> Vec<f32> {
+    let radius = ((style.smoothing / grid.step).round() as i32).max(1);
+    let blurred = box_blur(&box_blur(band, grid, radius), grid, radius);
+    blurred
+        .iter()
+        .map(|&b| smoothstep(style.cut.0, style.cut.1, b))
+        .collect()
+}
+
+/// The glow's colour: `hot` across the seam, with a thin pale `core` only
+/// where it is strongest.
 pub fn colour(glow: f32, style: &RiftStyle) -> Colour {
-    crate::colour::mix(style.hot, style.core, glow * glow)
+    crate::colour::mix(style.hot, style.core, smoothstep(0.75, 1.0, glow))
+}
+
+/// How much of what is under it the glow covers: its strength, falling off
+/// faster than the glow toward the seam's edges.
+pub fn cover(glow: f32, style: &RiftStyle) -> f32 {
+    (glow * glow * style.strength).clamp(0.0, 1.0)
 }
 
 #[cfg(test)]
