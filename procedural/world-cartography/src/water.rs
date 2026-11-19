@@ -62,6 +62,11 @@ pub struct WaterStyle {
     /// few distinct clearer tones.
     pub clarity_steps: f32,
     pub clarity_softness: f32,
+    /// The most of the floor that ever shows, at the clearest level: under
+    /// water nothing is the beach's cream, so the shallowest water reads as
+    /// a pale aqua and the cream starts at the dry sand
+    /// (`docs/perps-world-map/art-bible.md` in the compositor).
+    pub clarity_ceiling: f32,
     /// Light the floor's relief takes: how strongly its lit and shaded
     /// slopes differ from flat.
     pub floor_relief: f32,
@@ -83,13 +88,18 @@ impl Default for WaterStyle {
             regions: vec![
                 (0.06, rgb(132, 214, 214)),
                 (0.22, rgb(84, 176, 202)),
-                (0.5, rgb(58, 118, 182)),
-                (f32::INFINITY, rgb(46, 72, 142)),
+                // The open sea, ridge and abyss, sits within a few points
+                // of lightness: a mid-ocean ridge is a whisper, not a
+                // shelf.
+                (0.5, rgb(48, 86, 158)),
+                (f32::INFINITY, rgb(40, 62, 132)),
             ],
             region_wander: 0.012,
             region_softness: 1.5,
             clarity_steps: 3.0,
             clarity_softness: 0.15,
+            // 0.45 left the shallows a pale mint the colour of the ice.
+            clarity_ceiling: 0.25,
             floor_relief: 0.6,
             floor_z: 0.1,
         }
@@ -132,7 +142,7 @@ pub fn sea(floor: Colour, depth: f32, region_depth: f32, soft: f32, style: &Wate
     mix(
         water,
         seen,
-        stepped(kept, style.clarity_steps, style.clarity_softness),
+        style.clarity_ceiling * stepped(kept, style.clarity_steps, style.clarity_softness),
     )
 }
 

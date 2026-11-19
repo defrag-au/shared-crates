@@ -45,12 +45,17 @@ pub const GREEN: Look = Look {
     ink: rgb(42, 30, 24),
 };
 
-/// The frozen painting: mint snow, periwinkle cliffs, pink water, magenta trees.
+/// The frozen painting: mint snow, periwinkle cliffs, magenta trees. The
+/// mint stays in the snow's shadow; its mid and light are lifted and paled
+/// so ice is the lightest large mass on the planet. The painting's water is
+/// pink; here it is a pale periwinkle, as pink is the hue kept for the
+/// game's markers, which most need to be seen across the ice
+/// (`docs/perps-world-map/art-bible.md` in the compositor).
 pub const FROZEN: Look = Look {
-    top: Tones::new(rgb(126, 178, 172), rgb(168, 212, 197), rgb(208, 238, 222)),
+    top: Tones::new(rgb(126, 178, 172), rgb(186, 222, 210), rgb(228, 244, 236)),
     cliff: Tones::new(rgb(60, 78, 134), rgb(98, 118, 170), rgb(150, 162, 206)),
-    river: rgb(228, 140, 178),
-    fall: rgb(252, 216, 230),
+    river: rgb(176, 190, 236),
+    fall: rgb(228, 234, 252),
     tree: rgb(198, 44, 116),
     ink: rgb(36, 36, 72),
 };
@@ -60,9 +65,12 @@ pub const FROZEN: Look = Look {
 /// and sunlit path; cliffs from its shadowed, mid and lit walls; the river
 /// from its waterfall. The fall's foam, the ink and the tree are not in the
 /// painting as flat colours: the foam is the river lightened, the ink the
-/// shadowed wall darkened, and deserts take no trees.
+/// shadowed wall darkened, and deserts take no trees. The tops keep the
+/// painting's hue and lightness at about four fifths of its chroma (sampled:
+/// 219,95,49 / 226,126,70 / 245,152,90): light, saturated orange is kept for
+/// heat, and the sampled shadow tone was the rift's own colour.
 pub const DESERT: Look = Look {
-    top: Tones::new(rgb(219, 95, 49), rgb(226, 126, 70), rgb(245, 152, 90)),
+    top: Tones::new(rgb(192, 104, 66), rgb(212, 134, 86), rgb(232, 164, 114)),
     cliff: Tones::new(rgb(119, 25, 20), rgb(142, 34, 30), rgb(184, 59, 52)),
     river: rgb(81, 178, 197),
     fall: rgb(214, 240, 244),

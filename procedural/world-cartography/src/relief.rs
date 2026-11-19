@@ -64,6 +64,12 @@ pub struct ReliefStyle {
     /// reads the palettes' tones directly instead.
     pub light_gain: f32,
     pub shadow_gain: f32,
+    /// For the same renderer: how far its shadow and deep bands lean to
+    /// `cool`, in place of `cool_mix` and `deep_mix`. Less than the chart's,
+    /// whose shadow tones are the palettes' own: a gained-down mid leaning
+    /// far to violet leaves its surface's hue (slate blue on a meadow).
+    pub unshaded_cool_mix: f32,
+    pub unshaded_deep_mix: f32,
 }
 
 /// One light: toward it on the sheet, and its share.
@@ -124,6 +130,8 @@ impl Default for ReliefStyle {
             },
             light_gain: 1.3,
             shadow_gain: 0.7,
+            unshaded_cool_mix: 0.08,
+            unshaded_deep_mix: 0.12,
         }
     }
 }
