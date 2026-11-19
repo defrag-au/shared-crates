@@ -171,6 +171,11 @@ pub struct Stats {
     pub collisions: usize,
     /// Plates that rifted apart at this resample.
     pub rifts: usize,
+    /// Uplift of continental crust since the last resample, summed over
+    /// samples, km: by subduction (cordilleras) and by collision. A measure
+    /// of what is holding continents up against erosion.
+    pub raised_by_subduction: f32,
+    pub raised_by_collision: f32,
 }
 
 /// The crust on the grid at a moment, with the motion each plate is making.
@@ -205,6 +210,8 @@ pub struct Sim {
     /// Which plate of each meeting pair (lower id, higher id) dives.
     diver: BTreeMap<(u16, u16), u16>,
     subducted: usize,
+    /// Continental uplift by subduction since the last resample, km summed.
+    raised_by_subduction: f32,
     /// Plumes fixed in the mantle: the grid does not move, so neither do
     /// they, while plates slide over them.
     hotspots: Vec<Vec3>,
@@ -304,6 +311,7 @@ impl Sim {
             alive,
             diver: BTreeMap::new(),
             subducted: 0,
+            raised_by_subduction: 0.0,
             hotspots: Vec::new(),
             rng,
             time: 0.0,
@@ -321,6 +329,16 @@ impl Sim {
     /// breaks plates up more ([`HOT_RIFT`]) and feeds stronger plumes.
     pub fn heat(&self) -> f32 {
         1.0 + (self.params.heat - 1.0) * (-self.time / self.params.heat_decay).exp()
+    }
+
+    /// The height land stops rising toward, km: [`MOUNTAIN_LIMIT`] over the
+    /// heat. Hot crust is weak, and high ranges on it spread and collapse
+    /// under their own weight, as Archean terrains are thought to have had
+    /// low relief: ~1.7 km at 3.5× today's heat, 6 km at today's. Without
+    /// it, a hot planet's fast plates and many trenches kept most of its land
+    /// near 2 km while a cool one's settled under 1.
+    pub fn mountain_limit(&self) -> f32 {
+        MOUNTAIN_LIMIT / self.heat()
     }
 
     /// How far a hot mantle has drowned the continents, km.
@@ -846,6 +864,8 @@ impl Sim {
             }
         }
         let flood = self.flood();
+        let limit = self.mountain_limit();
+        let era_speed = self.params.max_speed * self.speed_scale();
         for (i, b) in best.iter().enumerate() {
             let Some((d, src)) = *b else { continue };
             let (h, v, push) = sources[&src];
@@ -855,14 +875,21 @@ impl Sim {
                 Kind::Continental => cordillera(km),
                 Kind::Oceanic => island_arc(km),
             };
-            let rate = UPLIFT * profile * (v / self.params.max_speed).min(1.5) * (HEIGHT_FLOOR + h);
+            // Closing speed against the era's own top speed: on a hot planet
+            // every plate is faster, and against today's top speed ordinary
+            // convergence pinned the term at its cap.
+            let rate = UPLIFT * profile * (v / era_speed).min(1.5) * (HEIGHT_FLOOR + h);
             let saturate = if c.kind == Kind::Continental {
-                (1.0 - c.elevation.max(0.0) / MOUNTAIN_LIMIT).max(0.0)
+                (1.0 - c.elevation.max(0.0) / limit).max(0.0)
             } else {
                 1.0
             };
             let dz = rate * saturate * dt;
+            if c.kind == Kind::Continental {
+                self.raised_by_subduction += dz;
+            }
             // Arc crust becomes continent once it has built past the sea.
+            let c = &mut self.crust[i];
             crust::raise_past(c, dz, flood);
             if c.kind == Kind::Continental && dz > OROGENY_UPLIFT {
                 c.orogeny = Orogeny::Andean;
@@ -914,13 +941,15 @@ impl Sim {
     /// by `Δz(p) = Δ · (1 − (d/r)²)²`, `d` the distance to the suture (the
     /// paper measures from the whole terrane; see below), over a radius
     /// `r = r_c · √(v/v₀ · A/A₀)` that grows with the terrane's area `A` and
-    /// the closing speed `v`. Returns the collisions sutured.
+    /// the closing speed `v`. Returns the collisions sutured, and the
+    /// continental uplift they raised (km, summed over samples).
     fn collide(
         &self,
         zone: &[Option<(u16, u16)>],
         owner: &mut [u16],
         crust: &mut [Crust],
-    ) -> usize {
+    ) -> (usize, f32) {
+        let mut raised = 0.0;
         let n = self.points.len();
         let r_km = self.params.radius_km;
         let cell_area = 4.0 * std::f32::consts::PI * r_km * r_km / n as f32;
@@ -929,6 +958,7 @@ impl Sim {
             *counts.entry(*z).or_default() += 1;
         }
         let mut sutured = 0;
+        let limit = self.mountain_limit();
         for (&(a, b), &count) in &counts {
             if (count as f32) * cell_area < COLLISION_AREA {
                 continue;
@@ -1010,7 +1040,8 @@ impl Sim {
                 let x = dist[j] / radius;
                 let falloff = (1.0 - x * x).max(0.0).powi(2);
                 let c = &mut crust[j];
-                let saturate = (1.0 - c.elevation.max(0.0) / MOUNTAIN_LIMIT).max(0.0);
+                let saturate = (1.0 - c.elevation.max(0.0) / limit).max(0.0);
+                raised += surge * falloff * saturate;
                 crust::raise(c, surge * falloff * saturate);
                 if falloff > 0.1 {
                     c.orogeny = Orogeny::Himalayan;
@@ -1023,7 +1054,7 @@ impl Sim {
             }
             sutured += 1;
         }
-        sutured
+        (sutured, raised)
     }
 
     fn continental_share(&self) -> f32 {
@@ -1120,7 +1151,7 @@ impl Sim {
         if opened > 0 {
             self.fill_gaps(&gap, &mut owner, &mut crust, elapsed);
         }
-        let collisions = self.collide(&zone, &mut owner, &mut crust);
+        let (collisions, raised_by_collision) = self.collide(&zone, &mut owner, &mut crust);
         self.owner = owner;
         self.crust = crust;
         for plate in &mut self.plates {
@@ -1139,6 +1170,8 @@ impl Sim {
             subducted: std::mem::take(&mut self.subducted),
             collisions,
             rifts,
+            raised_by_subduction: std::mem::take(&mut self.raised_by_subduction),
+            raised_by_collision,
         };
     }
 
@@ -1229,7 +1262,7 @@ const CRATON_AGE: f32 = 300.0;
 /// A plate smaller than this share of a typical plate is a sliver, merged
 /// into its neighbour: ~200 000 km² for an Earth-sized planet of ten plates,
 /// about the size of Earth's smallest named microplates.
-const SLIVER: f32 = 0.01;
+const SLIVER: f32 = 0.15;
 /// How far a hot mantle floods the continents, km per unit of heat above
 /// today's: 1.25 km at 3.5× ([`Sim::flood`]). Hotter, more buoyant mantle
 /// held young oceans shallower; the figure is an estimate, not a measured
@@ -1248,15 +1281,19 @@ const TRENCH: f32 = -8.0;
 /// Deepest trench, km: the bottom of the height scale the diving crust is
 /// measured on (Cortial et al.'s `z_t`).
 const TRENCH_FLOOR: f32 = -10.0;
-/// How far inland of a trench subduction raises the overriding plate, km
-/// (Cortial et al.'s `r_s`).
-const SUBDUCTION_REACH: f32 = 1800.0;
+/// How far inland of a trench subduction raises the overriding plate, km.
+/// Cortial et al.'s `r_s` is 1800 km; Earth's subduction ranges are belts a
+/// few hundred km wide (the Andes ~300–700 km), and at 1800 a small
+/// continent ringed by trenches was raised everywhere, all the time: on a
+/// hot planet ~90% of all land had been lifted within the last 50 My.
+const SUBDUCTION_REACH: f32 = 900.0;
 /// Where subduction raises a continent most, km behind the trench (the
 /// Andes' crest stands ~200–400 km inland).
 const CORDILLERA_PEAK: f32 = 300.0;
 /// How quickly a cordillera falls away inland of its crest, km: to a quarter
-/// by ~800 km (Earth's cordilleras are a few hundred km wide).
-const CORDILLERA_FALL: f32 = 420.0;
+/// by ~550 km behind the trench (Earth's cordilleras are a few hundred km
+/// wide).
+const CORDILLERA_FALL: f32 = 210.0;
 /// Where an island arc stands behind its trench, km, and its half-width:
 /// Earth's arcs are volcanic chains ~100–200 km wide, ~150–300 km behind
 /// the trench.
@@ -1276,7 +1313,8 @@ const UPLIFT: f32 = 0.6;
 const HEIGHT_FLOOR: f32 = 0.5;
 /// Land stops rising toward this height, km: uplift tapers to nothing as
 /// mountains approach it (a stand-in for isostasy), so ranges do not grow
-/// without bound.
+/// without bound. On a hot planet the limit falls with the heat
+/// ([`Sim::mountain_limit`]).
 const MOUNTAIN_LIMIT: f32 = 6.0;
 /// Uplift in one step, km, that counts as mountain building (resets the
 /// orogeny age).
@@ -1294,10 +1332,12 @@ const COLLISION_AREA: f32 = 3.0e5;
 /// Largest distance a collision raises ground over, km, from the suture.
 /// Cortial et al.'s `r_c` is 4200 km; the Himalaya and the Tibetan plateau
 /// reach ~1000–1500 km from theirs, and at 4200 a collision raised most of a
-/// continent.
-const COLLISION_REACH: f32 = 2000.0;
-/// Smallest, km: even a small terrane raises the ground it meets.
-const COLLISION_REACH_MIN: f32 = 400.0;
+/// continent. Only the largest, fastest collisions reach this far: the
+/// radius grows with the terrane's size and speed.
+const COLLISION_REACH: f32 = 1500.0;
+/// Smallest, km: even a small terrane raises the ground it meets. An island
+/// arc docking raises a belt along the suture, not its new continent.
+const COLLISION_REACH_MIN: f32 = 250.0;
 /// The paper's discrete collision coefficient, per km: `Δ = Δ_c · A`.
 const COLLISION_COEFFICIENT: f32 = 1.3e-5;
 /// The surge saturates toward this, km: `Δ_c · A` taken literally would
@@ -1869,6 +1909,23 @@ mod tests {
         let cool = Sim::new(small(2));
         assert_eq!(cool.frame().heat, 1.0, "today's Earth stays as it is");
         assert_eq!(cool.flood(), 0.0);
+    }
+
+    #[test]
+    fn hot_crust_holds_lower_mountains() {
+        let hot = Sim::new(young(3));
+        assert!((hot.mountain_limit() - MOUNTAIN_LIMIT / 3.5).abs() < 1e-5);
+        let cool = Sim::new(small(3));
+        assert_eq!(
+            cool.mountain_limit(),
+            MOUNTAIN_LIMIT,
+            "today's planet: unchanged"
+        );
+        // The limit rises as the planet cools.
+        let mut sim = Sim::new(young(3));
+        let before = sim.mountain_limit();
+        run_for(&mut sim, 200.0);
+        assert!(sim.mountain_limit() > before);
     }
 
     #[test]

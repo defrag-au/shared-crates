@@ -101,6 +101,28 @@ fn main() -> Result<()> {
         }
         next += args.every;
         let s = frame.stats;
+        // How the land's height is spread: what holds continents up.
+        let mut land: Vec<(f32, f32)> = frame
+            .crust
+            .iter()
+            .filter(|c| c.kind == tectonics::Kind::Continental)
+            .map(|c| (c.elevation, c.age))
+            .collect();
+        if !land.is_empty() {
+            land.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let median = land[land.len() / 2].0;
+            let high = land.iter().filter(|l| l.0 > 1.5).count() as f32 / land.len() as f32;
+            let young = land.iter().filter(|l| l.1 < 50.0).count() as f32 / land.len() as f32;
+            // Mean uplift per land sample since the last resample, km.
+            let per = |total: f32| total / land.len() as f32;
+            println!(
+                "        land: median {median:.2} km · above 1.5 km {:.0}% · built in last 50 My {:.0}% · raised by subduction {:.3} km · by collision {:.3} km",
+                high * 100.0,
+                young * 100.0,
+                per(s.raised_by_subduction),
+                per(s.raised_by_collision)
+            );
+        }
         println!(
             "{:>5.0} My · heat {:.2}× · continent {:>4.1}% · dry land {:>4.1}% · highest {:>4.1} km · opened {:>5} · subducted {:>5} · collisions {} · rifts {} · plates {} · {:.1}s",
             frame.time,
