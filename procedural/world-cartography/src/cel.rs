@@ -257,9 +257,13 @@ pub fn render(chart: &Chart) -> Drawn {
             // The stroke, in the water's hue, so no land ink on the coast.
             colour = mix(colour, style.coast.stroke, shore.stroke);
 
+            // A tier's edge inside a mesa already shows as its cliff's own
+            // colour, so its ink is light: at 0.5 a range was a mass of
+            // line, the busiest thing on the sheet. The mesa's outer edge,
+            // where stepped ground meets gentle, keeps the heavier line.
             let weight = match t.ink[i] {
-                INK_MESA_EDGE => 0.7,
-                INK_TIER => 0.5,
+                INK_MESA_EDGE => 0.6,
+                INK_TIER => 0.25,
                 _ => 0.0,
             };
             colour = mix(colour, look.ink, weight);

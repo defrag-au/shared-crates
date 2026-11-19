@@ -58,7 +58,7 @@ pub struct RiftStyle {
     pub min_length: f32,
     /// How deep the seam's valley cuts into its ridge's crest, as a share of
     /// the sea's depth scale: the axial rift valley a slow-spreading ridge
-    /// carries, 1 to 3 km deep on Earth. 0.15 of the abyss is about 0.9 km.
+    /// carries, 1 to 3 km deep on Earth. 0.1 of the abyss is about 0.6 km.
     pub valley: f32,
     /// Radians from the axis at which the valley has run out.
     pub valley_width: f32,
@@ -123,14 +123,17 @@ impl Default for RiftStyle {
             wander: 0.004,
             wander_frequency: 40.0,
             min_length: 0.15,
-            valley: 0.15,
+            // Lighter than first built (a valley of 0.15, a scar at 0.92 and
+            // a flank at 0.55): drained, a seam read as a thick drawn line
+            // with a lit lip beside it.
+            valley: 0.1,
             valley_width: 0.016,
 
             flank: rgb(52, 50, 62),
-            flank_cover: 0.55,
+            flank_cover: 0.35,
             flank_width: (0.012, 0.030),
             crust: rgb(40, 26, 34),
-            crust_cover: 0.92,
+            crust_cover: 0.75,
             crust_width: 0.0125,
             crust_ragged: 0.004,
             ragged_frequency: 120.0,

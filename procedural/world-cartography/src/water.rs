@@ -53,6 +53,13 @@ pub struct WaterStyle {
     /// Floor slope (rise per radian, in depth units) from settled sediment
     /// to bare rock: steep floor holds no sand at any depth.
     pub steep: Ramp,
+    /// For the bare floor's [`tone`]: the slope from which it is bare rock,
+    /// far steeper than `steep`. Seen without water, every lump of the
+    /// floor that `steep` calls rock is a blotch; only a true scarp should
+    /// change the floor's material. And how many flat bands the shelf's
+    /// sand steps down to the deep floor in.
+    pub scarp: Ramp,
+    pub shelf_bands: f32,
     /// How fast each channel (red, green, blue) fades per unit of the
     /// water's optical thickness ([`WaterStyle::depth_curve`]): red first,
     /// then green, then blue, as in real water.
@@ -111,6 +118,8 @@ impl Default for WaterStyle {
             floor_shadow: rgb(30, 52, 84),
             sand_to_rock: Ramp::new(0.05, 0.35),
             steep: Ramp::new(2.0, 8.0),
+            scarp: Ramp::new(8.0, 20.0),
+            shelf_bands: 3.0,
             absorption: [40.0, 16.0, 7.0],
             depth_curve: 1.6,
             regions: vec![
@@ -217,7 +226,7 @@ pub const TONE_STOPS: [f32; 4] = [0.0, 0.4, 0.7, 1.0];
 /// [`TONE_STOPS`], for a renderer that draws the floor bare: sand on the
 /// shelves; below them, by the floor's `age` in millions of years, young
 /// basalt near the ridge that made it paling to old sediment in bands; and
-/// bare rock wherever it is steep. Without an age (a bake with no tectonic
+/// bare rock on a true scarp. Without an age (a bake with no tectonic
 /// history) the deep floor is rock, as [`rock`] has it.
 pub fn tone(depth: f32, slope: f32, age: Option<f32>, style: &WaterStyle) -> f32 {
     let [sand, sediment, rock, basalt] = TONE_STOPS;
@@ -229,8 +238,11 @@ pub fn tone(depth: f32, slope: f32, age: Option<f32>, style: &WaterStyle) -> f32
         }
         None => rock,
     };
-    let deep = deep + (rock - deep) * style.steep.at(slope);
-    sand + (deep - sand) * style.sand_to_rock.at(depth)
+    let deep = deep + (rock - deep) * style.scarp.at(slope);
+    // The shelf steps down to the deep floor in flat bands, as the age does.
+    let bands = style.shelf_bands.max(1.0);
+    let below = (style.sand_to_rock.at(depth) * bands).round() / bands;
+    sand + (deep - sand) * below
 }
 
 /// The bare floor's colour at a [`tone`], unlit.
@@ -316,7 +328,7 @@ mod tests {
         assert!(near(colour(0.6, 0.0, Some(0.0)), style.basalt));
         assert!(near(colour(0.6, 0.0, Some(200.0)), style.sediment));
         // Steep floor is bare rock at any age, and all of it with no age.
-        assert!(near(colour(0.6, 10.0, Some(0.0)), style.rock.mid));
+        assert!(near(colour(0.6, 25.0, Some(0.0)), style.rock.mid));
         assert!(near(colour(0.6, 0.0, None), style.rock.mid));
         // Age comes in flat bands: two ages in one band are one tone.
         assert_eq!(
