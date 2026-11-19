@@ -6,6 +6,7 @@ use crate::coast::{CoastStyle, WaterlineStyle};
 use crate::relief::ReliefStyle;
 use crate::sea::SeaStyle;
 use crate::shore::ShoreStyle;
+use crate::water::WaterStyle;
 use crate::waves::WaveStyle;
 
 /// The cel style's look.
@@ -17,4 +18,5 @@ pub struct Style {
     pub relief: ReliefStyle,
     pub waves: WaveStyle,
     pub shore: ShoreStyle,
+    pub water: WaterStyle,
 }

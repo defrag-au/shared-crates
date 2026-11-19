@@ -37,6 +37,15 @@ pub struct WaveStyle {
     /// phase but not its change per pixel (the globe's shader). About
     /// `crest_half` over the crests' ~8-pixel spacing at the shelf edge.
     pub crest_phase: f32,
+    /// The surf zone a live renderer pulses: how far out from the shore it
+    /// reaches, pixels (about the coast's stroke and surf band), and how
+    /// much harder it breaks against a fully rocky shore.
+    pub surf_reach: f32,
+    pub rock_surge: f32,
+    /// The pulse: strongest whitening as a crest arrives, and how fast the
+    /// foam fades after it, per period (`exp(−decay · since)`).
+    pub surf_pulse: f32,
+    pub surf_decay: f32,
 }
 
 impl Default for WaveStyle {
@@ -47,8 +56,25 @@ impl Default for WaveStyle {
             crest_strength: 0.5,
             sheltered: 0.3,
             crest_phase: 0.075,
+            surf_reach: 6.0,
+            rock_surge: 0.5,
+            surf_pulse: 0.6,
+            surf_decay: 4.0,
         }
     }
+}
+
+/// How strongly a sea pixel `sd` pixels from the shore pulses with surf,
+/// 0..1: full at the shoreline, gone by [`WaveStyle::surf_reach`], stronger
+/// where the swell meets the shore squarely (`exposure`) and against rock
+/// (`rock`, 0..1).
+pub fn surf_zone(sd: f32, exposure: f32, rock: f32, style: &WaveStyle) -> f32 {
+    if sd <= 0.0 {
+        return 0.0;
+    }
+    let near = 1.0 - smoothstep(0.0, style.surf_reach, sd);
+    let open = style.sheltered + (1.0 - style.sheltered) * exposure;
+    (near * open * (1.0 + style.rock_surge * rock)).min(1.0)
 }
 
 impl WaveStyle {
@@ -93,21 +119,23 @@ pub fn crest(i: usize, swell: &[Swell], grid: &Grid, clock: f32, style: &WaveSty
 ///   between texels never tears at the wrap from one crest to the next.
 /// - B: crest strength, 0..1: the exposure-weighted strength [`crest`]
 ///   uses, faded in from the shelf edge.
-/// - A: 255.
+/// - A: the surf zone, 0..1 ([`surf_zone`]): where the renderer pulses
+///   whitewater as each crest arrives, then lets it fade.
 ///
 /// A renderer recovers the phase as `atan(G′, R′) / 2π` (with `R′ = 2R − 1`
 /// and so on), and draws a crest where `phase − clock` is whole.
-pub fn encode(swell: Swell, style: &WaveStyle) -> [u8; 4] {
+pub fn encode(swell: Swell, surf: f32, style: &WaveStyle) -> [u8; 4] {
+    let unit = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
     if swell.time <= 0.0 {
-        return [128, 128, 0, 255];
+        return [128, 128, 0, unit(surf)];
     }
     let angle = std::f32::consts::TAU * (swell.time / style.period).fract();
-    let byte = |v: f32| ((v * 0.5 + 0.5).clamp(0.0, 1.0) * 255.0).round() as u8;
+    let byte = |v: f32| unit(v * 0.5 + 0.5);
     [
         byte(angle.cos()),
         byte(angle.sin()),
-        (style.strength(swell).clamp(0.0, 1.0) * 255.0).round() as u8,
-        255,
+        unit(style.strength(swell)),
+        unit(surf),
     ]
 }
 
@@ -146,16 +174,36 @@ mod tests {
                 time: style.period * (3.0 + k),
                 exposure: 1.0,
             };
-            let [r, g, b, _] = encode(s, &style);
+            let [r, g, b, _] = encode(s, 0.0, &style);
             let (x, y) = (r as f32 / 255.0 * 2.0 - 1.0, g as f32 / 255.0 * 2.0 - 1.0);
             let phase = y.atan2(x).rem_euclid(std::f32::consts::TAU) / std::f32::consts::TAU;
             assert!((phase - k).abs() < 0.01, "{phase} vs {k}");
             assert!(b > 200);
         }
         assert_eq!(
-            encode(Swell::default(), &style)[2],
+            encode(Swell::default(), 0.0, &style)[2],
             0,
             "no swell, no strength"
         );
+    }
+
+    #[test]
+    fn surf_pulses_at_the_shore_and_harder_on_open_rock() {
+        let style = WaveStyle::default();
+        let zone = |sd, exposure, rock| surf_zone(sd, exposure, rock, &style);
+        assert_eq!(zone(-1.0, 1.0, 0.0), 0.0, "none on land");
+        assert_eq!(zone(style.surf_reach + 1.0, 1.0, 0.0), 0.0, "none offshore");
+        assert!(
+            zone(0.5, 1.0, 0.0) > zone(0.5, 0.0, 0.0),
+            "open beats sheltered"
+        );
+        assert!(zone(0.5, 0.5, 1.0) > zone(0.5, 0.5, 0.0), "rock beats sand");
+        assert!(
+            zone(0.5, 1.0, 0.0) > zone(3.0, 1.0, 0.0),
+            "strongest at the shore"
+        );
+        // The zone rides in the sheet's alpha.
+        assert_eq!(encode(Swell::default(), 1.0, &style)[3], 255);
+        assert_eq!(encode(Swell::default(), 0.0, &style)[3], 0);
     }
 }

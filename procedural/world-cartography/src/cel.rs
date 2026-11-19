@@ -29,8 +29,10 @@ pub struct Chart<'a> {
     pub grid: &'a Grid,
     /// River coverage, 0..1 per cell (see [`crate::rivers`]).
     pub river: &'a [f32],
-    /// Sea depth, 0..1 per cell (see [`crate::sea::depth`]).
-    pub sea_depth: &'a [f32],
+    /// The sea floor's depth, 0..1 of the deepest per cell, lightly blurred
+    /// ([`crate::sea::blurred_depth`] at [`crate::sea::SeaStyle::floor_blur`]):
+    /// the floor seen through the water, and the water's own depth.
+    pub floor_depth: &'a [f32],
     pub craters: &'a [Crater],
     pub sea: f32,
     pub relief: f32,
@@ -55,11 +57,19 @@ pub struct Chart<'a> {
     pub shore: Option<&'a [Strip]>,
     /// How it is all drawn.
     pub style: &'a Style,
+    /// Fill the sea with the floor seen through the water. Off for a
+    /// renderer that draws the water itself (the globe's shader): sea
+    /// pixels then carry only the shore's marks, with their coverage in
+    /// [`Drawn::cover`].
+    pub sea_fill: bool,
 }
 
 /// The drawn sheet, and the land analysis it was drawn from.
 pub struct Drawn {
     pub pixels: Vec<[u8; 3]>,
+    /// How much of each pixel is drawn, 0..255: 255 on land and on a filled
+    /// sea; on an unfilled sea, the shore's marks' coverage.
+    pub cover: Vec<u8>,
     pub terrain: Terrain,
 }
 
@@ -68,7 +78,7 @@ pub fn render(chart: &Chart) -> Drawn {
         cells,
         grid,
         river,
-        sea_depth,
+        floor_depth,
         craters,
         sea,
         relief,
@@ -81,6 +91,7 @@ pub fn render(chart: &Chart) -> Drawn {
         swell,
         shore: strips,
         style,
+        sea_fill,
     } = *chart;
     let lighting = &style.relief;
     // Unlit, every surface sits in its middle band.
@@ -97,12 +108,12 @@ pub fn render(chart: &Chart) -> Drawn {
     let forms: Vec<f32> = cells.iter().map(|c| c.form).collect();
     let shading = relief::shading_height(&forms, grid, lighting);
 
-    let pixels: Vec<[u8; 3]> = (0..cells.len())
+    let (pixels, cover): (Vec<[u8; 3]>, Vec<u8>) = (0..cells.len())
         .into_par_iter()
         .map(|i| {
             let here = &cells[i];
             if !here.valid {
-                return [16, 20, 38];
+                return ([16, 20, 38], 255);
             }
             let at = |dx: i32, dy: i32| grid.clamped(i, dx, dy);
             let four = [at(1, 0), at(-1, 0), at(0, 1), at(0, -1)];
@@ -111,6 +122,37 @@ pub fn render(chart: &Chart) -> Drawn {
             let shore = coast::marks(t.coast[i], shadow_side, &style.coast);
 
             if !t.is_land[i] {
+                // The floor's slope and light, from sea neighbours only: a
+                // land neighbour's depth of 0 would make every shore a
+                // cliff.
+                let depth = floor_depth[i];
+                let side = |j: usize| {
+                    if t.is_land[j] { depth } else { floor_depth[j] }
+                };
+                let (dx, dy) = (grid.step * lat_scale, grid.step);
+                let gx = (side(four[0]) - side(four[1])) / (2.0 * dx);
+                let gy = (side(four[2]) - side(four[3])) / (2.0 * dy);
+                let z = style.water.floor_z;
+                let slope = (gx * gx + gy * gy).sqrt();
+                // The regions' edges wander a little with noise, at two
+                // scales, so they don't trace the blurred depth's contours
+                // exactly; and soften over a few pixels of depth change.
+                let wander = (gradient_noise(here.dir * 9.0)
+                    + 0.5 * gradient_noise(here.dir * 37.0 + Vec3::splat(7.1)))
+                    * style.water.region_wander;
+                let per_pixel = slope * grid.step;
+                let floor = sea::Floor {
+                    depth,
+                    slope,
+                    region_depth: depth + wander,
+                    soft: style.water.region_softness * per_pixel,
+                    // Depth runs down: the floor's height is its negative.
+                    lit: if shade {
+                        relief::light(-gx * z, -gy * z, lighting)
+                    } else {
+                        1.0
+                    },
+                };
                 let ink = sea::Ink {
                     coast: &shore,
                     waterline: lines.as_ref().map_or(0.0, |w| w.ink(i, here.dir)),
@@ -121,8 +163,9 @@ pub fn render(chart: &Chart) -> Drawn {
                     },
                     surf: swell.map_or(1.0, |s| s[i].exposure),
                     rock: strips.map_or(0.0, |s| crate::shore::rockiness(s[i])),
+                    floor,
                 };
-                return sea::cel(i, here.dir, four, sea_depth, &t.is_land, &ink, style);
+                return sea::cel(&ink, style, sea_fill);
             }
 
             let look = match here.biome {
@@ -219,9 +262,13 @@ pub fn render(chart: &Chart) -> Drawn {
                 _ => 0.0,
             };
             colour = mix(colour, look.ink, weight);
-            to_u8(colour)
+            (to_u8(colour), 255)
         })
-        .collect();
+        .unzip();
 
-    Drawn { pixels, terrain: t }
+    Drawn {
+        pixels,
+        cover,
+        terrain: t,
+    }
 }

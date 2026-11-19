@@ -39,6 +39,7 @@ pub mod shore;
 pub mod style;
 pub mod terrain;
 pub mod trees;
+pub mod water;
 pub mod waves;
 
 /// Water's freezing point, Kelvin: the atlas style's snowline.

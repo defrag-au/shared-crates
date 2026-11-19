@@ -84,14 +84,6 @@ pub const VOLCANIC_TOP: Tones = Tones::new(rgb(92, 30, 42), rgb(124, 36, 56), rg
 /// Biome patch palettes for gentle, unfrozen ground, besides `GREEN.top`.
 pub const FOREST_TOP: Tones = Tones::new(rgb(56, 108, 40), rgb(80, 136, 46), rgb(108, 162, 60));
 pub const MEADOW_TOP: Tones = Tones::new(rgb(108, 138, 44), rgb(146, 168, 58), rgb(184, 196, 90));
-/// Sea, shallow to deep, banded flat: each entry is the depth (0..1 of the
-/// deepest) it runs to and its colour.
-pub const SEA_BANDS: [(f32, Colour); 4] = [
-    (0.06, rgb(132, 214, 214)),
-    (0.22, rgb(84, 176, 202)),
-    (0.5, rgb(58, 118, 182)),
-    (f32::INFINITY, rgb(46, 72, 142)),
-];
 
 /// The atlas style's biome colours.
 pub fn biome_rgb(biome: Biome) -> Colour {
