@@ -59,7 +59,12 @@ impl Shore {
     /// its mean temperature, Kelvin, with how strongly it is that kind
     /// (0..1; 1 for a fully suited shore). A stretch suited to neither,
     /// enough to pass [`ShoreParams::suited`], is rocky.
-    pub fn classify(beach: f32, marsh: f32, temperature_k: f32, params: &ShoreParams) -> (Shore, f32) {
+    pub fn classify(
+        beach: f32,
+        marsh: f32,
+        temperature_k: f32,
+        params: &ShoreParams,
+    ) -> (Shore, f32) {
         let (kind, suitability) = if beach >= marsh {
             (Shore::Beach, beach)
         } else if temperature_k >= params.mangrove_k {
@@ -77,8 +82,13 @@ impl Shore {
 }
 
 /// How a bake judges its shores (`world_baker::bake_shore`). Recorded in
-/// the manifest with the layers it made. The values are starting estimates
-/// tuned by eye on a tectonic world, except where a field says otherwise.
+/// the manifest with the layers it made.
+///
+/// The defaults were calibrated on one tectonic world (seed 1, `tectonic-1g`)
+/// toward Earth's ~31% sandy ice-free coast (Luijendijk et al. 2018): they
+/// give it 37% beach, 60% rocky, ~3% marsh. The marsh share has no sourced
+/// target, only "a few percent, on the flattest, calmest shores". Other
+/// worlds will land elsewhere; the `bake_swell` example reports the split.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ShoreParams {
     /// Texels either side of the coast the layers cover.
@@ -124,9 +134,9 @@ impl Default for ShoreParams {
         Self {
             band: 3,
             strip: 1,
-            steep: Ramp::new(0.03, 0.12),
-            hilly: Ramp::new(0.01, 0.04),
-            rough: Ramp::new(0.3, 0.6),
+            steep: Ramp::new(0.025, 0.1),
+            hilly: Ramp::new(0.02, 0.06),
+            rough: Ramp::new(0.2, 0.4),
             sheltered_beach: 0.5,
             base_sediment: 0.8,
             river: Ramp::new(0.9, 0.99),

@@ -21,8 +21,10 @@
 
 pub mod octahedral;
 pub mod shore;
+pub mod swell;
 
 pub use shore::{Marsh, Ramp, Shore, ShoreParams};
+pub use swell::{Smoothing, SwellParams};
 
 use std::path::{Path, PathBuf};
 
@@ -279,6 +281,10 @@ pub struct WorldManifest {
     /// bake has them: a reader classifies shores under the same params.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shore: Option<ShoreParams>,
+    /// How the sea layers ([`LayerName::SEA`]) were solved, when the bake
+    /// has them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swell: Option<SwellParams>,
 }
 
 /// Parameters of the detail stage. Together with the base bake they fix the
@@ -947,6 +953,7 @@ mod tests {
             layers: vec![info],
             detail: None,
             shore: None,
+            swell: None,
         };
         write_manifest(dir, &manifest).unwrap();
         manifest
