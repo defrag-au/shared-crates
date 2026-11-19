@@ -11,8 +11,8 @@ use crate::colour::{mix, to_u8};
 use crate::craters::{self, Crater};
 use crate::noise::{gradient_noise, grain};
 use crate::palette::{
-    BOREAL_TOP, DESERT, DRY_TOP, FOREST_TOP, FROZEN, GREEN, MEADOW_TOP, PEAK_TOP, TUNDRA_TOP,
-    Tones, VOLCANIC_TOP,
+    BOREAL_TOP, DESERT, DRY_TOP, FOREST_TOP, FROZEN, GREEN, MEADOW_TOP, PEAK_CLIFF, PEAK_TOP,
+    TUNDRA_TOP, Tones, VOLCANIC_TOP,
 };
 use crate::relief;
 use crate::relief::Contrast;
@@ -174,15 +174,23 @@ pub fn render(chart: &Chart) -> Drawn {
             let cliff = t.is_cliff(i);
             let height = ((here.form - sea) / relief).clamp(0.0, 1.0);
 
+            // The highest tiers are peaks, whatever grows or does not below
+            // them.
+            let peak = !t.frozen[i]
+                && here.biome != Biome::Volcanic
+                && t.smooth_u[i].floor() >= tiers - 2.0;
             let mut colour = if cliff {
-                paint(&look.cliff, lit, height, lighting.cliffs)
+                // A range gets one cliff family: under a peak's grey-violet
+                // top the wall is its darker violet, not the red or ochre of
+                // the ground far below.
+                let walls = if peak { &PEAK_CLIFF } else { &look.cliff };
+                paint(walls, lit, height, lighting.cliffs)
             } else {
                 // Tops: shade from the generalised land form, not the
                 // terrace.
                 let fx = (shading[four[0]] - shading[four[1]]) / (2.0 * dx) * z_scale;
                 let fy = (shading[four[2]] - shading[four[3]]) / (2.0 * dy) * z_scale;
                 let form = relief::light(fx, fy, lighting);
-                let tier = t.smooth_u[i].floor();
                 let wet = here.moisture + (grain(here.dir, 18.0) - 0.5) * 0.14;
                 // Large, soft-edged patches of a second grass break up the
                 // plains; forest patches sit darker under their trees.
@@ -194,7 +202,7 @@ pub fn render(chart: &Chart) -> Drawn {
                     &VOLCANIC_TOP
                 } else if t.frozen[i] {
                     &look.top
-                } else if tier >= tiers - 2.0 {
+                } else if peak {
                     &PEAK_TOP
                 } else {
                     match here.biome {

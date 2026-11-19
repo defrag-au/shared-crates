@@ -87,6 +87,9 @@ pub const BOREAL_TOP: Tones = Tones::new(rgb(40, 86, 52), rgb(58, 110, 64), rgb(
 pub const DRY_TOP: Tones = Tones::new(rgb(164, 134, 64), rgb(200, 174, 92), rgb(226, 204, 124));
 /// High ground: the grey-violet of the painting's distant mountains.
 pub const PEAK_TOP: Tones = Tones::new(rgb(112, 106, 138), rgb(148, 145, 174), rgb(188, 184, 208));
+/// The walls under high ground: `PEAK_TOP`'s grey-violet, darker, so a range
+/// reads as one family. Chosen by eye, not from a painting.
+pub const PEAK_CLIFF: Tones = Tones::new(rgb(70, 64, 98), rgb(98, 92, 128), rgb(132, 128, 160));
 /// Volcanic ground: the maroon of the magma background.
 pub const VOLCANIC_TOP: Tones = Tones::new(rgb(92, 30, 42), rgb(124, 36, 56), rgb(162, 62, 72));
 /// Biome patch palettes for gentle, unfrozen ground, besides `GREEN.top`.

@@ -261,6 +261,25 @@ pub fn encode_floor(depth: f32, rock: f32, sea: bool) -> [u8; 4] {
     [unit(depth.max(0.0).sqrt()), unit(rock), 0, 255]
 }
 
+/// Equator pixels either side of the shore that [`encode_floor_coast`]'s
+/// alpha runs over. A renderer's shader mirrors it.
+pub const COAST_RANGE: f32 = 4.0;
+
+/// [`encode_floor`] with the shore's place in alpha, for a renderer that
+/// cuts the coast itself: the signed distance to the shore `coast`
+/// ([`crate::coast::signed_distance`]: equator pixels, positive at sea) as
+/// `0.5 + coast / (2 · COAST_RANGE)`, so sea is above a half and land below
+/// it, as with the plain mask. Sampled with linear filtering, the half is a
+/// smooth shoreline between the sheet's pixels rather than their staircase.
+/// `depth` and `tone` are the sea's; on land they are 0.
+pub fn encode_floor_coast(depth: f32, tone: f32, coast: f32) -> [u8; 4] {
+    let sea = coast > 0.0;
+    let [r, g, b, _] = encode_floor(depth, tone, sea);
+    let a = ((0.5 + coast / (2.0 * COAST_RANGE)).clamp(0.0, 1.0) * 255.0).round() as u8;
+    // A byte has no exact half: keep each side on its own side of it.
+    [r, g, b, if sea { a.max(128) } else { a.min(127) }]
+}
+
 /// `floor` seen through water `depth` deep (0..1 of the deepest sea) whose
 /// own colour is `water`.
 pub fn through(floor: Colour, depth: f32, water: Colour, style: &WaterStyle) -> Colour {
@@ -300,8 +319,14 @@ mod tests {
         assert!(near(colour(0.6, 10.0, Some(0.0)), style.rock.mid));
         assert!(near(colour(0.6, 0.0, None), style.rock.mid));
         // Age comes in flat bands: two ages in one band are one tone.
-        assert_eq!(tone(0.6, 0.0, Some(60.0), &style), tone(0.6, 0.0, Some(70.0), &style));
-        assert_ne!(tone(0.6, 0.0, Some(20.0), &style), tone(0.6, 0.0, Some(70.0), &style));
+        assert_eq!(
+            tone(0.6, 0.0, Some(60.0), &style),
+            tone(0.6, 0.0, Some(70.0), &style)
+        );
+        assert_ne!(
+            tone(0.6, 0.0, Some(20.0), &style),
+            tone(0.6, 0.0, Some(70.0), &style)
+        );
     }
 
     #[test]
@@ -313,6 +338,24 @@ mod tests {
         assert_eq!(b, 0, "reserved for structures");
         assert_eq!(a, 255);
         assert_eq!(encode_floor(0.5, 1.0, false), [0, 0, 0, 0], "land");
+    }
+
+    #[test]
+    fn the_floor_sheets_alpha_places_the_shore_between_pixels() {
+        let alpha = |coast: f32| encode_floor_coast(0.04, 0.25, coast)[3];
+        // Far out to sea and far inland: the ends, as the plain mask has.
+        assert_eq!(alpha(COAST_RANGE * 3.0), 255);
+        assert_eq!(alpha(-COAST_RANGE * 3.0), 0);
+        // Either side of the shore, however near, is on its own side of a
+        // half.
+        assert_eq!(alpha(0.001), 128);
+        assert_eq!(alpha(-0.001), 127);
+        // Between, it runs evenly with distance.
+        assert_eq!(alpha(COAST_RANGE * 0.5), 191);
+        assert_eq!(alpha(-COAST_RANGE * 0.5), 64);
+        // The sea keeps its depth and tone; the land has none.
+        assert_eq!(encode_floor_coast(0.04, 0.25, 1.0)[..3], [51, 64, 0]);
+        assert_eq!(encode_floor_coast(0.04, 0.25, -1.0)[..3], [0, 0, 0]);
     }
 
     #[test]

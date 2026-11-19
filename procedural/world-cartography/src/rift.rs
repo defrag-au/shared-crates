@@ -31,7 +31,7 @@ use world_bake::{Layer, PlateMotion};
 
 use crate::colour::{Colour, rgb, smoothstep};
 use crate::noise::gradient_noise;
-use crate::sheet::{Grid, box_blur};
+use crate::sheet::{Grid, box_blur, components};
 use rayon::prelude::*;
 
 /// How rifts are drawn. Starting values chosen by eye, not sourced.
@@ -52,6 +52,10 @@ pub struct RiftStyle {
     /// noise's frequency on the unit sphere.
     pub wander: f32,
     pub wander_frequency: f32,
+    /// The shortest seam drawn, radians along it. A history leaves lone
+    /// fragments of spreading boundary a few samples long, and one of those
+    /// draws as a dark blob in the middle of a meadow, not as a rift.
+    pub min_length: f32,
     /// How deep the seam's valley cuts into its ridge's crest, as a share of
     /// the sea's depth scale: the axial rift valley a slow-spreading ridge
     /// carries, 1 to 3 km deep on Earth. 0.15 of the abyss is about 0.9 km.
@@ -118,6 +122,7 @@ impl Default for RiftStyle {
             full_rate: 0.008,
             wander: 0.004,
             wander_frequency: 40.0,
+            min_length: 0.15,
             valley: 0.15,
             valley_width: 0.016,
 
@@ -172,7 +177,9 @@ pub fn seam(plates: &Layer, motions: &[PlateMotion], dir: Vec3, style: &RiftStyl
         gradient_noise(f + Vec3::splat(41.9)),
     ) * style.wander;
     let p = (dir + nudge).normalize();
-    let rings = (style.fade_width / (style.core_width * 0.5)).ceil().max(1.0) as u32;
+    let rings = (style.fade_width / (style.core_width * 0.5))
+        .ceil()
+        .max(1.0) as u32;
     let Some(m) = plates::meeting(plates, motions, p.to_array(), style.fade_width, rings) else {
         return Seam::default();
     };
@@ -209,7 +216,7 @@ const FLOOR: f32 = 1e-3;
 /// A seam fades out along its axis where its blurred band's crest falls
 /// between these shares of a straight seam's: its ends, where the boundary
 /// stops spreading.
-const ENDS: (f32, f32) = (0.1, 0.35);
+const ENDS: (f32, f32) = (0.2, 0.45);
 
 /// A sheet's rifts from its broad bands (`seams`, [`seam`] per pixel of
 /// `grid`): the band blurred over [`RiftStyle::smoothing`] so it follows its
@@ -221,9 +228,15 @@ pub fn sheet(seams: &[Seam], grid: &Grid, style: &RiftStyle) -> Sheet {
     let blur = |v: &[f32]| box_blur(&box_blur(v, grid, radius), grid, radius);
     let band: Vec<f32> = seams.iter().map(|s| s.band).collect();
     let warmth: Vec<f32> = seams.iter().map(|s| s.band * s.heat).collect();
-    let (band, warmth) = (blur(&band), blur(&warmth));
+    let (mut band, warmth) = (blur(&band), blur(&warmth));
     let across = straight(grid.step, style);
     let peak = across[0];
+    let long = long_enough(&band, peak, grid, style);
+    for (b, long) in band.iter_mut().zip(long) {
+        if !long {
+            *b = 0.0;
+        }
+    }
     let crest = log_curvature(&across, grid.step);
     let reach = style.reach();
     let log: Vec<f32> = band
@@ -248,8 +261,71 @@ pub fn sheet(seams: &[Seam], grid: &Grid, style: &RiftStyle) -> Sheet {
         heat: band
             .iter()
             .zip(&warmth)
-            .map(|(&b, &w)| if b > FLOOR * peak { (w / b).clamp(0.0, 1.0) } else { 0.0 })
+            .map(|(&b, &w)| {
+                if b > FLOOR * peak {
+                    (w / b).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                }
+            })
             .collect(),
+    }
+}
+
+/// The blurred band above this share of a straight seam's crest is one
+/// seam with whatever of it that touches.
+const LINKED: f32 = 0.05;
+
+/// Which pixels of a blurred band (`peak` high on a straight seam's crest)
+/// belong to a seam at least [`RiftStyle::min_length`] long. Judged on the
+/// blurred band, which runs together across the short gaps where a
+/// spreading boundary turns to sliding for a sample or two: a real seam is
+/// a string of such segments, and each alone is no longer than a stray
+/// fragment. The blurred band is about two reaches across, so a run that
+/// long covers at least their product of ground.
+fn long_enough(band: &[f32], peak: f32, grid: &Grid, style: &RiftStyle) -> Vec<bool> {
+    let member: Vec<bool> = band.iter().map(|&b| b > LINKED * peak).collect();
+    let (label, sizes) = components(grid, &member);
+    // Ground covered, in equator pixels: a pixel is narrower toward the
+    // poles of a global sheet.
+    let mut area = vec![0.0f32; sizes.len()];
+    for (i, &l) in label.iter().enumerate() {
+        if l != u32::MAX {
+            area[l as usize] += narrow(grid, i);
+        }
+    }
+    let least = style.min_length * 2.0 * style.reach() / (grid.step * grid.step);
+    let short = |l: u32| l != u32::MAX && area[l as usize] < least;
+    // A short seam takes its faint fringe with it, the band outside the
+    // linked part: everything within the blur's reach of it that is not a
+    // long seam's own. Left behind, the fringe is a ring with a slope of
+    // its own, which draws.
+    let dropped: Vec<f32> = label
+        .iter()
+        .map(|&l| if short(l) { 1.0 } else { 0.0 })
+        .collect();
+    let near = box_blur(&dropped, grid, 2 * blur_radius(grid.step, style));
+    label
+        .iter()
+        .zip(&near)
+        .map(|(&l, &near)| {
+            if l == u32::MAX {
+                near == 0.0
+            } else {
+                !short(l)
+            }
+        })
+        .collect()
+}
+
+/// How much narrower pixel `i` is east-west than its nominal step: the
+/// cosine of its row's latitude on a global sheet, 1 on a region.
+fn narrow(grid: &Grid, i: usize) -> f32 {
+    if grid.global {
+        let lat = (0.5 - ((i / grid.w) as f32 + 0.5) / grid.h as f32) * std::f32::consts::PI;
+        lat.cos().max(0.05)
+    } else {
+        1.0
     }
 }
 
@@ -276,14 +352,10 @@ fn from_crest(log: &[f32], grid: &Grid, i: usize, crest: f32) -> Option<Crest> {
     let c = at(0, 0)?;
     let (e, w, s, n) = (at(1, 0)?, at(-1, 0)?, at(0, 1)?, at(0, -1)?);
     let (se, sw, ne, nw) = (at(1, 1)?, at(-1, 1)?, at(1, -1)?, at(-1, -1)?);
-    // A pixel is narrower east-west toward the poles of a global sheet.
-    let narrow = if grid.global {
-        let lat = (0.5 - ((i / grid.w) as f32 + 0.5) / grid.h as f32) * std::f32::consts::PI;
-        lat.cos().max(0.05)
-    } else {
-        1.0
-    };
-    let (dx, dy) = (grid.step * SPAN as f32 * narrow, grid.step * SPAN as f32);
+    let (dx, dy) = (
+        grid.step * SPAN as f32 * narrow(grid, i),
+        grid.step * SPAN as f32,
+    );
     let (gx, gy) = ((e - w) / (2.0 * dx), (s - n) / (2.0 * dy));
     let (hxx, hyy) = ((e - 2.0 * c + w) / (dx * dx), (s - 2.0 * c + n) / (dy * dy));
     let hxy = (se - sw - ne + nw) / (4.0 * dx * dy);
@@ -291,7 +363,11 @@ fn from_crest(log: &[f32], grid: &Grid, i: usize, crest: f32) -> Option<Crest> {
     let (mean, half) = ((hxx + hyy) * 0.5, (hxx - hyy) * 0.5);
     let curve = mean - (half * half + hxy * hxy).sqrt();
     let (a, b) = ((curve - hyy, hxy), (hxy, curve - hxx));
-    let v = if a.0 * a.0 + a.1 * a.1 >= b.0 * b.0 + b.1 * b.1 { a } else { b };
+    let v = if a.0 * a.0 + a.1 * a.1 >= b.0 * b.0 + b.1 * b.1 {
+        a
+    } else {
+        b
+    };
     let len = (v.0 * v.0 + v.1 * v.1).sqrt();
     let slope = if len > 0.0 {
         let across = (gx * v.0 + gy * v.1) / len;
@@ -300,7 +376,11 @@ fn from_crest(log: &[f32], grid: &Grid, i: usize, crest: f32) -> Option<Crest> {
         // lone stub), the crest is a point, not a line: count the slope
         // along it by how much of the curvature across it is along too.
         let other = 2.0 * mean - curve;
-        let round = if curve < 0.0 { (other / curve).clamp(0.0, 1.0) } else { 0.0 };
+        let round = if curve < 0.0 {
+            (other / curve).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
         (across * across + round * round * along * along).sqrt()
     } else {
         // Curving alike every way: any direction is across.
@@ -436,13 +516,25 @@ mod tests {
             ..RiftStyle::default()
         };
         let (plates, motions) = split(0.01);
-        let at = |lat: f32| glow(&plates, &motions, Vec3::new(0.0, lat, 1.0).normalize(), &style);
+        let at = |lat: f32| {
+            glow(
+                &plates,
+                &motions,
+                Vec3::new(0.0, lat, 1.0).normalize(),
+                &style,
+            )
+        };
         assert!(at(0.003) > 0.5, "near the seam: {}", at(0.003));
         assert_eq!(at(0.05), 0.0, "far from it");
         // Closing plates do not glow.
         let (plates, closing) = split(-0.01);
         assert_eq!(
-            glow(&plates, &closing, Vec3::new(0.0, 0.003, 1.0).normalize(), &style),
+            glow(
+                &plates,
+                &closing,
+                Vec3::new(0.0, 0.003, 1.0).normalize(),
+                &style
+            ),
             0.0
         );
     }
@@ -451,7 +543,21 @@ mod tests {
     /// band `height` tall (1 as [`seam`] draws it; a real boundary's
     /// staircase smears it lower).
     fn straight_sheet(heat: f32, height: f32, style: &RiftStyle) -> (Grid, Sheet) {
-        let (w, h) = (64usize, 129usize);
+        seam_sheet(heat, height, 0..WIDTH, style)
+    }
+
+    /// The test sheets' width, pixels: a seam right across one is well over
+    /// the shortest drawn.
+    const WIDTH: usize = 200;
+
+    /// As [`straight_sheet`], the seam running only across `columns`.
+    fn seam_sheet(
+        heat: f32,
+        height: f32,
+        columns: std::ops::Range<usize>,
+        style: &RiftStyle,
+    ) -> (Grid, Sheet) {
+        let (w, h) = (WIDTH, 129usize);
         let grid = Grid {
             w,
             h,
@@ -461,7 +567,12 @@ mod tests {
         let seams: Vec<Seam> = (0..w * h)
             .map(|i| {
                 let d = ((i / w) as f32 - 64.0).abs() * grid.step;
-                let band = height * (1.0 - smoothstep(style.core_width, style.fade_width, d));
+                let on = if columns.contains(&(i % w)) {
+                    height
+                } else {
+                    0.0
+                };
+                let band = on * (1.0 - smoothstep(style.core_width, style.fade_width, d));
                 Seam {
                     band,
                     heat: if band > 0.0 { heat } else { 0.0 },
@@ -481,7 +592,12 @@ mod tests {
         assert!(at(0) < 1e-4, "far from it: {}", at(0));
         // Out from the axis it only falls.
         for row in 64..128 {
-            assert!(at(row + 1) <= at(row) + 1e-4, "row {row}: {} then {}", at(row), at(row + 1));
+            assert!(
+                at(row + 1) <= at(row) + 1e-4,
+                "row {row}: {} then {}",
+                at(row),
+                at(row + 1)
+            );
         }
         // Out to the crust's edge, the distance it stores is the true one to
         // within a fifth (and a hundredth of the reach).
@@ -517,6 +633,20 @@ mod tests {
     }
 
     #[test]
+    fn a_lone_fragment_of_boundary_is_not_drawn() {
+        let style = RiftStyle::default();
+        // Twenty pixels of seam: 0.03 radians, a fifth of the shortest drawn.
+        let (grid, stub) = seam_sheet(1.0, 1.0, 90..110, &style);
+        assert!(20.0 * grid.step < style.min_length);
+        assert!(stub.profile.iter().all(|&q| q == 0.0));
+        assert!(stub.heat.iter().all(|&h| h == 0.0));
+        // The same seam right across the sheet is.
+        assert!(WIDTH as f32 * grid.step > style.min_length);
+        let (_, long) = straight_sheet(1.0, 1.0, &style);
+        assert!(long.profile[64 * grid.w + 100] > 0.99);
+    }
+
+    #[test]
     fn heat_is_the_same_across_a_seam_and_is_not_its_shape() {
         let style = RiftStyle::default();
         let (grid, cool) = straight_sheet(0.4, 1.0, &style);
@@ -528,7 +658,11 @@ mod tests {
         for row in 54..=74 {
             let i = row * grid.w + 10;
             assert!(cool.profile[i] > 0.05, "row {row}: {}", cool.profile[i]);
-            assert!((cool.heat[i] - 0.4).abs() < 1e-3, "row {row}: {}", cool.heat[i]);
+            assert!(
+                (cool.heat[i] - 0.4).abs() < 1e-3,
+                "row {row}: {}",
+                cool.heat[i]
+            );
         }
     }
 
