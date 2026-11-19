@@ -170,7 +170,7 @@ fn write_sheets(
             let i = at(x, y);
             // The surface: shelves on the sea floor, volcanoes breaking it.
             let z = frame.surface[i];
-            let mut rgb = if z > 0.0 { land(z) } else { sea(z) };
+            let mut rgb = hot_world(frame, i, z);
             // Plate boundaries, faintly.
             let o = frame.owner[i];
             if frame.owner[at(x + 1, y)] != o || frame.owner[at(x, y + 1)] != o {
@@ -194,6 +194,67 @@ fn write_sheets(
 fn mix(a: [f32; 3], b: [f32; 3], t: f32) -> [u8; 3] {
     let t = t.clamp(0.0, 1.0);
     [0, 1, 2].map(|k| (a[k] + (b[k] - a[k]) * t) as u8)
+}
+
+fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+fn blend(a: [u8; 3], b: [f32; 3], t: f32) -> [u8; 3] {
+    mix(a.map(|v| v as f32), b, t)
+}
+
+/// A point's colour as the planet's heat leaves it, cooling into the plain
+/// relief key ([`sea`], [`land`]) as the heat falls toward today's:
+///
+/// - **Land** is bare dark basalt and grey rock while the planet is hot, and
+///   greens only as it cools. When life covers it is the world's lore, not
+///   the tectonics': this ties it to the heat (below ~1.6×), as a Proposed
+///   default.
+/// - **Lava** glows where the crust is newest: sea floor a few My old at the
+///   ridges, fresh hotspot volcanoes, and low land just raised by an arc —
+///   in proportion to the heat above today's, so it fades out as the planet
+///   cools.
+/// - **The sea** is murky grey-green and steam-hazed while hot, clearing to
+///   blue.
+fn hot_world(frame: &Frame, i: usize, z: f32) -> [u8; 3] {
+    let excess = ((frame.heat - 1.0) / 2.5).clamp(0.0, 1.0);
+    let c = &frame.crust[i];
+    let mut rgb = if z > 0.0 {
+        let cool = land(z);
+        // Bare rock: dark basalt low, grey-brown higher.
+        let rock = if z < 1.5 {
+            [62.0, 58.0, 56.0]
+        } else {
+            [118.0, 108.0, 100.0]
+        };
+        // Bare while hot, greening as the heat falls below ~1.6×.
+        let bare = smoothstep(1.2, 1.6, frame.heat);
+        blend(cool, rock, bare)
+    } else {
+        blend(sea(z), [70.0, 92.0, 84.0], excess * 0.8)
+    };
+    // Lava where crust is newest: hot ridges, fresh volcanoes, and land an
+    // arc has only just raised from the sea (not whole cordilleras: uplift
+    // keeps resetting their age). Only a hot planet's shows; today's ridges
+    // are deep under the sea.
+    let fresh = match c.kind {
+        tectonics::Kind::Oceanic => {
+            let ridge = 1.0 - smoothstep(0.0, 6.0, c.age);
+            let volcano = smoothstep(2.0, 7.0, c.volcanic);
+            ridge.max(volcano)
+        }
+        tectonics::Kind::Continental => {
+            (1.0 - smoothstep(0.0, 3.0, c.age)) * (1.0 - smoothstep(0.5, 2.0, z))
+        }
+    };
+    let glow = fresh * excess;
+    if glow > 0.05 {
+        rgb = blend(rgb, [255.0, 108.0, 32.0], glow * 0.85);
+    }
+    // Steam haze over everything on the hottest worlds.
+    blend(rgb, [196.0, 186.0, 196.0], excess * 0.18)
 }
 
 /// New crust at a ridge (−2.5 km) pale, old abyssal plains (−6.4 km) deep.

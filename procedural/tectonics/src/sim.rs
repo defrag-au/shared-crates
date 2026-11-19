@@ -538,7 +538,10 @@ impl Sim {
         let mut sources: BTreeMap<usize, (f32, f32, Vec3)> = BTreeMap::new();
         let mut fronts: BTreeMap<u16, Vec<Vec3>> = BTreeMap::new();
         let recycle = (HOT_RECYCLE * (self.heat() - 1.0)).clamp(0.0, 0.9);
-        let step = (self.time / dt).round() as u32;
+        // One roll per front per resample interval: a front recycles or
+        // collides as a whole. Rolling per sample left neighbours choosing
+        // opposite fates, and shredded the coasts into confetti.
+        let interval = (self.time / (dt * self.params.resample_every as f32)).floor() as i32;
         let seed = (self.params.seed ^ (self.params.seed >> 32)) as u32;
         for &(a, b) in &overlaps {
             let (ia, ib) = (live[a], live[b]);
@@ -559,7 +562,9 @@ impl Sim {
                 // rising with the heat; stabilised crust resists.
                 let c = &self.crust[under];
                 let young = c.age < CRATON_AGE;
-                let roll = hash(under as i32, step as i32, 0x5EC, seed) as f32 / u32::MAX as f32;
+                let (pa, pb) = pair(self.owner[ia], self.owner[ib]);
+                let roll =
+                    hash(pa as i32, pb as i32, interval, seed ^ 0x5EC) as f32 / u32::MAX as f32;
                 if !(young && roll < recycle) {
                     continue;
                 }
