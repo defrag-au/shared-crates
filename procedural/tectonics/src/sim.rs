@@ -50,6 +50,7 @@ use std::collections::{BTreeMap, BinaryHeap};
 use glam::{Quat, Vec3};
 
 use crate::crust::{self, Crust, Kind, Orogeny};
+use crate::impacts::{self, Bombardment, Impact};
 use crate::noise::{Rng, fbm, hash};
 use crate::sphere::{self, Index};
 
@@ -84,6 +85,8 @@ pub struct Params {
     pub heat: f32,
     /// e-folding time of the excess heat, My.
     pub heat_decay: f32,
+    /// Impacts through the planet's life ([`crate::impacts`]).
+    pub bombardment: Bombardment,
 }
 
 /// The crust a planet made by [`Sim::new`] starts with.
@@ -122,6 +125,7 @@ impl Params {
             start: Start::Supercontinent,
             heat: 1.0,
             heat_decay: 1500.0,
+            bombardment: Bombardment::NONE,
         }
     }
 
@@ -131,12 +135,23 @@ impl Params {
     /// production was ~3–4× today's when it formed, and its Archean mantle
     /// perhaps 150–250 °C hotter. Twenty hotspots. Meant to be run for
     /// billions of years.
+    ///
+    /// Impacts come through its whole life: ~2 a My at first (resolvable
+    /// craters, ~100 km across and up), falling with an e-folding time of
+    /// 150 My, then one every ~50 My for ever. Earth's early record is gone,
+    /// but the Moon's shows the same shape: a heavy bombardment in the first
+    /// few hundred My, then a steady trickle.
     pub fn primordial(seed: u64) -> Self {
         Self {
             plates: 24,
             hotspots: 20,
             start: Start::Primordial,
             heat: 3.5,
+            bombardment: Bombardment {
+                early: 2.0,
+                decay: 150.0,
+                background: 0.02,
+            },
             ..Self::earth_like(seed)
         }
     }
@@ -148,6 +163,16 @@ impl Params {
 pub struct Motion {
     pub axis: Vec3,
     pub rate: f32,
+}
+
+/// A live crater, held to the plate it rides.
+struct Anchor {
+    id: u32,
+    plate: u16,
+    /// Its centre in the plate's frame at the last resample (the grid's
+    /// frame then): the plate's rotation since carries it to where it is.
+    at: Vec3,
+    radius: f32,
 }
 
 struct Plate {
@@ -194,6 +219,8 @@ pub struct Frame {
     pub plates: Vec<Motion>,
     /// The mantle's heat, a multiple of Earth's today ([`Sim::heat`]).
     pub heat: f32,
+    /// Impacts since the last frame, in the order they landed.
+    pub impacts: Vec<Impact>,
     pub stats: Stats,
 }
 
@@ -202,6 +229,8 @@ pub struct Sim {
     points: Vec<Vec3>,
     spacing: f32,
     neighbours: Vec<Vec<u32>>,
+    /// The grid's spatial index.
+    grid: Index,
     owner: Vec<u16>,
     crust: Vec<Crust>,
     plates: Vec<Plate>,
@@ -217,6 +246,16 @@ pub struct Sim {
     hotspots: Vec<Vec3>,
     /// Draws for rifting, seeded from the planet's seed.
     rng: Rng,
+    /// Draws for impacts: a stream of their own, so turning them on or off
+    /// leaves every other draw as it was.
+    impact_rng: Rng,
+    /// Impacts since the last frame.
+    impacts: Vec<Impact>,
+    /// Every impact so far, in order (their ids are 1, 2, …).
+    history: Vec<Impact>,
+    /// The craters still in the crust, each anchored to its plate.
+    live: Vec<Anchor>,
+    impacts_made: u32,
     time: f32,
     since_resample: u32,
     stats: Stats,
@@ -300,11 +339,13 @@ impl Sim {
             .collect();
         let alive = vec![true; points.len()];
         let rng = Rng::new(params.seed ^ 0x5249_4654);
+        let impact_rng = Rng::new(params.seed ^ 0x494D_5041);
         let mut sim = Self {
             params,
             points,
             spacing,
             neighbours,
+            grid: index,
             owner,
             crust,
             plates,
@@ -314,6 +355,11 @@ impl Sim {
             raised_by_subduction: 0.0,
             hotspots: Vec::new(),
             rng,
+            impact_rng,
+            impacts: Vec::new(),
+            history: Vec::new(),
+            live: Vec::new(),
+            impacts_made: 0,
             time: 0.0,
             since_resample: 0,
             stats: Stats::default(),
@@ -388,6 +434,7 @@ impl Sim {
             surface: self.surface(),
             plates: self.plates.iter().map(|p| p.motion).collect(),
             heat: self.heat(),
+            impacts: self.impacts.clone(),
             stats: self.stats,
         }
     }
@@ -459,14 +506,239 @@ impl Sim {
             crust::age(c, dt);
         }
         self.subduct();
+        self.strike(dt);
         self.time += dt;
         self.since_resample += 1;
         if self.since_resample >= self.params.resample_every {
             self.resample();
-            Some(self.frame())
+            let frame = self.frame();
+            self.impacts.clear();
+            Some(frame)
         } else {
             None
         }
+    }
+
+    /// This step's impacts: each cuts its crater into the crust under it,
+    /// wherever the plates have carried that crust to. Sea floor takes the
+    /// crater in its tectonic relief, so it keeps it until it subducts; land
+    /// takes it in its height, and erosion wears it down.
+    fn strike(&mut self, dt: f32) {
+        let r_km = self.params.radius_km;
+        let strikes = impacts::draw(
+            &mut self.impact_rng,
+            &self.params.bombardment,
+            self.time,
+            dt,
+            IMPACT_MIN * self.spacing,
+            r_km,
+        );
+        for (time, dir, radius, depth) in strikes {
+            self.cut(time, dir, radius, depth);
+        }
+    }
+
+    /// Cut one crater, `radius` radians and `depth` km deep, centred at
+    /// `dir` in the sphere's fixed frame, into the crust there now.
+    fn cut(&mut self, time: f32, dir: Vec3, radius: f32, depth: f32) {
+        let flood = self.flood();
+        let reach = (radius * 2.2).cos();
+        let mut nearest = (f32::MIN, Kind::Oceanic, 0u16);
+        for i in 0..self.points.len() {
+            if !self.alive[i] {
+                continue;
+            }
+            let p = self.plates[self.owner[i] as usize].rotation * self.points[i];
+            let cos = p.dot(dir);
+            if cos < reach {
+                continue;
+            }
+            let t = cos.clamp(-1.0, 1.0).acos() / radius;
+            let c = &mut self.crust[i];
+            if cos > nearest.0 {
+                nearest = (cos, c.kind, self.owner[i]);
+            }
+            crust::scar(c, impacts::profile(t) * depth, flood);
+            if t < SCAR_CORE {
+                c.scar = self.impacts_made + 1;
+            }
+        }
+        self.impacts_made += 1;
+        if nearest.0 > f32::MIN {
+            // Anchored to the plate under its centre, in that plate's frame
+            // at the last resample: the plate's rotation since carries it.
+            let plate = nearest.2;
+            let since = self.plates[plate as usize].rotation;
+            self.live.push(Anchor {
+                id: self.impacts_made,
+                plate,
+                at: since.inverse() * dir,
+                radius,
+            });
+        }
+        let impact = Impact {
+            id: self.impacts_made,
+            time,
+            dir,
+            radius,
+            depth,
+            ocean: nearest.1 == Kind::Oceanic,
+        };
+        self.impacts.push(impact);
+        self.history.push(impact);
+    }
+
+    /// Every impact so far, survived or not, in the order they landed.
+    pub fn history(&self) -> &[Impact] {
+        &self.history
+    }
+
+    /// Carry each live crater's anchor through a resample, after the new
+    /// crust is on the grid: its plate's rotation since the last resample
+    /// moves it, and the crust now under it tells whether it survived. If
+    /// that crust no longer carries the crater's [`Crust::scar`], it was
+    /// consumed at a trench or overridden by another plate, and the crater is
+    /// gone. A survivor re-tags its whole bowl, so the resample's
+    /// nearest-sample copying (which drops and doubles single samples at
+    /// random) cannot wear the record away. `rotations` are the plates'
+    /// rotations since the last resample.
+    fn carry_craters(&mut self, rotations: &[Quat]) {
+        let mut live = std::mem::take(&mut self.live);
+        live.retain_mut(|anchor| {
+            let now = (rotations[anchor.plate as usize] * anchor.at).normalize();
+            let Some(centre) = self.grid.nearest(&self.points, now, self.spacing * 2.0) else {
+                return false;
+            };
+            let core = (anchor.radius * SCAR_CORE).max(self.spacing);
+            let id = anchor.id;
+            // Alive while any crust in its heart still carries it: a single
+            // grid point's tag can be lost to resample noise.
+            let mut held = Vec::new();
+            let mut heart = Vec::new();
+            self.grid.near(now, core, |i| {
+                if self.points[i].distance(now) <= core {
+                    heart.push(i);
+                    if self.crust[i].scar == id {
+                        held.push(i);
+                    }
+                }
+            });
+            if held.is_empty() {
+                return false;
+            }
+            // Its plate is the one holding most of what carries it.
+            let plate = {
+                let mut counts: BTreeMap<u16, usize> = BTreeMap::new();
+                for &i in &held {
+                    *counts.entry(self.owner[i]).or_default() += 1;
+                }
+                counts
+                    .into_iter()
+                    .max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0)))
+                    .map_or(self.owner[centre], |(p, _)| p)
+            };
+            anchor.at = now;
+            anchor.plate = plate;
+            let tags: Vec<usize> = heart
+                .into_iter()
+                .filter(|&i| self.owner[i] == plate)
+                .collect();
+            for i in tags {
+                // A later crater keeps its claim on crust it overlaps.
+                if self.crust[i].scar < id {
+                    self.crust[i].scar = id;
+                }
+            }
+            true
+        });
+        self.live = live;
+    }
+
+    /// Re-read each live anchor's plate after plates are renumbered or split.
+    fn rehome_craters(&mut self) {
+        for anchor in &mut self.live {
+            if let Some(centre) = self
+                .grid
+                .nearest(&self.points, anchor.at, self.spacing * 2.0)
+            {
+                anchor.plate = self.owner[centre];
+            }
+        }
+    }
+
+    /// The craters still in the crust: each impact that has not been carried
+    /// down a trench or overridden, where its plate has taken it, and how
+    /// deep its bowl still stands below its rim. Read right after a resample
+    /// (the end of [`Sim::run`]), when the grid holds the crust exactly.
+    pub fn craters(&self) -> Vec<impacts::Crater> {
+        let mut hearts: Vec<Vec<usize>> = vec![Vec::new(); self.history.len()];
+        for (i, c) in self.crust.iter().enumerate() {
+            if c.scar > 0 {
+                hearts[c.scar as usize - 1].push(i);
+            }
+        }
+        let mut out = Vec::new();
+        for anchor in &self.live {
+            let impact = &self.history[anchor.id as usize - 1];
+            let heart = &hearts[anchor.id as usize - 1];
+            if heart.is_empty() {
+                continue;
+            }
+            let dir = anchor.at;
+            // Floor: the mean of its bowl's inner half (the whole heart, if
+            // that holds no grid point; walls would make it read shallow).
+            // Rim: the crust a radius out.
+            let inner = (impact.radius * 0.5).max(self.spacing * 0.75).cos();
+            let middle: Vec<f32> = heart
+                .iter()
+                .filter(|&&i| self.points[i].dot(dir) >= inner)
+                .map(|&i| self.crust[i].elevation)
+                .collect();
+            let floor = if middle.is_empty() {
+                heart
+                    .iter()
+                    .map(|&i| self.crust[i].elevation)
+                    .fold(f32::MAX, f32::min)
+            } else {
+                middle.iter().sum::<f32>() / middle.len() as f32
+            };
+            let (lo, hi) = ((impact.radius * 1.25).cos(), (impact.radius * 0.85).cos());
+            let rim: Vec<f32> = self
+                .points
+                .iter()
+                .zip(&self.crust)
+                .filter(|(p, _)| (lo..=hi).contains(&p.dot(dir)))
+                .map(|(_, c)| c.elevation)
+                .collect();
+            let rim = rim.iter().sum::<f32>() / rim.len().max(1) as f32;
+            let ocean = heart
+                .iter()
+                .filter(|&&i| self.crust[i].kind == Kind::Oceanic)
+                .count()
+                * 2
+                > heart.len();
+            // On land the crater's relief is its own field: the deepest of
+            // what it keeps is its depth, whatever terrain it sits in (a
+            // basin 1000 km across has coast and sea in its rim ring). Sea
+            // floor holds it mixed into its tectonic relief, so there the
+            // rim-to-floor measure stands, never deeper than it was made.
+            let kept = heart
+                .iter()
+                .map(|&i| self.crust[i].crater)
+                .fold(0.0f32, f32::min);
+            let depth = if ocean {
+                (rim - floor).clamp(0.0, impact.depth)
+            } else {
+                (-kept).clamp(0.0, impact.depth)
+            };
+            out.push(impacts::Crater {
+                impact: *impact,
+                dir,
+                depth,
+                ocean,
+            });
+        }
+        out
     }
 
     /// Run until `until` million years, handing each resampled frame (and
@@ -869,6 +1141,10 @@ impl Sim {
         for (i, b) in best.iter().enumerate() {
             let Some((d, src)) = *b else { continue };
             let (h, v, push) = sources[&src];
+            // The push is in today's frame; the crust is held in the grid's
+            // frame of the last resample, where its plate's rotation since
+            // has carried it from.
+            let push = self.plates[self.owner[i] as usize].rotation.inverse() * push;
             let km = d * self.params.radius_km;
             let c = &mut self.crust[i];
             let profile = match c.kind {
@@ -1145,6 +1421,13 @@ impl Sim {
             };
             owner[j] = winner.0;
             crust[j] = self.crust[winner.2];
+            // The fold turns with its plate, and lies flat on the sphere
+            // where the crust has landed.
+            let c = &mut crust[j];
+            if c.fold != [0.0; 3] {
+                let turned = self.plates[winner.0 as usize].rotation * Vec3::from(c.fold);
+                c.fold = (turned - p * turned.dot(p)).to_array();
+            }
         }
 
         let opened = gap.iter().filter(|&&g| g).count();
@@ -1154,6 +1437,8 @@ impl Sim {
         let (collisions, raised_by_collision) = self.collide(&zone, &mut owner, &mut crust);
         self.owner = owner;
         self.crust = crust;
+        let rotations: Vec<Quat> = self.plates.iter().map(|p| p.rotation).collect();
+        self.carry_craters(&rotations);
         for plate in &mut self.plates {
             plate.rotation = Quat::IDENTITY;
         }
@@ -1163,6 +1448,7 @@ impl Sim {
         // plates, then rift.
         self.tidy_plates();
         let rifts = self.rift();
+        self.rehome_craters();
         self.stats = Stats {
             continental: self.continental_share(),
             opened,
@@ -1263,6 +1549,15 @@ const CRATON_AGE: f32 = 300.0;
 /// into its neighbour: ~200 000 km² for an Earth-sized planet of ten plates,
 /// about the size of Earth's smallest named microplates.
 const SLIVER: f32 = 0.15;
+/// Smallest crater the crust records, in grid spacings of radius: smaller
+/// ones fall between the samples and would leave a single dented point.
+const IMPACT_MIN: f32 = 1.5;
+/// Out to this share of its radius, the crust struck is a crater's heart
+/// and carries its [`Crust::scar`]: the whole bowl. Each resample takes the
+/// nearest moved sample for each grid point, which drops or doubles single
+/// samples at random; a heart of half the radius (one or two samples for the
+/// smallest craters) was lost within a few hundred My though its bowl stayed.
+const SCAR_CORE: f32 = 1.0;
 /// How far a hot mantle floods the continents, km per unit of heat above
 /// today's: 1.25 km at 3.5× ([`Sim::flood`]). Hotter, more buoyant mantle
 /// held young oceans shallower; the figure is an estimate, not a measured
@@ -1909,6 +2204,181 @@ mod tests {
         let cool = Sim::new(small(2));
         assert_eq!(cool.frame().heat, 1.0, "today's Earth stays as it is");
         assert_eq!(cool.flood(), 0.0);
+    }
+
+    /// The grid point nearest `d` and its crust.
+    fn crust_at(sim: &Sim, frame: &Frame, d: Vec3) -> Crust {
+        let i = (0..sim.points().len())
+            .min_by(|&a, &b| {
+                sim.points()[a]
+                    .distance(d)
+                    .total_cmp(&sim.points()[b].distance(d))
+            })
+            .unwrap();
+        frame.crust[i]
+    }
+
+    #[test]
+    fn an_ocean_crater_rides_its_plate_into_the_trench_and_is_gone() {
+        // Ocean diving under a continent (the hemispheres, converging on the
+        // −z side). A crater on the southern sea floor, ahead of the trench.
+        let rate = 0.0035;
+        let mut sim = hemispheres_of(
+            rate,
+            |_| Crust::continental(0.5, 500.0),
+            |_| Crust::oceanic(120.0),
+        );
+        // South plate turns +rate about x: −z moves toward +y (the trench).
+        let at = Vec3::new(0.0, -0.25, -1.0).normalize();
+        sim.cut(0.0, at, 0.08, 2.0);
+        let frame = run_for(&mut sim, 20.0);
+        assert_eq!(frame.impacts.len(), 1, "the event is reported");
+        assert!(frame.impacts[0].ocean);
+        // It moved with the plate: deepest now where the plate carried it.
+        let carried = Quat::from_axis_angle(Vec3::X, rate * 20.0) * at;
+        let floor = crust_at(&sim, &frame, carried);
+        assert!(floor.raised < -1.0, "the bowl rode along: {floor:?}");
+        // Next frame's list starts empty.
+        let later = run_for(&mut sim, 20.0);
+        assert!(later.impacts.is_empty());
+        // In time the floor carrying it goes down the trench, and with it
+        // every trace: the planet is then the same as a twin never struck.
+        let gone = run_for(&mut sim, 160.0);
+        let mut twin = hemispheres_of(
+            rate,
+            |_| Crust::continental(0.5, 500.0),
+            |_| Crust::oceanic(120.0),
+        );
+        let unstruck = run_for(&mut twin, 200.0);
+        assert_eq!(gone.owner, unstruck.owner);
+        assert_eq!(gone.crust, unstruck.crust, "the crater was subducted");
+    }
+
+    #[test]
+    fn the_crater_record_follows_the_crust_and_forgets_what_subducts() {
+        // A land crater on a plate turning about y: found where the plate
+        // carried it, shallower with age.
+        let rate = 0.004;
+        let mut sim = one_plate(rate, 0.0, |_| Crust::continental(0.5, 500.0));
+        sim.cut(0.0, Vec3::X, 0.1, 2.0);
+        let young = run_for(&mut sim, 20.0);
+        let craters = sim.craters();
+        assert_eq!(craters.len(), 1);
+        let carried = Quat::from_axis_angle(Vec3::Y, rate * 20.0) * Vec3::X;
+        assert!(
+            craters[0].dir.angle_between(carried) < sim.spacing * 1.5,
+            "found where its plate took it: {:?} vs {carried:?}",
+            craters[0].dir
+        );
+        assert!(!craters[0].ocean);
+        let fresh_depth = craters[0].depth;
+        assert!(fresh_depth > 1.0, "{fresh_depth}");
+        assert!(young.crust.iter().any(|c| c.scar == craters[0].impact.id));
+        run_for(&mut sim, 200.0);
+        let aged = sim.craters()[0].depth;
+        assert!(aged < fresh_depth * 0.5, "softened: {fresh_depth} → {aged}");
+
+        // An ocean crater carried into a trench drops off the record.
+        let mut ocean = hemispheres_of(
+            0.0035,
+            |_| Crust::continental(0.5, 500.0),
+            |_| Crust::oceanic(120.0),
+        );
+        ocean.cut(0.0, Vec3::new(0.0, -0.25, -1.0).normalize(), 0.08, 2.0);
+        run_for(&mut ocean, 20.0);
+        assert_eq!(ocean.craters().len(), 1, "still on its sea floor");
+        assert!(ocean.craters()[0].ocean);
+        run_for(&mut ocean, 180.0);
+        assert!(ocean.craters().is_empty(), "subducted, and forgotten");
+    }
+
+    #[test]
+    fn a_fold_turns_with_its_plate() {
+        // Folds pushed east everywhere (y × p), on a plate turning 90° about
+        // y. Each sample's crust came from a quarter-turn back, where east
+        // pointed another way: carried rigidly, its fold points east here.
+        let rate = 0.004;
+        let mut sim = one_plate(rate, 0.0, |p| Crust {
+            fold: Vec3::Y.cross(p).to_array(),
+            ..Crust::continental(0.5, 500.0)
+        });
+        let frame = run_for(&mut sim, std::f32::consts::FRAC_PI_2 / rate);
+        let mut checked = 0;
+        for (p, c) in sim.points().iter().zip(&frame.crust) {
+            let east = Vec3::Y.cross(*p);
+            // Near the equator. Each resample hands crust to the nearest grid
+            // point, a spacing or so from where it was carried; east turns
+            // across that hop by its length × sin(latitude), so at higher
+            // latitudes twenty resamples' hops add up to tens of degrees
+            // that are the reference's, not the fold's.
+            if p.y.abs() > 0.3 {
+                continue;
+            }
+            let fold = Vec3::from(c.fold);
+            assert!(
+                fold.dot(*p).abs() < 1e-4,
+                "flat on the sphere: {fold:?} at {p:?}"
+            );
+            assert!(
+                fold.angle_between(east) < 0.1,
+                "turned with the plate: {fold:?} vs east {east:?} at {p:?}"
+            );
+            checked += 1;
+        }
+        assert!(checked > sim.points().len() / 4);
+    }
+
+    #[test]
+    fn a_small_crater_is_not_worn_away_by_resampling() {
+        // Sea floor on one drifting plate: no trench to take it, only twenty
+        // resamples' worth of nearest-sample copying. A crater a couple of
+        // grid spacings across (a handful of samples) must come through
+        // with its record and its place.
+        let rate = 0.004;
+        let mut sim = one_plate(rate, 0.0, |_| Crust::oceanic(60.0));
+        let at = Vec3::new(1.0, 0.3, 0.2).normalize();
+        let radius = sim.spacing * 1.6;
+        sim.cut(0.0, at, radius, 2.0);
+        run_for(&mut sim, 400.0);
+        let craters = sim.craters();
+        assert_eq!(craters.len(), 1, "kept through 20 resamples");
+        let carried = Quat::from_axis_angle(Vec3::Y, rate * 400.0) * at;
+        assert!(
+            craters[0].dir.angle_between(carried) < sim.spacing,
+            "where its plate took it: {:?} vs {carried:?}",
+            craters[0].dir
+        );
+        assert!(craters[0].ocean);
+    }
+
+    #[test]
+    fn a_land_crater_stays_and_wears_down() {
+        let mut sim = one_plate(0.0, 0.0, |_| Crust::continental(0.5, 500.0));
+        sim.cut(0.0, Vec3::X, 0.08, 2.0);
+        let fresh = crust_at(&sim, &sim.frame(), Vec3::X).elevation;
+        assert!(fresh < -1.0, "a bowl below the plain: {fresh}");
+        let frame = run_for(&mut sim, 100.0);
+        let old = crust_at(&sim, &frame, Vec3::X).elevation;
+        assert!(
+            old < 0.5 && old > fresh,
+            "still there, softened: {fresh} → {old}"
+        );
+    }
+
+    #[test]
+    fn a_primordial_planet_is_bombarded_heavily_then_steadily() {
+        let mut sim = Sim::new(young(8));
+        let mut per_frame = Vec::new();
+        sim.run(800.0, |f| per_frame.push(f.impacts.len()));
+        let early: usize = per_frame[1..4].iter().sum();
+        let late: usize = per_frame[per_frame.len() - 3..].iter().sum();
+        assert!(early > late * 3, "heavy early: {per_frame:?}");
+        assert!(late > 0, "and it never stops: {per_frame:?}");
+        // The Earth-like preset has none.
+        let mut cool = Sim::new(small(8));
+        let mut any = 0;
+        cool.run(100.0, |f| any += f.impacts.len());
+        assert_eq!(any, 0);
     }
 
     #[test]

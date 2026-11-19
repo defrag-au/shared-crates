@@ -35,9 +35,20 @@ pub struct Crust {
     /// their plate carries them off, into seamounts.
     pub volcanic: f32,
     pub orogeny: Orogeny,
-    /// The direction mountains run, as the tectonics pushed them: an
-    /// unnormalised tangent vector (zero where nothing has folded the crust).
+    /// The direction the tectonics pushed this crust while building its
+    /// mountains (convergence for an Andean margin, away from the suture for a
+    /// collision): an unnormalised tangent vector, zero where nothing has
+    /// folded the crust. Ranges and their folds run across it.
     pub fold: [f32; 3],
+    /// Continental: a crater's relief on this ground, km (the bowl negative,
+    /// the rim positive), part of `elevation` but kept apart from it so
+    /// erosion does not treat a crater ring like a mountain range: it fades
+    /// on its own clock ([`CRATER_DECAY`]) while the ground under it wears.
+    pub crater: f32,
+    /// The impact whose crater's heart this crust holds ([`crate::Impact`]'s
+    /// `id`), or 0. It travels with the crust: where it ends up is where the
+    /// crater is now, and when the last of it is subducted the crater is gone.
+    pub scar: u32,
 }
 
 impl Crust {
@@ -51,6 +62,8 @@ impl Crust {
             volcanic: 0.0,
             orogeny: Orogeny::None,
             fold: [0.0; 3],
+            crater: 0.0,
+            scar: 0,
         }
     }
 
@@ -71,6 +84,8 @@ impl Crust {
             volcanic: 0.0,
             orogeny: Orogeny::None,
             fold: [0.0; 3],
+            crater: 0.0,
+            scar: 0,
         }
     }
 }
@@ -112,6 +127,12 @@ pub const PEAK: f32 = 10.0;
 /// rising falls to ~1 km within ~70 My.
 pub const EROSION: f32 = 0.25;
 
+/// e-folding time, My, of sediment filling a continental basin below the sea
+/// (a crater's bowl): slower than a range wears down, since a basin hundreds
+/// of km across fills from what the land around it sheds. At the erosion
+/// rate (40 My) a 2 km crater was a flat plain in ~150 My.
+pub const INFILL: f32 = 150.0;
+
 /// Height continental interiors wear down to, km: old continents ride a few
 /// hundred metres up on their thick, buoyant crust (Earth's stable cratons
 /// stand ~0.3–0.5 km), not at sea level.
@@ -119,7 +140,9 @@ pub const BASE_LEVEL: f32 = 0.3;
 
 /// Advance one sample's crust by `dt` million years: it ages; sea floor
 /// follows its age down (keeping any uplift it was given, while volcanoes on
-/// it subside); land above the sea wears down in proportion to its height.
+/// it subside); land above the sea wears down in proportion to its height;
+/// continental ground below the sea (a crater's bowl) fills back up toward
+/// it with sediment, at the same rate.
 pub fn age(crust: &mut Crust, dt: f32) {
     crust.age += dt;
     match crust.kind {
@@ -128,11 +151,39 @@ pub fn age(crust: &mut Crust, dt: f32) {
             crust.elevation = crust.sea_floor();
         }
         Kind::Continental => {
-            if crust.elevation > BASE_LEVEL {
-                let above = crust.elevation - BASE_LEVEL;
-                crust.elevation -= above * (1.0 - (-EROSION / PEAK * dt).exp());
+            // The ground under any crater wears (or fills); the crater's own
+            // relief fades on its own clock.
+            let mut ground = crust.elevation - crust.crater;
+            if ground > BASE_LEVEL {
+                let wear = 1.0 - (-EROSION / PEAK * dt).exp();
+                ground -= (ground - BASE_LEVEL) * wear;
+            } else if ground < 0.0 {
+                let fill = 1.0 - (-dt / INFILL).exp();
+                ground -= ground * fill;
             }
+            crust.crater *= (-dt / CRATER_DECAY).exp();
+            crust.elevation = ground + crust.crater;
         }
+    }
+}
+
+/// e-folding time of a land crater's relief, My: a 200 My old crater keeps
+/// about half its depth, a billion-year-old one is all but gone, as on Earth
+/// (Manicouagan, 214 My, is still a clear ring; craters of a few Gyr survive
+/// only as eroded roots, like Vredefort).
+pub const CRATER_DECAY: f32 = 250.0;
+
+/// Cut `dz` km of crater relief into crust: into continental ground as its
+/// own relief ([`Crust::crater`]), into sea floor as tectonic relief that it
+/// keeps until it subducts. Sea floor raised past `threshold` (a rim on a
+/// shallow sea) becomes land, as with [`raise_past`].
+pub fn scar(crust: &mut Crust, dz: f32, threshold: f32) {
+    match crust.kind {
+        Kind::Continental => {
+            crust.crater += dz;
+            crust.elevation += dz;
+        }
+        Kind::Oceanic => raise_past(crust, dz, threshold),
     }
 }
 
@@ -230,6 +281,31 @@ mod tests {
         assert_eq!(sea.kind, Kind::Continental);
         assert!(sea.elevation > 0.0);
         assert_eq!(sea.age, 0.0);
+    }
+
+    #[test]
+    fn a_crater_on_eroding_highland_keeps_its_relief_on_its_own_clock() {
+        // Highland 3 km up; a 1.5 km bowl cut into it, and the same ground
+        // beside it with no crater.
+        let mut bowl = Crust::continental(3.0, 0.0);
+        let mut beside = Crust::continental(3.0, 0.0);
+        scar(&mut bowl, -1.5, 0.0);
+        for _ in 0..50 {
+            age(&mut bowl, 2.0);
+            age(&mut beside, 2.0);
+        }
+        // 100 My on: the ground has worn most of the way to base level, but
+        // the bowl still sits below its surroundings by e^(−100/250) of its
+        // depth.
+        assert!(beside.elevation < 1.0, "{}", beside.elevation);
+        let relief = beside.elevation - bowl.elevation;
+        let expected = 1.5 * (-100.0f32 / CRATER_DECAY).exp();
+        assert!((relief - expected).abs() < 1e-3, "{relief} vs {expected}");
+        // Sea floor takes a crater as tectonic relief instead.
+        let mut floor = Crust::oceanic(50.0);
+        scar(&mut floor, -1.0, 0.0);
+        assert_eq!(floor.raised, -1.0);
+        assert_eq!(floor.crater, 0.0);
     }
 
     #[test]

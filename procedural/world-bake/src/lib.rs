@@ -30,7 +30,9 @@ use serde::{Deserialize, Serialize};
 ///
 /// - 1: eight base layers, all at the manifest's `size`.
 /// - 2: a layer may carry its own `size`; optional `elevation_detail` layer
-///   and `detail` record.
+///   and `detail` record. Later, still 2: optional tectonic layers
+///   ([`LayerName::TECTONIC`]); a reader that predates them fails to parse
+///   a manifest listing them rather than misreading it.
 pub const FORMAT_VERSION: u32 = 2;
 
 /// Mean Earth radius, km (IUGG mean radius R1 = 6371.0088 km, rounded). The
@@ -67,6 +69,25 @@ pub enum LayerName {
     /// The coast is the base layer's. Optional: present once the detail stage
     /// has run.
     ElevationDetail,
+    /// The direction a tectonic history pushed the crust while building its
+    /// mountains, as a doubled-angle vector in the local east/north frame:
+    /// `strength · (cos 2θ, sin 2θ)`, θ measured from east toward north.
+    /// Doubled so that a direction and its reverse (the same folds) agree and
+    /// the layer interpolates without cancelling. Ranges run across θ.
+    /// Strength 0–1 is how surely the crust here was folded that way: 1 where
+    /// all of it around was pushed alike, 0 where nothing folded it or the
+    /// pushes disagree. How long ago is [`LayerName::OrogenyAge`]'s: an old,
+    /// worn range keeps its grain. Optional, like the other tectonic layers:
+    /// present when the world was baked from a tectonic history.
+    FoldEast,
+    /// Second component of [`LayerName::FoldEast`]'s vector.
+    FoldNorth,
+    /// Millions of years since the land's last mountain building; 0 at sea.
+    /// Optional tectonic layer.
+    OrogenyAge,
+    /// Millions of years since the sea floor formed at a ridge; 0 on land.
+    /// Optional tectonic layer.
+    SeaFloorAge,
 }
 
 impl LayerName {
@@ -94,14 +115,28 @@ impl LayerName {
             LayerName::Humidity => "humidity.png",
             LayerName::Volcanic => "volcanic.png",
             LayerName::ElevationDetail => "elevation_detail.png",
+            LayerName::FoldEast => "fold_east.png",
+            LayerName::FoldNorth => "fold_north.png",
+            LayerName::OrogenyAge => "orogeny_age.png",
+            LayerName::SeaFloorAge => "sea_floor_age.png",
         }
     }
+
+    /// The optional layers a tectonic history adds.
+    pub const TECTONIC: [LayerName; 4] = [
+        LayerName::FoldEast,
+        LayerName::FoldNorth,
+        LayerName::OrogenyAge,
+        LayerName::SeaFloorAge,
+    ];
 
     pub fn units(self) -> &'static str {
         match self {
             LayerName::Elevation | LayerName::ElevationDetail => "generator elevation units",
             LayerName::Temperature => "kelvin",
             LayerName::WaterFlow => "accumulated flow (relative)",
+            LayerName::OrogenyAge | LayerName::SeaFloorAge => "million years",
+            LayerName::FoldEast | LayerName::FoldNorth => "fold strength (doubled angle)",
             _ => "relative",
         }
     }
@@ -649,6 +684,23 @@ pub fn dir_to_lon_lat(dir: [f32; 3]) -> (f32, f32) {
     (d[2].atan2(d[0]), d[1].clamp(-1.0, 1.0).asin())
 }
 
+/// Unit east and north at a direction (need not be unit): the frame the
+/// tectonic layers' directions are measured in ([`LayerName::FoldEast`]).
+/// East is the way longitude grows. At a pole, where east is undefined, east
+/// is taken as +z (longitude 0's east, carried to the pole).
+pub fn east_north(dir: [f32; 3]) -> ([f32; 3], [f32; 3]) {
+    let d = normalize(dir);
+    let flat = (d[0] * d[0] + d[2] * d[2]).sqrt();
+    let east = if flat < 1e-6 {
+        [0.0, 0.0, 1.0]
+    } else {
+        // d × y: +x's east is +z, the way longitude grows.
+        [-d[2] / flat, 0.0, d[0] / flat]
+    };
+    let north = cross(east, d);
+    (east, normalize(north))
+}
+
 fn normalize(v: [f32; 3]) -> [f32; 3] {
     let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
         .sqrt()
@@ -699,6 +751,32 @@ fn read_manifest(dir: &Path) -> Result<WorldManifest, BakeError> {
 mod tests {
     use super::*;
     use image::{ImageBuffer, Luma};
+
+    #[test]
+    fn east_and_north_are_the_ways_longitude_and_latitude_grow() {
+        let h = 1e-3;
+        for &(lon, lat) in &[(0.0f32, 0.0f32), (1.2, 0.5), (-2.5, -1.1), (3.0, 1.4)] {
+            let d = lon_lat_to_dir(lon, lat);
+            let (east, north) = east_north(d);
+            let step =
+                |a: [f32; 3], b: [f32; 3]| normalize([b[0] - a[0], b[1] - a[1], b[2] - a[2]]);
+            let dot = |a: [f32; 3], b: [f32; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+            let along_lon = step(d, lon_lat_to_dir(lon + h, lat));
+            let along_lat = step(d, lon_lat_to_dir(lon, lat + h));
+            assert!(
+                dot(east, along_lon) > 0.999,
+                "east at {lon},{lat}: {east:?}"
+            );
+            assert!(
+                dot(north, along_lat) > 0.999,
+                "north at {lon},{lat}: {north:?}"
+            );
+            assert!(dot(east, d).abs() < 1e-5 && dot(north, d).abs() < 1e-5);
+        }
+        // Defined at the poles too.
+        let (east, north) = east_north([0.0, 1.0, 0.0]);
+        assert!(east.iter().chain(&north).all(|v| v.is_finite()));
+    }
 
     #[test]
     fn a_crater_is_a_cone_bowl_with_a_rim() {

@@ -15,9 +15,15 @@
 //! - [`sphere`] — the sample points and the spatial index over them.
 
 pub mod crust;
+pub mod impacts;
 mod noise;
 pub mod sim;
 pub mod sphere;
 
+/// The vector types the API speaks (`Sim::points`, `Impact::dir`), so a
+/// caller names the same glam this crate was built against.
+pub use glam;
+
 pub use crust::{Crust, Kind};
+pub use impacts::{Bombardment, Crater, Impact};
 pub use sim::{Frame, Motion, Params, Sim, Start, Stats};

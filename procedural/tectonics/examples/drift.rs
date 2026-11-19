@@ -94,12 +94,38 @@ fn main() -> Result<()> {
     let mut written = 0;
     let mut failure = None;
     let mut next = 0.0;
+    // Every impact, as `epoch,lon,lat,radius`: the epoch is the frame written
+    // after it landed, so the globe viewer plays it in as it steps there.
+    let mut craters = String::from(
+        "# every impact, oldest first; epoch = the frame it lands before\nepoch,lon,lat,radius\n",
+    );
+    let (mut on_land, mut at_sea) = (0usize, 0usize);
     sim.run(args.until, |frame| {
+        // Impacts land in every frame, written or not.
+        for impact in &frame.impacts {
+            if impact.ocean {
+                at_sea += 1;
+            } else {
+                on_land += 1;
+            }
+            let d = impact.dir;
+            craters.push_str(&format!(
+                "{},{:.4},{:.4},{:.5}\n",
+                written,
+                d.z.atan2(d.x).to_degrees(),
+                d.y.clamp(-1.0, 1.0).asin().to_degrees(),
+                impact.radius
+            ));
+        }
         // Frames come every resample; write one every `--every` My.
         if frame.time + 1e-3 < next {
             return;
         }
         next += args.every;
+        println!(
+            "        impacts since the last frame: {on_land} on land, {at_sea} at sea"
+        );
+        (on_land, at_sea) = (0, 0);
         let s = frame.stats;
         // How the land's height is spread: what holds continents up.
         let mut land: Vec<(f32, f32)> = frame
@@ -151,6 +177,7 @@ fn main() -> Result<()> {
     if let Some(e) = failure {
         return Err(e);
     }
+    std::fs::write(args.out.join("craters.csv"), craters)?;
     println!("wrote {written} frames to {}", args.out.display());
     Ok(())
 }
