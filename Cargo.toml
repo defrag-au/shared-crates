@@ -80,7 +80,6 @@ members = [
     "ui/_storybook-egui",
     "ui/workers/flow-demo",
     "ui/workers/flow-demo/frontend",
-    "procedural/*",
     "ai-media-gen",
     "pipeline/*",
     "compositor/*",
