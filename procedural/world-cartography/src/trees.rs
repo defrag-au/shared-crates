@@ -45,8 +45,21 @@ pub fn scatter(
     river: &[f32],
     width: u32,
 ) -> Vec<Tree> {
+    scatter_spaced(w, h, cells, terrain, river, (width as f32 / 230.0).max(6.0))
+}
+
+/// [`scatter`] at a spacing of its own, pixels between scatter points: the
+/// chart's icons want few and large, a renderer standing real trees (the
+/// globe) many and small.
+pub fn scatter_spaced(
+    w: u32,
+    h: u32,
+    cells: &[Cell],
+    terrain: &Terrain,
+    river: &[f32],
+    spacing: f32,
+) -> Vec<Tree> {
     let (w, h) = (w as i32, h as i32);
-    let spacing = (width as f32 / 230.0).max(6.0);
     let can_stand = |x: f32, y: f32| -> Option<usize> {
         let (ix, iy) = (x as i32, y as i32);
         if ix < 0 || iy < 0 || ix >= w || iy >= h {

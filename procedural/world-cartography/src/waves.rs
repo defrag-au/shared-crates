@@ -46,6 +46,10 @@ pub struct WaveStyle {
     /// foam fades after it, per period (`exp(−decay · since)`).
     pub surf_pulse: f32,
     pub surf_decay: f32,
+    /// The share of a period the foam takes to come in as a crest arrives:
+    /// with none it appears at full strength in one frame, and the shore
+    /// pops every period instead of flowing.
+    pub surf_rise: f32,
 }
 
 impl Default for WaveStyle {
@@ -60,6 +64,7 @@ impl Default for WaveStyle {
             rock_surge: 0.5,
             surf_pulse: 0.6,
             surf_decay: 4.0,
+            surf_rise: 0.18,
         }
     }
 }
