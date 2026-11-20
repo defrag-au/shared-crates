@@ -19,7 +19,18 @@ pub enum Source {
     Simulated,
     /// The simulation for where, seeded noise for shape.
     Mixed,
+    /// Only where cloud forms, as [`Source::Mixed`] reads it: for a renderer
+    /// that makes the shapes itself, moving ([`MIX`]).
+    Where,
 }
+
+/// How [`Source::Mixed`] makes cover: a base, plus where the simulation puts
+/// cloud, plus [`shape`]; cloud stands where the sum passes [`THRESHOLD`]. A
+/// live renderer mixes its own moving shape with a [`Source::Where`] sheet by
+/// the same numbers.
+pub const MIX: [f32; 3] = [0.2, 0.6, 0.55];
+/// The cover above which a renderer draws cloud (the Blender globe's cut).
+pub const THRESHOLD: f32 = 0.5;
 
 /// Cloud shape, roughly -1..1: seeded noise stretched along latitude so
 /// systems run east-west, warped so the streaks swirl. Low frequencies only:
@@ -53,7 +64,7 @@ pub fn shape(dir: Vec3, seed: u64) -> f32 {
 pub fn cover(cells: &[Cell], grid: &Grid, density: &Layer, source: Source, seed: u64) -> Vec<u8> {
     let radius = match source {
         Source::Simulated => SMOOTHING,
-        Source::Mixed => SMOOTHING * 2.0,
+        Source::Mixed | Source::Where => SMOOTHING * 2.0,
     };
     let smoothed: Vec<f32> = cells
         .par_iter()
@@ -78,8 +89,8 @@ pub fn cover(cells: &[Cell], grid: &Grid, density: &Layer, source: Source, seed:
         .map(|(c, &density)| {
             let simulated = (density / p98).clamp(0.0, 1.0);
             let value = match source {
-                Source::Simulated => simulated,
-                Source::Mixed => 0.2 + simulated * 0.6 + shape(c.dir, seed) * 0.55,
+                Source::Simulated | Source::Where => simulated,
+                Source::Mixed => MIX[0] + simulated * MIX[1] + shape(c.dir, seed) * MIX[2],
             };
             (value.clamp(0.0, 1.0) * 255.0) as u8
         })
