@@ -201,6 +201,9 @@ mod tests {
     #[test]
     fn far_from_any_boundary_there_is_none() {
         let plates = hemispheres();
-        assert_eq!(meeting(&plates, &apart(1.0), [0.0, 1.0, 0.0], 0.1, 10), None);
+        assert_eq!(
+            meeting(&plates, &apart(1.0), [0.0, 1.0, 0.0], 0.1, 10),
+            None
+        );
     }
 }

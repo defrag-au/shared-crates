@@ -183,6 +183,13 @@ pub struct Cell {
     pub temperature: f32,
     /// What grows (or does not) here; [`Biome::Ocean`] at sea.
     pub biome: Biome,
+    /// The chart's moment of the year: how much seasonal snow lies, 0 to 1
+    /// (the ice sheet is the frozen zone, apart from this).
+    pub snow: f32,
+    /// The chart's moment of the year: how far the plants are in leaf, 0
+    /// (bare or dry-season brown) to 1 (summer green). A chart with no
+    /// moment draws 0 snow and full leaf.
+    pub leaf: f32,
 }
 
 /// The ground a map draws: the generator's Whittaker biomes
@@ -256,6 +263,22 @@ impl Biome {
             Biome::Ocean | Biome::Desert(_) | Biome::Polar(_) | Biome::Volcanic => TreeCover::None,
             Biome::Grassland(_) | Biome::Wetland => TreeCover::Sparse,
             Biome::Forest(_) | Biome::Alpine | Biome::Beach => TreeCover::Forest,
+        }
+    }
+
+    /// The share of what grows here that keeps its leaves all year, 0 to 1:
+    /// rainforest and the conifers of the boreal and alpine forests stay
+    /// green; grassland and broadleaf forest turn with the season.
+    pub fn evergreen(self) -> f32 {
+        match self {
+            Biome::Forest(Forest::TropicalRain) => 1.0,
+            Biome::Forest(Forest::Boreal) | Biome::Alpine => 0.8,
+            Biome::Forest(Forest::TemperateRain) => 0.6,
+            Biome::Forest(Forest::TropicalDry) | Biome::Wetland => 0.4,
+            Biome::Forest(Forest::Temperate) => 0.2,
+            Biome::Grassland(_) | Biome::Polar(_) | Biome::Beach => 0.0,
+            // Nothing there to turn: drawn as it always is.
+            Biome::Ocean | Biome::Desert(_) | Biome::Volcanic => 1.0,
         }
     }
 }

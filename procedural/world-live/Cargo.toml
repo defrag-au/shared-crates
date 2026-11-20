@@ -1,0 +1,11 @@
+[package]
+name = "world-live"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The live world: a pure function of a baked world and the world clock. The clock (80-minute days, 90-day seasons, one season per Cardano epoch) and the sun. Pure: no I/O, no wasm-bindgen, so a macroquad game, a wasm-bindgen frontend and a worker share it."
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }

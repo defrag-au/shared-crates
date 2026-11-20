@@ -6,6 +6,7 @@ use crate::coast::{CoastStyle, WaterlineStyle};
 use crate::relief::ReliefStyle;
 use crate::rift::RiftStyle;
 use crate::sea::SeaStyle;
+use crate::season::SeasonStyle;
 use crate::shore::ShoreStyle;
 use crate::water::WaterStyle;
 use crate::waves::WaveStyle;
@@ -21,4 +22,5 @@ pub struct Style {
     pub shore: ShoreStyle,
     pub water: WaterStyle,
     pub rift: RiftStyle,
+    pub season: SeasonStyle,
 }

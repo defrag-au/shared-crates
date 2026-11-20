@@ -17,6 +17,7 @@ use crate::palette::{
 use crate::relief;
 use crate::relief::Contrast;
 use crate::sea;
+use crate::season;
 use crate::sheet::{Biome, Cell, Forest, Grid, Polar};
 use crate::shore::Strip;
 use crate::style::Style;
@@ -176,15 +177,24 @@ pub fn render(chart: &Chart) -> Drawn {
 
             // The highest tiers are peaks, whatever grows or does not below
             // them.
-            let peak = !t.frozen[i]
-                && here.biome != Biome::Volcanic
-                && t.smooth_u[i].floor() >= tiers - 2.0;
+            let peak = t.is_peak(i, here.biome, tiers);
+            // The moment of the year, on ground the ice sheet does not hold:
+            // plants out of leaf lean to straw (not on bare peaks), and
+            // seasonal snow lies in the frozen painting's colours, lit as
+            // the ground under it.
+            let seasonal = !t.frozen[i];
             let mut colour = if cliff {
                 // A range gets one cliff family: under a peak's grey-violet
                 // top the wall is its darker violet, not the red or ochre of
                 // the ground far below.
                 let walls = if peak { &PEAK_CLIFF } else { &look.cliff };
-                paint(walls, lit, height, lighting.cliffs)
+                let wall = paint(walls, lit, height, lighting.cliffs);
+                if seasonal && here.snow > 0.0 {
+                    let snowed = paint(&FROZEN.cliff, lit, height, lighting.cliffs);
+                    mix(wall, snowed, here.snow * style.season.cliff_snow)
+                } else {
+                    wall
+                }
             } else {
                 // Tops: shade from the generalised land form, not the
                 // terrace.
@@ -221,7 +231,15 @@ pub fn render(chart: &Chart) -> Drawn {
                 } else {
                     lighting.ground
                 };
-                paint(set, form, height, contrast)
+                let mut ground = paint(set, form, height, contrast);
+                if seasonal && !peak {
+                    ground = season::turn(ground, here.leaf, &style.season);
+                }
+                if seasonal && here.snow > 0.0 {
+                    let snowed = paint(&FROZEN.top, form, height, lighting.ice);
+                    ground = mix(ground, snowed, here.snow);
+                }
+                ground
             };
 
             if let Some(spot) = craters::spot(craters, here.dir) {

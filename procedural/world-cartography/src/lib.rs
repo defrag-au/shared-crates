@@ -14,6 +14,7 @@
 //! | [`rivers`] | rivers as tapered anti-aliased strokes (or per-pixel, without detail) |
 //! | [`trees`] | conifers scattered and clumped over forest |
 //! | [`clouds`] | cloud cover for a renderer to cut cloud shapes from |
+//! | [`season`] | a moment of the year: plants out of leaf, seasonal snow |
 //!
 //! [`cel`] and [`atlas`] are the two styles; each composes the features into
 //! pixels. [`palette`] holds the looks (colours sampled from the Derp Birds
@@ -35,6 +36,7 @@ pub mod relief;
 pub mod rift;
 pub mod rivers;
 pub mod sea;
+pub mod season;
 pub mod sheet;
 pub mod shore;
 pub mod style;

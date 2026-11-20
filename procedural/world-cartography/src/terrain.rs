@@ -12,7 +12,7 @@ use rayon::prelude::*;
 use crate::ICE_SHEET_K;
 use crate::colour::smoothstep;
 use crate::noise::{gradient_noise, grain};
-use crate::sheet::{Cell, Grid, TreeCover, box_blur, components};
+use crate::sheet::{Biome, Cell, Grid, TreeCover, box_blur, components};
 
 /// Whether ground at `temperature` (Kelvin, the chart's: the bake's with its
 /// regional anomaly) in direction `dir` is ice sheet. A little noise
@@ -75,6 +75,12 @@ impl Terrain {
     /// A cliff band on mesa ground.
     pub fn is_cliff(&self, i: usize) -> bool {
         self.class[i] != GENTLE && self.class[i] % 2 == 1
+    }
+
+    /// The highest tiers are peaks, whatever grows or does not below them:
+    /// not on the ice sheet, nor on a volcano, which keeps its own colours.
+    pub fn is_peak(&self, i: usize, biome: Biome, tiers: f32) -> bool {
+        !self.frozen[i] && biome != Biome::Volcanic && self.smooth_u[i].floor() >= tiers - 2.0
     }
 }
 

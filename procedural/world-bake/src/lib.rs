@@ -130,6 +130,22 @@ pub enum LayerName {
     /// keeps them. Read it for the sea floor; the land and the coast are
     /// [`LayerName::Elevation`]'s. Optional tectonic layer.
     HistoryElevation,
+    /// How far the temperature swings either side of its annual mean
+    /// ([`LayerName::Temperature`]) over the year, kelvin: half the range
+    /// from the coldest day to the warmest. Large far inland at high
+    /// latitudes, small at sea and near the equator. Optional seasonal
+    /// layer: `world-live` evaluates the temperature at a moment from it.
+    TemperatureSwing,
+    /// How long after its hemisphere's summer solstice the warmest day
+    /// comes, as a share of the year: about a month inland, longer at sea,
+    /// which stores the summer's heat. Optional seasonal layer.
+    SeasonLag,
+    /// How strongly the rain comes in one season, 0 to 1: the amplitude of
+    /// the year's rain about its annual mean ([`LayerName::Precipitation`]),
+    /// so 0 is rain spread evenly over the year and 1 all of it in the wet
+    /// season (local summer, as the rain belt follows the sun). Strongest in
+    /// the tropics either side of the equator. Optional seasonal layer.
+    RainSeason,
 }
 
 impl LayerName {
@@ -167,8 +183,18 @@ impl LayerName {
             LayerName::Marsh => "marsh.png",
             LayerName::Plate => "plate.png",
             LayerName::HistoryElevation => "history_elevation.png",
+            LayerName::TemperatureSwing => "temperature_swing.png",
+            LayerName::SeasonLag => "season_lag.png",
+            LayerName::RainSeason => "rain_season.png",
         }
     }
+
+    /// The optional seasonal layers: the shape of the year at each place.
+    pub const SEASONAL: [LayerName; 3] = [
+        LayerName::TemperatureSwing,
+        LayerName::SeasonLag,
+        LayerName::RainSeason,
+    ];
 
     /// The optional sea layers: the swell, for waves and surf.
     pub const SEA: [LayerName; 2] = [LayerName::SwellTime, LayerName::SurfExposure];
@@ -189,7 +215,9 @@ impl LayerName {
             LayerName::Elevation | LayerName::ElevationDetail | LayerName::HistoryElevation => {
                 "generator elevation units"
             }
-            LayerName::Temperature => "kelvin",
+            LayerName::Temperature | LayerName::TemperatureSwing => "kelvin",
+            LayerName::SeasonLag => "share of a year",
+            LayerName::RainSeason => "seasonal amplitude, 0 to 1",
             LayerName::WaterFlow => "accumulated flow (relative)",
             LayerName::OrogenyAge | LayerName::SeaFloorAge => "million years",
             LayerName::FoldEast | LayerName::FoldNorth => "fold strength (doubled angle)",
