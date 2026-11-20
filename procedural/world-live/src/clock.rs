@@ -38,9 +38,42 @@ impl Clock {
         (now_unix - self.origin_unix) * self.speed
     }
 
+    /// Real seconds since the origin at a real instant, whatever the speed:
+    /// what the waves and the weather run on ([`crate::weather`]).
+    pub fn real_seconds(&self, now_unix: f64) -> f64 {
+        now_unix - self.origin_unix
+    }
+
     /// The moment at a real instant.
     pub fn moment(&self, now_unix: f64) -> Moment {
         Moment::at(self.world_seconds(now_unix))
+    }
+}
+
+/// A world's clock as its config records it: the [`Clock`], and where its
+/// origin came from. The origin is the start of a Cardano epoch read from
+/// the chain; the world's first spring begins with it, and each epoch after
+/// is a season.
+///
+/// Every mainnet epoch so far has been 432,000 s, but that is the chain's
+/// to change: the clock runs on its own origin and [`SEASON_SECONDS`], and
+/// `epoch` records which boundary it was set to, so a drift from the
+/// chain's epochs can be seen and the origin set again.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorldClock {
+    #[serde(flatten)]
+    pub clock: Clock,
+    /// The chain the origin was read from (`mainnet`).
+    pub network: String,
+    /// The epoch whose start is the origin.
+    pub epoch: u64,
+}
+
+impl WorldClock {
+    /// The epoch a real instant falls in, by this clock: one a season from
+    /// the origin's, at the clock's speed.
+    pub fn epoch_at(&self, now_unix: f64) -> i64 {
+        self.epoch as i64 + (self.clock.world_seconds(now_unix) / SEASON_SECONDS).floor() as i64
     }
 }
 
@@ -159,6 +192,31 @@ mod tests {
         assert_eq!(m.day_of_season(), 0);
         let day = clock.moment(1_000.0 + 40.0);
         assert_eq!(day.day, 1);
+    }
+
+    #[test]
+    fn a_world_clock_set_to_an_epoch_counts_a_season_an_epoch() {
+        // Mainnet epoch 668, as the chain gave it (Koios /epoch_info,
+        // 2026-11-20): it began at 1794779091 and ended 432,000 s on.
+        let world = WorldClock {
+            clock: Clock {
+                origin_unix: 1_794_779_091.0,
+                speed: 1.0,
+            },
+            network: "mainnet".to_string(),
+            epoch: 668,
+        };
+        let end_of_668 = 1_795_211_091.0;
+        assert_eq!(world.epoch_at(end_of_668 - 1.0), 668);
+        assert_eq!(world.epoch_at(end_of_668), 669);
+        assert_eq!(
+            world.clock.moment(end_of_668 - 1.0).season(),
+            Season::Spring
+        );
+        assert_eq!(world.clock.moment(end_of_668).season(), Season::Summer);
+        // Mid-epoch: day 45 of the season's 90.
+        let mid = world.clock.moment(1_794_779_091.0 + SEASON_SECONDS / 2.0);
+        assert_eq!(mid.day_of_season(), 45);
     }
 
     #[test]

@@ -10,6 +10,7 @@
 //! - [`seasons`]: the shape of the year at a place (baked), and the
 //!   temperature and rain at a moment from it.
 //! - [`growth`]: snow cover and leaf at a moment, from those.
+//! - [`weather`]: the waves' and the clouds' clocks.
 //!
 //! Directions follow `world_bake`'s convention: unit vectors, the north pole
 //! on +y, latitude `asin(y)`, longitude from +x towards +z.
@@ -18,8 +19,9 @@ pub mod clock;
 pub mod growth;
 pub mod seasons;
 pub mod sun;
+pub mod weather;
 
-pub use clock::{Clock, Moment, Season};
+pub use clock::{Clock, Moment, Season, WorldClock};
 pub use growth::GrowthModel;
 pub use seasons::{SeasonModel, Seasonal};
 pub use sun::Orbit;
