@@ -24,7 +24,7 @@ use std::collections::HashSet;
 
 /// Which allowlist tier a stake address belongs to.
 ///
-/// Returned by [`is_allowed`]. Callers gate route access on this — e.g. the
+/// Returned by [`tier_for`]. Callers gate route access on this — e.g. the
 /// super-admin-only routes refuse anything below `Tier::SuperAdmin`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tier {
@@ -70,11 +70,9 @@ pub(crate) fn parse_csv(input: &str) -> HashSet<String> {
 /// Check a stake address against the parsed allowlists.
 ///
 /// Super-admin wins on overlap. Stakes not in either list return `Rejected`.
-pub fn is_allowed(
-    stake: &str,
-    super_admin: &HashSet<String>,
-    whitelisted: &HashSet<String>,
-) -> Tier {
+/// Matching is exact: the caller must pass the canonical form the signature
+/// verifier produced, since nothing is normalised here.
+pub fn tier_for(stake: &str, super_admin: &HashSet<String>, whitelisted: &HashSet<String>) -> Tier {
     if super_admin.contains(stake) {
         Tier::SuperAdmin
     } else if whitelisted.contains(stake) {
@@ -119,32 +117,32 @@ mod tests {
     }
 
     #[test]
-    fn is_allowed_super_admin_wins() {
+    fn tier_for_super_admin_wins() {
         let super_admin = parse_stakes("stake1ushared");
         let whitelisted = parse_stakes("stake1ushared,stake1uother");
         // stake1ushared is in BOTH — super-admin wins.
         assert_eq!(
-            is_allowed("stake1ushared", &super_admin, &whitelisted),
+            tier_for("stake1ushared", &super_admin, &whitelisted),
             Tier::SuperAdmin
         );
     }
 
     #[test]
-    fn is_allowed_whitelisted_falls_through() {
+    fn tier_for_whitelisted_falls_through() {
         let super_admin = parse_stakes("stake1usuper");
         let whitelisted = parse_stakes("stake1uwhite");
         assert_eq!(
-            is_allowed("stake1uwhite", &super_admin, &whitelisted),
+            tier_for("stake1uwhite", &super_admin, &whitelisted),
             Tier::Whitelisted
         );
     }
 
     #[test]
-    fn is_allowed_rejected_when_absent() {
+    fn tier_for_rejected_when_absent() {
         let super_admin = parse_stakes("stake1usuper");
         let whitelisted = parse_stakes("stake1uwhite");
         assert_eq!(
-            is_allowed("stake1uother", &super_admin, &whitelisted),
+            tier_for("stake1uother", &super_admin, &whitelisted),
             Tier::Rejected
         );
     }

@@ -70,6 +70,7 @@ impl std::error::Error for AuthError {}
 
 /// Which authentication method(s) to accept.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum AuthKeyType {
     /// `X-Debug-Token` header, checked against `DEBUG_TOKEN` secret.
     DebugToken,
@@ -84,6 +85,7 @@ pub enum AuthKeyType {
 /// callers can apply capability tiering — e.g. allow the operator debug token to
 /// read but require the internal key to move funds or reveal seeds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Caller {
     /// Authenticated via `X-Internal-Key` (worker-to-worker, full trust).
     Internal,
@@ -97,8 +99,9 @@ pub enum Caller {
 
 impl Caller {
     /// True for the higher-trust principals permitted to move funds / reveal
-    /// seeds. The debug token is deliberately excluded.
-    pub fn is_internal(self) -> bool {
+    /// seeds. The debug token is deliberately excluded; a JWT admin is
+    /// included even though it is not worker-to-worker.
+    pub fn is_full_trust(self) -> bool {
         match self {
             Caller::Internal => true,
             Caller::Debug => false,
@@ -123,7 +126,7 @@ pub async fn require(req: &Request, env: &Env, key_type: AuthKeyType) -> Result<
 
 /// Like [`require`], but returns WHICH principal authenticated so callers can
 /// tier capabilities (read for [`Caller::Debug`], spend/seed for
-/// [`Caller::is_internal`]). For `Any`, the internal key is tried first so a
+/// [`Caller::is_full_trust`]). For `Any`, the internal key is tried first so a
 /// caller presenting it is classified as the higher-trust principal.
 ///
 /// A credential whose secret is unset or empty is reported as
