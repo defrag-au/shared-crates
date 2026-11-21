@@ -137,11 +137,9 @@ pub fn verify_signature(
 ) -> Result<(), String> {
     let signature = hex::decode(signature_hex.trim()).map_err(|e| format!("signature: {e}"))?;
     let key = hex::decode(verifying_key_hex.trim()).map_err(|e| format!("verifying key: {e}"))?;
-    // Both schemes put r ‖ s on the wire, so both are 64 bytes — and the check
-    // has to happen *here*, before the type does. `k256::schnorr::Signature`'s
-    // `TryFrom<&[u8]>` splits the slice in half with `split_at` and panics on a
-    // short one instead of returning `Err`; a client posting 63 bytes would
-    // otherwise take the isolate down rather than getting a 400.
+    // Both schemes put r ‖ s on the wire, so both are 64 bytes. Check it here
+    // so a short or long value is a typed error from this function rather than
+    // whichever error the signature parser happens to produce.
     if signature.len() != 64 {
         return Err(format!(
             "a signature is 64 bytes of r ‖ s, got {}",
@@ -156,7 +154,7 @@ pub fn verify_signature(
                 .try_into()
                 .map_err(|_| format!("a schnorr key is 32 bytes, got {}", key.len()))?;
             let key =
-                SchnorrKey::from_bytes(&key).map_err(|_| "malformed schnorr key".to_string())?;
+                SchnorrKey::from_slice(&key).map_err(|_| "malformed schnorr key".to_string())?;
             let signature = k256::schnorr::Signature::try_from(signature.as_slice())
                 .map_err(|_| "malformed schnorr signature".to_string())?;
             key.verify_raw(&digest, &signature)
@@ -349,7 +347,7 @@ mod tests {
     }
 
     fn schnorr_key(byte: u8) -> (SchnorrSigningKey, [u8; 32]) {
-        let key = SchnorrSigningKey::from_bytes(&secret(byte)).expect("valid secret");
+        let key = SchnorrSigningKey::from_slice(&secret(byte)).expect("valid secret");
         let x_only: [u8; 32] = key.verifying_key().to_bytes().into();
         (key, x_only)
     }
@@ -441,7 +439,7 @@ mod tests {
     #[test]
     fn an_ecdsa_signature_verifies_and_derives_its_own_address_shape() {
         let key = EcdsaSigningKey::from_slice(&secret(3)).expect("valid secret");
-        let compressed = key.verifying_key().to_encoded_point(true);
+        let compressed = key.verifying_key().to_sec1_point(true);
         let signature: k256::ecdsa::Signature = key
             .sign_prehash(&digest("Link this wallet"))
             .expect("ecdsa signing");

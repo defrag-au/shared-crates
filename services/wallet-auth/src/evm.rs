@@ -137,11 +137,14 @@ fn recover(signature_hex: &str, message: &str) -> Result<VerifyingKey, String> {
     match VerifyingKey::recover_from_prehash(&prehash, &signature, recovery_id) {
         Ok(key) => Ok(key),
         Err(first) => {
-            // See "High-s signatures" in the module header. Nothing to retry
-            // when the signature was already low-s — that error is the answer.
-            let Some(low) = signature.normalize_s() else {
+            // See "High-s signatures" in the module header. `normalize_s` is a
+            // no-op on a low-s signature, and retrying with a flipped recovery
+            // id there would recover a different key — so only retry when s
+            // actually changed.
+            let low = signature.normalize_s();
+            if low == signature {
                 return Err(format!("Cannot recover signer: {first}"));
-            };
+            }
             let flipped = RecoveryId::new(!recovery_id.is_y_odd(), recovery_id.is_x_reduced());
             VerifyingKey::recover_from_prehash(&prehash, &low, flipped)
                 .map_err(|e| format!("Cannot recover signer: {e}"))
@@ -176,7 +179,7 @@ fn personal_message_hash(message: &str) -> [u8; 32] {
 /// The EVM address an uncompressed public key controls:
 /// `keccak256(pubkey[1..])[12..]`, lower-cased.
 fn address_of(key: &VerifyingKey) -> String {
-    let point = key.to_encoded_point(false);
+    let point = key.to_sec1_point(false);
     let hash = Keccak256::digest(&point.as_bytes()[1..]);
     format!("0x{}", hex::encode(&hash[12..]))
 }
@@ -232,9 +235,8 @@ mod tests {
     /// Sign a digest the way Ethereum libraries do: low-s with the matching
     /// recovery id, encoded as `r || s || v`.
     fn sign_digest(signing: &SigningKey, digest: Keccak256) -> String {
-        let (signature, recovery_id) = signing
-            .sign_digest_recoverable(digest)
-            .expect("signing succeeds");
+        let (signature, recovery_id) =
+            signing.sign_prehash_recoverable(digest.finalize().as_slice());
         encode(&signature, recovery_id, 27)
     }
 
@@ -316,9 +318,11 @@ mod tests {
     fn v_added_to_zero_and_to_twenty_seven_recover_alike() {
         let signing = key(15);
         let message = "v byte forms";
-        let (signature, recovery_id) = signing
-            .sign_digest_recoverable(Keccak256::new_with_prefix(preimage(message)))
-            .expect("signing succeeds");
+        let (signature, recovery_id) = signing.sign_prehash_recoverable(
+            Keccak256::new_with_prefix(preimage(message))
+                .finalize()
+                .as_slice(),
+        );
         let as_0_1 = encode(&signature, recovery_id, 0);
         let as_27_28 = encode(&signature, recovery_id, 27);
         assert_eq!(
@@ -338,9 +342,11 @@ mod tests {
         // come back, not an error.
         let signing = key(16);
         let message = "high-s";
-        let (signature, recovery_id) = signing
-            .sign_digest_recoverable(Keccak256::new_with_prefix(preimage(message)))
-            .expect("signing succeeds");
+        let (signature, recovery_id) = signing.sign_prehash_recoverable(
+            Keccak256::new_with_prefix(preimage(message))
+                .finalize()
+                .as_slice(),
+        );
         let low_s = *signature.s();
         assert!(
             !bool::from(low_s.is_high()),
@@ -361,9 +367,11 @@ mod tests {
     fn an_eip155_v_byte_is_refused_rather_than_guessed_at() {
         let signing = key(17);
         let message = "chain-tagged";
-        let (signature, _) = signing
-            .sign_digest_recoverable(Keccak256::new_with_prefix(preimage(message)))
-            .expect("signing succeeds");
+        let (signature, _) = signing.sign_prehash_recoverable(
+            Keccak256::new_with_prefix(preimage(message))
+                .finalize()
+                .as_slice(),
+        );
         let mut bytes = signature.to_bytes().to_vec();
         bytes.push(35); // 0x23: chain 0, recovery bit 0, EIP-155 form
         let err = recover_address(&hex::encode(bytes), message).unwrap_err();
@@ -374,9 +382,11 @@ mod tests {
     fn a_signature_of_the_wrong_length_is_an_error_not_a_guess() {
         let signing = key(18);
         let message = "length";
-        let (signature, _) = signing
-            .sign_digest_recoverable(Keccak256::new_with_prefix(preimage(message)))
-            .expect("signing succeeds");
+        let (signature, _) = signing.sign_prehash_recoverable(
+            Keccak256::new_with_prefix(preimage(message))
+                .finalize()
+                .as_slice(),
+        );
         let truncated = hex::encode(&signature.to_bytes()[..63]);
         let err = recover_address(&truncated, message).unwrap_err();
         assert!(err.contains("65"), "names the expected size: {err}");

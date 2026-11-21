@@ -29,10 +29,6 @@ serde_json = { workspace = true, optional = true }
 hex = { workspace = true }
 ed25519-dalek = { workspace = true }
 getrandom = { workspace = true, optional = true }
-# A SECOND major version on purpose. `k256`'s elliptic-curve stack reaches
-# `getrandom` 0.2 on wasm32, which wants the `js` feature on that major rather
-# than 0.3's `wasm_js`. A feature-unification dependency, not a direct call.
-getrandom_02 = { workspace = true }
 ciborium = { workspace = true }
 blake2 = { workspace = true }
 sha2 = { workspace = true }
