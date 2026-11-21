@@ -97,7 +97,7 @@ edition = "2024"
 # The workspace's crates inherit this so a consumer on an older rustc gets
 # cargo's clear "requires rustc 1.88" rather than an error deep in a dependency.
 rust-version = "1.88"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/defrag-au/shared-crates"
 authors = ["Damon Oehlman <damon@defrag.au>"]
 
