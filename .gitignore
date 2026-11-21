@@ -19,3 +19,5 @@ database.sql
 
 # `playbook skills sync` development override — a machine path, never committed
 .playbook/skills.patch
+
+.envrc.local

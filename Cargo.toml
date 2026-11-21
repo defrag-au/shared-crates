@@ -80,6 +80,10 @@ members = [
     "ui/_storybook-egui",
     "ui/workers/flow-demo",
     "ui/workers/flow-demo/frontend",
+    # Procedural primitives with consumers outside this repository:
+    # `microversus-worldgen` and `microversus-wfc` in augminted-bots. They are
+    # generic (a city layout, a hex tile set), so they stay here; the PERPS
+    # world's own procedural crates moved to `unify-space`.
     "procedural/*",
     "ai-media-gen",
     "pipeline/*",
