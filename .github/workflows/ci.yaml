@@ -148,6 +148,7 @@ jobs:
             -p wasm_safe_serde \
             -p worker_stack \
             -p worker_utils \
+            -p api-auth \
             -p scss-macros \
             -p ui-core \
             -p ui-flow \
@@ -172,3 +173,8 @@ jobs:
             -p sceneworld \
             -p sceneapp \
             -p scenegraph-mq
+
+      - name: Check api-auth's JWT arm for wasm
+        # The step above compiles api-auth with default features, so the `jwt`
+        # arm (and jwt-compact) is otherwise never built for this target.
+        run: cargo check --target wasm32-unknown-unknown --locked -p api-auth --features jwt

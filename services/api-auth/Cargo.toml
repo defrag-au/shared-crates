@@ -1,0 +1,26 @@
+[package]
+name = "api-auth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Token and JWT authentication for Cloudflare Workers: operator debug tokens, internal keys and stake-address allowlist parsing"
+publish = false
+
+[dependencies]
+worker_stack = { workspace = true }
+worker_utils = { workspace = true }
+tracing = { workspace = true }
+
+[dependencies.jwt-compact]
+workspace = true
+optional = true
+
+[dependencies.serde]
+workspace = true
+features = ["derive"]
+optional = true
+
+[features]
+default = []
+jwt = ["dep:jwt-compact", "dep:serde"]
