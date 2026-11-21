@@ -1,0 +1,11 @@
+[package]
+name = "wallet-auth-wire"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Wire types for Cardano wallet authentication: the CIP-8 challenge/verify flow and the KV-backed stake-session flow. Serde only."
+publish = false
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }

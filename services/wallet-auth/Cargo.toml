@@ -1,0 +1,55 @@
+[package]
+name = "wallet-auth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Cardano wallet authentication: CIP-8, EIP-191 and Schnorr verification, per-request signing, and DO-backed challenge/session flows"
+publish = false
+
+[features]
+# Default OFF: a native consumer (a CLI, a worker's build script) gets the
+# verification and signing primitives without the `worker` runtime. A worker
+# enables `worker-do` for the challenge/session and allowlist gate.
+default = []
+worker-do = [
+    "dep:worker_stack",
+    "dep:js-sys",
+    "dep:ulid",
+    "dep:api-auth",
+    "dep:tracing",
+    "dep:chains",
+    "dep:getrandom",
+    "dep:serde_json",
+]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, optional = true }
+hex = { workspace = true }
+ed25519-dalek = { workspace = true }
+getrandom = { workspace = true, optional = true }
+# A SECOND major version on purpose. `k256`'s elliptic-curve stack reaches
+# `getrandom` 0.2 on wasm32, which wants the `js` feature on that major rather
+# than 0.3's `wasm_js`. A feature-unification dependency, not a direct call.
+getrandom_02 = { workspace = true }
+ciborium = { workspace = true }
+blake2 = { workspace = true }
+sha2 = { workspace = true }
+k256 = { workspace = true }
+sha3 = { workspace = true }
+pallas-addresses = { workspace = true }
+pallas-crypto = { workspace = true }
+thiserror = { workspace = true }
+# The wire types the challenge/session flows speak. Pure serde, so a frontend
+# can depend on them without the crypto.
+wallet-auth-wire = { workspace = true }
+
+# Gated behind `worker-do`.
+worker_stack = { workspace = true, optional = true }
+ulid = { workspace = true, optional = true }
+js-sys = { workspace = true, optional = true }
+api-auth = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+# `ChainRef`, the CAIP-2 chain a `Gate` reads its network from.
+chains = { workspace = true, optional = true }

@@ -50,6 +50,11 @@ jobs:
       # excluded here so this job does not try to run it.
       - run: cargo check --workspace --exclude storybook-egui --all-targets --locked
       - run: cargo test --workspace --exclude storybook-egui --all-targets --locked
+      # `wallet-auth`'s default feature set is the pure verification/signing
+      # primitives. The DO/KV challenge/session half is opt-in, so its tests need
+      # the feature named explicitly.
+      - name: wallet-auth worker surfaces
+        run: cargo test -p wallet-auth --features worker-do --locked
       # The workspace runs default features, which leave out scenegraph's glTF
       # importer: models, rigs, clips and the Khronos fixtures that test them.
       - name: scenegraph with glTF
@@ -103,6 +108,10 @@ jobs:
           cache-on-failure: true
 
       - run: cargo clippy --workspace --exclude storybook-egui --all-targets --locked -- -D warnings
+      # The workspace run above sees `wallet-auth` without `worker-do`; the
+      # challenge/session and allowlist-gate code is otherwise unlinted.
+      - name: wallet-auth worker surfaces
+        run: cargo clippy -p wallet-auth --features worker-do --all-targets --locked -- -D warnings
 
   wasm-check:
     name: WASM Check
@@ -149,6 +158,8 @@ jobs:
             -p worker_stack \
             -p worker_utils \
             -p api-auth \
+            -p wallet-auth-wire \
+            -p wallet-auth \
             -p scss-macros \
             -p ui-core \
             -p ui-flow \
