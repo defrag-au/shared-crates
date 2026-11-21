@@ -50,10 +50,19 @@ impl Tier {
 /// signature-verification step's job. An invalid entry just won't match any
 /// real signed stake.
 pub fn parse_stakes(input: &str) -> HashSet<String> {
+    parse_csv(input)
+}
+
+/// Split a comma-delimited list into a set, trimming whitespace and dropping
+/// empty entries.
+///
+/// The same shape the env-delivered lists use — stake allowlists and the JWT
+/// admin ids — so one parser decides what a trailing comma means.
+pub(crate) fn parse_csv(input: &str) -> HashSet<String> {
     input
         .split(',')
         .map(str::trim)
-        .filter(|s| !s.is_empty())
+        .filter(|entry| !entry.is_empty())
         .map(String::from)
         .collect()
 }
