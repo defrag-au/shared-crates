@@ -148,6 +148,7 @@ jobs:
             -p wasm_safe_serde \
             -p worker_stack \
             -p worker_utils \
+            -p api-auth \
             -p scss-macros \
             -p ui-core \
             -p ui-flow \

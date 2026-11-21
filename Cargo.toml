@@ -125,6 +125,9 @@ utoipa = { version = "5" }
 # Note: These are now managed through the worker_stack facade crate
 # with pinned versions to ensure ecosystem compatibility
 worker_stack = { path = "worker-stack" }
+# `api-auth`'s JWT arm is optional; the crate defaults to the header/secret
+# checks every worker uses.
+jwt-compact = "0.8.0"
 
 # UI workspace dependencies (from shared-ui)
 wasm-bindgen = "0.2"
