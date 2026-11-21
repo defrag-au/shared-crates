@@ -128,6 +128,16 @@ worker_stack = { path = "worker-stack" }
 # `api-auth`'s JWT arm is optional; the crate defaults to the header/secret
 # checks every worker uses.
 jwt-compact = "0.8.0"
+# `wallet-auth`'s primitives. `ed25519-dalek` for CIP-8, `k256`/`sha3` for
+# EIP-191 and BIP-340 Schnorr, `ciborium` for COSE, `blake2` for the Cardano
+# message hash.
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+k256 = { version = "0.14", default-features = false, features = ["ecdsa", "schnorr"] }
+sha2 = "0.10"
+sha3 = "0.10"
+ciborium = "0.2"
+blake2 = "0.10"
+ulid = "1.1"
 
 # UI workspace dependencies (from shared-ui)
 wasm-bindgen = "0.2"
@@ -222,6 +232,9 @@ egui-widgets = { path = "ui/egui-widgets" }
 # they need: `features = ["egui"]` or `features = ["macroquad"]`.
 ui-theme = { path = "ui/ui-theme" }
 gateway-wiring = { path = "services/gateway-wiring" }
+# The operator token gate and the wire types `wallet-auth` speaks.
+api-auth = { path = "services/api-auth" }
+wallet-auth-wire = { path = "services/wallet-auth-wire" }
 wallet-core = { path = "ui/wallet-core" }
 wallet-pallas = { path = "ui/wallet-pallas" }
 # Lockstep rooms: the pure room and client state machines, the sim trait a
