@@ -399,7 +399,8 @@ nix develop -c cargo clippy --fix --allow-dirty --all-targets --all-features -- 
 **Before writing any widget, read the catalogue.**
 
 - `ui/egui-widgets/CATALOG.md` in `shared-crates` — ~100 widgets, one line each.
-- `ui/macroquad-widgets/CATALOG.md` — the macroquad set.
+- `ui/macroquad-widgets/CATALOG.md` and `gaming/macroquad-gamekit/CATALOG.md` in
+  `macroquad-kit` — the macroquad sets.
 
 Read the whole file. Do not grep instead.
 
@@ -422,6 +423,7 @@ Read the whole file. Do not grep instead.
 | --- | --- |
 | `rg`, `grep` | `at-peek search <pattern> [path…]` |
 | `sed -n '40,60p' <file>`, `head`, `cat` | `at-peek slice <file>:40-60` |
+| `grep -n '^## ' <file>` — a file's shape | `at-peek outline <path>…` |
 | `wc -l`, `ls -l`, `stat` | `at-peek stat <path>…` |
 | `grep -rn … ~/.cargo/…` | `at-crate search <pattern> <crate>` · `slice` · `where` |
 | `git status` | `at-recall state` |
@@ -455,6 +457,22 @@ Selective edits cause two failures:
 
 - A line ends up in both the active and the still-commented copy → duplicate-key error
 - A transitively-required crate is left commented → unrelated workers break
+
+
+## A fork goes upstream only when every backend is covered and it reads like the project
+<!-- rule: rules/org/defrag/upstream-patch-readiness -->
+
+Do not open — or offer to open — an upstream PR for a fork until two tests pass:
+
+1. **Every backend the upstream builds for is covered.** A flag that is warned-and-ignored on
+   one platform is a feature that platform does not have. Enumerate the upstream's backends and
+   make each one work, or leave the patch local.
+2. **The patch reads as if the project wrote it.** Match the comment density, naming and where a
+   config field lives. Explanations written for a diff belong in the fork's commit message, not
+   in a file upstream maintains.
+
+Until both are true, the fork is the deliverable: pin it, carry it in `[patch.crates-io]`, and
+leave the PR unopened. Do not end the work by offering to send it.
 
 
 ## Sizes, spacing and colour come from the theme
@@ -591,7 +609,7 @@ re-derives a rule — not damage, not which card was drawn, not where a stripped
 ## macroquad's silent traps — each fails with no error and a wrong picture
 <!-- rule: rules/org/defrag/macroquad-traps -->
 
-Before drawing with macroquad directly, check `shared-crates/gaming/macroquad-gamekit/CATALOG.md`.
+Before drawing with macroquad directly, check `macroquad-kit/gaming/macroquad-gamekit/CATALOG.md`.
 Each trap below compiles, runs, and shows a wrong picture with no error.
 
 - **The window is upside down under `Camera2D::from_display_rect`.** Use `harness::window_camera`
