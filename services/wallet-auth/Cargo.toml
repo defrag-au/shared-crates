@@ -29,6 +29,10 @@ serde_json = { workspace = true, optional = true }
 hex = { workspace = true }
 ed25519-dalek = { workspace = true }
 getrandom = { workspace = true, optional = true }
+# A SECOND major version on purpose: see the workspace manifest. It keeps the
+# `js` feature enabled for `rand_core` 0.6 / `getrandom` 0.2 in a consumer's
+# wasm graph, which `ed25519-dalek` and `pallas-crypto` both reach.
+getrandom_02 = { workspace = true }
 ciborium = { workspace = true }
 blake2 = { workspace = true }
 sha2 = { workspace = true }

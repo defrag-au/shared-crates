@@ -138,6 +138,11 @@ sha3 = "0.10"
 ciborium = "0.2"
 blake2 = "0.10"
 ulid = "1.1"
+# `wallet-auth`'s `ed25519-dalek`, and the Cardano crates a consumer's graph
+# brings alongside it, reach `getrandom` 0.2 on wasm32. That major wants the
+# `js` feature on the crate itself; enabling it on 0.3's `wasm_js` leaves 0.2
+# still refusing to build. A feature-unification dependency, not a direct call.
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 
 # UI workspace dependencies (from shared-ui)
 wasm-bindgen = "0.2"
