@@ -72,6 +72,10 @@ members = [
     "ui/wallet-leptos",
     "ui/wallet-miniquad",
     "ui/miniquad-platform",
+    # A request/response service on a web worker, off the UI thread: a worker
+    # half with no wasm-bindgen (so any page can load it, macroquad included)
+    # and a page half for each runtime. Moved from cnft.dev-workers.
+    "ui/offthread",
     "ui/canvas-bridge",
     "ui/image-core",
     "ui/egui-widgets",

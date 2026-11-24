@@ -1,0 +1,75 @@
+[package]
+name = "offthread"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Run a request/response service on a web worker, off the UI thread"
+
+# TWO HALVES THAT MUST NOT MEET.
+#
+# `service` is the worker side and carries NO wasm-bindgen. That is the whole
+# point: it talks to its host through four raw wasm imports, so the artifact it
+# produces is a plain `wasm32-unknown-unknown` module that any page can
+# instantiate — a wasm-bindgen page, a macroquad/miniquad page, or plain JS.
+#
+# `client` is the page side and is wasm-bindgen by construction (`web_sys::
+# Worker`). `miniquad` is the sibling of that half for a macroquad page: the
+# same wire, the same handshake, reached through the plugin protocol instead.
+# The service half and the wire types below are runtime-agnostic.
+#
+# Enabling two page halves in one binary is not an error, but it is a sign of
+# confusion: a page is one runtime.
+[features]
+default = []
+service = ["dep:postcard", "dep:log", "dep:futures", "dep:getrandom_02"]
+client = [
+    "dep:postcard",
+    "dep:log",
+    "dep:futures",
+    "dep:wasm-bindgen",
+    "dep:js-sys",
+    "dep:web-sys",
+]
+miniquad = ["dep:postcard", "dep:log", "dep:sapp-jsutils"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+# The wire codec both ways. Compact and dependency-free, which matters for the
+# service half — anything self-describing enough to be lenient is also big.
+# Its positional nature is exactly why `ProtocolVersion` exists. Each half
+# encodes with it; the wire types alone (no feature) need only serde.
+postcard = { version = "1", features = ["use-std"], optional = true }
+log = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+
+# Page side only.
+wasm-bindgen = { workspace = true, optional = true }
+js-sys = { workspace = true, optional = true }
+web-sys = { workspace = true, optional = true, features = [
+    "Worker",
+    "MessageEvent",
+] }
+
+# The miniquad page half's transport: `JsObject` is the plugin protocol's
+# string/buffer handle, and it only exists where the plugin runtime does —
+# `miniquad-platform` and `wallet-miniquad` gate it the same way. A native
+# build has no page, and `MiniquadClient::spawn` refuses there.
+#
+# ⚠️ LAST, and as its own table: everything below a `[target.…]` header belongs
+# to it. Putting this in the middle of `[dependencies]` silently made
+# `getrandom_02` wasm32-only, which read as "unresolved module" on the host.
+
+# Service side only, and deliberately WITHOUT the `js` feature.
+#
+# `js` is what drags wasm-bindgen into `uplc → k256 → elliptic-curve →
+# rand_core`, and with it the whole glue layer this half exists to avoid. The
+# `custom` backend lets us answer from the host instead — see `abi::host`.
+getrandom_02 = { package = "getrandom", version = "0.2", features = [
+    "custom",
+], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+sapp-jsutils = { version = "0.1", optional = true }
