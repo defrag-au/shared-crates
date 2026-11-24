@@ -1,0 +1,12 @@
+[package]
+name = "view-camera"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+publish = false
+description = "Cameras for exploring a scene, as intents: grab-the-ground drags, zoom toward the pointer, eased held keys, coasting and flights. Pure — no renderer, no input source; a viewer maps its own input to the intents. `ground` is an orthographic camera over flat ground (z up)."
+
+[dependencies]
+# macroquad 0.4's own glam, so the camera's vectors and matrices are the
+# viewer's types with no conversion. Bump with macroquad's.
+glam = "0.27"

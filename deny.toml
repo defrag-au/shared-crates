@@ -16,6 +16,14 @@
 [advisories]
 version = 2
 
+# Stated, not inherited. The action's bundled cargo-deny and the devshell's have
+# disagreed on this default: under "workspace" every `unmaintained` ignore below
+# reports as `advisory-not-detected` while the advisory itself goes unreported
+# for dependencies — a gate silently narrower than this file says it is. "all"
+# is what the devshell does with no key set, and what the ignores were written
+# against.
+unmaintained = "all"
+
 # A yanked version still resolves, so it is a signal the bump is overdue
 # rather than a vulnerability — and the bump is usually a one-liner. Denied:
 # the first run found two (`chacha20`, `clipboard-win`) and both moved.
@@ -51,10 +59,16 @@ ignore = [
   # line is patched.
   "RUSTSEC-2020-0016",
   # The same path: qws -> url 1.7.2, which pins `idna ^0.1.0`. The remedy is
-  # url >= 2.5.4, so qws (or quad-net dropping qws) is what has to move. The
+  # url >= 2.5.4, so qws (or quad-net dropping it) is what has to move. The
   # URL is the operator's relay, not input from a peer, and nothing here
   # compares host names as a privilege check.
   "RUSTSEC-2024-0421",
+  # The same qws path, and the same reasoning. RUSTSEC-2026-0592 is a stack
+  # overflow in `Url::origin()`; qws never calls it (its `Handshake::origin`
+  # reads the request header as a string), and the URL it does parse is the
+  # operator's relay, not peer input. The 2.x occurrence is fixed by the url
+  # 2.5.9 bump, so only qws's pinned 1.7.2 remains.
+  "RUSTSEC-2026-0592",
   # `egui-widgets`' optional `puffin` profiler adapter brings bincode 1.3.3,
   # which its authors consider complete; puffin has not moved to bincode 2.
   "RUSTSEC-2025-0141",

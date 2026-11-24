@@ -61,6 +61,11 @@
 //! let result = challenge_mgr.verify_and_gate(storage, &verify_req, &my_gate).await?;
 //! ```
 
+// Keep the `js` feature unified for `rand_core` 0.6 / `getrandom` 0.2 in a
+// consumer's wasm graph. The dependency is deliberate even though nothing here
+// calls it: `ed25519-dalek` and `pallas-crypto` both reach that major.
+use getrandom_02 as _;
+
 mod cip8;
 pub mod evm;
 pub mod midnight;
